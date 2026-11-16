@@ -1,0 +1,7 @@
+{
+  "stdout": "serve-question: no browser here (CI, headless or remote). Ask with the structured question tool; if no one can answer, take the default (the assigned card, else your recommended option), say in one line what you chose and how to change it, and carry on. Set IMPECCABLE_QUESTION_FORCE=1 to serve anyway.\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

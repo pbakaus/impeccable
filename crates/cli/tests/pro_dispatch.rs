@@ -61,8 +61,15 @@ fn scans_dispatch_to_the_pro_build_except_where_guarded() {
     let target = account.home.join("page.html");
     std::fs::write(&target, "<p>hi</p>").unwrap();
     let target = target.to_string_lossy().into_owned();
-    let (out, _) = run(&env, &[], &["detect", &target]);
+    // A hook run and --json output never say "Pro rules are on." and don't use it up.
+    let (_, err) = run(&env, &[], &["detect", "--json", &target]);
+    assert!(!err.contains("Pro rules are on."), "{err}");
+    let (out, err) = run(&env, &[], &["detect", &target]);
     assert_eq!(out.trim(), format!("pro-child:1 detect {target}"));
+    // The first scan a person runs says it, once per sign-in.
+    assert_eq!(err.matches("Pro rules are on.").count(), 1, "{err}");
+    let (_, err) = run(&env, &[], &["detect", &target]);
+    assert!(!err.contains("Pro rules are on."), "{err}");
     for (guard, value) in [
         ("IMPECCABLE_PRO_CHILD", "1"),
         ("IMPECCABLE_BIN", "/elsewhere/impeccable"),

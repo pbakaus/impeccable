@@ -1044,8 +1044,34 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /hasProjectContext = !!msg\.hasProjectContext;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice\(\)\) showToast\(/,
       'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /function takeContextNotice\(\) \{\s*if \(contextNoticeShown\) return false;\s*contextNoticeShown = true;\s*try \{\s*if \(localStorage\.getItem\(CONTEXT_NOTICE_KEY\)\) return false;\s*localStorage\.setItem\(CONTEXT_NOTICE_KEY, '1'\);/,
+      'the "No PRODUCT.md" notice shows once per browser, and once per page when storage is blocked',
+    );
+    assert.match(
+      SOURCE,
+      /function enterPickingIfArmed\(\) \{\s*if \(state === 'IDLE' && \(pickActive \|\| insertActive\) && !liveBarHiddenByHelper\) setLiveState\('PICKING'\);/,
+      'a Pick remembered from a visible session never captures clicks behind a hidden bar, where nothing can turn it off',
+    );
+    assert.ok(!/\(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\)/.test(SOURCE), 'every resume into Pick goes through the hidden-bar guard');
+    assert.match(
+      SOURCE,
+      /if \(liveBarHiddenByHelper && !wasHidden && state === 'PICKING'\) \{\s*clearInsertPicking\(\);\s*hideHighlight\(\);\s*setLiveState\('IDLE'\);/,
+      'a bar hidden mid-Pick drops out of Pick at once',
+    );
+    assert.match(
+      SOURCE,
+      /return \{ pickActive: false, insertActive: false, firstRun: true \};/,
+      'a browser with no stored prefs does not start Pick before it knows the bar is visible',
+    );
+    assert.match(
+      SOURCE,
+      /if \(liveFirstRun && !liveBarHiddenByHelper\) \{\s*liveFirstRun = false;\s*if \(!insertActive\) pickActive = true;\s*saveInteractionPrefs\(\);\s*updateGlobalBarState\(\);\s*showToast\('Click anything on the page to restyle it\.'/,
+      'a visible first session turns Pick on and shows the hint once: the prefs are saved before it shows',
     );
     assert.match(
       SOURCE,
@@ -1874,5 +1900,15 @@ describe('Pending dock after Rollback', () => {
     const click = runInNewContext(`${SOURCE.match(/async function onPendingRollbackClick\(\) \{[\s\S]*?\n  \}/)[0]}\nonPendingRollbackClick`, context);
     await click();
     assertNormalDock(context);
+  });
+});
+
+describe('Global bar labels', () => {
+  // Catches hover widening the centred bar again (clicks meant for Pick landed on
+  // Insert), and active labels left collapsed after a Steer request finishes.
+  it('never widens on hover and restores active labels when Steer unlocks', () => {
+    assert.doesNotMatch(SOURCE, /globalBarEl\?*\.\??matches\(':hover'\)|syncGlobalBarExpandedLabels\(true|applyGlobalBarLabelState\(true/);
+    const unlock = SOURCE.match(/function unlockSteerChat\(opts\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(unlock, /syncGlobalBarExpandedLabels\(\)/);
   });
 });

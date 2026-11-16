@@ -257,18 +257,52 @@ fn render_text(report: &Report, fixes: Option<&Fixes>, cwd: &str, command: &str,
     lines.join("\n")
 }
 
+/// The printed fix command spells the launcher when the launcher exported
+/// IMPECCABLE_SELF, and the plain `impeccable` verb otherwise.
+fn self_cmd(env: &Env) -> String {
+    env.get("IMPECCABLE_SELF")
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .map(|v| impeccable_common::launcher::spell_self(&v))
+        .unwrap_or_else(|| "impeccable".to_string())
+}
+
+/// The text report for the installs at `skill_dirs`, for a caller that does
+/// not run from one of them. `impeccable update` runs from the npm shim, where
+/// the provider detects as `source` and the hook checks are skipped, so each
+/// skill folder names its own provider here, and a provider id exported in
+/// the caller's shell is dropped: kept, it would make every pass check the
+/// same harness. The findings are the same for every harness except the hook
+/// ones, so the reports merge into one. Returns the report and the first
+/// folder's `<prefix>impeccable` command.
+pub fn report_for_skills(skill_dirs: &[String], cwd: &str, env: &Env) -> Option<(String, String)> {
+    let mut merged: Option<(Report, String)> = None;
+    for dir in skill_dirs {
+        let mut env = env.clone();
+        env.insert("IMPECCABLE_SKILL_DIR".to_string(), dir.clone());
+        env.remove("IMPECCABLE_PROVIDER_ID");
+        let provider = crate::provider::detect(&env, cwd);
+        let report = collect(cwd, &TargetOptions::default(), &env, &provider);
+        match &mut merged {
+            None => merged = Some((report, provider.command)),
+            Some((first, _)) => {
+                for finding in report.findings {
+                    if !first.findings.contains(&finding) {
+                        first.findings.push(finding);
+                    }
+                }
+            }
+        }
+    }
+    let (report, command) = merged?;
+    Some((render_text(&report, None, cwd, &command, &self_cmd(env)), command))
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
-    // The printed fix command spells the launcher when the launcher exported
-    // IMPECCABLE_SELF, and the plain `impeccable` verb otherwise.
-    let self_cmd = env
-        .get("IMPECCABLE_SELF")
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .map(|v| impeccable_common::launcher::spell_self(&v))
-        .unwrap_or_else(|| "impeccable".to_string());
+    let self_cmd = self_cmd(&env);
     let (flags, target) = match parse_args(args) {
         Ok(v) => v,
         Err(msg) => {

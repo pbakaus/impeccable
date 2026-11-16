@@ -17,6 +17,12 @@ fn main() {
     // Only the open binary dispatches; a Pro build calls `run` directly.
     if impeccable::is_scan(&args, &io) {
         if let Some(code) = impeccable_account::pro::dispatch(&args, &mut io) {
+            if !matches!(
+                args.first().map(String::as_str),
+                Some("hook" | "hook-before-edit")
+            ) {
+                impeccable::schedule_setup_report(&io);
+            }
             let _ = io.stdout.flush();
             let _ = io.stderr.flush();
             std::process::exit(code);

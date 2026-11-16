@@ -17,6 +17,17 @@ const A = (id, workspace, args, extra = {}) => ({ id, verb: 'live-accept', works
 const ID = 'ab12cd34';
 
 export default [
+  ...['variants', 'carbonize'].flatMap(kind => ['start', 'end'].flatMap(boundary => [false, true].map(discard =>
+    A(`live-accept-shared-${kind}-${boundary}-${discard ? 'discard' : 'accept'}`, 'live-html',
+      ['--id', ID, ...(discard ? ['--discard'] : ['--variant', '1'])], {
+        snap: ['index.html'],
+        setup: ws => write(ws, 'index.html',
+          `<!-- impeccable-${kind}-start ${ID} -->${boundary === 'start' ? '<p>Keep</p>' : ''}\n` +
+          '<div data-impeccable-variant="original"><h1>Old</h1></div>\n' +
+          '<div data-impeccable-variant="1"><h1>New</h1></div>\n' +
+          `${boundary === 'end' ? '<p>Keep</p>' : ''}<!-- impeccable-${kind}-end ${ID} -->\n`),
+      })))),
+
   A('live-accept-help', 'live-html', ['--help']),
   A('live-accept-missing-id', 'live-html', ['--variant', '1']),
   A('live-accept-invalid-id', 'live-html', ['--id', '../etc', '--variant', '1']),
@@ -25,6 +36,20 @@ export default [
   A('live-accept-invalid-variant-regex', 'live-html', ['--id', ID, '--variant', '.*']),
   A('live-accept-markers-not-found', 'live-html', ['--id', 'nothere1', '--variant', '1']),
   A('live-accept-target-missing-value', 'live-html', ['--id', ID, '--variant', '1', '--target']),
+  // A stock Vite app keeps its markup in a template literal in src/main.js; wrap
+  // reaches it with --file, and accept finds the markers there too.
+  A('live-accept-vanilla-vite-main-js', 'live-html', ['--id', ID, '--variant', '1'], {
+    snap: ['src/main.js'],
+    setup: ws => write(ws, 'src/main.js',
+      "document.querySelector('#app').innerHTML = `\n" +
+      `<!-- impeccable-variants-start ${ID} -->\n` +
+      `<div data-impeccable-variants="${ID}" data-impeccable-variant-count="1" style="display: contents">\n` +
+      '<div data-impeccable-variant="original"><h1>Old</h1></div>\n' +
+      '<div data-impeccable-variant="1"><h1>New</h1></div>\n' +
+      '</div>\n' +
+      `<!-- impeccable-variants-end ${ID} -->\n` +
+      '`\n'),
+  }),
 
   // --- HTML source-preview accept / discard ---
   A('live-accept-html-variant-1-range', 'live-html', ['--id', ID, '--variant', '1', '--param-values', '{"lightness":0.65}'], { snap: ['index.html'], setup: stageWrappedHtml }),

@@ -93,11 +93,26 @@ goto run
 :no_cache
 
 if defined IMPECCABLE_LAUNCHER_PROBE goto download
-where impeccable >nul 2>nul
-if errorlevel 1 goto download
-call :probe impeccable
+rem The first impeccable on PATH, resolved once so the probe and the run see
+rem the same file. A batch shim (npm writes impeccable.cmd) must run under
+rem call to return here (#1240), and call expands % in the arguments a second
+rem time; a real binary runs directly so a target such as a%20b reaches it intact.
+set "path_bin="
+rem where also lists npm's extensionless POSIX shim, which cmd cannot run:
+rem take the first match with a runnable extension.
+rem Loop letters c and k are not path modifiers, so %%~xc reads as the
+rem extension of c and never as a loop variable followed by text.
+for /f "delims=" %%c in ('where impeccable 2^>nul') do if not defined path_bin for %%k in (.exe .com .cmd .bat) do if /I "%%~xc"=="%%k" set "path_bin=%%c"
+if not defined path_bin goto download
+call :probe "%path_bin%"
 if not "%probe_ok%"=="1" goto download
-impeccable %*
+for %%k in ("%path_bin%") do set "path_ext=%%~xk"
+if /I "%path_ext%"==".cmd" goto path_shim
+if /I "%path_ext%"==".bat" goto path_shim
+"%path_bin%" %*
+exit /b %errorlevel%
+:path_shim
+call "%path_bin%" %*
 exit /b %errorlevel%
 
 :download
@@ -274,11 +289,13 @@ rem Sets probe_ok=1 when %1 answers the engine handshake: prints
 rem "impeccable-engine <version>" and exits 0, and probe_version to that
 rem version. The 3.x npm CLI answers any unknown verb with "Unknown command",
 rem exit 1, so it never passes.
+rem The candidate runs under call: an npm .cmd shim run without it takes
+rem over this script and never returns (#1240).
 set "probe_ok="
 set "probe_version="
 set "probe_tmp=%TEMP%\impeccable-probe-%RANDOM%%RANDOM%.txt"
 set "IMPECCABLE_LAUNCHER_PROBE=1"
-"%~1" engine-probe >"%probe_tmp%" 2>nul
+call "%~1" engine-probe >"%probe_tmp%" 2>nul
 set "probe_err=%ERRORLEVEL%"
 set "IMPECCABLE_LAUNCHER_PROBE="
 if not "%probe_err%"=="0" goto probe_done

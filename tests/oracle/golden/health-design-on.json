@@ -1,0 +1,9 @@
+{
+  "stdout": "DESIGN.md sync: on. Your DESIGN.md uploads to your Impeccable account whenever it changes. To stop: impeccable health design off\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    ".oracle-home/impeccable/health.json": "{\"design\":true}"
+  }
+}

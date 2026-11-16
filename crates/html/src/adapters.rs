@@ -6,7 +6,7 @@
 //! and the computed style and hands plain data over.
 
 use crate::background::{
-    a_ge, a_gt, read_cascade_background_color, read_own_background_color, resolve_background,
+    a_ge, a_gt, gradient_tile_misses, read_cascade_background_color, read_own_background_color, resolve_background,
     resolve_border_radius_px, resolve_side_accent_corners, resolve_text_gradient_stops,
     resolve_text_surface, sv, sv_opt, CustomPropMap, TextSurface,
 };
@@ -17,6 +17,7 @@ use crate::quality::{
     collapse_ws, is_in_non_rendered_markup, is_visually_hidden, pf0, resolve_font_size_px,
 };
 use impeccable_core::checks::css_scan::css_length_to_px;
+use impeccable_core::checks::gradient_geometry as geo;
 use impeccable_core::checks::measures::{
     self, border_colors_from_style, border_widths_from_style, check_oversized_h1,
     data_svg_intrinsic_size, gpt_border_shadow_halo_blur_px, gpt_border_shadow_lengths_close,
@@ -41,7 +42,7 @@ use impeccable_core::checks::text_rules::{
     POPOVER_LAYER_SELECTOR, POSITIONED_CHILD_INTERACTIVE_SELECTOR,
 };
 use impeccable_core::color::{
-    composite_color_over, is_no_paint_color_value, parse_any_color, parse_rgb, Rgba,
+    composite_color_over, is_no_paint_color_value, parse_any_color, parse_rgb, split_top_level_commas, Rgba,
 };
 use impeccable_core::constants::SAFE_TAGS;
 use impeccable_core::js::{self, parse_float, parse_int};
@@ -152,6 +153,10 @@ fn collapsed_text_content(el: &StaticElement<'_>) -> String {
 
 /// JS: checks.mjs#isKickerCardContext(heading, kicker)
 fn is_kicker_card_context(heading: &StaticElement<'_>, kicker: &StaticElement<'_>) -> bool {
+    // An h1 heads the page, never a card, whatever wraps it.
+    if heading.tag_lower() == "h1" {
+        return false;
+    }
     match heading.closest(KICKER_CARD_CONTEXT_SELECTOR) {
         Some(item) => item.contains(kicker),
         None => false,
@@ -242,14 +247,19 @@ pub fn collect_kicker_candidates(doc: &StaticDocument) -> Vec<KickerCandidate> {
                 t
             }
         };
-        let heading_font_size = font_size_of(heading_style);
+        // A fluid `clamp()` heading reads at its largest size, as the hero
+        // rule reads it; the static engine computes no clamp.
+        let heading_font_size = match font_size_of(heading_style) {
+            n if n > 0.0 => n,
+            _ => resolve_hero_heading_size_px(sv_opt(heading_style, "fontSize")),
+        };
         let kicker_font_size = font_size_of(kicker_style);
         let kicker_letter_spacing =
             resolve_len_or_zero(sv(kicker_style, "letterSpacing"), kicker_font_size);
-        let kicker_font_variant = format!(
-            "{} {}",
+        let kicker_font_variant = impeccable_core::checks::text_rules::kicker_caps(
             sv(kicker_style, "fontVariant"),
-            sv(kicker_style, "fontVariantCaps")
+            sv(kicker_style, "fontVariantCaps"),
+            sv(kicker_style, "fontFamily"),
         );
         if !is_kicker_candidate(&KickerCandidateInput {
             heading_level,
@@ -264,22 +274,13 @@ pub fn collect_kicker_candidates(doc: &StaticDocument) -> Vec<KickerCandidate> {
         }) {
             continue;
         }
-        // The hero rule takes a tracked label over a display h1, at eyebrow
-        // size once its em floor is what counts. Under the fixed 1.6px floor
-        // the label is handed off only where the hero rule reports it: that
-        // rule reads case from text-transform and typed capitals (not
-        // small-caps) and passes over a dated meta line, so a label it leaves
-        // is kept here.
+        // The hero rule takes a label over a display h1 only where it
+        // reports it: that rule reads case from text-transform and typed
+        // capitals (not small-caps), stops at 14px and passes over a dated
+        // meta line, so a label it leaves is kept here.
         if heading_tag == "h1"
             && heading_font_size >= 48.0
-            && (kicker_letter_spacing >= 1.6
-                || (kicker_font_size <= 14.0
-                    && impeccable_core::checks::rules::hero_eyebrow_tracked(
-                        kicker_letter_spacing,
-                        kicker_font_size,
-                        Some(impeccable_core::checks::rules::HERO_EYEBROW_TRACKING_EM),
-                    )
-                    && !check_element_hero_eyebrow(&heading, heading_style, "h1").is_empty()))
+            && !check_element_hero_eyebrow(&heading, heading_style, "h1").is_empty()
         {
             continue;
         }
@@ -1281,6 +1282,63 @@ pub fn check_element_hover_contrast(
     let resting_own_bg = parse_any_color(sv_opt(style, "backgroundColor"));
     let hover_own_bg = parse_any_color(sv_opt(hover, "backgroundColor"));
     let own_bg = hover_own_bg.or(resting_own_bg);
+    let font_size = {
+        let n = parse_float(sv(style, "fontSize"));
+        if num_truthy(n) {
+            n
+        } else {
+            16.0
+        }
+    };
+    // Text over the element's own image (a `background: url(...)` whose
+    // implied fill is transparent) sits on pixels this engine cannot read,
+    // so the hover pairing is not scored, as the resting one is not. A
+    // gradient tile too small to cover a line of text (an underline) is read
+    // past, as the resting check reads past it. Only a single layer is read
+    // past: the tile test sizes the first layer, and a full gradient under an
+    // underline still paints behind the text.
+    let own_image = js::to_lower_case(sv(hover, "backgroundImage"));
+    let image_under_text = own_image.contains("url(")
+        || (own_image.contains("gradient")
+            && (split_top_level_commas(&own_image).len() > 1
+                || !gradient_tile_misses(hover, &own_image, font_size)));
+    // The hover's own image is read past only when it is an icon: an SVG
+    // that does not repeat and paints at most icon-sized on both axes. The
+    // painted size follows `background-size`, where an `auto` axis scales
+    // with the SVG's aspect ratio (a 32x1 SVG at `auto 32px` paints
+    // 1024x32). A tiled pattern, or one stretched by `cover`, `contain` or a
+    // percentage, covers the text however small the file.
+    let painted = |(w, h): (f64, f64), size: &str| -> Option<(f64, f64)> {
+        let px = |t: &str| t.strip_suffix("px").and_then(|n| n.parse::<f64>().ok()).filter(|n| *n >= 0.0);
+        let axis = |t: &str| if t == "auto" { Some(None) } else { px(t).map(Some) };
+        let parts: Vec<&str> = size.split_ascii_whitespace().collect();
+        let (sw, sh) = match parts.as_slice() {
+            [] => (None, None),
+            [x] => (axis(x)?, None),
+            [x, y] => (axis(x)?, axis(y)?),
+            _ => return None,
+        };
+        match (sw, sh) {
+            (None, None) => Some((w, h)),
+            (Some(sw), None) => (w > 0.0).then(|| (sw, sw * h / w)),
+            (None, Some(sh)) => (h > 0.0).then(|| (sh * w / h, sh)),
+            (Some(sw), Some(sh)) => Some((sw, sh)),
+        }
+    };
+    let icon = !own_image.contains("gradient")
+        && geo::repeat_from(sv(hover, "backgroundRepeat"), &own_image) == (false, false)
+        && data_svg_intrinsic_size(sv(hover, "backgroundImage")).is_some_and(|intrinsic| {
+            let size = split_top_level_commas(&own_image)
+                .into_iter()
+                .next()
+                .and_then(|layer| geo::parse_shorthand_layer(&layer).size)
+                .map(|size| js::trim(&size).to_string())
+                .unwrap_or_default();
+            painted(intrinsic, &size).is_some_and(|(w, h)| w <= ICON_MAX_PX && h <= ICON_MAX_PX)
+        });
+    if !own_bg.is_some_and(|c| a_ge(&c, 0.99)) && image_under_text && !icon {
+        return Vec::new();
+    }
 
     let bg = if own_bg.is_some_and(|c| a_ge(&c, 0.99)) {
         own_bg.unwrap()
@@ -1304,14 +1362,6 @@ pub fn check_element_hover_contrast(
     };
     let font_weight =
         impeccable_core::checks::rules::contrast_font_weight(font_weight, sv(style, "fontFamily"));
-    let font_size = {
-        let n = parse_float(sv(style, "fontSize"));
-        if num_truthy(n) {
-            n
-        } else {
-            16.0
-        }
-    };
     check_hover_contrast(&HoverContrastOpts {
         tag: tag.to_string(),
         text_color: Some(text_color),

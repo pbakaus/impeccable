@@ -37,6 +37,10 @@ Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
   --json              Output results as JSON
+  --changed           Scan the UI files git reports as changed under the
+                      current directory: modified or staged tracked files
+                      and untracked files git does not ignore. Takes no
+                      targets
   --quiet             In text mode, only print the final findings count
   --github            Write GitHub Actions annotations for each
                       finding. Not with --json or --list-rules
@@ -64,6 +68,12 @@ Options:
                       resized or closed. Takes no file or URL targets
   --target <text>     With --cdp: pick the page whose URL or title contains
                       this text when the app has more than one
+  --before            Record the wiring of each local .html file (links,
+                      forms, fields, buttons, handlers, ids, test hooks,
+                      scripts, label targets) under .impeccable/wiring/
+  --kept              Compare each local .html file with its --before
+                      inventory: exit 1 when wiring went missing, 2 when
+                      a file has no inventory. New items are listed
   --help              Show this help message
 
 Advisory findings:
@@ -82,6 +92,10 @@ Exit status:
   1  At least one requested target could not be scanned
   2  Scan completed with primary findings
   Operational failure takes precedence when a multi-target scan is partial.
+  --changed outside a git work tree exits 1 with an error and scans nothing.
+  --kept: 0 wiring kept, 1 a wiring item is missing, 2 a file could not be
+  compared (no --before inventory); 2 takes precedence. --before: 0 saved,
+  1 a file could not be recorded.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -110,9 +124,12 @@ Examples:
   impeccable detect https://example.com
   impeccable detect --cdp 9222 --target \"My App\" --json
   impeccable detect --json .
+  impeccable detect --json --changed
   impeccable detect --github src/
   impeccable detect --list-rules
   impeccable detect --no-config src/
+  impeccable detect --before index.html
+  impeccable detect --kept index.html
 ";
 
 /// Remove every `--name <value>` / `--name=<value>` from `args`. `None` when
@@ -307,6 +324,11 @@ struct Ctx<'a> {
     regex_only_files: usize,
     /// Local files the engines read, for design health.
     files_scanned: usize,
+    /// Of those, the UI files (markup, styles, components) and the ones the
+    /// static HTML engine read, for foundations.
+    ui_files_scanned: usize,
+    html_files_scanned: usize,
+    regex_component_files: usize,
     /// Their extensions, lowercased and sorted, for the note.
     regex_only_exts: BTreeSet<String>,
     /// Each scanned directory's framework dev-server port, deduplicated, so
@@ -499,12 +521,36 @@ pub struct FullScan {
     /// The scanned directory, absolute.
     pub root: String,
     pub files_scanned: usize,
+    /// Scanned markup, style and component files (not plain .js/.ts).
+    pub ui_files_scanned: usize,
+    /// Scanned files the static HTML engine read, the only local files the
+    /// element rules (low contrast among them) run on.
+    pub html_files_scanned: usize,
+    /// Scanned non-style files (components, scripts) that only the regex
+    /// engine read, so element rules never judged any markup in them.
+    pub regex_component_files: usize,
     /// What detect reported, after the config, ignores and `--no-advisory`.
     pub findings: Vec<Finding>,
     /// Everything besides the engine that decides which findings can exist:
     /// each enabled rule id (sorted), then each setting as `name=value`.
     /// Formatting flags are left out.
     pub ruleset: Vec<String>,
+}
+
+/// Markup, style and component files: the scannable ones besides plain scripts.
+fn is_ui_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [
+        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx", ".vue", ".svelte",
+        ".astro", ".blade.php",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
+}
+
+fn is_style_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [".css", ".scss", ".sass", ".less"].iter().any(|ext| lower.ends_with(ext))
 }
 
 /// [`run_detect_with_pack`] that also hands back a [`FullScan`] when the run
@@ -559,6 +605,7 @@ fn detect_cli(
     let github_mode = has(&args, "--github");
     let help_mode = has(&args, "--help");
     let no_advisory = has(&args, "--no-advisory");
+    let changed_mode = has(&args, "--changed");
     if has(&args, "--fast") {
         io.err("Note: --fast is deprecated and ignored. The full scan is fast now and runs every rule.\n");
     }
@@ -709,12 +756,38 @@ fn detect_cli(
         io.out(USAGE);
         return Ok(0);
     }
+    let before_mode = has(&args, "--before");
+    let kept_mode = has(&args, "--kept");
+    if before_mode || kept_mode {
+        use crate::wiring::{run_before, run_kept, usage_error, Mode};
+        let mode = if before_mode { Mode::Before } else { Mode::Kept };
+        let mut other: Vec<&str> = Vec::new();
+        if before_mode && kept_mode {
+            other.push("--kept");
+        }
+        if cdp.is_some() {
+            other.push("--cdp");
+        }
+        for flag in ["--list-rules", "--github", "--changed"] {
+            if has(&args, flag) {
+                other.push(flag);
+            }
+        }
+        if let Some(message) = usage_error(mode, &targets, &other) {
+            io.err(&message);
+            return Err(Exit(1));
+        }
+        return Ok(match mode {
+            Mode::Before => run_before(&targets, json_mode, io, engines),
+            Mode::Kept => run_kept(&targets, json_mode, io, engines),
+        });
+    }
     if has(&args, "--list-rules") {
         if github_mode {
             io.err(GITHUB_LIST_RULES_CONFLICT);
             return Err(Exit(1));
         }
-        if cdp.is_some() || !targets.is_empty() {
+        if cdp.is_some() || !targets.is_empty() || changed_mode {
             io.err(LIST_RULES_SCAN_ERROR);
             return Err(Exit(1));
         }
@@ -736,6 +809,22 @@ fn detect_cli(
         io.err("Error: --cdp scans the page of a running app and takes no file or URL targets\n");
         return Err(Exit(1));
     }
+    if changed_mode && (cdp.is_some() || !targets.is_empty()) {
+        io.err("Error: --changed scans the files git reports as changed and takes no file, URL, or --cdp targets\n");
+        return Err(Exit(1));
+    }
+    // Resolved before the scan so stdin is never read under --changed.
+    let changed: Option<Vec<String>> = if changed_mode {
+        match crate::changed::changed_ui_files(&cwd, &detection_config.extensions) {
+            Some(files) => Some(files),
+            None => {
+                io.err(crate::changed::NOT_A_REPO);
+                return Err(Exit(crate::changed::NOT_A_REPO_EXIT));
+            }
+        }
+    } else {
+        None
+    };
 
     let stdin_tty = io.stdin_is_tty;
     let stderr_tty = stderr_is_tty();
@@ -759,6 +848,9 @@ fn detect_cli(
         had_operational_failure: false,
         regex_only_files: 0,
         files_scanned: 0,
+        ui_files_scanned: 0,
+        html_files_scanned: 0,
+        regex_component_files: 0,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
@@ -799,10 +891,16 @@ fn detect_cli(
                 ctx.io.err(&format!("Error: {}\n", e.message));
             }
         }
-    } else if !stdin_tty && targets.is_empty() {
+    } else if changed.as_ref().is_some_and(|files| files.is_empty()) {
+        if !json_mode && !quiet_mode && !github_mode {
+            ctx.io.err("No changed UI files to scan.\n");
+        }
+    } else if !stdin_tty && targets.is_empty() && changed.is_none() {
         all = ctx.handle_stdin().map_err(|e| fatal(ctx.io, e))?;
     } else {
-        let paths: Vec<String> = if targets.is_empty() {
+        let paths: Vec<String> = if let Some(files) = changed.as_ref() {
+            files.clone()
+        } else if targets.is_empty() {
             vec![cwd.clone()]
         } else {
             targets.clone()
@@ -854,6 +952,7 @@ fn detect_cli(
     if let Some(report) = report {
         // One local directory, the whole of it, with nothing skipped.
         let whole = cdp.is_none()
+            && changed.is_none()
             && (stdin_tty || !targets.is_empty())
             && targets.len() <= 1
             && scopes.is_empty()
@@ -925,6 +1024,9 @@ fn detect_cli(
             *report = Some(FullScan {
                 root,
                 files_scanned: ctx.files_scanned,
+                ui_files_scanned: ctx.ui_files_scanned,
+                html_files_scanned: ctx.html_files_scanned,
+                regex_component_files: ctx.regex_component_files,
                 findings: all.clone(),
                 ruleset,
             });
@@ -1219,6 +1321,18 @@ fn scan_targets(
                     Ok(f) => {
                         ctx.note_scanned(&opts);
                         ctx.files_scanned += 1;
+                        if uses_html_engine(file, &ctx.config.extensions) {
+                            ctx.html_files_scanned += 1;
+                            ctx.ui_files_scanned += 1;
+                        } else {
+                            if is_ui_file(file) {
+                                ctx.ui_files_scanned += 1;
+                            }
+                            // Plain .js/.ts can hold JSX too.
+                            if !is_style_file(file) {
+                                ctx.regex_component_files += 1;
+                            }
+                        }
                         f
                     }
                     Err(e) => {

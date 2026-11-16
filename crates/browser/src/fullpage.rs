@@ -862,6 +862,62 @@ pub fn longest_uniform_band(img: &RgbImage) -> (u32, u32) {
     best
 }
 
+/// A row holds no content when its luminance steps by more than
+/// [`EMPTY_ROW_STEP`] at no more than this many places: a few box edges and
+/// rules, never a line of text, an icon or a drawing.
+const EMPTY_ROW_EDGES: usize = 10;
+/// The luminance step that counts as an edge; paper grain and soft shadows
+/// stay under it.
+const EMPTY_ROW_STEP: i32 = 28;
+
+/// The start and length, in rows, of the longest run of rows that hold no
+/// content: unlike [`longest_uniform_band`], a row may cross several flat
+/// boxes (a card on a page, a label in a frame), so an empty stretch inside a
+/// box is found too. Rows inside a `media` span (a drawing, an image's box,
+/// as `[top, bottom)` rows) always hold content, however sparse they paint.
+/// A run that reaches the bottom is the page's blank tail, not a gap between
+/// content, and does not count, unless the capture was `cut` short of the
+/// page's end, when more content follows it.
+pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)], cut: bool) -> (u32, u32) {
+    let (w, h) = img.dimensions();
+    let raw = img.as_raw();
+    let row_len = w as usize * 3;
+    let luma = |p: &[u8]| (p[0] as i32 * 299 + p[1] as i32 * 587 + p[2] as i32 * 114) / 1000;
+    let mut best = (0u32, 0u32);
+    let mut run_start: Option<u32> = None;
+    for y in 0..h {
+        let empty = !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
+            let row = &raw[y as usize * row_len..(y as usize + 1) * row_len];
+            let mut edges = 0usize;
+            let mut prev = luma(&row[0..3]);
+            for x in 1..w as usize {
+                let l = luma(&row[x * 3..x * 3 + 3]);
+                if (l - prev).abs() > EMPTY_ROW_STEP {
+                    edges += 1;
+                }
+                prev = l;
+            }
+            edges <= EMPTY_ROW_EDGES
+        };
+        match (empty, run_start) {
+            (true, None) => run_start = Some(y),
+            (false, Some(start)) => {
+                if y - start > best.1 {
+                    best = (start, y - start);
+                }
+                run_start = None;
+            }
+            _ => {}
+        }
+    }
+    if let (true, Some(start)) = (cut, run_start) {
+        if h - start > best.1 {
+            best = (start, h - start);
+        }
+    }
+    best
+}
+
 /// Tile scroll positions along one axis: `0, step, 2 * step, ...` below
 /// `extent`.
 pub fn tile_positions(extent: f64, step: f64) -> Vec<f64> {
@@ -1183,7 +1239,8 @@ pub fn capture_element_shots(
     out
 }
 
-fn decode_jpeg(jpeg_base64: &str) -> Option<RgbImage> {
+/// A [`crate::Screenshot`]'s JPEG as pixels.
+pub fn decode_jpeg(jpeg_base64: &str) -> Option<RgbImage> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(jpeg_base64).ok()?;
     image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
         .ok()
@@ -1325,6 +1382,35 @@ mod tests {
         let mut gone = page(390.0, 96.0);
         gone[0] = None;
         assert!(!settled(&before, &moved, &[after, gone.clone(), gone]));
+    }
+
+    #[test]
+    fn an_empty_stretch_inside_a_box_is_an_empty_band() {
+        // A card on a page with text above and below an empty middle: every
+        // row crosses the card's edges, and only the text rows are busy.
+        let mut img = RgbImage::from_pixel(390, 1200, image::Rgb([240, 230, 210]));
+        for y in 0..1200 {
+            for x in 20..370 {
+                img.put_pixel(x, y, image::Rgb([200, 180, 140]));
+            }
+        }
+        for y in (0..200).chain(1000..1200) {
+            for x in (30..360).step_by(4) {
+                img.put_pixel(x, y, image::Rgb([40, 20, 20]));
+            }
+        }
+        assert_eq!(longest_empty_band(&img, &[], false), (200, 800));
+        // An outlined drawing there paints a few edges a row, and is content.
+        assert_eq!(longest_empty_band(&img, &[(250, 950)], false), (200, 50));
+        // A blank tail is not a gap, unless the capture was cut before the end.
+        let mut tail = img.clone();
+        for y in 1000..1200 {
+            for x in 30..360 {
+                tail.put_pixel(x, y, image::Rgb([200, 180, 140]));
+            }
+        }
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], false), (0, 0));
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], true), (1000, 200));
     }
 
     #[test]

@@ -31,3 +31,6 @@ unicode-normalization = "0.1.25"
 # Stand-in upstream APIs in unit tests only; the runtime servers use
 # impeccable_common::http.
 tiny_http = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

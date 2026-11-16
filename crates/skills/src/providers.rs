@@ -569,7 +569,7 @@ fn unique_paths(paths: Vec<String>) -> Vec<String> {
 }
 
 /// `e === 'impeccable' || e.endsWith('-impeccable') || e === 'teach-impeccable' || e.endsWith('-teach-impeccable')`
-fn is_impeccable_skill_name(e: &str) -> bool {
+pub(crate) fn is_impeccable_skill_name(e: &str) -> bool {
     e == "impeccable" || e.ends_with("-impeccable") || e == "teach-impeccable" || e.ends_with("-teach-impeccable")
 }
 

@@ -32,18 +32,23 @@ probe_ok() {
   return 1
 }
 probing=${IMPECCABLE_LAUNCHER_PROBE:-}
+# Space, tab and CR, made once: hooks run this launcher on every edit and turn
+# end, and every process it starts before the engine costs real time on a busy
+# Windows machine (#1237), so the hot path below sticks to shell builtins.
+ws=$(printf ' \t\r')
 
-# Prints the digest engine-checksums.txt records for engine version $1 and
-# asset $2 (lines are "<version> <asset> <sha256>"), nothing when there is none.
+# Sets $digest_out to the digest engine-checksums.txt records for engine
+# version $1 and asset $2 (lines are "<version> <asset> <sha256>"), empty when
+# there is none.
 # A CR is a separator too (CRLF checkouts), and a last line with no newline
 # still counts.
 manifest_digest() {
+  digest_out=""
   [ -f "$manifest" ] || return 0
-  sep=$(printf ' \t\r')
-  while IFS="$sep" read -r m_version m_asset m_sum _ || [ -n "$m_version" ]; do
+  while IFS="$ws" read -r m_version m_asset m_sum _ || [ -n "$m_version" ]; do
     case "$m_version" in ''|'#'*) continue ;; esac
     if [ "$m_version" = "$1" ] && [ "$m_asset" = "$2" ]; then
-      printf '%s' "$m_sum"
+      digest_out=$m_sum
       return 0
     fi
   done < "$manifest"
@@ -52,10 +57,12 @@ manifest_digest() {
 # Sets $expected (and, on Windows on ARM, which runs x64 binaries,
 # $expected_x64) from engine-checksums.txt.
 read_expected() {
-  expected=$(manifest_digest "$version" "$asset")
+  manifest_digest "$version" "$asset"
+  expected=$digest_out
   expected_x64=""
   if [ "$os" = windows ] && [ "$arch" = arm64 ]; then
-    expected_x64=$(manifest_digest "$version" impeccable-windows-x64.exe)
+    manifest_digest "$version" impeccable-windows-x64.exe
+    expected_x64=$digest_out
   fi
 }
 # Sets $size to the byte count of the cached binary (BSD wc pads it).
@@ -73,7 +80,19 @@ hash_file() {
   fi
 }
 
-dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# This script's directory without dirname or a subshell: what dirname "$0"
+# gives, made absolute by a cd there and back.
+case $0 in
+  */*) dir=${0%/*} ;;
+  *) dir=. ;;
+esac
+[ -n "$dir" ] || dir=/
+caller_pwd=$PWD
+CDPATH= cd -- "$dir" || { echo "impeccable: cannot enter the launcher directory $dir" >&2; exit 127; }
+dir=$PWD
+skill_dir=${dir%/*}
+[ -n "$skill_dir" ] || skill_dir=/
+cd -- "$caller_pwd" || { echo "impeccable: cannot return to $caller_pwd" >&2; exit 127; }
 # VS Code syncs a plugin without the executable bit. Its hooks run this through
 # sh, so restore the bit for the commands the skill runs directly (#1249).
 [ -x "$0" ] || chmod +x "$0" 2>/dev/null || :
@@ -86,7 +105,7 @@ manifest="$dir/engine-checksums.txt"
 # cannot find reference/*.md (so native platform refs never inline) or read its
 # own version (so UPDATE_AVAILABLE never fires). Setting it here covers every
 # candidate the launcher can exec.
-: "${IMPECCABLE_SKILL_DIR:=$(CDPATH= cd -- "$dir/.." && pwd)}"
+: "${IMPECCABLE_SKILL_DIR:=$skill_dir}"
 : "${IMPECCABLE_SELF:=$0}"
 export IMPECCABLE_SKILL_DIR IMPECCABLE_SELF
 
@@ -94,20 +113,29 @@ if [ -n "${IMPECCABLE_BIN:-}" ] && [ -x "${IMPECCABLE_BIN}" ]; then
   exec "${IMPECCABLE_BIN}" "$@"
 fi
 
-case "$(uname -s 2>/dev/null || echo unknown)" in
+# Windows names itself in the environment, which saves a process there; one
+# uname covers the rest. PROCESSOR_ARCHITECTURE is what impeccable.cmd reads,
+# so both launchers pick the same cached engine (AMD64 under x64 Git Bash on
+# ARM64, as uname -m reported before).
+if [ "${OS:-}" = Windows_NT ]; then
+  sys="Windows_NT ${PROCESSOR_ARCHITECTURE:-unknown}"
+else
+  sys=$(uname -sm 2>/dev/null) || sys="unknown unknown"
+fi
+case "${sys%% *}" in
   Darwin) os=darwin ;;
   Linux) os=linux ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT) os=windows ;;
   *) os=unknown ;;
 esac
-case "$(uname -m 2>/dev/null || echo unknown)" in
-  arm64|aarch64) arch=arm64 ;;
-  x86_64|amd64) arch=x64 ;;
+case "${sys##* }" in
+  arm64|aarch64|ARM64) arch=arm64 ;;
+  x86_64|amd64|AMD64) arch=x64 ;;
   *) arch=unknown ;;
 esac
 
 version=""
-[ -f "$dir/VERSION" ] && version=$(tr -d '[:space:]' < "$dir/VERSION")
+[ -f "$dir/VERSION" ] && { IFS="$ws" read -r version _ < "$dir/VERSION" || :; }
 bin="$dir/bin/$os-$arch/impeccable"
 [ "$os" = windows ] && bin="$bin.exe"
 
@@ -136,7 +164,7 @@ if [ -n "$version" ] && [ -x "$cached" ]; then
   cached_size
   stamp=""
   stamp_size=""
-  { IFS="$(printf ' \t\r')" read -r stamp stamp_size _ < "$cached.verified"; } 2>/dev/null || :
+  { IFS="$ws" read -r stamp stamp_size _ < "$cached.verified"; } 2>/dev/null || :
   if [ -n "$stamp" ] && [ "$stamp_size" = "$size" ] && { [ "$stamp" = "$expected" ] || [ "$stamp" = "$expected_x64" ]; } && [ ! "$cached" -nt "$cached.verified" ]; then
     exec "$cached" "$@"
   fi

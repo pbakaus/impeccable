@@ -90,7 +90,7 @@ backend, ask the keychain, or replace the CLI itself.
 |---|---|---|
 | `IMPECCABLE_ACCOUNT_URL` | The account service origin (the OAuth issuer). `https`, or `http` for a loopback host only. | `https://api.impeccable.style` |
 | `IMPECCABLE_HOME` | Root for account state (and the engine cache). | `~/.impeccable` |
-| `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. | `keychain` on macOS and Windows, `file` elsewhere |
+| `IMPECCABLE_CREDENTIAL_STORE` | `keychain` or `file` for a new sign-in. A sign-in remembers its store, so set it once for `login`. Use `file` where the session has no usable macOS keychain (SSH, a changed `HOME`): `login` names this way out when the keychain refuses. | `keychain` on macOS and Windows, `file` elsewhere |
 | `IMPECCABLE_NO_BROWSER` | Truthy: as `login --no-browser`. | unset |
 | `IMPECCABLE_LOGIN_TIMEOUT` | Seconds `login` waits for the browser. | `300` |
 
@@ -112,7 +112,7 @@ The checks that read only the environment, `health.json` and the sign-in's `stat
 - `streamKey` hashes `repoKey` with the branch git names (`HEAD` when detached).
 - `fingerprints` count each non-advisory finding by the first 16 bytes of the SHA-256 of its rule id, its path from the repo root with `/`, and its snippet with whitespace collapsed. The line is left out, so code that moves isn't counted as fixed and new. More than 5,000 distinct fingerprints, or a body over 256 KB, sends `fingerprints: null, truncated: true`.
 - `rulesetId` hashes the engine version, `fingerprintVersion`, every enabled rule id, and the settings that decide which findings exist: config on or off, inline ignores, design system on or off and the content of every design system the scan read (a changed DESIGN.md starts a new baseline instead of reading as fixes), `--no-advisory`, `advisoryRules`, `ignoreFiles`, `ignoreValues` and `extensions`.
-- `label` is the repo's name: the last path segment of the normalized `origin` remote (`acme/my-site` sends `my-site`). A repo without a remote sends none. The folder's name is never sent, since it can say more than meant (Paul's choice, REN-1553).
+- `label` is the repo's name: the last path segment of the normalized `origin` remote (`acme/my-site` sends `my-site`). A repo without a remote sends its folder's name, so two local repositories aren't both "Local repository" in the app (Paul, REN-2028, 15 Nov 2026; before then, REN-1553 sent none). The same name goes with critiques and DESIGN.md uploads.
 
 Every hash is length-prefixed. A change to the fingerprint or `rulesetId` recipe bumps `FINGERPRINT_VERSION`, so the service starts a new baseline. A body the service would refuse (a rule id outside `^[a-z0-9][a-z0-9/-]{0,79}$`, more than 300 rules, an engine version that isn't semver) is not sent.
 
@@ -196,7 +196,7 @@ lowers it, and both refresh and dispatch refuse a revision below it. It is raise
 "not entitled"; an installed manifest for this sign-in that verifies for
 this engine and target, at or above the floor; a lease that verifies (key,
 digest, `iat`, `exp`); and only then the artifact's digest. Any failure runs
-the open engine with one line on stderr saying why. The one exception is an account without Pro ("this account doesn't include them"). That line comes on every scan a person runs (`detect` or its path shorthand), but never from the edit hooks and never with `--json`, `--github` or `--quiet`, whose output a program reads (`say` in `crates/account/src/pro/mod.rs`, Paul's choice on REN-1553).
+the open engine with one line on stderr saying why. The one exception is an account without Pro ("this account doesn't include them", followed by "See impeccable.style/pricing", which `whoami` also prints). That line comes on every scan a person runs (`detect` or its path shorthand), but never from the edit hooks and never with `--json`, `--github` or `--quiet`, whose output a program reads (`say` in `crates/account/src/pro/mod.rs`, Paul's choice on REN-1553).
 
 **What this protects, and what it does not.** Dispatch runs a Pro build only
 when the release key signed it, the service leased it to this sign-in, and

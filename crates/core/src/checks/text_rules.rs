@@ -181,7 +181,20 @@ pub fn is_kicker_candidate(o: &KickerCandidateInput) -> bool {
     if STEP_RE.is_match(o.kicker_text) || TWO_DIGITS_RE.is_match(o.kicker_text) {
         return false;
     }
-    if KICKER_META_TEXT_RE.is_match(o.kicker_text) {
+    // A meta line (a byline, a date, a path) is not a kicker. Over an h1 a
+    // dotted line that names no date, reading time or author ("Bloom seeds ·
+    // Packet 1 of 4") is the page's eyebrow all the same.
+    re!(KICKER_PATH_SEPARATOR_RE, format!(r"{ws}[/›»>]{ws}", ws = WS));
+    re!(
+        KICKER_BYLINE_WORD_RE,
+        r"(?i)\b(by|min|mins|minutes?|read|updated|published|posted|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b"
+    );
+    if KICKER_META_TEXT_RE.is_match(o.kicker_text)
+        && !(o.heading_level == 1.0
+            && !KICKER_META_YEAR_RE.is_match(o.kicker_text)
+            && !KICKER_PATH_SEPARATOR_RE.is_match(o.kicker_text)
+            && !KICKER_BYLINE_WORD_RE.is_match(o.kicker_text))
+    {
         return false;
     }
     if KICKER_DOC_NUMBERING_RE.is_match(o.kicker_text) {
@@ -206,6 +219,26 @@ pub fn is_kicker_candidate(o: &KickerCandidateInput) -> bool {
         return false;
     }
     true
+}
+
+/// The caps a kicker is set in, as `is_kicker_candidate` reads them: the
+/// `font-variant` and `font-variant-caps` values, plus `small-caps` when the
+/// first face in `font-family` is a small-caps cut ("IM Fell English SC",
+/// "Alegreya SC", "Cormorant Small Caps"), which sets small caps with no
+/// variant at all.
+pub fn kicker_caps(font_variant: &str, font_variant_caps: &str, font_family: &str) -> String {
+    re!(SMALL_CAPS_FACE_RE, r"(?i)(\bSC|small ?caps)$");
+    let first = font_family.split(',').next().unwrap_or("");
+    let face = first.trim().trim_matches(|c| c == '"' || c == '\'');
+    // "SC" also names Simplified Chinese cuts (Noto Sans SC, PingFang SC),
+    // which set no small caps.
+    re!(CHINESE_FACE_RE, r"(?i)^(noto|pingfang|source han|hiragino|microsoft|harmonyos|misans|lxgw|zcool|ma shan|long cang|zhi mang|liu jian|songti|heiti|kaiti|yuanti|baoli|libian|lantinghei|lantingxian|weibei|xingkai|hannotate|hanzipen|wawati|yuppy|st(heiti|song|kaiti|fangsong|xihei|zhongsong|hupo|caiyun|xingkai|liti)|lisong|fangsong|apple lisung|wenquanyi|droid sans fallback)");
+    let face_caps = if SMALL_CAPS_FACE_RE.is_match(face) && !CHINESE_FACE_RE.is_match(face) {
+        " small-caps"
+    } else {
+        ""
+    };
+    format!("{font_variant} {font_variant_caps}{face_caps}")
 }
 
 /// The size a kicker was always allowed, whatever the heading.

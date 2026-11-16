@@ -1,5 +1,5 @@
 {
-  "name": "Nuxt 4 + Vue 3 (static fixture only — runtime inject unsupported)",
+  "name": "Nuxt 4 + Vue 3",
   "config": {
     "files": ["app.vue"],
     "insertBefore": "</body>",
@@ -14,5 +14,27 @@
       "expectedFile": "pages/index.vue"
     }
   ],
-  "_runtimeOmitted": "Nuxt's app.vue is a Vue template that compiles to a render function — a <script> tag inserted there renders as a DOM node but does not execute. Nuxt needs a config-based inject (nuxt.config.ts -> app.head.script), which live-inject.mjs does not currently support. Static checks (is-generated, inject syntax, wrap routing) still validate."
+  "runtime": {
+    "styling": "plain-css",
+    "install": ["npm", "install", "--no-audit", "--no-fund", "--loglevel=error"],
+    "devCommand": ["npx", "nuxt", "dev", "--host", "127.0.0.1"],
+    "readyPattern": "Local:\\s+https?://[^:]+:(\\d+)",
+    "readyTimeoutMs": 120000,
+    "waitForHttpOk": true,
+    "pickSelector": "h1.hero-title",
+    "variantSequence": [3, 1, 2],
+    "acceptedSourcePattern": "<h1[^>]*class=\"hero-title\"",
+    "assertSourceContains": [
+      "<main class=\"page\">",
+      "Nuxt + Vite 7 Fixture",
+      "<p class=\"hero-hook\">"
+    ],
+    "steer": {
+      "sourceFile": "pages/index.vue"
+    },
+    "probe": {
+      "expectLiveInit": true,
+      "expectConsoleClean": true
+    }
+  }
 }
