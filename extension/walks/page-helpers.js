@@ -152,7 +152,7 @@ function clickByText(wanted, opts) {
       continue;
     const label = norm(`${el.innerText || el.textContent || ""}`) || norm(el.getAttribute("aria-label") ?? "");
     const labelled = Array.prototype.map.call(el.labels ?? [], (l) => l.innerText || l.textContent || "").join(" ");
-    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${el.value ?? ""} ${row} ${labelled}`);
+    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${/^password$/i.test(el.getAttribute("type") ?? "") || /(?:^|\s)(?:cc-\S*|one-time-code|current-password|new-password)(?=\s|$)/i.test(el.getAttribute("autocomplete") ?? "") ? "" : el.value ?? ""} ${row} ${labelled}`);
     if (!text)
       continue;
     let score = 0;
@@ -1193,4 +1193,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '09ce45f97135455b';
+export const HASH = 'ce98cbe761224e07';
