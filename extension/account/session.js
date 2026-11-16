@@ -387,13 +387,14 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
-     * Asks the server to make the person a persona of their own from `description`. The same `requestId` sent again
+     * Asks the server to make the person a persona of their own from `description`, on `device` and with `disability`
+     * where the person picked them. The same `requestId` sent again
      * is answered with the persona it made, never a second. `{ ok: true, persona }`, or `{ ok: false, why }`: `short`,
      * `scope` (signed in before personas could be created), `unavailable`, `limit` (with the server's `max`), `quota`,
      * `failed`.
      */
-    async createPersona({ description, requestId }) {
-      const answer = await call(issuer(), '/personas', { description, requestId }).catch(() => null);
+    async createPersona({ description, device, disability, requestId }) {
+      const answer = await call(issuer(), '/personas', { description, ...(device ? { device } : {}), ...(disability ? { disability } : {}), requestId }).catch(() => null);
       const made = [200, 201].includes(answer?.status) ? answer.json?.persona : null;
       if (typeof made?.name === 'string' && SLUG.test(made.slug)) return { ok: true, persona: personaOf({ ...made, mine: true }) };
       if (answer?.status === 400 && answer.json?.field === 'description') return { ok: false, why: 'short' };
