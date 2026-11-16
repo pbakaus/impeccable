@@ -198,10 +198,7 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
         return 1;
     }
     let skip = if has_flag(args, "--force") { Skip::Never } else { Skip::UnlessStale };
-    if has_flag(args, "--no-browser") {
-        // The rest of this run (setup, the first scan, Loop, the summary) stays plain too: impeccable_common::steps reads it.
-        io.env.insert("IMPECCABLE_NO_BROWSER".to_string(), "1".to_string());
-    }
+    plain_for_the_run(args, io);
     match sign_in(io, has_flag(args, "--no-browser"), skip) {
         LoginOutcome::Failed => 1,
         LoginOutcome::Already => 0,
@@ -209,6 +206,14 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
             setup_status::after_login(io, &account);
             0
         }
+    }
+}
+
+/// `--no-browser` keeps the rest of the run (setup, the first scan, Loop, the summary) plain too:
+/// impeccable_common::steps reads IMPECCABLE_NO_BROWSER.
+fn plain_for_the_run(args: &[String], io: &mut Io) {
+    if has_flag(args, "--no-browser") {
+        io.env.insert("IMPECCABLE_NO_BROWSER".to_string(), "1".to_string());
     }
 }
 
@@ -528,4 +533,21 @@ fn open_browser(url: &str) -> bool {
     // Started, not waited on: an opener that hangs must not hold the
     // sign-in before its own deadline starts.
     cmd.spawn().is_ok()
+}
+
+#[cfg(test)]
+mod plain_run_tests {
+    use super::*;
+
+    // Catches `login --no-browser` going on to draw setup, the first scan, Loop and the summary as steps, where the
+    // CLI contract pins the plain lines (#1536 review).
+    #[test]
+    fn no_browser_keeps_the_whole_run_plain() {
+        for (args, plain) in [(vec!["--no-browser"], true), (vec!["--force"], false), (vec![], false)] {
+            let (mut io, _) = Io::captured("", std::env::temp_dir(), Default::default());
+            let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+            plain_for_the_run(&args, &mut io);
+            assert_eq!(impeccable_common::steps::plain_for(&io), plain, "{args:?}");
+        }
+    }
 }

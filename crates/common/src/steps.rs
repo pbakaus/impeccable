@@ -28,8 +28,7 @@ impl Steps {
     pub fn new(io: &Io) -> Option<Steps> {
         let prompt = Prompt::new(io);
         let terminal = prompt.interactive() && std::io::stderr().is_terminal();
-        // `login --no-browser` (which sets IMPECCABLE_NO_BROWSER for the rest of the run) keeps every line plain.
-        let plain = io.env("NO_COLOR").is_some() || io.env("TERM") == Some("dumb") || io.env("CI").is_some() || io.env_truthy("IMPECCABLE_NO_BROWSER");
+        let plain = plain_for(io);
         let multiplexed = io.env("TMUX").is_some() || io.env("STY").is_some() || io.env("TERM").is_some_and(|t| t.starts_with("screen") || t.starts_with("tmux"));
         (terminal && !plain).then_some(Steps { prompt, hyperlinks: !multiplexed })
     }
@@ -83,8 +82,7 @@ impl Steps {
         let _ = io.stderr.flush();
         let stop = Arc::new(AtomicBool::new(false));
         // Clipped to the terminal's width: a frame that wrapped would leave its first row behind on every redraw.
-        let room = columns().saturating_sub(5).max(8);
-        let label: String = if label.chars().count() > room { format!("{}…", label.chars().take(room - 1).collect::<String>()) } else { label.to_string() };
+        let label = clip(label, columns());
         let text = format!("{} {}", self.prompt.accent("◆"), self.prompt.bold(&label));
         let spin: Vec<String> = FRAMES.iter().map(|f| self.prompt.accent(f)).collect();
         let running = Arc::clone(&stop);
@@ -112,10 +110,7 @@ impl Steps {
         io.err("\n");
         // Keys pressed before the question (an extra Enter from an earlier picker) never answer it.
         #[cfg(unix)]
-        // SAFETY: tcflush on stdin's descriptor only discards unread terminal input.
-        unsafe {
-            libc::tcflush(libc::STDIN_FILENO, libc::TCIFLUSH);
-        }
+        discard_typeahead(libc::STDIN_FILENO);
         self.prompt.radio(io, question, &options, initial)
     }
 
@@ -258,6 +253,27 @@ mod interrupt {
     }
 }
 
+/// Whether this run keeps the plain lines whatever the terminal: `NO_COLOR`, `TERM=dumb`, CI, or
+/// `login --no-browser` (which sets IMPECCABLE_NO_BROWSER for the rest of the run).
+pub fn plain_for(io: &Io) -> bool {
+    io.env("NO_COLOR").is_some() || io.env("TERM") == Some("dumb") || io.env("CI").is_some() || io.env_truthy("IMPECCABLE_NO_BROWSER")
+}
+
+/// A progress label that fits on one row of a terminal `columns` wide, beside its marker and spinner.
+pub(crate) fn clip(label: &str, columns: usize) -> String {
+    let room = columns.saturating_sub(5).max(8);
+    if label.chars().count() > room { format!("{}…", label.chars().take(room - 1).collect::<String>()) } else { label.to_string() }
+}
+
+/// Discards what was typed on `fd` before a question appeared, so an early key never answers it.
+#[cfg(unix)]
+pub(crate) fn discard_typeahead(fd: libc::c_int) {
+    // SAFETY: tcflush only discards unread input on the descriptor given.
+    unsafe {
+        libc::tcflush(fd, libc::TCIFLUSH);
+    }
+}
+
 /// The terminal's width on stderr, 80 when it can't be read.
 fn columns() -> usize {
     #[cfg(unix)]
@@ -269,4 +285,64 @@ fn columns() -> usize {
         }
     }
     80
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn io_with(env: &[(&str, &str)]) -> Io {
+        let (io, _) = Io::captured("", std::env::temp_dir(), env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect());
+        io
+    }
+
+    // Catches a run that must keep the pinned plain lines drawing steps anyway (#1536 review: login --no-browser
+    // went on to draw setup, the scan, Loop and the summary).
+    #[test]
+    fn keeps_the_plain_lines_where_the_contract_pins_them() {
+        for (env, plain) in [
+            (vec![], false),
+            (vec![("IMPECCABLE_NO_BROWSER", "1")], true),
+            (vec![("NO_COLOR", "1")], true),
+            (vec![("CI", "true")], true),
+            (vec![("TERM", "dumb")], true),
+            (vec![("TERM", "xterm-256color")], false),
+        ] {
+            assert_eq!(plain_for(&io_with(&env)), plain, "{env:?}");
+        }
+    }
+
+    // Catches a progress frame wider than the terminal, which leaves a copy behind on every redraw.
+    #[test]
+    fn clips_a_progress_label_to_one_row() {
+        for (label, columns) in [("Scanning this repository (Ctrl-C skips it)", 40), ("Waiting for you in the browser", 120), ("x".repeat(300).as_str(), 20)] {
+            let shown = clip(label, columns);
+            assert!(shown.chars().count() + 4 <= columns.max(13), "{shown:?} at {columns}");
+            if label.chars().count() + 5 <= columns {
+                assert_eq!(shown, label);
+            }
+        }
+    }
+
+    // Catches a key typed before a choice appears answering it (#1536 review: a stray Enter from install's pickers
+    // picked Sign in or Install Loop).
+    #[cfg(unix)]
+    #[test]
+    fn a_key_typed_before_the_question_never_answers_it() {
+        let (mut master, mut slave) = (0, 0);
+        // SAFETY: openpty fills the two descriptors; they are closed below.
+        assert_eq!(unsafe { libc::openpty(&mut master, &mut slave, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) }, 0);
+        // SAFETY: plain writes and reads on descriptors this test owns.
+        unsafe {
+            libc::write(master, b"\r".as_ptr().cast(), 1);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            discard_typeahead(slave);
+            libc::fcntl(slave, libc::F_SETFL, libc::fcntl(slave, libc::F_GETFL) | libc::O_NONBLOCK);
+            let mut buf = [0u8; 8];
+            let read = libc::read(slave, buf.as_mut_ptr().cast(), buf.len());
+            libc::close(master);
+            libc::close(slave);
+            assert!(read <= 0, "a queued key survived: {:?}", &buf[..read.max(0) as usize]);
+        }
+    }
 }
