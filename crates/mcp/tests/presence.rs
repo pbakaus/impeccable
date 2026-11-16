@@ -18,7 +18,7 @@ impl Upstream for Remote {
 
 /// The agents `impeccable agents running` lists now, by name, with whether each is connected.
 fn listed(home: &std::path::Path) -> Vec<(String, bool)> {
-    presence::agents(Some(&home.join("running")), &presence::snapshot())
+    presence::agents(Some(&home.join("running")), presence::snapshot)
         .into_iter()
         .filter(|a| a["connected"] == true)
         .map(|a| (a["name"].as_str().unwrap().to_string(), a["harness"] == "codex-mcp-client"))
@@ -48,6 +48,11 @@ fn a_session_is_listed_while_it_runs_by_the_name_it_gives_itself() {
 
     send(&mut agent, json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "needs_you.list", "arguments": { "from": "review bot" } } }));
     assert!(until(|| listed(&home).first().is_some_and(|(n, _)| n == "review bot")), "{:?}", listed(&home));
+    // Its first name stays: a later call naming another session doesn't rename it, and control characters never land.
+    send(&mut agent, json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "needs_you.list", "arguments": { "from": "tab 2" } } }));
+    send(&mut agent, json!({ "jsonrpc": "2.0", "id": 4, "method": "ping" }));
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(listed(&home)[0].0, "review bot");
 
     drop(agent);
     server.join().unwrap();
