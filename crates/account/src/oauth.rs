@@ -575,6 +575,30 @@ mod scope_tests {
     // Catches (review): the landing page built from the issuer instead of the browser's
     // origin. Production's issuer (api.impeccable.style) serves no app pages, so that
     // mistake would send every sign-in to a 404.
+    // Catches (review): a callback dropped unanswered closing the browser's connection
+    // with nothing, or the success page, instead of saying the sign-in didn't finish.
+    #[test]
+    fn the_browser_hears_how_the_sign_in_went() {
+        use std::io::Read;
+        let answer = |signed_in: bool| {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let (server, _) = listener.accept().unwrap();
+            let callback = Callback {
+                stream: Some(server),
+                setup_url: Some("https://impeccable.style/app/-/setup?signed-in=cli".into()),
+            };
+            if signed_in { callback.signed_in() } else { drop(callback) }
+            let mut got = String::new();
+            client.read_to_string(&mut got).unwrap();
+            got
+        };
+        let failed = answer(false);
+        assert!(failed.starts_with("HTTP/1.1 200 OK") && failed.ends_with(PAGE_FAIL), "{failed}");
+        let done = answer(true);
+        assert!(done.starts_with("HTTP/1.1 303 See Other\r\nlocation: https://impeccable.style/app/-/setup?signed-in=cli\r\n"), "{done}");
+    }
+
     #[test]
     fn the_setup_page_is_on_the_authorization_endpoints_origin_not_the_issuers() {
         assert_eq!(
