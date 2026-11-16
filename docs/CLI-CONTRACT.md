@@ -2479,8 +2479,15 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   it goes to stderr, after the setup lines. A yes connects as `loop connect`
   does, taste block offer included. A failed connect is reported on stderr and login still exits 0. Without Loop,
   or with every agent connected, login prints nothing about Loop.
-- `impeccable switches` prints, for Claude Code and Codex, the user-level rule file
-  and the switches on in it (`none` when there is no block). `impeccable switches
+- `impeccable switches` prints, for each agent installed here (its config folder
+  exists), the user-level rule file it reads beside a repository's own and the
+  switches on in it (`none` when there is no block): Claude Code (`CLAUDE.md` in
+  `$CLAUDE_CONFIG_DIR`, else `~/.claude`), Codex (`AGENTS.override.md` in `$CODEX_HOME`
+  or `~/.codex` when it exists, else `AGENTS.md`), Gemini CLI (`~/.gemini/GEMINI.md`),
+  GitHub Copilot (`copilot-instructions.md` in `$COPILOT_HOME`, else `~/.copilot`) and
+  opencode (`~/.config/opencode/AGENTS.md`, only when it already exists, since creating
+  it turns off opencode's fallback to `~/.claude/CLAUDE.md`). With none, it prints
+  `No agent's user-level rule file found.` The switch sync writes the same files. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.

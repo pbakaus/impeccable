@@ -320,6 +320,46 @@ fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
     Ok(true)
 }
 
+/// The user-level rule file each agent installed here reads alongside a repository's
+/// own (REN-2056; checked against each harness's docs, 16 Nov 2026), named for
+/// people. An agent counts as installed when its config folder exists.
+/// - Claude Code: `CLAUDE.md` in `$CLAUDE_CONFIG_DIR`, else `~/.claude`.
+/// - Codex: `AGENTS.override.md` in `$CODEX_HOME` (else `~/.codex`) when it exists, since
+///   Codex then reads it instead, else `AGENTS.md`.
+/// - Gemini CLI: `~/.gemini/GEMINI.md`.
+/// - GitHub Copilot (CLI and VS Code): `copilot-instructions.md` in `$COPILOT_HOME`, else
+///   `~/.copilot`.
+/// - opencode: `~/.config/opencode/AGENTS.md` only when it already exists. Without it,
+///   opencode reads `~/.claude/CLAUDE.md`, which creating it would turn off.
+/// Cursor keeps its user rules in its settings, not a file, so it has none here.
+pub(crate) fn user_rule_files(io: &impeccable_common::Io) -> Vec<(&'static str, PathBuf)> {
+    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
+    let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let mut out = Vec::new();
+    let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude"));
+    if claude.is_dir() {
+        out.push(("Claude Code", claude.join("CLAUDE.md")));
+    }
+    let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
+    if codex.is_dir() {
+        let over = codex.join("AGENTS.override.md");
+        out.push(("Codex", if over.exists() { over } else { codex.join("AGENTS.md") }));
+    }
+    let gemini = home.join(".gemini");
+    if gemini.is_dir() {
+        out.push(("Gemini CLI", gemini.join("GEMINI.md")));
+    }
+    let copilot = var("COPILOT_HOME").unwrap_or_else(|| home.join(".copilot"));
+    if copilot.is_dir() {
+        out.push(("GitHub Copilot", copilot.join("copilot-instructions.md")));
+    }
+    let opencode = var("XDG_CONFIG_HOME").unwrap_or_else(|| home.join(".config")).join("opencode").join("AGENTS.md");
+    if opencode.is_file() {
+        out.push(("opencode", opencode));
+    }
+    out
+}
+
 /// `impeccable switches [--catalog]`: which switches are on in each user-level rule
 /// file this machine's agents read, or (`--catalog`) the catalog as JSON for the
 /// settings page to mirror.
@@ -335,22 +375,15 @@ pub(crate) fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
         }
         None => {
             let home = std::path::PathBuf::from(impeccable_context::util::homedir(&io.env));
-            let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
-            let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
-            let codex = [codex.join("AGENTS.override.md"), codex.join("AGENTS.md")]
-                .into_iter()
-                .find(|p| p.exists())
-                .unwrap_or_else(|| codex.join("AGENTS.md"));
-            let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude")).join("CLAUDE.md");
-            for (name, file) in [("Claude Code", claude), ("Codex", codex)] {
+            let files = user_rule_files(io);
+            if files.is_empty() {
+                io.out("No agent's user-level rule file found.\n");
+            }
+            for (name, file) in files {
                 let shown = file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()));
-                let on = match read(&file) {
-                    Ok(Some(t)) => switches(&t).map(|ids| if ids.is_empty() { "none".to_string() } else { ids.join(", ") }),
-                    Ok(None) => Ok("none".to_string()),
-                    Err(e) => Err(e),
-                };
-                match on {
-                    Ok(on) => io.out(&format!("{name} ({shown}): {on}\n")),
+                match switches_in(&file) {
+                    Ok(ids) if ids.is_empty() => io.out(&format!("{name} ({shown}): none\n")),
+                    Ok(ids) => io.out(&format!("{name} ({shown}): {}\n", ids.join(", "))),
                     Err(e) => io.out(&format!("{name} ({shown}): unreadable, {e}\n")),
                 }
             }

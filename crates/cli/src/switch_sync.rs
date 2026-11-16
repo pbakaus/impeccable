@@ -39,23 +39,9 @@ pub fn schedule(io: &Io) {
     }
 }
 
-/// The user-level rule files of the agents installed here: Claude Code's `CLAUDE.md`
-/// and Codex's `AGENTS.md` (its override when there is one), each only when that
-/// agent's config folder exists.
+/// Every agent's user-level rule file on this machine (`agent_block::user_rule_files`).
 pub(crate) fn rule_files(io: &Io) -> Vec<PathBuf> {
-    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
-    let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude"));
-    let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
-    let mut out = Vec::new();
-    if claude.is_dir() {
-        out.push(claude.join("CLAUDE.md"));
-    }
-    if codex.is_dir() {
-        let over = codex.join("AGENTS.override.md");
-        out.push(if over.exists() { over } else { codex.join("AGENTS.md") });
-    }
-    out
+    agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect()
 }
 
 /// What the worker does, decided from the page's set, the base and each file's set.

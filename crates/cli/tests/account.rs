@@ -442,3 +442,51 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
         assert!(lines(&codex).contains(loop_line));
     }
 }
+
+#[test]
+fn personal_switches_reach_gemini_copilot_and_an_existing_opencode_file_and_create_no_other() {
+    // Catches (REN-2056): switches reaching only Claude Code and Codex, and a sync that
+    // creates opencode's global AGENTS.md, which would turn off opencode's fallback to
+    // the person's ~/.claude/CLAUDE.md.
+    let fake = Fake::start();
+    let mut env = fake.env("switch-harnesses");
+    env.insert("IMPECCABLE_NO_UPDATE_CHECK".into(), "1".into());
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let project = home.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let git = |args: &[&str]| assert!(Command::new("git").args(args).current_dir(&project).output().unwrap().status.success());
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "https://github.com/acme/site.git"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    for d in [".gemini", ".copilot", ".config/opencode"] {
+        std::fs::create_dir_all(home.join(d)).unwrap();
+    }
+    let (gemini, copilot, opencode) = (
+        home.join(".gemini/GEMINI.md"),
+        home.join(".copilot/copilot-instructions.md"),
+        home.join(".config/opencode/AGENTS.md"),
+    );
+    let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
+    let read = |f: &std::path::Path| std::fs::read_to_string(f).unwrap_or_default();
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["taste"]}"#);
+    refresh();
+    for f in [&gemini, &copilot] {
+        assert!(read(f).contains("<!-- impeccable start -->\nImpeccable Taste"), "{}: {}", f.display(), read(f));
+    }
+    assert!(!opencode.exists(), "opencode's file is never created");
+    assert!(!home.join(".claude/CLAUDE.md").exists() && !home.join(".codex").exists());
+    // Once the person has an opencode file, it gets the block too.
+    std::fs::write(&opencode, "Mine.\n").unwrap();
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":2,"team":null,"me":["taste","a11y"]}"#);
+    refresh();
+    assert!(read(&opencode).starts_with("Mine.\n\n<!-- impeccable start -->\n"), "{}", read(&opencode));
+    let out = impeccable(&env, &["switches"]).output().unwrap();
+    let listed = String::from_utf8_lossy(&out.stdout).to_string();
+    for name in ["Gemini CLI (~/.gemini/GEMINI.md): taste, a11y", "GitHub Copilot (~/.copilot/copilot-instructions.md): taste, a11y", "opencode (~/.config/opencode/AGENTS.md): taste, a11y"] {
+        assert!(listed.contains(name), "{listed}");
+    }
+}
