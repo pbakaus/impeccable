@@ -412,6 +412,13 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       return { ok: true, handoff, ...(typeof answer.json.walkUrl === 'string' ? { walkUrl: answer.json.walkUrl } : {}) };
     },
 
+    /** Calls off a walk the server made that this browser then refused to start, so it does not wait out its browser and block the next (B22). `{ ok }`; a 404 is one already gone. */
+    async cancelWalk(id) {
+      if (typeof id !== 'string' || !WAITING_ID.test(id)) return { ok: false };
+      const answer = await call(issuer(), `/walks/${id}/cancel`, undefined, 'POST').catch(() => null);
+      return { ok: answer?.status === 204 || answer?.status === 404 };
+    },
+
     /** Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as `startWalk`. */
     async planWalk(body) {
       const answer = await call(issuer(), '/walks/plan', body).catch(() => null);

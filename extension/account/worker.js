@@ -161,10 +161,13 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
   const device = widths ? { device: SERVER_DEVICE[message.device] } : {};
   const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}), ...device });
   if (!started.ok) return started;
+  // The server made the outing: one refused here is called off at once, once, not waited for (B22). Only on the server
+  // that made it: one changed since has no such outing.
+  const refused = () => { if (issuer === at) void session.cancelWalk(started.handoff.outing).catch(() => undefined); return { ok: false, why: 'failed' }; };
   const socket = socketOf(at);
-  if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return { ok: false, why: 'failed' };
+  if (!socket || typeof started.handoff.socket !== 'string' || !started.handoff.socket.startsWith(`${socket}/api/outings/`) || issuer !== at) return refused();
   const taken = await adopt(JSON.stringify(started.handoff), message.tabId, message.device, message.sees).catch(() => null);
-  if (!taken?.ok) return { ok: false, why: 'failed' };
+  if (!taken?.ok) return refused();
   // An approved plan approved its steps: the walk asks nothing mid-way, and its results wait behind the panel's button.
   planned(Boolean(approved));
   // After the hand-off, which forgot the last walk's (control.js `rearm`): this walk's page and walker only.

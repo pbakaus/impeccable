@@ -310,11 +310,13 @@ describe('account worker', () => {
   } };
   const HANDOFF = { v: 1, outing: 'o9', socket: 'wss://impeccable.reviews/api/outings/o9/socket', ticket: 'ticket-0123456789', persona: { name: 'Ines', role: '' }, errand: { name: '', goal: 'Read the top story.', doneWhen: [] }, url: 'https://news.example.com/', allow: [] };
   const posted = [];
+  const cancelled = [];
   const made = [];
   const startServer = (walks, mine = () => json(404, {})) => {
     globalThis.fetch = async (url, init = {}) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-walk', refresh_token: 'refresh-walk-2', expires_in: 900 });
+      if (url.endsWith('/cancel') && url.startsWith(`${ISSUER}/extension/v1/walks/`)) { cancelled.push([url.slice(ISSUER.length), init.method]); return json(204, null); }
       if (url === `${ISSUER}/extension/v1/walks`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
       if (url === `${ISSUER}/extension/v1/personas` && !init.method) return json(200, { personas: [{ ...PERSONA, role: 1 }] });
       if (url.startsWith(`${ISSUER}/extension/v1/personas`) && init.method) { made.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null }); return mine(); }
@@ -407,20 +409,25 @@ describe('account worker', () => {
 
   const start = (tabId = 7) => ask({ account: 'walk', persona: { preset: 'ines' }, task: ' Read the top story. ', tabId }, fromPopup);
 
-  for (const [label, walks, answer] of [
+  for (const [label, walks, answer, cancels = false] of [
     ['hands the server’s block and the tab to the walk, and nothing of the sign-in', () => json(201, { handoff: HANDOFF }), { ok: true, panel: true }],
     ['says walks are not there yet when the door answers 404', () => json(404, {}), { ok: false, why: 'unavailable' }],
     ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
     ['says the account has no Pro when the server refuses it', () => json(403, { error: 'not-pro' }), { ok: false, why: 'not-pro' }],
     ['says too many when the server caps the person’s journeys', () => json(429, { error: 'too-many' }), { ok: false, why: 'too-many' }],
-    ['hands nothing over for a socket off the server’s pair', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }],
+    // Refused after the server made the outing: called off at once, so it does not block the next start for two minutes (B22).
+    ['hands nothing over for a socket off the server’s pair, and calls the outing off', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }, true],
+    ['hands nothing over for a block of another site than the tab’s, and calls the outing off', () => json(201, { handoff: { ...HANDOFF, url: 'https://other.example.com/' } }), { ok: false, why: 'failed' }, true],
   ]) {
     it(`walks the person’s tab: ${label}`, async () => {
       await loaded;
       startServer(walks);
       delete session.handoff;
       (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
+      const before = cancelled.length;
       assert.deepEqual(await start(), answer);
+      await settle();
+      assert.deepEqual(cancelled.slice(before), cancels ? [['/extension/v1/walks/o9/cancel', 'POST']] : []);
       assert.deepEqual(posted.at(-1), { body: { persona: { preset: 'ines' }, task: 'Read the top story.', url: 'https://news.example.com/' }, auth: 'Bearer access-walk', method: 'POST' });
       assert.deepEqual(panels.at(-1), { tabId: 7 });
       assert.deepEqual(session.handoff ? [session.handoff.outing, session.handoff.adopt] : null, answer.ok ? ['o9', 7] : null);
