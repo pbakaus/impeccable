@@ -28,7 +28,7 @@ export const COPY = {
   signedOut: { line: 'You’re signed out.', pro: 'Impeccable Pro', failed: 'Sign-in didn’t finish. Try again.', signingIn: 'Finish in the window Chrome opened.' },
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', back: 'Back' },
   /** The cog's popover: who is signed in, and Sign out. */
-  account: { title: 'Account', signedIn: 'Signed in as', signOut: 'Sign out' },
+  account: { title: 'Account', signedIn: 'Signed in as', help: 'Having problems?', signOut: 'Sign out' },
   /** Just signed in: a moment, then the panel goes on. */
   connected: { line: 'You’re connected', who: 'Signed in as' },
 

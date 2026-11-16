@@ -651,13 +651,18 @@ test('the side panel shows only its loading dots until the account and its perso
 });
 
 // The account lives in the panel: the cog opens it under itself, never the options page in a window of its own (REN-2038).
-test('the side panel’s cog opens the account in the panel: the email and Sign out, which signs out', async () => {
+test('the side panel’s cog opens the account in the panel: the email, a way to report a problem, and Sign out, which signs out', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
   const cog = () => h.app.querySelector('[data-act="settings"]');
   await h.press('settings');
   assert.deepEqual([cog().attributes['aria-expanded'], h.app.querySelector('b[data-email]')?.textContent, h.opened], ['true', signedIn.email, []]);
   await h.press('settings');
   assert.deepEqual([cog().attributes['aria-expanded'], h.acts().includes('sign-out')], ['false', false], 'a second press closes it');
+  await h.press('settings');
+  assert.deepEqual(h.acts().filter((act) => act === 'help' || act === 'sign-out'), ['help', 'sign-out'], 'the way to report a problem, above Sign out');
+  await h.press('help');
+  assert.deepEqual([h.opened, cog().attributes['aria-expanded'], h.acts().includes('help')], [[{ url: 'https://github.com/pbakaus/impeccable/issues/new', active: true }], 'false', false], 'it opens a new issue in a tab and closes');
+  h.opened.length = 0;
   await h.press('settings');
   await h.press('sign-out');
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
