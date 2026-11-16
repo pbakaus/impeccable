@@ -3281,5 +3281,6 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
-  write, personas, Taste, journeys) only when the service's metadata says
-  `impeccable_cli_mcp: true`, and only those it lists.
+  write, personas, Taste, journeys, `artifacts:write`) only when the service's
+  metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in
+  made before the service listed a scope signs in again on the next `login`.
