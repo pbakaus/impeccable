@@ -24,13 +24,16 @@ export function checkIns({ session, chrome, issuer }) {
   let writes = Promise.resolve();
   /** Whether this worker has checked in: one woken by the alarm has, before its own start's check-in. */
   let ran = false;
+  /** Moves on with every `forget`: a check-in still under way from before one shows and keeps nothing. */
+  let generation = 0;
   const shown = async () => {
     const kept = (await chrome.storage.session.get(SHOWN).catch(() => ({})))[SHOWN];
     return kept?.server === issuer() && kept.journeys ? kept.journeys : {};
   };
-  /** Changes the shown list one change at a time: `change` gets it and changes it in place. */
-  const edit = (change) => {
+  /** Changes the shown list one change at a time: `change` gets it and changes it in place. `live`: still worth doing. */
+  const edit = (change, live = () => true) => {
     const done = writes.then(async () => {
+      if (!live()) return undefined;
       const journeys = await shown();
       const result = change(journeys);
       const kept = Object.fromEntries(Object.entries(journeys).slice(-KEEP));
@@ -49,17 +52,25 @@ export function checkIns({ session, chrome, issuer }) {
   async function once() {
     // No notice to show (a build without the permission): no check-in, so no agent waits on one.
     if (!chrome.notifications) return;
+    // The server asked, and this sign-in: an answer that comes after a sign-out or a switch is the old one's.
+    const server = issuer();
+    const at = generation;
+    const live = () => at === generation && server === issuer();
     const journeys = await session.waiting().catch(() => null);
-    if (!journeys) return;
+    if (!journeys || !live()) return;
     // Not nows the server has yet to hear.
-    for (const [id, journey] of Object.entries(await shown())) if (journey.decline) await decline(id);
+    for (const [id, journey] of Object.entries(await shown())) if (journey.decline && live()) await decline(id);
     // Kept before the notice: a worker ended between the two never shows it a second time.
-    const fresh = await edit((kept) => journeys.filter((journey) => !Object.hasOwn(kept, journey.id)).map((journey) => { kept[journey.id] = { page: journey.page }; return journey; }));
+    const fresh = await edit((kept) => journeys.filter((journey) => !Object.hasOwn(kept, journey.id)).map((journey) => { kept[journey.id] = { page: journey.page }; return journey; }), live) ?? [];
     for (const journey of fresh) {
-      const made = isOutingPage(journey.page) && await chrome.notifications.create(`${NOTICE}${journey.id}`, {
+      if (!live()) return;
+      const notice = `${NOTICE}${journey.id}`;
+      const made = isOutingPage(journey.page) && await chrome.notifications.create(notice, {
         type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon-128.png'), requireInteraction: true,
         title: COPY.agent.title, message: COPY.agent.line(journey), buttons: [{ title: COPY.agent.start }, { title: COPY.agent.later }],
       }).then(() => true, () => false);
+      // Signed out or switched while it was made: it goes with the rest.
+      if (!live()) { if (made) await chrome.notifications.clear(notice).catch(() => undefined); return; }
       if (!made) await decline(journey.id);
     }
   }
@@ -86,6 +97,7 @@ export function checkIns({ session, chrome, issuer }) {
 
     /** Signed out, or another server: its notices go, and its list with them. */
     async forget() {
+      generation += 1;
       const open = await Promise.resolve().then(() => chrome.notifications?.getAll()).catch(() => ({}));
       await Promise.all(Object.keys(open ?? {}).filter((notice) => notice.startsWith(NOTICE)).map((notice) => chrome.notifications.clear(notice).catch(() => undefined)));
       writes = writes.then(() => chrome.storage.session.remove(SHOWN)).catch(() => undefined);

@@ -737,6 +737,35 @@ describe('agent check-in', () => {
     await worker().keep(false);
     assert.equal(alarms.size, 0);
   });
+
+  // Catches server A's journeys shown, kept as B's and declined to B after a switch mid-check-in.
+  for (const [label, after] of [['the person switches server', 'http://api.localhost:8787'], ['the person signs out', null]]) {
+    it(`shows and keeps nothing from a check-in still under way when ${label}`, async () => {
+      const { checkIns } = await import('../extension/account/waiting.js');
+      const kept = {};
+      const notices = [];
+      const declined = [];
+      const chrome = {
+        runtime: { getURL: (file) => `chrome-extension://ext/${file}` },
+        storage: { session: { async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } } },
+        notifications: { async create(id) { notices.push(id); }, async getAll() { return {}; }, async clear() {} },
+      };
+      let answer;
+      const session = {
+        waiting: () => new Promise((resolve) => { answer = resolve; }),
+        async decline(id) { declined.push(id); return { ok: true }; },
+      };
+      let server = 'https://api.impeccable.style';
+      const agent = checkIns({ session, chrome, issuer: () => server });
+      const checking = agent.checkIn();
+      await new Promise((resolve) => setImmediate(resolve));
+      await agent.forget();
+      if (after) server = after;
+      answer([{ id: 'o7', page: 'https://app.impeccable.style/app/acme/outings/o7', persona: 'Dana', site: 'shop.example.com', task: 'Buy a mug.' }]);
+      await checking;
+      assert.deepEqual([notices, declined, kept.agentJourneys], [[], [], undefined]);
+    });
+  }
 });
 
 describe('welcome page', () => {
