@@ -106,7 +106,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => {
             let code = impeccable_skills::run(rest, io);
-            if code == 0 && matches!(rest.first().map(String::as_str), Some("install" | "update")) {
+            // The launcher finds the newest engine itself, so only install registers it, never update.
+            if code == 0 && rest.first().map(String::as_str) == Some("install") {
                 register_browser_host(&rest[1..], io);
             }
             code
@@ -127,14 +128,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             }
             code
         }
-        "update" => {
-            let code = impeccable_skills::run(args, io);
-            if code == 0 {
-                register_browser_host(rest, io);
-            }
-            code
-        }
-        "help" | "link" | "check" => impeccable_skills::run(args, io),
+        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => {
             let code = impeccable_hook::run_context(rest, io);
@@ -408,7 +402,7 @@ pub(crate) fn health_scan(
 }
 
 /// Lets Chrome start the browser relay (REN-2053): the launcher and each present browser's host manifest. Install
-/// and update print what changed; a failure is named and never fails them. `args` are the verb's own: asking for
+/// prints what changed; a failure is named and never fails it. `args` are the verb's own: asking for
 /// help changes nothing.
 fn register_browser_host(args: &[String], io: &mut Io) {
     // CI runs install in throwaway machines: no browser to register with, and no files left behind.

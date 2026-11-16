@@ -1,4 +1,4 @@
-//! Registers the browser relay with Chrome (REN-2053): `install` and `update` write one launcher and, for each
+//! Registers the browser relay with Chrome (REN-2053): `install` writes one launcher and, for each
 //! Chromium-based browser on the machine, a native-messaging host manifest naming it. macOS and Linux only.
 //!
 //! The launcher, `<IMPECCABLE_HOME>/browser/host`, holds nothing browser-specific: each time it runs it finds the
