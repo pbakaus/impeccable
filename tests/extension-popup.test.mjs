@@ -503,20 +503,24 @@ test('the side panel asks for the personas again until each of the person’s ow
   const faces = (h, slug) => h.app.querySelectorAll('span.face').filter((node) => node.attributes['data-face'] === slug).map((node) => [String(node.attributes.style).includes(`url("${photo}")`), node.children.length]);
 
   const personas = [maya];
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas, create: { ok: true, persona: { name: 'Nora', role: '', slug: 'nora', mine: true } } });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas, create: { ok: true, persona: { name: 'Nora', role: 'Night nurse', slug: 'nora', mine: true } } });
   await h.press('make-persona');
   h.app.querySelector('textarea').value = 'A night-shift nurse checking HR forms on break.';
   await h.press('make');
   const made = asks(h);
-  assert.deepEqual(faces(h, 'nora'), [[false, 1]], 'Confirm shows the letter while the photo is drawn');
+  const about = () => h.app.querySelector('.hero[data-slug="nora"]')?.children.find((node) => node.className === 'about')?.textContent;
+  assert.deepEqual([faces(h, 'nora'), about()], [[[false, 1]], 'Night nurse'], 'Confirm shows the letter while the photo is drawn, and the role until the profile comes');
+  // The create answers no profile; the list asked for the face carries it (the full one the server drafted).
+  personas[1] = { ...personas[1], about: 'Works nights; checks forms on a phone between rounds.' };
+  const hero = h.app.querySelector('.hero[data-slug="nora"]');
   await wait(3000);
-  assert.deepEqual([asks(h), faces(h, 'nora'), h.sent.filter((m) => m.account === 'personas').at(-1).faceless], [made + 1, [[false, 1]], ['nora']], 'a list without the face is asked for again, with only the faceless one’s face (REN-2075)');
+  assert.deepEqual([asks(h), faces(h, 'nora'), h.sent.filter((m) => m.account === 'personas').at(-1).faceless, about(), h.app.querySelector('.hero[data-slug="nora"]') === hero], [made + 1, [[false, 1]], ['nora'], personas[1].about, true], 'a list without the face is asked for again, with only the faceless one’s face (REN-2075), and its profile shows in place');
   personas[1] = { ...personas[1], face: photo };
   await wait(6000);
   const confirm = h.app.querySelector('[data-act="confirm"]');
   assert.deepEqual([asks(h), faces(h, 'nora'), h.app.querySelector('[data-act="confirm"]')], [made + 2, [[true, 0]], confirm], 'the photo is swapped in, nothing redrawn');
   await h.press('confirm');
-  assert.deepEqual([faces(h, 'nora'), String(h.app.querySelector('[data-act="pick-0"]').children[0].attributes.style).includes(photo)], [[], true], 'the home’s hero and tile wear the photo');
+  assert.deepEqual([faces(h, 'nora'), String(h.app.querySelector('[data-act="pick-0"]').children[0].attributes.style).includes(photo), about()], [[], true, personas[1].about], 'the home’s hero and tile wear the photo, the hero the profile');
   await wait(60_000);
   assert.equal(asks(h), made + 2, 'every own persona has a face: no more asks');
 
