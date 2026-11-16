@@ -221,9 +221,70 @@ fn read(path: &Path) -> Result<Option<String>> {
     }
 }
 
+/// The switches on in `path`: none for a missing file, an error for one that can't be
+/// read or has broken markers.
+pub(crate) fn switches_in(path: &Path) -> Result<Vec<&'static str>> {
+    switches(&read(path)?.unwrap_or_default())
+}
+
 /// Whether switch `id` is on in `path`. An unreadable file reads as off.
 pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
+}
+
+/// Put exactly the switches `on` in `path` (lines it doesn't know stay), creating the
+/// file only when one is on. `Ok(false)` when nothing changed.
+pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {
+    locked(path, || write_switches_unlocked(path, on))
+}
+
+fn write_switches_unlocked(path: &Path, on: &[&str]) -> Result<bool> {
+    let before = read(path)?;
+    if before.is_none() && on.is_empty() {
+        return Ok(false);
+    }
+    let before = before.unwrap_or_default();
+    let after = with_switches(&before, on)?;
+    if after == before {
+        return Ok(false);
+    }
+    write(path, after.as_bytes())?;
+    Ok(true)
+}
+
+/// Run `f` holding the lock that serializes every read-modify-write of one rule file
+/// across processes (`loop connect` and the sync worker): a lock file beside the file
+/// itself, taken with `create_new`, treated as stale after 30 s.
+fn locked<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    use std::time::{Duration, Instant};
+    let target = physical(path)?;
+    let parent = target.parent().ok_or("no parent folder")?;
+    let name = target.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
+    let lock = parent.join(format!(".{name}.impeccable-lock"));
+    let _ = fs::create_dir_all(parent);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stale = fs::metadata(&lock)
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(30));
+                if stale {
+                    let _ = fs::remove_file(&lock);
+                    continue;
+                }
+                if Instant::now() > deadline {
+                    return Err("another Impeccable command is changing it".into());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let out = f();
+    let _ = fs::remove_file(&lock);
+    out
 }
 
 /// Whether `path` can take the block: readable text with no broken markers.
@@ -234,6 +295,10 @@ pub(crate) fn writable(path: &Path) -> Result<()> {
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
+    locked(path, || set_unlocked(path, id, on))
+}
+
+fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
     let Some(&(id, _, _)) = CATALOG.iter().find(|(i, _, _)| *i == id) else {
         return Err(format!("{id} isn't a switch"));
     };

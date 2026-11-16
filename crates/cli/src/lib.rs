@@ -22,6 +22,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 mod loop_connect;
 mod loop_install;
 mod agent_block;
+mod switch_sync;
 
 mod setup_report;
 mod install_sign_in;

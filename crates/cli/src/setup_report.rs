@@ -17,7 +17,7 @@ pub fn schedule_taste(io: &Io) {
     }
 }
 
-fn spawn_refresh(io: &Io, verb: &str) {
+pub(crate) fn spawn_refresh(io: &Io, verb: &str) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
