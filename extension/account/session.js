@@ -321,7 +321,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      */
     async me() {
       const me = await read(issuer(), '/me');
-      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true, ownApp: me.ownApp === true } : null;
+      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true, ownApp: me.ownApp === true, ownTraits: me.ownTraits === true } : null;
     },
 
     /**

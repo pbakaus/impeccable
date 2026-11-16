@@ -574,7 +574,7 @@ describe('account worker', () => {
 
   it('sends a retry of the same description with the same request id, and a new one after it was made', async () => {
     await loaded;
-    const answers = [json(502, { error: 'draft' }), json(201, { persona: PERSONA }), json(201, { persona: PERSONA }), json(201, { persona: PERSONA })];
+    const answers = [json(502, { error: 'draft' }), json(201, { persona: PERSONA }), json(201, { persona: PERSONA })];
     startServer(() => json(404, {}), () => answers.shift());
     session.personaCreate = null;
     const before = made.length;
@@ -584,10 +584,26 @@ describe('account worker', () => {
     const ids = made.slice(before).map((m) => m.body.requestId);
     assert.match(ids[0], /^[A-Za-z0-9_-]{8,64}$/);
     assert.deepEqual([ids[1] === ids[0], ids[2] === ids[0]], [true, false]);
-    // The same words on another device, with a disability, are another persona: a new id, and both in the body.
-    await ask({ account: 'create', description: 'A night-shift nurse.', device: 'phone', disability: 'low-vision' }, fromPopup);
-    assert.deepEqual([made.at(-1).body.requestId === ids[2], made.at(-1).body.device, made.at(-1).body.disability], [false, 'mobile', 'low-vision']);
   });
+
+  // The device and disability picked go to the server only where its /me says it takes them (`ownTraits`): an older
+  // one refuses a key it does not know, so the persona is made from the words alone.
+  for (const [label, ownTraits, sent] of [['a server that takes them', true, { device: 'mobile', disability: 'low-vision' }], ['an older server', undefined, {}]]) {
+    it(`creates a persona on Phone with low vision, telling ${label} ${ownTraits ? 'both' : 'neither'}`, async () => {
+      await loaded;
+      startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
+      const served = globalThis.fetch;
+      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(200, { email: 'mira@example.com', pro: true, widths: true, ownApp: true, ...(ownTraits ? { ownTraits } : {}) }) : served(url, init));
+      session.personaCreate = null;
+      const before = made.length;
+      await create('A night-shift nurse.');
+      assert.equal((await ask({ account: 'create', description: 'A night-shift nurse.', device: 'phone', disability: 'low-vision' }, fromPopup)).ok, true);
+      const [plain, picked] = made.slice(before).map((m) => m.body);
+      // The same words with a device and disability picked are another persona: a new id.
+      const { requestId, description, ...traits } = picked;
+      assert.deepEqual([requestId === plain.requestId, description, traits], [false, 'A night-shift nurse.', sent]);
+    });
+  }
 
   it('tells the next popup of a persona sent and never answered (the worker ended), and resends it with its request id', async () => {
     await loaded;

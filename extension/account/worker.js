@@ -136,12 +136,14 @@ const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
 const MAKE_DEVICE = { desktop: 'desktop', ...SERVER_DEVICE };
 
 /**
- * Whether the server in use takes a walk's width (`widths` on /me): its answer now, else the last it gave,
- * kept per server; null when it never answered. A walk then runs at Desktop rather than at a width it could not file.
+ * Whether the server in use takes a walk's width (`widths` on /me), an app persona's app (`ownApp`), or a new persona's
+ * device and disability (`ownTraits`): its answer now, else the last it gave, kept per server; null when it never
+ * answered. A walk then runs at Desktop rather than at a width it could not file.
  */
+const TAKES = ['widths', 'ownApp', 'ownTraits'];
 async function takes(field) {
   const me = await session.me().catch(() => null);
-  if (me) { await chrome.storage.local.set({ [`widths:${issuer}`]: me.widths, [`ownApp:${issuer}`]: me.ownApp }).catch(() => undefined); return me[field]; }
+  if (me) { await chrome.storage.local.set(Object.fromEntries(TAKES.map((one) => [`${one}:${issuer}`, me[one]]))).catch(() => undefined); return me[field]; }
   const kept = (await chrome.storage.local.get(`${field}:${issuer}`).catch(() => ({})))[`${field}:${issuer}`];
   return typeof kept === 'boolean' ? kept : null;
 }
@@ -198,7 +200,10 @@ async function create({ description, device, disability }) {
       const was = await kept();
       const requestId = same(was) ? was.requestId : randomText();
       await chrome.storage.session.set({ personaCreate: { description: text, picked, requestId, open: true } });
-      const made = await session.createPersona({ description: text, ...picked, requestId });
+      // Told only to a server that says it takes them: an older one refuses a key it does not know, and makes the
+      // persona from the words alone. The panel still shows what was picked.
+      const traits = Object.keys(picked).length && await takes('ownTraits') === true ? picked : {};
+      const made = await session.createPersona({ description: text, ...traits, requestId });
       await chrome.storage.session.set({ personaCreate: made.ok ? null : { description: text, picked, requestId, open: false } });
       return made;
     } finally {
