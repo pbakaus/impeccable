@@ -227,6 +227,14 @@ fn text_in_a_framed_demo_is_advisory() {
         "adv-pill",
         "adv-footnote",
         "adv-beside",
+        // Round 14 (row 1, decision r14-t1): a bar after a glow layer or at
+        // the padding edge, a caption labelled up to a comma or called
+        // fictional, a phone with a status bar.
+        "adv-glow",
+        "adv-padded",
+        "adv-comma",
+        "adv-fictional",
+        "adv-phone",
     ] {
         let hits: Vec<&str> = f
             .iter()
@@ -255,6 +263,15 @@ fn text_in_a_framed_demo_is_advisory() {
         "fail-sample-unframed",
         "fail-sample-button",
         "fail-sample-says",
+        "fail-phone-no-clock",
+        "fail-phone-shell",
+        "fail-comma-prose",
+        "fail-reel",
+        "fail-talk",
+        "fail-app-header",
+        "fail-caption-sample",
+        "fail-caption-fictional",
+        "fail-config-small",
     ] {
         assert_eq!(on(&f, rule, class), ["warning"], "{class}: {f:#?}");
     }
@@ -265,6 +282,8 @@ fn text_in_a_framed_demo_is_advisory() {
     assert_eq!(on(&f, "tiny-text", "adv-dots-run"), ["advisory"], "{f:#?}");
     assert_eq!(on(&f, "tiny-text", "fail-sentence"), ["warning"], "{f:#?}");
     assert_eq!(on(&f, "low-contrast", "adv-dots-dim"), ["advisory"], "{f:#?}");
+    // r14-t7: faint code in a dotted window reports in full.
+    assert_eq!(on(&f, "low-contrast", "fail-config-dim"), ["warning"], "{f:#?}");
 }
 
 #[test]
@@ -278,18 +297,54 @@ fn nested_cards_in_a_mockup_are_advisory() {
         "#adv-scaled-window",
         "#adv-captioned-panel",
         "#adv-picture-inner",
+        "#adv-glow-inner",
+        "#adv-phone-inner",
     ] {
         assert_eq!(on(&f, rule, id), ["advisory"], "{id}: {f:#?}");
     }
+    // One panel, one finding (r14-t5): the first of paseo.sh's three
+    // bordered cards reports and counts the other two.
+    assert!(
+        f.iter().any(|(r, s, sel, sev)| r == rule
+            && s == "Card inside card (and 2 more)"
+            && sel == "#fail-panel-a"
+            && sev == "warning"),
+        "{f:#?}"
+    );
+    for id in ["#fail-panel-b", "#fail-panel-c"] {
+        assert!(on(&f, rule, id).is_empty(), "{id}: {f:#?}");
+    }
     for id in [
         "#fail-panel-a",
-        "#fail-panel-b",
-        "#fail-panel-c",
         "#fail-two-dots-inner",
         "#fail-fanned-inner",
         "#fail-prose-panel",
         "#fail-marked-inner",
+        "#fail-shell-inner",
+        "#fail-code-inner",
     ] {
         assert_eq!(on(&f, rule, id), ["warning"], "{id}: {f:#?}");
     }
+}
+
+/// Row 16 of observations-1010: tiny-text tests SVG text at the size the
+/// viewBox scale and an even scale on the text draw it; the snippet keeps the
+/// computed size, so corpus clusters do not split.
+#[test]
+fn svg_text_is_read_at_its_drawn_size() {
+    let Some(f) = scan("tiny-text-svg.html") else { return };
+    let snippets = |class: &str| -> Vec<&str> {
+        f.iter().filter(|r| r.0 == "tiny-text" && r.2.contains(class)).map(|r| r.1.as_str()).collect()
+    };
+    assert_eq!(snippets("fail-shrunk"), ["14px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-near"), ["10.5px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-no-viewbox"), ["10px body text"], "{f:#?}");
+    assert!(snippets("pass-enlarged").is_empty(), "{f:#?}");
+    assert!(snippets("pass-scaled").is_empty(), "{f:#?}");
+    assert_eq!(snippets("fail-text-scaled"), ["14px body text"], "{f:#?}");
+    assert!(snippets("pass-text-scaled").is_empty(), "{f:#?}");
+    assert_eq!(snippets("fail-skewed"), ["10px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-padded"), ["10px body text"], "{f:#?}");
+    assert_eq!(snippets("fail-inset-shrunk"), ["12px body text"], "{f:#?}");
+    assert!(snippets("pass-inset-transformed").is_empty(), "{f:#?}");
 }

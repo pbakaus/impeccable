@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Error: --changed scans the files git reports as changed and takes no file, URL, or --cdp targets\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

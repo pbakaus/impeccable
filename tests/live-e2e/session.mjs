@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { runAgentLoop } from './agent.mjs';
 import { ENGINE_MISSING_MESSAGE, engineEnv, findEngineBinary } from '../lib/engine-bin.mjs';
 import { armLiveServerReaper, trackServerChild } from '../lib/live-servers.mjs';
+import { withoutProviderKeys } from '../lib/dev-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -217,7 +218,8 @@ export function startDevServer(tmp, runtime) {
     // runtime.env lets a fixture pin framework behavior. Astro 7 needs
     // ASTRO_DEV_BACKGROUND set: it auto-detects AI-agent environments and
     // daemonizes `astro dev`, which the harness reads as a crashed server.
-    env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1', ...(runtime.env || {}) },
+    // Provider keys stop at the harness: fixture dev servers run third-party code.
+    env: { ...withoutProviderKeys(process.env), FORCE_COLOR: '0', NO_COLOR: '1', ...(runtime.env || {}) },
     stdio: ['ignore', 'pipe', 'pipe'],
   }));
 
@@ -258,6 +260,23 @@ export function startDevServer(tmp, runtime) {
   });
 
   return { child, ready, log: () => bufLog.join('') };
+}
+
+async function waitForHttpOk(url, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last = 'no response';
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(5_000) });
+      await res.arrayBuffer().catch(() => {});
+      if (res.status < 500) return;
+      last = `HTTP ${res.status}`;
+    } catch (err) {
+      last = err.message;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`dev server at ${url} still failing after ${timeoutMs}ms (${last})`);
 }
 
 function readTimeoutEnv(name, fallback) {
@@ -412,6 +431,16 @@ export async function bootFixtureSession({
     const { port: devPort } = await dev.ready;
     trace('setup.dev_server.end', { fixture: name, port: devPort });
     log(`dev server ready on ${devPort} in ${formatDuration(Date.now() - devStartedAt)}`);
+    if (runtime.waitForHttpOk) {
+      // Nuxt prints its URL before the first build finishes and serves a
+      // 503 loading page until then; its polling would fail console hygiene.
+      const okStartedAt = Date.now();
+      await waitForHttpOk(
+        `${runtime.scheme || 'http'}://127.0.0.1:${devPort}/`,
+        readTimeoutEnv('IMPECCABLE_E2E_DEV_READY_TIMEOUT_MS', runtime.readyTimeoutMs ?? 120_000),
+      );
+      log(`dev server answered without a 5xx in ${formatDuration(Date.now() - okStartedAt)}`);
+    }
 
     // Agent loop runs concurrently — abort on teardown.
     if (agent) {

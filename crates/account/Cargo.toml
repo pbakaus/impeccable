@@ -1,0 +1,34 @@
+[package]
+name = "impeccable-account"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# `impeccable login | logout | whoami`: OAuth sign-in to the Impeccable
+# account service and the credential lifecycle behind it. See docs/RUNTIME-ENV.md (Account sign-in).
+
+[features]
+# Trust `IMPECCABLE_PRO_RELEASE_KEYS` in place of the compiled release keys.
+# Tests and local rehearsals only; release builds never enable it.
+test-release-keys = []
+
+[dependencies]
+impeccable-common = { path = "../common" }
+impeccable-context = { path = "../context" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
+ring = "0.17.14"
+sha2 = "0.10"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+url = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"
+
+[dev-dependencies]
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }

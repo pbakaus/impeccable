@@ -127,6 +127,9 @@ if (IS_BROWSER && !__impeccable) {
       // Handle 0 is the JS `document.body` null key (a bare document).
       groupMap.set(__el(g.el), g.findings);
     }
+    // Elements a counted finding speaks for (` (and N more)`): the visual
+    // pass treats them as reported.
+    groupMap.collapsed = new Set((collected.collapsed || []).map(__el).filter(Boolean));
     return {
       groupMap,
       allFindings: browserFindingsFromMap(groupMap),
@@ -170,6 +173,7 @@ if (IS_BROWSER && !__impeccable) {
     const elId = __impeccable.visual_contrast_result_el(JSON.stringify(result));
     const el = __el(elId);
     if (!el) return false;
+    if (groupMap.collapsed && groupMap.collapsed.has(el)) return false;
     const existing = groupMap.get(el) || [];
     const finding = JSON.parse(__impeccable.visual_contrast_result_finding(elId, JSON.stringify(existing), JSON.stringify(result)));
     if (!finding) return false;

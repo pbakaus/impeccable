@@ -1,0 +1,10 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"reason\":\"shared_line\",\"file\":\"index.html\",\"candidates\":[{\"startLine\":1,\"endLine\":1}],\"hint\":\"The element shares a source line with other markup, so a wrapper around its lines would take that markup with it. Write the wrapper manually with each marker on a line of its own. See \\\"Handle fallback\\\" in live.md.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "index.html": "<div class=\"row\"><span class=\"price\">9</span><span class=\"unit\">/mo</span></div>"
+  }
+}

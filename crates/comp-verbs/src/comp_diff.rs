@@ -313,6 +313,8 @@ pub struct CompareRegion {
     pub verdict: String,
     pub ink_comp: Option<InkBox>,
     pub ink_build: Option<InkBox>,
+    /// The (dx, dy) the build crop was read at: the global shift, or (0, 0) for a region that did not move with it.
+    pub offset: (i64, i64),
     pub a: Image,
     pub b: Image,
 }
@@ -323,6 +325,7 @@ pub struct CompareResult {
     pub whole: Score,
     pub regions: Vec<CompareRegion>,
     pub aligned: Image,
+    /// The whole-page estimate; each region records the offset it was actually read at.
     pub shift: Shift,
     pub comp_palette: Vec<m::DominantColor>,
     pub build_palette: Vec<m::DominantColor>,
@@ -352,8 +355,17 @@ pub fn compare(
     let mut regions = Vec::with_capacity(regions_in.len());
     for rr in regions_in {
         let a = region_crop(comp, &rr);
-        let b = region_crop(&aligned, &rr);
-        let s = score_pair(&a, &b, rr.kind.as_deref());
+        let mut b = region_crop(&aligned, &rr);
+        let mut s = score_pair(&a, &b, rr.kind.as_deref());
+        let mut offset = (shift.dx, shift.dy);
+        // The global shift fits the body; a region that did not move (it matches unshifted) is cropped unshifted.
+        if shift.dx != 0 || shift.dy != 0 {
+            let b0 = region_crop(&as_captured, &rr);
+            let s0 = score_pair(&a, &b0, rr.kind.as_deref());
+            if s0.overall > s.overall && verdict_for(&s0, rr.kind.as_deref()) == "match" {
+                (b, s, offset) = (b0, s0, (0, 0));
+            }
+        }
         let verdict = verdict_for(&s, rr.kind.as_deref()).to_string();
         regions.push(CompareRegion {
             id: rr.id,
@@ -366,6 +378,7 @@ pub fn compare(
             verdict,
             ink_comp: ink_box(&a),
             ink_build: ink_box(&b),
+            offset,
             a,
             b,
         });
@@ -431,6 +444,7 @@ fn region_json(r: &CompareRegion) -> Value {
         "score": r.score.to_json(),
         "verdict": r.verdict,
         "inkBox": json!({ "comp": ink_box_json(&r.ink_comp), "build": ink_box_json(&r.ink_build) }),
+        "offset": json!({ "dx": r.offset.0, "dy": r.offset.1 }),
     })
 }
 
@@ -826,5 +840,46 @@ mod region_isolation_regression {
         let bc = region_crop(&b, &rr);
         assert_eq!(ac.height, 22, "crop must honor the declared box");
         assert_eq!(ac.data, bc.data, "neighbours cannot change the target pixels");
+    }
+
+    #[test]
+    fn unmoved_header_is_not_dragged_by_the_body_shift() {
+        let page = |body_dy: f64| {
+            let mut img = r::create_image(400, 400, [250, 246, 238, 255]);
+            r::fill_rect(&mut img, 0., 0., 400., 60., [30., 30., 40., 255.]);
+            r::fill_rect(&mut img, 20., 20., 80., 20., [240., 240., 240., 255.]);
+            r::fill_rect(&mut img, 200., 25., 160., 10., [200., 200., 210., 255.]);
+            for i in 0..5 {
+                let c = [[20., 90., 160., 255.], [190., 60., 40., 255.]][i % 2];
+                r::fill_rect(&mut img, 20., 80. + body_dy + i as f64 * 60., 360., 30., c);
+            }
+            img
+        };
+        let spec = json!({ "regions": [
+            { "id": "header", "box": { "x": 0.0, "y": 0.0, "w": 1.0, "h": 0.15 } },
+            { "id": "body", "box": { "x": 0.0, "y": 0.2, "w": 1.0, "h": 0.6 } },
+        ] });
+        let result = compare(&page(0.), &page(16.), Some(&spec), "stretch", "t", None);
+        assert_ne!(result.shift.dy, 0, "fixture must make the body shift win");
+        assert_eq!(result.regions[0].verdict, "match", "header: {}", result.regions[0].score.overall);
+        assert_eq!(result.regions[1].verdict, "match", "body: {}", result.regions[1].score.overall);
+        assert_eq!((result.regions[0].offset, result.regions[1].offset), ((0, 0), (0, result.shift.dy)));
+    }
+
+    #[test]
+    fn displaced_region_keeps_the_shifted_reading() {
+        let page = |body_dy: f64, strip: (f64, f64)| {
+            let mut img = r::create_image(400, 400, [250, 246, 238, 255]);
+            for i in 0..4 {
+                let c = [[20., 90., 160., 255.], [190., 60., 40., 255.]][i % 2];
+                r::fill_rect(&mut img, 20., 80. + body_dy + i as f64 * 60., 360., 30., c);
+            }
+            r::fill_rect(&mut img, 20., strip.0, 360., strip.1, [30., 30., 40., 255.]);
+            img
+        };
+        let spec = json!({ "regions": [{ "id": "strip", "box": { "x": 0.0, "y": 0.85, "w": 1.0, "h": 0.075 } }] });
+        let result = compare(&page(0., (340., 30.)), &page(16., (340., 15.)), Some(&spec), "stretch", "t", None);
+        assert_ne!(result.shift.dy, 0, "fixture must make the body shift win");
+        assert_eq!((result.regions[0].verdict.as_str(), result.regions[0].offset), ("missing", (0, result.shift.dy)));
     }
 }

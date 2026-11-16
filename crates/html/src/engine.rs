@@ -23,6 +23,7 @@ use crate::background::{
 };
 use crate::cascade::{build_static_style_map, collect_static_css_text};
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::{ImageSampler, ImageSamples};
 use crate::page::{
     check_cream_palette, check_page_layout, check_repeated_container_text_from_doc,
     check_static_page_typography,
@@ -102,6 +103,13 @@ pub struct DetectHtmlOptions<'a> {
     /// files, the way the built-in text-content analyzers do). A pack that
     /// implements both therefore never reports twice for the same file.
     pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    /// Where the sampled-contrast path (#560) gets an image's pixels:
+    /// decoded here and written to the persistent sample cache (`detect`),
+    /// or read from that cache alone, never decoding (the edit hook).
+    pub image_samples: ImageSamples,
+    /// The persistent sample cache directory; `None` is the default
+    /// (`IMPECCABLE_SAMPLE_CACHE`, else `<home>/.impeccable/sample-cache`).
+    pub sample_cache_dir: Option<&'a Path>,
 }
 
 /// Errors of the static engine.
@@ -139,6 +147,7 @@ fn run_rule(
     rule_id: &str,
     el: &StaticElement<'_>,
     tag: &str,
+    images: &ImageSampler,
     color_seen: &mut SafeTagTextSeen,
 ) -> Vec<RuleHit> {
     let style = el.style();
@@ -147,7 +156,7 @@ fn run_rule(
             let radius = resolve_border_radius_scalar_px(style, pf0(sv(style, "width")));
             check_element_borders(tag, style, radius, el)
         }
-        "color-rules" => check_element_colors(el, style, tag, None, color_seen),
+        "color-rules" => check_element_colors(el, style, tag, None, color_seen, images),
         "hover-color-rules" => check_element_hover_contrast(el, style, tag),
         "dark-glow" => {
             let base = el.parent_element().unwrap_or(*el);
@@ -230,7 +239,7 @@ pub fn detect_html_source(
         Meta::new("parse-html", "parse-document", fp),
         || StaticDocument::parse(html),
     );
-    let (css_text, pattern_css_text) = collect_static_css_text(
+    let (css, pattern_css_text) = collect_static_css_text(
         &doc,
         &file_dir,
         profile,
@@ -238,13 +247,20 @@ pub fn detect_html_source(
         options.warn,
         options.ignored_linked_stylesheet,
     );
-    build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
+    build_static_style_map(&mut doc, &css, profile, fp);
+    let css_text = css.text;
     // A stylesheet the engine could not read may round any card it never saw
     // a radius for; the side-accent gate keeps those findings.
     if crate::cascade::has_unread_stylesheet(&doc, &file_dir) {
         doc.set_unread_stylesheet();
     }
     let doc = doc;
+    let images = ImageSampler::new(
+        &file_dir.to_string_lossy(),
+        options.image_samples,
+        options.sample_cache_dir,
+    );
+    images.decode_ahead(&doc);
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
@@ -253,13 +269,16 @@ pub fn detect_html_source(
         let elements = doc.query_selector_all(selector);
         // One document, one set of already-reported SAFE_TAGS text colours.
         let mut color_seen = SafeTagTextSeen::default();
+        // Each low-contrast finding this rule pushed, with its element's
+        // handle, for the count below.
+        let mut pair_findings: Vec<(usize, u64)> = Vec::new();
         for el in &elements {
             let tag = el.tag_lower();
             let hits = profile::findings(
                 profile,
                 Meta::new("element", rule_id, fp),
                 |h: &RuleHit| h.id.as_str(),
-                || run_rule(rule_id, el, &tag, &mut color_seen),
+                || run_rule(rule_id, el, &tag, &images, &mut color_seen),
             );
             for h in hits {
                 if scoped_ignore_active(el, &h.id) {
@@ -284,9 +303,15 @@ pub fn detect_html_source(
                         f.severity = sev;
                         impeccable_core::findings::derive_advisory_flag(&mut f);
                     }
+                    if f.antipattern == "low-contrast" {
+                        pair_findings.push((findings.len(), crate::adapters::element_handle(el)));
+                    }
                     findings.push(f);
                 }
             }
+        }
+        if !pair_findings.is_empty() {
+            count_colour_pairs(&mut findings, &pair_findings, color_seen.take_copies(), &elements);
         }
     }
 
@@ -536,6 +561,71 @@ pub fn detect_html_source(
     }
 }
 
+/// One `low-contrast` finding per colour pair (taste call r14-t2): the
+/// findings `pair_findings` names (index into `findings`, element handle)
+/// that share a snippet and a severity collapse onto the first, which says
+/// how many more elements wear the pair. The copies the SAFE_TAGS dedupe
+/// dropped (`copies`, as `(owner, copy)`) count for the element that
+/// claimed their pair, except a copy an inline ignore waives.
+fn count_colour_pairs(
+    findings: &mut Vec<Finding>,
+    pair_findings: &[(usize, u64)],
+    copies: Vec<(u64, u64)>,
+    elements: &[StaticElement<'_>],
+) {
+    use std::collections::{HashMap, HashSet};
+    let mut copies_of: HashMap<u64, usize> = HashMap::new();
+    if !copies.is_empty() {
+        let by_handle: HashMap<u64, &StaticElement<'_>> =
+            elements.iter().map(|e| (crate::adapters::element_handle(e), e)).collect();
+        let mut seen: HashSet<(u64, u64)> = HashSet::new();
+        for (owner, copy) in copies {
+            if !seen.insert((owner, copy)) {
+                continue;
+            }
+            if by_handle.get(&copy).is_some_and(|e| scoped_ignore_active(e, "low-contrast")) {
+                continue;
+            }
+            *copies_of.entry(owner).or_default() += 1;
+        }
+    }
+    let mut first_of_element: HashSet<u64> = HashSet::new();
+    let mut groups: Vec<(usize, usize)> = Vec::new();
+    let mut index: HashMap<(String, String), usize> = HashMap::new();
+    let mut drop: HashSet<usize> = HashSet::new();
+    for &(i, owner) in pair_findings {
+        let f = &findings[i];
+        let mut weight = 1;
+        if first_of_element.insert(owner) {
+            weight += copies_of.get(&owner).copied().unwrap_or(0);
+        }
+        match index.get(&(f.snippet.clone(), f.severity.clone())) {
+            Some(&g) => {
+                groups[g].1 += weight;
+                drop.insert(i);
+            }
+            None => {
+                index.insert((f.snippet.clone(), f.severity.clone()), groups.len());
+                groups.push((i, weight));
+            }
+        }
+    }
+    for (i, total) in groups {
+        if total > 1 {
+            let f = &mut findings[i];
+            f.snippet = impeccable_core::checks::rules::with_more_count(&f.snippet, total - 1);
+        }
+    }
+    if !drop.is_empty() {
+        let mut i = 0;
+        findings.retain(|_| {
+            let keep = !drop.contains(&i);
+            i += 1;
+            keep
+        });
+    }
+}
+
 /// The selectors css-select would refuse that a scan of `html` hits (for the
 /// parity report; not part of the JS API).
 pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
@@ -545,7 +635,7 @@ pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
     let mut doc = StaticDocument::parse(html);
-    let (css_text, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
-    build_static_style_map(&mut doc, &css_text, None, &file_str);
+    let (css, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
+    build_static_style_map(&mut doc, &css, None, &file_str);
     doc.unsupported_selectors()
 }

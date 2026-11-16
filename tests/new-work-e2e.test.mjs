@@ -341,7 +341,7 @@ describe('new-work-e2e: serve-question decision page', () => {
       assert.equal(bot.results[0].action, 'close');
       assert.ok(bot.results[0].beat > 0, 'a heartbeat landed before the tab closed');
       // --wait must observe the stale heartbeat and report the closed page.
-      const res = await run(['--wait', '--key', key, '--poll', '30'], cwd);
+      const res = await run(['--wait', '--key', key, '--poll', '120'], cwd);
       assert.equal(res.code, 4, `expected exit 4, got ${res.code}: ${res.out}`);
       assert.match(res.out, /PAGE CLOSED/);
     } finally {

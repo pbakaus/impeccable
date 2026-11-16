@@ -147,6 +147,18 @@
       width: 200px; height: 56px; border-radius: 10px;
       background-image: linear-gradient(135deg, rgb(95, 158, 160), rgb(106, 156, 153));
     }
+    /* One dark teal fading only to 0.8 (observations-1010 row 14,
+       articulation-hub.vercel.app) is that colour laid flat: every stop
+       keeps 0.75 alpha or more. */
+    /* Teal to the same at 0.5 is a visible two-tone ramp. */
+    .teal-half-fade-cta {
+      width: 200px; height: 56px; border-radius: 10px;
+      background-image: linear-gradient(135deg, rgb(20, 184, 166), rgba(20, 184, 166, 0.5));
+    }
+    .flat-fade-teal-cta {
+      width: 200px; height: 56px; border-radius: 10px;
+      background-image: linear-gradient(135deg, rgb(29, 74, 84), rgba(29, 74, 84, 0.8));
+    }
   </style>
 </head>
 <body>
@@ -187,6 +199,9 @@
       </div>
       <div class="dark-context">
         <div class="cyan-950-panel"></div>
+      </div>
+      <div class="dark-context">
+        <div class="teal-half-fade-cta"></div>
       </div>
 
       <h3>Neon text on dark</h3>
@@ -252,6 +267,9 @@
       </div>
       <div class="dark-context">
         <div class="grayed-teal-cta"></div>
+      </div>
+      <div class="dark-context">
+        <div class="flat-fade-teal-cta"></div>
       </div>
 
       <h3>Color without painted glyphs</h3>

@@ -19,7 +19,7 @@ fn source_images_distinguish_markup_from_bindings_and_code_literals() {
         // An unclosed attribute quote does not hide the rest of the file.
         ("oops.html", include_str!("fixtures/broken-image/unclosed-quote.html"), &[3]),
         ("View.vue", include_str!("fixtures/broken-image/bindings.vue"), &[7, 8]),
-        ("index.html", include_str!("fixtures/broken-image/missing.html"), &[1, 2, 3, 4, 5, 7, 9, 11, 18, 24]),
+        ("index.html", include_str!("fixtures/broken-image/missing.html"), &[1, 2, 3, 4, 5, 7, 9, 11, 18, 24, 30]),
         ("markers.ts", include_str!("fixtures/broken-image/literals.js"), &[]),
         ("markers.js", include_str!("fixtures/broken-image/literals.js"), &[]),
         ("markers.mjs", include_str!("fixtures/broken-image/literals.js"), &[]),

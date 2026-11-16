@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extension scanner: deferred contrast</title>
+<style>
+  body { margin: 48px; background: #fff; color: #222; font: 18px/1.6 Arial, sans-serif; }
+  p { max-width: 700px; }
+  .spacer { height: 1800px; }
+  .image-text {
+    background-image: url(white.svg);
+    background-size: cover;
+    color: #ddd;
+    width: 700px;
+    height: 180px;
+    font: 24px/1.5 Arial, sans-serif;
+    padding: 24px;
+  }
+</style>
+<h1>Background recovery test</h1>
+<p>Scan here first. Stop the background worker before scrolling to the pale text below.</p>
+<div class="spacer"></div>
+<h2>Deferred image contrast</h2>
+<p class="image-text">This pale text over a white image must be reported after scrolling into view.</p>
+<p>End of test.</p>
+</html>

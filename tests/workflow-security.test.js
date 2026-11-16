@@ -30,6 +30,7 @@ describe('workflow execution boundaries', () => {
     const sync = workflows['sync-generated-output.yml'];
     expect(sync.permissions).toEqual({ contents: 'write' });
     expect(sync.env.GENERATED_PATHS.split(/\s+/)).toContain('.omp');
+    expect(sync.env.GENERATED_PATHS.split(/\s+/)).toContain('.devin');
     expect(workflows['sheriff.yml'].permissions).toEqual({
       actions: 'read', checks: 'read', contents: 'read', issues: 'write', 'pull-requests': 'write',
     });

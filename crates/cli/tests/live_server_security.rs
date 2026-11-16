@@ -1,7 +1,8 @@
 //! Live-server checks ported from main's tests/live-server.test.mjs:
 //! /source symlink confinement (d008dd98, #618), page-controlled poller
 //! field stripping (bda7411a, #488), and the /live.js project-ignores
-//! prelude (5330fa35 + 152d6940, #639).
+//! prelude (5330fa35 + 152d6940, #639), plus the ref-scoped
+//! /manual-edit-discard route keeping a page's other staged edits (#1248).
 
 #![cfg(unix)]
 
@@ -167,4 +168,93 @@ fn live_server_source_ignores_and_poller_fields() {
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&dir);
     result.expect("live-server security scenario");
+}
+
+#[test]
+fn manual_edit_discard_with_ref_keeps_sibling_edits() {
+    use serde_json::json;
+
+    // Stops the server even when an assert below fails. The reaper holds a
+    // pipe to this process, so a killed test run stops the server too (#717).
+    struct Server {
+        child: std::process::Child,
+        reaper: std::process::Child,
+        dir: std::path::PathBuf,
+    }
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.reaper.kill();
+            let _ = self.reaper.wait();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("impeccable-live-discard-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let child = std::process::Command::new(env!("CARGO_BIN_EXE_impeccable"))
+        .arg("live-server")
+        .current_dir(&dir)
+        .env("IMPECCABLE_LIVE_COPY_AGENT", "off")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn live-server");
+    let reaper = std::process::Command::new("sh")
+        .args(["-c", &format!("cat >/dev/null; kill {}", child.id())])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn reaper");
+    let _server = Server { child, reaper, dir: dir.clone() };
+
+    let pid_file = dir.join(".impeccable/live/server.json");
+    assert!(wait_for(&pid_file, 10), "server pid file never appeared");
+    let info: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&pid_file).unwrap()).unwrap();
+    let port = info["port"].as_u64().expect("port") as u16;
+    let token = info["token"].as_str().expect("token");
+
+    let stash = |id: &str, page_url: &str, op: serde_json::Value| {
+        let body = json!({ "token": token, "id": id, "pageUrl": page_url, "element": {}, "ops": [op] });
+        let (st, out) = http(port, "POST", &format!("/manual-edit-stash?token={}", token), Some(&body.to_string()));
+        assert_eq!(st, 200, "{}", out);
+    };
+    let discard = |query: &str| -> serde_json::Value {
+        let (st, out) = http(port, "POST", &format!("/manual-edit-discard?token={}&{}", token, query), None);
+        assert_eq!(st, 200, "{}", out);
+        serde_json::from_str(&out).unwrap()
+    };
+    // [pageUrl, ref, newText] per op, in buffer order.
+    let rows = |entries: &serde_json::Value| -> serde_json::Value {
+        let ops = entries.as_array().unwrap().iter().flat_map(|e| {
+            e["ops"].as_array().unwrap().iter().map(move |o| json!([e["pageUrl"], o["ref"], o["newText"]]))
+        });
+        ops.collect()
+    };
+    let pending = || -> serde_json::Value {
+        let path = dir.join(".impeccable/live/pending-manual-edits.json");
+        let buffer: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        rows(&buffer["entries"])
+    };
+
+    // The removal shares an entry with the copy edit, and /docs reuses its ref.
+    stash("a1b2c3d4", "/", json!({ "ref": "main>h1", "tag": "h1", "originalText": "Hello", "newText": "Hi there" }));
+    stash("a1b2c3d4", "/", json!({ "ref": "main>p", "tag": "p", "originalText": "World", "deleted": true, "removeElement": true }));
+    stash("c3d4e5f6", "/docs", json!({ "ref": "main>p", "tag": "p", "originalText": "Docs", "newText": "Guide" }));
+
+    // Undo for one removed element (#1248): only that ref on that page goes.
+    let res = discard("pageUrl=%2F&ref=main%3Ep");
+    assert_eq!(res["discarded"], 1, "{}", res);
+    assert_eq!(res["totalCount"], 2, "{}", res);
+    assert_eq!(rows(&res["entries"]), json!([["/", "main>p", null]]), "{}", res);
+    assert_eq!(pending(), json!([["/", "main>h1", "Hi there"], ["/docs", "main>p", "Guide"]]));
+
+    // Without a ref the discard stays page-wide.
+    let res = discard("pageUrl=%2F");
+    assert_eq!(res["discarded"], 1, "{}", res);
+    assert_eq!(res["totalCount"], 1, "{}", res);
+    assert_eq!(pending(), json!([["/docs", "main>p", "Guide"]]));
 }

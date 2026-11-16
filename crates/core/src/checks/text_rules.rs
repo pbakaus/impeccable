@@ -181,7 +181,20 @@ pub fn is_kicker_candidate(o: &KickerCandidateInput) -> bool {
     if STEP_RE.is_match(o.kicker_text) || TWO_DIGITS_RE.is_match(o.kicker_text) {
         return false;
     }
-    if KICKER_META_TEXT_RE.is_match(o.kicker_text) {
+    // A meta line (a byline, a date, a path) is not a kicker. Over an h1 a
+    // dotted line that names no date, reading time or author ("Bloom seeds ·
+    // Packet 1 of 4") is the page's eyebrow all the same.
+    re!(KICKER_PATH_SEPARATOR_RE, format!(r"{ws}[/›»>]{ws}", ws = WS));
+    re!(
+        KICKER_BYLINE_WORD_RE,
+        r"(?i)\b(by|min|mins|minutes?|read|updated|published|posted|jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b"
+    );
+    if KICKER_META_TEXT_RE.is_match(o.kicker_text)
+        && !(o.heading_level == 1.0
+            && !KICKER_META_YEAR_RE.is_match(o.kicker_text)
+            && !KICKER_PATH_SEPARATOR_RE.is_match(o.kicker_text)
+            && !KICKER_BYLINE_WORD_RE.is_match(o.kicker_text))
+    {
         return false;
     }
     if KICKER_DOC_NUMBERING_RE.is_match(o.kicker_text) {
@@ -206,6 +219,26 @@ pub fn is_kicker_candidate(o: &KickerCandidateInput) -> bool {
         return false;
     }
     true
+}
+
+/// The caps a kicker is set in, as `is_kicker_candidate` reads them: the
+/// `font-variant` and `font-variant-caps` values, plus `small-caps` when the
+/// first face in `font-family` is a small-caps cut ("IM Fell English SC",
+/// "Alegreya SC", "Cormorant Small Caps"), which sets small caps with no
+/// variant at all.
+pub fn kicker_caps(font_variant: &str, font_variant_caps: &str, font_family: &str) -> String {
+    re!(SMALL_CAPS_FACE_RE, r"(?i)(\bSC|small ?caps)$");
+    let first = font_family.split(',').next().unwrap_or("");
+    let face = first.trim().trim_matches(|c| c == '"' || c == '\'');
+    // "SC" also names Simplified Chinese cuts (Noto Sans SC, PingFang SC),
+    // which set no small caps.
+    re!(CHINESE_FACE_RE, r"(?i)^(noto|pingfang|source han|hiragino|microsoft|harmonyos|misans|lxgw|zcool|ma shan|long cang|zhi mang|liu jian|songti|heiti|kaiti|yuanti|baoli|libian|lantinghei|lantingxian|weibei|xingkai|hannotate|hanzipen|wawati|yuppy|st(heiti|song|kaiti|fangsong|xihei|zhongsong|hupo|caiyun|xingkai|liti)|lisong|fangsong|apple lisung|wenquanyi|droid sans fallback)");
+    let face_caps = if SMALL_CAPS_FACE_RE.is_match(face) && !CHINESE_FACE_RE.is_match(face) {
+        " small-caps"
+    } else {
+        ""
+    };
+    format!("{font_variant} {font_variant_caps}{face_caps}")
 }
 
 /// The size a kicker was always allowed, whatever the heading.
@@ -472,7 +505,8 @@ pub fn is_monospace_family(font_family: &str) -> bool {
             .any(|w| matches!(w, "mono" | "monospace" | "monospaced" | "sfmono"))
 }
 
-/// How many em dashes `body` sets: each `—`, each `--` written in its place
+/// How many em dashes `body` sets: each `—` (a pair `——`, the Chinese
+/// dash, is one), each `--` written in its place
 /// (two hyphens and no more, followed by a non-space), and each `---` set
 /// between two letters or digits (the LaTeX and SmartyPants spelling). Any
 /// other longer run of hyphens is a rule, not a dash: terminal output and
@@ -485,8 +519,14 @@ pub fn count_em_dashes(body: &str) -> usize {
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '—' {
-            count += 1;
-            i += 1;
+            // Chinese sets its dash as two em dashes side by side (破折号,
+            // `——`): one mark, counted once (taste call r14-t6). Any other
+            // run counts each dash, as before.
+            let start = i;
+            while i < chars.len() && chars[i] == '—' {
+                i += 1;
+            }
+            count += if i - start == 2 { 1 } else { i - start };
         } else if chars[i] == '-' {
             let start = i;
             while i < chars.len() && chars[i] == '-' {
@@ -515,12 +555,20 @@ pub fn count_em_dashes(body: &str) -> usize {
 /// JS: checks.mjs#checkEmDashOveruse. Two gates (absolute floor + density)
 /// over already-rendered text. `None` for a non-string input.
 pub fn check_em_dash_overuse(text: Option<&str>) -> Vec<Finding> {
+    check_em_dash_overuse_less(text, 0)
+}
+
+/// [`check_em_dash_overuse`], with `separators` of the text's em dashes
+/// left out of the count: dashes the caller has read as list separators
+/// (a short term, a dash, its description), which set punctuation in no
+/// sentence.
+pub fn check_em_dash_overuse_less(text: Option<&str>, separators: usize) -> Vec<Finding> {
     re!(WS_RE, format!("{}+", WS));
     let body: String = match text {
         Some(t) => WS_RE.replace_all(t, " ").into_owned(),
         None => String::new(),
     };
-    let count = count_em_dashes(&body);
+    let count = count_em_dashes(&body).saturating_sub(separators);
     if count < EM_DASH_FLOOR {
         return vec![];
     }
@@ -666,6 +714,8 @@ mod tests {
     fn count_em_dashes_cases() {
         assert_eq!(count_em_dashes("a — b — c"), 2);
         assert_eq!(count_em_dashes("a--b"), 1);
+        assert_eq!(count_em_dashes("长白山——中国"), 1, "the Chinese paired dash is one mark");
+        assert_eq!(count_em_dashes("a — b ——— c"), 4, "a run of three counts each");
         assert_eq!(count_em_dashes("a-- b"), 0);
         // A run longer than two is a rule, not a dash.
         assert_eq!(count_em_dashes("----x"), 0);

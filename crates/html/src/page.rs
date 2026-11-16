@@ -437,6 +437,8 @@ pub fn check_page_layout(doc: &StaticDocument) -> Vec<RuleHit> {
     let mut findings = Vec::new();
     let all = doc.query_selector_all("*");
     let mut flagged: Vec<StaticElement<'_>> = Vec::new();
+    // The panel each flagged card sits in, beside it.
+    let mut outers: Vec<StaticElement<'_>> = Vec::new();
     for el in &all {
         if !is_card_like(el) {
             continue;
@@ -464,28 +466,39 @@ pub fn check_page_layout(doc: &StaticDocument) -> Vec<RuleHit> {
             if is_card_like(&p) {
                 if !is_dialog_card(&p) && !frames_embedded_content(el, &p) {
                     flagged.push(*el);
+                    outers.push(p);
                 }
                 break;
             }
             parent = p.parent_element();
         }
     }
-    for el in &flagged {
+    // One finding per outer panel, the first inner card in document order
+    // naming it and counting the rest (taste call r14-t5). A mockup's panel
+    // and a page's panel never share a finding.
+    let mut panels: Vec<(StaticElement<'_>, Option<String>, String, usize)> = Vec::new();
+    for (el, outer) in flagged.iter().zip(&outers) {
         let is_ancestor_of_flagged = flagged
             .iter()
             .any(|other| other != el && el.contains(other));
         if !is_ancestor_of_flagged {
-            let mut hit = RuleHit::new(
-                "nested-cards",
-                format!("Card inside card ({})", el.tag_lower()),
-            );
             // A mockup's panels report as advisory
             // (decision r6-t3-nested-cards-mockups).
-            if crate::decorative_text::box_in_mockup(el) {
-                hit.severity = Some(impeccable_core::checks::rules::ADVISORY_SEVERITY.to_string());
+            let severity = crate::decorative_text::box_in_mockup(el)
+                .then(|| impeccable_core::checks::rules::ADVISORY_SEVERITY.to_string());
+            match panels.iter_mut().find(|(o, s, _, _)| o == outer && *s == severity) {
+                Some(panel) => panel.3 += 1,
+                None => panels.push((*outer, severity, el.tag_lower(), 0)),
             }
-            findings.push(hit);
         }
+    }
+    for (_, severity, tag, more) in panels {
+        let mut hit = RuleHit::new(
+            "nested-cards",
+            impeccable_core::checks::rules::with_more_count(&format!("Card inside card ({tag})"), more),
+        );
+        hit.severity = severity;
+        findings.push(hit);
     }
     findings
 }

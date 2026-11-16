@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Em dash overuse, dashes that separate a list's terms</title>
+<!--
+  Should pass in a browser scan. Each item of the widget list and each entry
+  of the docs index sets a short term, a dash, then its description
+  (karmaboard.app, takejournal.com). The dash separates, as a colon would; it
+  punctuates no sentence. The static engine has no list structure to read
+  and still counts them. The twin, em-dash-prose-list.html, keeps the dash
+  inside sentences and reports.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #ffffff; color: #111111; }
+  h2 { font-size: 24px; line-height: 32px; }
+  h3 { font-size: 18px; line-height: 24px; }
+  ul { margin: 0 0 16px; }
+  .check { color: #2563eb; margin-right: 8px; }
+</style>
+</head>
+<body>
+  <h2>Widgets</h2>
+  <ul>
+    <li><span class="check">✓</span><span>Time &amp; Date — A clean clock and calendar in your screen's local time.</span></li>
+    <li><span class="check">✓</span><span>Weather — Current conditions and forecast for any city you choose.</span></li>
+    <li><span class="check">✓</span><span>US Headlines — Top national news stories, refreshed daily.</span></li>
+    <li><span class="check">✓</span><span>World Headlines — The biggest international stories.</span></li>
+    <li><span class="check">✓</span><span>Quote of the Day — A fresh quote every morning.</span></li>
+    <li><span class="check">✓</span><span>Market Movers — Today's biggest stock winners and losers.</span></li>
+  </ul>
+  <h2>Docs</h2>
+  <section>
+    <h3>Getting started</h3>
+    <ul><li><a href="#first">Your first ten minutes</a> — the demo, signing up, where your trades come from.</li></ul>
+    <h3>Connections</h3>
+    <ul><li><a href="#sync">Connect and sync</a> — the login, the system, the synced accounts.</li></ul>
+    <h3>Imports</h3>
+    <ul><li><a href="#export">A broker's export</a> — a CSV, XLSX, HTML or PDF of any platform.</li></ul>
+  </section>
+</body>
+</html>

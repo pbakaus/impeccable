@@ -141,8 +141,15 @@ export function normalize(text, { ws, home = os.homedir() }) {
   }
   let wsReal = null;
   try { wsReal = ws ? fs.realpathSync(ws) : null; } catch { /* staged dir already gone */ }
+  // A file:// URL carries the workspace percent-encoded (live's `pageUrls`), so a tmpdir with a space
+  // or a non-ASCII byte would leave the encoded form unmasked. Mask it the way the binary writes it.
+  const encoded = (p) => {
+    if (!p) return null;
+    const e = Array.from(Buffer.from(p.replace(/\\/g, '/'), 'utf8'), (b) => /[A-Za-z0-9\-._~/:]/.test(String.fromCharCode(b)) ? String.fromCharCode(b) : `%${b.toString(16).toUpperCase().padStart(2, '0')}`).join('');
+    return e === p ? null : e;
+  };
   for (const [needle, tag] of [
-    [wsReal, '<WS>'], [ws, '<WS>'], [REPO_ROOT, '<REPO>'], [home, '<HOME>'],
+    [wsReal, '<WS>'], [ws, '<WS>'], [encoded(wsReal), '<WS>'], [encoded(ws), '<WS>'], [REPO_ROOT, '<REPO>'], [home, '<HOME>'],
   ]) {
     if (needle) out = maskPath(out, needle, tag);
   }
@@ -305,7 +312,7 @@ export function runCase(c, { impl = 'js', bin = process.env.IMPECCABLE_BIN } = {
   }
 }
 
-function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
+export function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
   const cwd = path.join(ws, c.cwd || '.');
   let argv;
   if (impl === 'js') {
@@ -324,10 +331,11 @@ function buildInvocation(c, { impl, bin, ws, isolatedHome }) {
     FORCE_COLOR: '0',
     IMPECCABLE_NO_UPDATE_CHECK: '1',
     IMPECCABLE_NO_TELEMETRY: '1',
+    IMPECCABLE_NO_TASTE: '1',
     DO_NOT_TRACK: '1',
     // Seed references are salted per user; a pinned salt keeps goldens stable.
     IMPECCABLE_SEED_SALT: 'oracle',
-    ...(c.isolateHome === false ? {} : { HOME: isolatedHome, USERPROFILE: isolatedHome }),
+    ...(c.isolateHome === false ? {} : { HOME: isolatedHome, USERPROFILE: isolatedHome, CLAUDE_CONFIG_DIR: '' }),
     // What the launcher exports for the binary (see launcher/impeccable in the engine repo).
     ...(impl === 'bin' ? { IMPECCABLE_SKILL_DIR: path.join(REPO_ROOT, 'skill'), IMPECCABLE_SELF: bin } : {}),
     ...Object.fromEntries(Object.entries(c.env || {}).map(([k, v]) => [k, v == null ? v : sub(v)])),

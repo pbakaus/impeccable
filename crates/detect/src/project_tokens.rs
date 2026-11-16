@@ -1,8 +1,8 @@
 //! The custom properties a project declares across its stylesheets: what a
 //! `var(--danger)` in one component holds when the token lives in another
 //! file (a `tokens.css`, a theme sheet). The text engine reads one file at a
-//! time, so the CLI collects these once per project and hands them to every
-//! file it scans there.
+//! time, so the CLI collects these once per checkout and hands them to every
+//! file it scans there, the file's own package first.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,9 +30,11 @@ const MAX_SHEET_BYTES: u64 = 512 * 1024;
 /// ones `detect` skips.
 const SKIP_TOO: &[&str] = &["target", "vendor", "coverage", "out"];
 
-/// The project a file belongs to: the nearest enclosing git checkout, else
-/// the nearest package, else the file's own directory.
-pub fn project_root(file_path: &str) -> String {
+/// The roots whose stylesheets a file's tokens come from, nearest first: its
+/// package inside its git checkout, then the checkout (so a sibling app's
+/// tokens never shadow its own, and a shared package's still resolve), else
+/// the file's own directory. A package above the checkout is not the file's.
+pub fn project_roots(file_path: &str) -> Vec<String> {
     let start = jsp::dirname(&jsp::resolve(file_path, &[]));
     let nearest = |marker: &str| {
         let mut dir = start.clone();
@@ -47,7 +49,13 @@ pub fn project_root(file_path: &str) -> String {
             dir = parent;
         }
     };
-    nearest(".git").or_else(|| nearest("package.json")).unwrap_or(start)
+    let git = nearest(".git");
+    let package = nearest("package.json").filter(|p| git.as_ref().map_or(true, |g| p.len() > g.len()));
+    let mut roots: Vec<String> = package.into_iter().chain(git).collect();
+    if roots.is_empty() {
+        roots.push(start);
+    }
+    roots
 }
 
 /// Every custom property declared in the stylesheets under `root`, first
@@ -129,19 +137,45 @@ fn stylesheets(root: &str) -> Vec<String> {
     sheets
 }
 
-/// Project tokens, collected once per project root.
+/// Project tokens, collected once per root and merged once per roots list.
 #[derive(Default)]
 pub struct ProjectTokens {
     by_root: HashMap<String, Rc<CustomProps>>,
+    by_roots: HashMap<Vec<String>, Rc<CustomProps>>,
 }
 
 impl ProjectTokens {
     pub fn for_file(&mut self, file_path: &str) -> Rc<CustomProps> {
-        let root = project_root(file_path);
-        self.by_root
-            .entry(root)
-            .or_insert_with_key(|root| Rc::new(collect_project_tokens(root)))
-            .clone()
+        let roots = project_roots(file_path);
+        if let Some(merged) = self.by_roots.get(&roots) {
+            return merged.clone();
+        }
+        let mut maps = Vec::new();
+        for root in &roots {
+            maps.push(
+                self.by_root
+                    .entry(root.clone())
+                    .or_insert_with_key(|root| Rc::new(collect_project_tokens(root)))
+                    .clone(),
+            );
+        }
+        let merged = if maps.len() == 1 {
+            maps.remove(0)
+        } else {
+            // The widest root's tokens with each nearer root's laid over
+            // them, so the nearest wins. A nearer root sits inside the wider
+            // one, so its names are already there and `set` replaces them in
+            // place rather than growing the map.
+            let mut merged = (*maps.pop().expect("two roots")).clone();
+            for map in maps.iter().rev() {
+                for (name, value) in map.iter() {
+                    merged.set(name, value.clone());
+                }
+            }
+            Rc::new(merged)
+        };
+        self.by_roots.insert(roots, merged.clone());
+        merged
     }
 }
 
@@ -171,10 +205,44 @@ mod tests {
         #[cfg(unix)]
         std::os::unix::fs::symlink("/dev/zero", dir.join("design-system/zero.css")).unwrap();
         let file = dir.join("app/src/Table.svelte").to_string_lossy().into_owned();
-        assert_eq!(project_root(&file), root);
+        assert_eq!(project_roots(&file), vec![root]);
         let tokens = ProjectTokens::default().for_file(&file);
         assert_eq!(tokens.get("--mark-danger").map(String::as_str), Some("oklch(63% .23 27)"));
         assert_eq!(tokens.get("--mark-ok").map(String::as_str), Some("#16a34a"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_apps_own_tokens_beat_a_sibling_apps_and_shared_ones_still_resolve() {
+        let dir = std::env::temp_dir().join(format!("impeccable-tokens-{}-monorepo", std::process::id()));
+        let root = dir.to_string_lossy().into_owned();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::create_dir_all(dir.join("packages/ui")).unwrap();
+        std::fs::write(dir.join("packages/ui/tokens.css"), ":root { --shared: #16a34a; }\n").unwrap();
+        for (app, danger) in [("a", "#dc2626"), ("b", "#2563eb")] {
+            std::fs::create_dir_all(dir.join(format!("apps/{app}/src"))).unwrap();
+            std::fs::write(dir.join(format!("apps/{app}/package.json")), "{}").unwrap();
+            std::fs::write(dir.join(format!("apps/{app}/tokens.css")), format!(":root {{ --danger: {danger}; }}\n")).unwrap();
+        }
+        let file_a = dir.join("apps/a/src/Table.svelte").to_string_lossy().into_owned();
+        let file_b = dir.join("apps/b/src/Table.svelte").to_string_lossy().into_owned();
+        assert_eq!(project_roots(&file_b), vec![dir.join("apps").join("b").to_string_lossy().into_owned(), root]);
+        let mut project = ProjectTokens::default();
+        let tokens = project.for_file(&file_b);
+        assert_eq!(tokens.get("--danger").map(String::as_str), Some("#2563eb"));
+        assert_eq!(tokens.get("--shared").map(String::as_str), Some("#16a34a"));
+        let tokens = project.for_file(&file_a);
+        assert_eq!(tokens.get("--danger").map(String::as_str), Some("#dc2626"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_package_above_the_checkout_is_not_a_root() {
+        let dir = std::env::temp_dir().join(format!("impeccable-tokens-{}-above", std::process::id()));
+        std::fs::create_dir_all(dir.join("site/.git")).unwrap();
+        std::fs::write(dir.join("package.json"), "{}").unwrap();
+        let file = dir.join("site/templates/table.html").to_string_lossy().into_owned();
+        assert_eq!(project_roots(&file), vec![dir.join("site").to_string_lossy().into_owned()]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

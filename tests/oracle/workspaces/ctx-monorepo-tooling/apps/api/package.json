@@ -1,5 +1,5 @@
 {
   "name": "api",
   "private": true,
-  "dependencies": { "hono": "4.13.7" }
+  "dependencies": { "hono": "4.13.11" }
 }

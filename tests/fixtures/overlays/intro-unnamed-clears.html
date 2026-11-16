@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Overlay hiding: an unnamed intro that ends on its own</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 16px/1.5 system-ui, sans-serif; margin: 0; padding: 40px; color: #111; background: #fff; }
+    .faint { margin: 0; font-size: 14px; line-height: 28px; color: #aaaaaa; }
+    .spl { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(180deg, #cfe9f7 0%, #eafbf9 100%); color: #1d3b5a; font: 700 32px/1.2 system-ui, sans-serif;
+      transition: opacity 300ms; }
+    .spl-logo { animation: logo 1.2s ease forwards; }
+    @keyframes logo { 0% { opacity: 0; transform: scale(.2); } 100% { opacity: 1; transform: none; } }
+    /* An articulation-hub.vercel.app-shaped intro (corpus run 1010): `div.spl`,
+       named by no loader or intro word, fixed over the page, aria-hidden, an
+       opaque gradient and a finite animation; the page's script fades it and
+       removes it after its animation. The URL engine waits for it and hides
+       nothing. Pinned by crates/browser/tests/overlay_hiding.rs. */
+  </style>
+</head>
+<body>
+  <div class="spl" aria-hidden="true"><div class="spl-logo">MOTOR SPEECH LAB</div></div>
+  <h1>A page under an intro</h1>
+  <p class="body-copy" style="max-width: 640px;">This page has copy of its own under the layer: a product, its pricing, its support hours and a note on shipping. A visitor reads it once the layer in front of it is gone, and the scan should read it too. It runs long enough to be more than a title.</p>
+  <p class="faint" id="covered-copy">Faint copy the intro covers.</p>
+  <script>
+    setTimeout(() => {
+      const spl = document.querySelector('.spl');
+      spl.style.opacity = '0';
+      spl.addEventListener('transitionend', () => spl.remove());
+    }, 1300);
+  </script>
+</body>
+</html>

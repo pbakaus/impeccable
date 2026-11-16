@@ -133,20 +133,30 @@ pub fn filter_fresh_findings(env: &Env, findings: Vec<Finding>, project_root: &s
 }
 
 /// JS: buildStalenessDirective(findings)
-pub fn build_staleness_directive(findings: &[Finding]) -> Option<String> {
+///
+/// `command` is the skill command the user types (`/impeccable`, or
+/// `$impeccable` on Codex): the fixed sentence names `<command> doctor`.
+pub fn build_staleness_directive(findings: &[Finding], command: &str) -> Option<String> {
     if findings.is_empty() {
         return None;
     }
     let payload: Vec<Value> = findings.iter().map(|f| f.to_value()).collect();
     let has_reportable = findings.iter().any(|f| f.severity != "auto");
-    let mut lines = vec![
-        format!("CONTEXT_STALE:\n{}", json_pretty(&Value::Array(payload))),
-        "Impeccable's own project files have drifted from what this version reads. Do not stop, reorder, or expand the requested task for any of this.".to_string(),
-        "By severity: `auto` is a migration the next write to that file performs anyway, so apply it then and do not raise it with the user. `mention` gets one short line in your reply with the offered fix. `route` names the command that owns the repair; offer it, and run it only if the user asks.".to_string(),
-        "A finding that reports a deprecated field is binding: treat that field as absent for every decision in this session, whatever value it holds.".to_string(),
-    ];
+    let mut lines = vec![format!("CONTEXT_STALE:\n{}", json_pretty(&Value::Array(payload)))];
     if has_reportable {
-        lines.push("Surface the reportable findings once, after the task response, in at most two sentences. They are already throttled, so say them plainly rather than hedging about whether they matter.".to_string());
+        // One fixed sentence, like UPDATE_AVAILABLE: a paraphrase drifts per
+        // model, and a model that lists the findings tends to repair them as
+        // a side effect of the design task. It leads the block because a
+        // model that skims takes the first imperative it meets.
+        lines.push(format!(
+            "End your final reply to the user with this exact sentence as its last line: \"Impeccable found setup issues in your project. Run `{} doctor` to see them. Fixing them lets Impeccable catch design problems as you build.\" Say it once, do not list the findings, do not run doctor or any repair unless the user asks, and do not raise this again.",
+            command
+        ));
     }
+    lines.extend([
+        "Impeccable's own project files have drifted from what this version reads. Do not stop, reorder, or expand the requested task for any of these findings.".to_string(),
+        "By severity: `auto` is a migration the next write to that file performs anyway, so apply it then and do not raise it with the user. `mention` and `route` reach the user only through that fixed sentence; doctor owns their details and fixes.".to_string(),
+        "A finding that reports a deprecated field is binding: treat that field as absent for every decision in this session, whatever value it holds.".to_string(),
+    ]);
     Some(lines.join(" "))
 }

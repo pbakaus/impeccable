@@ -1,0 +1,440 @@
+//! Current hook entries shared by status, context and hooks on.
+use serde_json::{Map, Value};
+const TIMEOUT_SECONDS: i64 = 5;
+const STATUS_MESSAGE: &str = "Checking UI changes";
+const STOP_TIMEOUT_SECONDS: i64 = 30;
+const STOP_STATUS_MESSAGE: &str = "Design deep pass";
+fn obj(pairs: Vec<(&str, Value)>) -> Value {
+    let mut m = Map::new();
+    for (k, v) in pairs {
+        m.insert(k.to_string(), v);
+    }
+    Value::Object(m)
+}
+
+fn command_hook(command: &str, timeout: i64, status: &str) -> Value {
+    obj(vec![
+        ("type", Value::from("command")),
+        ("command", Value::from(command)),
+        ("timeout", Value::from(timeout)),
+        ("statusMessage", Value::from(status)),
+    ])
+}
+
+/// A command hook with the `commandWindows` sibling Codex 0.146.0+ selects
+/// on Windows (`command_windows.unwrap_or(command)`), pointing at the
+/// launcher's `.cmd` shim so the same `.codex/hooks.json` runs on every OS.
+fn command_hook_with_windows(command: &str, windows: &str, timeout: i64, status: &str) -> Value {
+    obj(vec![
+        ("type", Value::from("command")),
+        ("command", Value::from(command)),
+        ("commandWindows", Value::from(windows)),
+        ("timeout", Value::from(timeout)),
+        ("statusMessage", Value::from(status)),
+    ])
+}
+
+/// JS: stopManifestEntry(command)
+fn stop_manifest_entry(command: &str) -> Value {
+    obj(vec![(
+        "hooks",
+        Value::Array(vec![command_hook(
+            command,
+            STOP_TIMEOUT_SECONDS,
+            STOP_STATUS_MESSAGE,
+        )]),
+    )])
+}
+
+fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
+    obj(vec![(
+        "hooks",
+        Value::Array(vec![command_hook_with_windows(
+            command,
+            windows,
+            STOP_TIMEOUT_SECONDS,
+            STOP_STATUS_MESSAGE,
+        )]),
+    )])
+}
+
+/// The launcher paths the manifests invoke, per harness. Project-relative
+/// (or `${CLAUDE_PROJECT_DIR}` / repo-root anchored) so a committed manifest
+/// resolves on every teammate's checkout.
+/// Claude's carries the installer's existence guard (`guardedLauncher` in
+/// `transformers/hooks.js`, #399): a copy in user-level settings exits 0 where
+/// the launcher is absent, and a present launcher keeps its own exit code.
+const CLAUDE_HOOK_COMMAND: &str = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
+const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook";
+const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
+
+pub struct ManifestTarget {
+    pub provider: &'static str,
+    pub skill_rel: &'static str,
+    pub dest_rel: &'static str,
+    pub shared_dest_rel: Option<&'static str>,
+    pub manifest: fn() -> Value,
+    /// The manifest is the user's whole settings file (model, auth, MCP), so
+    /// an unreadable one is skipped instead of backed up and replaced.
+    pub user_settings: bool,
+}
+
+const SESSION_STATUS_MESSAGE: &str = "Preparing build session";
+
+/// The Claude Code manifest, the same entries `buildClaudeSettingsManifest`
+/// writes at install (pinned against `tests/fixtures/hook-manifests/claude-settings.json`
+/// on both sides). SessionStart is where the hook exports the session id that
+/// `build-phase` records as a build's owner (#811, #1307).
+pub fn claude_manifest_for_command(cmd: &str) -> Value {
+    claude_compatible_manifest(cmd, true)
+}
+
+/// Claude-shaped hooks; Grok's manifest has no SessionStart
+/// (`buildGrokHooksManifest`), so the entry is opt-in.
+fn claude_compatible_manifest(cmd: &str, session_identity: bool) -> Value {
+    let mut events = Vec::new();
+    if session_identity {
+        events.push((
+            "SessionStart",
+            Value::Array(vec![obj(vec![(
+                "hooks",
+                Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, SESSION_STATUS_MESSAGE)]),
+            )])]),
+        ));
+    }
+    events.push((
+        "PostToolUse",
+        Value::Array(vec![obj(vec![
+            ("matcher", Value::from("Edit|Write")),
+            ("hooks", Value::Array(vec![command_hook(cmd, TIMEOUT_SECONDS, STATUS_MESSAGE)])),
+        ])]),
+    ));
+    events.push(("Stop", Value::Array(vec![stop_manifest_entry(cmd)])));
+    obj(vec![
+        (
+            "description",
+            // JS: Claude Code folded multi-edit behavior into Edit; the manifest
+            // tracks the current Edit and Write tools (upstream 7d5c60d2).
+            Value::from("Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop."),
+        ),
+        ("hooks", obj(events)),
+    ])
+}
+
+fn claude_manifest() -> Value {
+    claude_manifest_for_command(CLAUDE_HOOK_COMMAND)
+}
+
+fn grok_manifest() -> Value {
+    let command = if cfg!(windows) {
+        crate::hook_markers::windows_launcher_hook_command(".grok/skills/impeccable/scripts/impeccable", "hook")
+    } else {
+        "\".grok/skills/impeccable/scripts/impeccable\" hook".to_string()
+    };
+    let mut manifest = claude_compatible_manifest(&command, false);
+    manifest["hooks"]["PostToolUse"][0]["matcher"] = Value::from("Edit|Write|MultiEdit");
+    manifest
+}
+
+fn agents_manifest() -> Value {
+    let cmd = AGENTS_HOOK_COMMAND;
+    let win = &crate::hook_markers::windows_launcher_hook_command(".agents/skills/impeccable/scripts/impeccable", "hook");
+    obj(vec![(
+        "hooks",
+        obj(vec![
+            (
+                "PostToolUse",
+                Value::Array(vec![obj(vec![
+                    ("matcher", Value::from("Edit|Write|apply_patch")),
+                    (
+                        "hooks",
+                        Value::Array(vec![command_hook_with_windows(cmd, win, TIMEOUT_SECONDS, STATUS_MESSAGE)]),
+                    ),
+                ])]),
+            ),
+            ("Stop", Value::Array(vec![stop_manifest_entry_with_windows(cmd, win)])),
+        ]),
+    )])
+}
+
+/// Cursor runs the post-edit design hook like the other harnesses (the
+/// before-edit gate is retired). `merge_hook_manifests` strips Impeccable
+/// entries from every event, so `on` also drops a leftover `preToolUse`
+/// gate entry while writing this one.
+fn cursor_manifest() -> Value {
+    crate::hook_markers::cursor_hook_manifest(CURSOR_HOOK_COMMAND, TIMEOUT_SECONDS)
+}
+
+fn github_manifest() -> Value {
+    obj(vec![
+        ("version", Value::from(1)),
+        (
+            "hooks",
+            obj(vec![(
+                "postToolUse",
+                Value::Array(vec![obj(vec![
+                    ("type", Value::from("command")),
+                    ("matcher", Value::from("edit|create|apply_patch")),
+                    (
+                        "bash",
+                        Value::from(GITHUB_HOOK_COMMAND),
+                    ),
+                    ("timeoutSec", Value::from(TIMEOUT_SECONDS)),
+                ])]),
+            )]),
+        ),
+    ])
+}
+
+/// Gemini runs hooks through `bash -c` (PowerShell on Windows) after
+/// substituting `$GEMINI_PROJECT_DIR` with a shell-escaped path, so the POSIX
+/// token stays bare; PowerShell reads the env var. Timeouts are milliseconds.
+/// No per-edit detector: BeforeTool carries the session id into
+/// `build-phase` shell calls, AfterAgent runs the build-completion check.
+const GEMINI_HOOK_COMMAND: &str = "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable hook";
+const GEMINI_HOOK_COMMAND_WINDOWS: &str = "& \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\" hook";
+
+fn gemini_manifest() -> Value {
+    let cmd = if cfg!(windows) { GEMINI_HOOK_COMMAND_WINDOWS } else { GEMINI_HOOK_COMMAND };
+    let hook = |name: &str, timeout: i64| obj(vec![
+        ("name", Value::from(name)),
+        ("type", Value::from("command")),
+        ("command", Value::from(cmd)),
+        ("timeout", Value::from(timeout)),
+    ]);
+    obj(vec![(
+        "hooks",
+        obj(vec![
+            ("BeforeTool", Value::Array(vec![obj(vec![
+                ("matcher", Value::from("^run_shell_command$")),
+                ("hooks", Value::Array(vec![hook("impeccable-session", 5000)])),
+            ])])),
+            ("AfterAgent", Value::Array(vec![obj(vec![
+                ("hooks", Value::Array(vec![hook("impeccable-completion", 30000)])),
+            ])])),
+        ]),
+    )])
+}
+
+/// Antigravity runs a hook command from the directory holding its
+/// `hooks.json` (`.agents/` for a workspace), through `sh -c` on POSIX and
+/// `cmd /c` on Windows, so the project launcher is one level up.
+const ANTIGRAVITY_LAUNCHER: &str = "../.agent/skills/impeccable/scripts/impeccable";
+
+/// The workspace Antigravity hook command for one platform. Install/update
+/// (`hook_command` for `.agent` in the skills crate) writes the same string,
+/// guard included: a workspace whose skill is gone (or was installed only
+/// globally) runs a no-op instead of a missing launcher.
+pub fn antigravity_hook_command(win32: bool) -> String {
+    if win32 {
+        crate::hook_markers::windows_launcher_hook_command(ANTIGRAVITY_LAUNCHER, "hook")
+    } else {
+        format!("[ ! -f \"{ANTIGRAVITY_LAUNCHER}\" ] || \"{ANTIGRAVITY_LAUNCHER}\" hook")
+    }
+}
+
+/// Antigravity's `hooks.json` holds named hooks, not a `hooks` key: one
+/// `impeccable` hook with a grouped `PostToolUse` entry for the file-write
+/// tools and a flat `Stop` handler list. Timeouts are seconds.
+pub fn antigravity_manifest_for_command(cmd: &str) -> Value {
+    obj(vec![(
+        "impeccable",
+        obj(vec![
+            (
+                "PostToolUse",
+                Value::Array(vec![obj(vec![
+                    (
+                        "matcher",
+                        Value::from("write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content"),
+                    ),
+                    (
+                        "hooks",
+                        Value::Array(vec![obj(vec![
+                            ("type", Value::from("command")),
+                            ("command", Value::from(cmd)),
+                            ("timeout", Value::from(TIMEOUT_SECONDS)),
+                        ])]),
+                    ),
+                ])]),
+            ),
+            (
+                "Stop",
+                Value::Array(vec![obj(vec![
+                    ("type", Value::from("command")),
+                    ("command", Value::from(cmd)),
+                    ("timeout", Value::from(STOP_TIMEOUT_SECONDS)),
+                ])]),
+            ),
+        ]),
+    )])
+}
+
+fn antigravity_manifest() -> Value {
+    antigravity_manifest_for_command(&antigravity_hook_command(cfg!(windows)))
+}
+
+pub const HOOK_MANIFEST_TARGETS: &[ManifestTarget] = &[
+    ManifestTarget {
+        provider: ".claude",
+        skill_rel: ".claude/skills/impeccable",
+        dest_rel: ".claude/settings.local.json",
+        shared_dest_rel: Some(".claude/settings.json"),
+        manifest: claude_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".agents",
+        skill_rel: ".agents/skills/impeccable",
+        dest_rel: ".codex/hooks.json",
+        shared_dest_rel: None,
+        manifest: agents_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".cursor",
+        skill_rel: ".cursor/skills/impeccable",
+        dest_rel: ".cursor/hooks.json",
+        shared_dest_rel: None,
+        manifest: cursor_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".github",
+        skill_rel: ".github/skills/impeccable",
+        dest_rel: ".github/hooks/impeccable.json",
+        shared_dest_rel: None,
+        manifest: github_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".grok",
+        skill_rel: ".grok/skills/impeccable",
+        dest_rel: ".grok/hooks/impeccable.json",
+        shared_dest_rel: None,
+        manifest: grok_manifest,
+        user_settings: false,
+    },
+    ManifestTarget {
+        provider: ".gemini",
+        skill_rel: ".gemini/skills/impeccable",
+        dest_rel: ".gemini/settings.json",
+        shared_dest_rel: None,
+        manifest: gemini_manifest,
+        user_settings: true,
+    },
+    ManifestTarget {
+        provider: ".agent",
+        skill_rel: ".agent/skills/impeccable",
+        dest_rel: ".agents/hooks.json",
+        shared_dest_rel: None,
+        manifest: antigravity_manifest,
+        user_settings: false,
+    },
+];
+
+
+/// Require every current event/entry, while allowing unrelated settings and hooks.
+/// Launcher roots and existence guards vary between project/user installations.
+pub fn manifest_is_wired(path: &str, expected: &Value) -> bool {
+    std::fs::read_to_string(path).ok()
+        .and_then(|s| crate::hook_markers::parse_manifest_jsonc(&s))
+        .is_some_and(|(actual, _)| contains_entries(&actual, expected))
+}
+
+fn contains_entries(actual: &Value, expected: &Value) -> bool {
+    match expected {
+        // An Antigravity named hook switched off with `enabled: false` is
+        // present but does not run, so it is not wired.
+        Value::Object(fields) if actual.get("enabled") == Some(&Value::Bool(false)) && !fields.contains_key("enabled") => false,
+        Value::Object(fields) => fields.iter().filter(|(k, _)| !matches!(k.as_str(),
+            "description" | "timeout" | "timeoutSec" | "statusMessage")).all(|(k, v)| {
+            actual.get(k).is_some_and(|a| {
+                if matches!(k.as_str(), "command" | "commandWindows" | "bash") {
+                    let verb = |s: &str| {
+                        ["hook-stop", "hook-before-edit", "hook-after-edit", "hook-probe", "hook"]
+                            .into_iter().find(|verb| s.contains(&format!(" {verb}"))
+                                && ( *verb != "hook" || !s.contains(" hook-")))
+                    };
+                    a.as_str().zip(v.as_str()).is_some_and(|(a, v)|
+                        crate::hook_markers::is_launcher_hook_command(a) && verb(a) == verb(v))
+                } else if k == "matcher" {
+                    a == v || a.as_str().zip(v.as_str()).is_some_and(|(a, v)|
+                        v.split('|').all(|tool| a.split('|').any(|candidate| candidate == tool)))
+                } else {
+                    contains_entries(a, v)
+                }
+            })
+        }),
+        Value::Array(entries) => actual.as_array().is_some_and(|a|
+            entries.iter().all(|e| a.iter().any(|v| contains_entries(v, e)))),
+        _ => actual == expected,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_manifest(name: &str, body: &str) -> String {
+        let dir = std::env::temp_dir().join(format!("impeccable-hook-wiring-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.local.json");
+        std::fs::write(&path, body).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    /// `hooks on` writes the installer's manifest byte for byte: the fixture
+    /// is also asserted against `buildClaudeSettingsManifest` in
+    /// `tests/hook-build.test.mjs`, so the two cannot drift (#1307).
+    #[test]
+    fn hooks_on_claude_manifest_matches_the_installer_fixture() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/hook-manifests/claude-settings.json");
+        let expected = std::fs::read_to_string(fixture).unwrap();
+        let actual = serde_json::to_string_pretty(&claude_manifest()).unwrap();
+        assert_eq!(actual, expected.trim_end());
+    }
+
+    #[test]
+    fn hooks_on_claude_manifest_carries_session_start_and_the_guard() {
+        let manifest = claude_manifest();
+        let hooks = &manifest["hooks"];
+        let keys: Vec<&str> = hooks.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["SessionStart", "PostToolUse", "Stop"]);
+        let guarded = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+        for event in keys {
+            assert_eq!(hooks[event][0]["hooks"][0]["command"], guarded, "{event}");
+        }
+        assert_eq!(hooks["SessionStart"][0]["hooks"][0]["statusMessage"], "Preparing build session");
+    }
+
+    #[test]
+    fn grok_manifest_has_no_session_start() {
+        let manifest = grok_manifest();
+        let keys: Vec<&str> = manifest["hooks"].as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["PostToolUse", "Stop"]);
+    }
+
+    /// The two-entry, unguarded manifest earlier `hooks on` runs wrote is not
+    /// current, so status reports it and `hooks on` / the context repair
+    /// rewrite it with SessionStart.
+    #[test]
+    fn old_two_entry_claude_manifest_is_not_wired() {
+        let bare = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+        let old = serde_json::json!({
+            "description": "Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.",
+            "hooks": {
+                "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+                "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+            }
+        });
+        let old_path = temp_manifest("old", &old.to_string());
+        assert!(!manifest_is_wired(&old_path, &claude_manifest()));
+        let current_path = temp_manifest("current", &claude_manifest().to_string());
+        assert!(manifest_is_wired(&current_path, &claude_manifest()));
+        for path in [old_path, current_path] {
+            std::fs::remove_dir_all(std::path::Path::new(&path).parent().unwrap()).ok();
+        }
+    }
+}

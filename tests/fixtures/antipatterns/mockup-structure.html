@@ -19,6 +19,18 @@
   Decision r8-t2-occlusion-stacked-mockup: text covered inside a recognised
   mockup reports text-occlusion as advisory; covered page text keeps failing.
 
+  Round 14 (row 1 of observations-1010, decision r14-t1): a title bar after
+  an aria-hidden or absolute layer with no text, or at the box's padding
+  edge, still makes a window; an illustrative caption's label ends at a
+  comma, and "fictional" said alone or of data or a company names a mock;
+  a phone (a portrait frame with an h:mm clock in a status bar in its top
+  50px) is mock context unless it is the page's own shell (it holds the
+  page's h1). A phone shape with no clock, a portrait card with a lone time
+  on it, and captions that only open with the words say nothing.
+
+  Decision r14-t7: a dotted window whose text is mostly code (a pre, code,
+  kbd or samp, or a monospace face) is no mock; its code reports in full.
+
   No class here says mock, preview, terminal or code: those are exempt from
   two of the three rules already.
 -->
@@ -49,6 +61,26 @@
   .stack { position: relative; height: 100px; }
   .covered { position: absolute; top: 20px; left: 20px; width: 200px; margin: 0; font-size: 16px; }
   .cover { position: absolute; top: 10px; left: 10px; width: 240px; height: 50px; background-color: #1f7a3d; border-radius: 8px; z-index: 5; }
+  .glowing { position: relative; }
+  .glow { position: absolute; top: 0; left: 0; width: 400px; height: 150px; }
+  .padded { width: 352px; height: 102px; padding: 24px; }
+  .padded .bar { width: 352px; }
+  .phone { width: 220px; height: 440px; margin: 0 0 24px; border-radius: 32px; background-color: #111111; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25); padding: 8px; box-sizing: border-box; }
+  .screen { width: 204px; height: 424px; padding-bottom: 16px; box-sizing: border-box; border-radius: 24px; background-color: #ffffff; overflow: hidden; }
+  .status { height: 24px; padding: 6px 16px 0; font-size: 10px; }
+  .phone h1 { font-size: 16px; margin: 8px 16px; }
+  .reel { position: relative; width: 200px; height: 356px; margin: 0 0 24px; padding: 12px; box-sizing: border-box; border-radius: 16px; background-color: #1b1b1f; }
+  .reel .dur { position: absolute; top: 12px; left: 12px; font-size: 12px; color: #fff; }
+  .reel .small { position: absolute; bottom: 16px; left: 14px; color: #fff; }
+  .talk { width: 200px; height: 360px; margin: 0 0 24px; border: 1px solid #ddd; border-radius: 18px; box-sizing: border-box; }
+  .talk .t { display: block; padding: 16px 16px 0; font-size: 14px; }
+  .talk .small { padding: 12px 16px; }
+  .app { width: 240px; height: 480px; margin: 0 0 24px; border-radius: 24px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); background-color: #fff; overflow: hidden; }
+  .app .top { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 13px; }
+  .app .small { padding: 12px 16px; }
+  .status { display: flex; justify-content: space-between; box-sizing: border-box; }
+  .battery { display: inline-block; width: 20px; height: 9px; border: 1px solid #111; border-radius: 3px; }
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
 </style>
 </head>
 <body>
@@ -134,6 +166,46 @@
     <p class="strip">Sample data</p>
   </div>
 
+  <!-- round 14: a phone shape with no status clock, and a phone-shaped app
+       shell that is the page's own (it holds the h1) -->
+  <div class="phone"><div class="screen"><div class="status">Inbox</div><span class="small fail-phone-no-clock">Two drafts</span></div></div>
+  <div class="phone"><div class="screen"><div class="status"><span>9:41</span><i class="battery"></i></div><h1>Departures</h1><span class="small fail-phone-shell">Gate B12</span></div></div>
+
+  <!-- decision r14-t7: a dotted window that holds a code sample is reading
+       content, so its faint and small code reports in full -->
+  <div class="shot">
+    <div class="bar"><span class="lights"><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div>
+    <div class="pane mono">
+      <span class="small fail-config-small">timeout_ms = 3000</span>
+      <span class="dim fail-config-dim" style="color: #ababab">retries = 2  # attempts after the first</span>
+      <span class="small">backoff = "exponential"</span>
+    </div>
+  </div>
+
+  <!-- round 14 review: a time alone on a portrait card is no status bar: a
+       video's duration badge, a talk's start time, and an app column whose
+       header sets a title beside the time -->
+  <div class="reel"><span class="dur">0:45</span><span class="small fail-reel">12K views</span></div>
+  <div class="talk"><span class="t">09:30</span><span class="small fail-talk">Main hall</span></div>
+  <div class="app"><div class="top"><span>Central Station</span><span>14:05</span></div><span class="small fail-app-header">Platform 4</span></div>
+
+  <!-- round 14 review: a comma closes only an illustrative label, and
+       "fictional" said of anything but data or a company is a tagline -->
+  <div class="set">
+    <div class="shot"><div class="pane"><span class="small fail-caption-sample">Exports this month</span></div></div>
+    <p class="note">Sample data, exports and reports are kept for 30 days on every plan.</p>
+  </div>
+  <div class="set">
+    <div class="shot"><div class="pane"><span class="small fail-caption-fictional">Hardback, 384 pages</span></div></div>
+    <p class="note">Fictional worlds, real heartbreak.</p>
+  </div>
+
+  <!-- round 14: a long caption that only mentions the word is no label -->
+  <div class="set">
+    <div class="shot"><div class="pane"><span class="small fail-comma-prose">Quarter close</span></div></div>
+    <p class="note">Illustrations, photos and the case study by our own team in Berlin.</p>
+  </div>
+
   <!-- in a captioned panel: a button, and the caption itself -->
   <div class="shot">
     <div class="pane"><button type="button" class="small fail-sample-button">Approve</button></div>
@@ -198,6 +270,33 @@
     <div class="tab"><div class="shot"><div class="pane"><span class="small adv-beside">Falls by time of day</span></div></div></div>
     <p class="note">Sample data. No real resident information appears on this site.</p>
   </div>
+
+  <!-- round 14 gap 1: the window opens with an aria-hidden absolute glow
+       (cursorhelper.vercel.app), and a bar at the padding edge
+       (mymanagment.net) -->
+  <div class="shot glowing">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="bar"><span class="lights"><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div>
+    <div class="pane"><span class="small adv-glow">Context Router</span></div>
+  </div>
+  <div class="shot padded">
+    <div class="bar"><span class="lights"><i class="dot"></i><i class="dot"></i><i class="dot"></i></span></div>
+    <div class="pane"><span class="small adv-padded">mymanagment.net</span></div>
+  </div>
+
+  <!-- round 14 gap 3: a caption labelled up to a comma (usedefinite.com),
+       and a fictional one -->
+  <div class="set">
+    <div class="shot"><div class="pane"><span class="small adv-comma">Close in progress</span></div></div>
+    <p class="note">Illustrative values, shown only to explain each workflow.</p>
+  </div>
+  <div class="set">
+    <div class="shot"><div class="pane"><span class="small adv-fictional">Northwind Traders</span></div></div>
+    <p class="note">Fictional company</p>
+  </div>
+
+  <!-- round 14: a phone with a status clock in its top 50px (aproov.es) -->
+  <div class="phone"><div class="screen"><div class="status"><span>9:41</span><i class="battery"></i></div><span class="small adv-phone">Newsletter 4.2k</span></div></div>
 </div>
 
 </body>

@@ -253,6 +253,9 @@ fn compact_op(op: &Value) -> Value {
     if op.get("deleted") == Some(&Value::Bool(true)) {
         m.insert("deleted".into(), json!(true));
     }
+    if op.get("removeElement") == Some(&Value::Bool(true)) {
+        m.insert("removeElement".into(), json!(true));
+    }
     m.insert(
         "sourceHint".into(),
         match op.get("sourceHint") {
@@ -1826,6 +1829,39 @@ pub fn rollback_transaction(
         st.record_manual_edit_activity("manual_edit_transaction_rolled_back", a);
     }
     result
+}
+
+/// Whether an Apply still owns this page's staged edits: a commit that has
+/// started and not yet finished, a queued or leased `manual_edit_apply`
+/// event, a deferred reply the agent has not sent, or a transaction on disk
+/// that has not been resolved. A discard that bypasses rollback must refuse
+/// while any of these is true.
+pub fn apply_in_flight(st: &crate::server_state::ServerState, page_url: &str) -> bool {
+    let for_page = |event: &Map<String, Value>| -> bool {
+        event.get("type").and_then(|t| t.as_str()) == Some("manual_edit_apply")
+            && event
+                .get("pageUrl")
+                .and_then(|p| p.as_str())
+                .map(|p| p == page_url)
+                .unwrap_or(true)
+    };
+    if st.commit_in_progress_for(page_url) {
+        return true;
+    }
+    if st.pending_events.iter().any(|p| for_page(&p.event)) {
+        return true;
+    }
+    if st.pending_apply_deferreds.iter().any(|(_, d)| for_page(&d.event)) {
+        return true;
+    }
+    match read_manual_apply_transaction(&st.cwd, &st.env) {
+        Some(tx) => tx
+            .get("pageUrl")
+            .and_then(|p| p.as_str())
+            .map(|p| p == page_url)
+            .unwrap_or(true),
+        None => false,
+    }
 }
 
 /// `Date.now()`-stamped id helper re-export for the routes.

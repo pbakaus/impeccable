@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>skipped-heading, a visually hidden heading</title>
+<!--
+  Should flag. Twin of skipped-heading-hidden-panel.html: the h3 is set
+  .sr-only, written for the outline a screen reader reads, so it stays in
+  the outline and the h1 to h3 skip reports.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; line-height: 24px; color: #1f2937; background: #ffffff; margin: 0; padding: 24px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  h1 { font-size: 36px; line-height: 44px; }
+  h2 { font-size: 26px; line-height: 34px; }
+  h3 { font-size: 20px; line-height: 28px; }
+  h4, h5 { font-size: 17px; line-height: 24px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Cards and services</h1>
+    <h3 class="sr-only">Site search</h3>
+  </header>
+  <main>
+    <h2>Personal cards</h2>
+    <p>Compare the cards that fit how you spend, travel and pay.</p>
+  </main>
+</body>
+</html>

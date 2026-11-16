@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "[\n  {\n    \"slug\": \"a-src-app-tsx\",\n    \"path\": \".impeccable/surfaces/a-src-app-tsx.md\",\n    \"primaryTarget\": \"a/src/App.tsx\",\n    \"relatedTargets\": []\n  }\n]\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

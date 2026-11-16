@@ -55,7 +55,8 @@ fn one_text_colour_reports_once_per_gradient_box_not_per_label() {
     // Two links on one header: one report.
     let header: Vec<&String> = snippets.iter().filter(|s| s.contains("#cbd5e0")).collect();
     assert_eq!(header.len(), 1, "{snippets:?}");
-    assert!(header[0].ends_with("(gradient on nav.pale-header)"), "{header:?}");
+    // The second link wears the same pair and is counted (r14-t2).
+    assert!(header[0].ends_with("(gradient on nav.pale-header) (and 1 more)"), "{header:?}");
     // Amber and lime tiles share `div.feature-tile`: two reports. The navy
     // tile beside them passes.
     let tiles = snippets.iter().filter(|s| s.contains("text #fdfdfd")).count();
@@ -65,7 +66,8 @@ fn one_text_colour_reports_once_per_gradient_box_not_per_label() {
 #[test]
 fn identical_tiles_on_one_gradient_stay_one_report() {
     // Separate boxes whose snippet is the same colour pair on the same label
-    // are reported once, as before the per-box key.
+    // are reported once, as before the per-box key, and the report counts
+    // the other two (r14-t2).
     let html = r#"<!DOCTYPE html>
 <html><head><style>
 body { background: #ffffff; }
@@ -84,11 +86,46 @@ body { background: #ffffff; }
     assert_eq!(
         snippets,
         vec![
-            "1.7:1 (need 3:1) — text #ffffff on #fbbf24 (gradient on div.tile)".to_string(),
+            "1.7:1 (need 3:1) — text #ffffff on #fbbf24 (gradient on div.tile) (and 2 more)".to_string(),
             "1.5:1 (need 3:1) — text #ffffff on #a3e635 (gradient on div.tile)".to_string(),
         ],
         "{snippets:?}"
     );
+}
+
+#[test]
+fn a_trailing_shorthand_colour_is_the_ground_under_faint_grid_lines() {
+    // #1212: the colour sits in the last comma-separated layer of `background`,
+    // after the gradients, and is the ground the text is read against.
+    let html = r#"<!doctype html><html><head><style>
+body{
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(0deg,  rgba(255,255,255,0.025) 1px, transparent 1px),
+    #0b0d10;
+  background-size:44px 44px;
+  color:#e7edf3; font-size:16px; margin:0; min-height:100vh;
+}
+</style></head><body><p>This copy is very readable on the dark ground.</p></body></html>
+"#;
+    let snippets = low_contrast_snippets(html, Path::new("/tmp/grid.html"));
+    assert!(snippets.is_empty(), "{snippets:?}");
+    // Minified, the colour sits flush against the gradient.
+    let minified = html.replace(
+        "linear-gradient(0deg,  rgba(255,255,255,0.025) 1px, transparent 1px),\n    #0b0d10",
+        "rgb(11,13,16)linear-gradient(0deg,rgba(255,255,255,0.025) 1px,transparent 1px)",
+    );
+    assert_ne!(minified, html);
+    let snippets = low_contrast_snippets(&minified, Path::new("/tmp/grid.html"));
+    assert!(snippets.is_empty(), "{snippets:?}");
+    // A paren inside a quoted URL does not end the image or hide the colour.
+    for value in ["url('a(1.png') #000", "url('x)red.png') #000"] {
+        let color = impeccable_html::cascade::expand_static_declaration("background", value)
+            .into_iter()
+            .find(|(k, _)| k == "backgroundColor")
+            .map(|(_, v)| v);
+        assert_eq!(color.as_deref(), Some("#000"), "{value}");
+    }
 }
 
 #[test]

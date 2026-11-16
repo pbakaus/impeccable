@@ -11,6 +11,15 @@
   square box, which needs 3px. The far corners are the radius.
 
   A 3px or wider stripe reported before and keeps its wording.
+
+  A border on one side of a circle is an arc of a ring (an orbit around an
+  icon, a spinner: observations-1010 row 6), on either axis. A 64px content
+  box with 80px of padding each side is a 224px pill, not a circle. A 50%
+  radius reads against the ring's border box. The static engine cannot
+  tell padding inside a border-box ring from padding around a content box,
+  so it reads no circle on a padded box and keeps the finding there. An accent band
+  across a rounded panel nobody sees (a closed mega-menu at opacity 0 and
+  visibility: hidden, row 17) shows no band; the open panel reports.
 -->
 <style>
   body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #ffffff; margin: 24px; }
@@ -25,6 +34,14 @@
   .pass-thin-rounded-along-stripe { border-left: 2px solid #0d9488; border-radius: 12px 0 0 12px; }
   .pass-thin-far-corner-square { border-left: 2px solid #0d9488; border-radius: 0 12px 2px 0; }
   .pass-thin-far-elliptical-flat { border-left: 2px solid #0d9488; border-radius: 0 12px 12px 0 / 0; }
+  .ring { width: 64px; height: 64px; margin: 0 0 24px; border-radius: 9999px; box-sizing: border-box; }
+  .pass-ring-arc-right { border-right: 2px solid #0d9488; }
+  .pass-ring-arc-top { width: 80px; height: 80px; border-top: 2px solid #0d9488; }
+  .flag-padded-pill { width: 64px; height: 64px; padding: 0 80px; margin: 0 0 24px; border-radius: 32px; border-left: 4px solid #0d9488; background: #fdfdfd; }
+  .ring-pct { width: 64px; height: 64px; margin: 0 0 24px; border-radius: 50%; border-left: 4px solid #0d9488; }
+  .menu { width: 400px; height: 140px; margin: 0 0 24px; }
+  .menu-closed { opacity: 0; visibility: hidden; }
+  .panel { width: 320px; height: 120px; padding: 16px; box-sizing: border-box; background: #fdfdfd; border-top: 3px solid #eb5747; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -35,6 +52,8 @@
   <div class="card flag-right-far-rounded"><p>The mirror image: a 2px rule on the right, rounded on the left.</p></div>
   <div class="card flag-left-uneven-far"><p>Far corners of 12px and 6px: the smaller one is the radius.</p></div>
   <div class="card flag-left-wide-far-rounded"><p>A 4px rule reported before, as a stripe with no radius, and still does.</p></div>
+  <div class="flag-padded-pill"><p>Wide card</p></div>
+  <div class="menu"><div class="panel flag-band-open-panel"><p>Services, pricing and support.</p></div></div>
 </div>
 
 <div class="col" id="should-pass">
@@ -43,6 +62,10 @@
   <div class="card pass-thin-rounded-along-stripe"><p>Rounded only along the stripe: the far side is square.</p></div>
   <div class="card pass-thin-far-corner-square"><p>One far corner under 4px reads as square.</p></div>
   <div class="card pass-thin-far-elliptical-flat"><p>Far corners with no vertical radius are square, whatever their horizontal one.</p></div>
+  <div class="ring pass-ring-arc-right"></div>
+  <div class="ring pass-ring-arc-top"></div>
+  <div class="ring-pct pass-ring-percent"></div>
+  <div class="menu menu-closed"><div class="panel pass-band-closed-panel"><p>Services, pricing and support.</p></div></div>
 </div>
 
 </body>

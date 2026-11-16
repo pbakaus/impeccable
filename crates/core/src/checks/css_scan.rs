@@ -108,10 +108,16 @@ re!(
 /// JS: checks.mjs#cssTextHasDarkRootBg
 pub fn css_text_has_dark_root_bg(content: &str, custom_props: &CustomProps) -> bool {
     // A token such as `--color-background: #0a0a0a` is not a background.
-    if DARK_BG_RE
-        .find_iter(content)
-        .any(|m| starts_css_property_token(content, m.start()))
-        || TW_DARK_BG_RE.is_match(content)
+    // The pattern reads only the leading channel of a hex (`#00` to `#23`),
+    // so the colour it matched has to be dark as a whole: a bright mint
+    // `#00d68f` leads with `00` (observations-1010 row 4).
+    if DARK_BG_RE.find_iter(content).any(|m| {
+        starts_css_property_token(content, m.start())
+            && m.as_str()
+                .split_once(':')
+                .and_then(|(_, v)| parse_any_color(Some(js::trim(v))))
+                .map_or(true, |c| relative_luminance(&c) < 0.1)
+    }) || TW_DARK_BG_RE.is_match(content)
     {
         return true;
     }
@@ -3389,6 +3395,53 @@ mod tests {
         let m =
             collect_pulse_keyframes("@keyframes n {50%{transform: translateY(2px) scale(1.2)}}");
         assert_eq!(m.entries(), &[("n".to_string(), true)]);
+    }
+
+    /// observations-1010 row 11: an eye that blinks on one axis (looot.ai's
+    /// `asblink`) and a dot that runs along a connector by its `left`
+    /// (zcad.ai's `handoff-network-flow`) are not pulses. A dot that swells
+    /// and fades, and one that breathes a pixel by its margin, still are.
+    #[test]
+    fn a_blink_and_a_travelling_dot_are_not_pulses() {
+        let pulses = |css: &str| collect_pulse_keyframes(css).entries()[0].1;
+        assert!(!pulses("@keyframes asblink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.1)}}"));
+        assert!(!pulses("@keyframes bar{0%{transform:scaleX(0)}100%{transform:scaleX(1)}}"));
+        assert!(!pulses(
+            "@keyframes handoff-network-flow { 0% { opacity: 0; left: 0px; transform: scale(0.7); } 14% { opacity: 0.9; } 100% { opacity: 0; left: calc(100% - 4px); transform: scale(0.95); } }"
+        ));
+        assert!(!pulses("@keyframes m { 0% { opacity: 1; margin-top: 0 } 100% { opacity: .2; margin-top: 24px } }"));
+        assert!(!pulses("@keyframes bob { 0%,100% { opacity: 1; top: 0 } 50% { opacity: .6; top: -6px } }"));
+        // Should-flag twins.
+        assert!(pulses("@keyframes dot { 0%,100% { transform: scale(.5); opacity: 1 } 50% { transform: scale(1); opacity: .5 } }"));
+        assert!(pulses("@keyframes sq { 0%,100% { transform: scaleX(1) scaleY(1) } 50% { transform: scaleX(1.3) scaleY(1.3) } }"));
+        assert!(pulses("@keyframes blinkfade { 0%,100% { transform: scaleY(1); opacity: 1 } 50% { transform: scaleY(.1); opacity: .4 } }"));
+        assert!(pulses("@keyframes breathe { 0%,100% { opacity: 1; margin-top: 0 } 50% { opacity: .5; margin-top: -1px } }"));
+        assert!(pulses("@keyframes still { 0%,100% { opacity: 1; left: 8px } 50% { opacity: .5; left: 8px } }"));
+        // Review of round 14: a ripple kept centred while it grows, by a
+        // shorthand that moves every side, by a margin that changes with
+        // the size, or by both opposite offsets, is a ping.
+        assert!(pulses("@keyframes r1 { 0% { width: 8px; height: 8px; margin: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin: -4px; opacity: .3 } }"));
+        assert!(pulses("@keyframes r2 { 0%,100% { margin: 4px; opacity: 1 } 50% { margin: 0; opacity: .4 } }"));
+        assert!(pulses("@keyframes r3 { 0% { inset: 0; opacity: 1 } 100% { inset: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r4 { 0% { width: 8px; height: 8px; margin-left: 0; margin-top: 0; opacity: 1 } 100% { width: 16px; height: 16px; margin-left: -4px; margin-top: -4px; opacity: 0 } }"));
+        assert!(pulses("@keyframes r5 { 0% { top: 4px; bottom: 4px; opacity: 1 } 100% { top: -4px; bottom: -4px; opacity: 0 } }"));
+        // Zero in any unit is zero: `left: 0` to `left: 0%` does not move.
+        assert!(pulses("@keyframes z { 0% { left: 0; opacity: 1 } 100% { left: 0%; opacity: .3 } }"));
+        assert!(pulses("@keyframes z2 { 0% { top: 0px; opacity: 1 } 100% { top: -0.0em; opacity: .3 } }"));
+        assert!(!pulses("@keyframes z3 { 0% { left: 0; opacity: 1 } 100% { left: 50%; opacity: .3 } }"));
+    }
+
+    /// observations-1010 row 4: `DARK_BG_RE` reads the leading channel of a
+    /// hex, so the colour it matched must be dark as a whole.
+    #[test]
+    fn a_dark_background_declaration_is_dark_as_a_whole() {
+        assert!(!dark(".badge{background:#00d68f}"));
+        assert!(!dark(".chip{background-color:#1fd1f9}"));
+        assert!(!dark(".k{background:#1ff}"));
+        assert!(dark(".footer{background:#111}"));
+        assert!(dark(".footer{background:#0a0a0a}"));
+        assert!(dark(".x{background-color:#1a1a2e}"));
+        assert!(dark(".x{background:rgb(12, 14, 20)}"));
     }
 
     /// observations-1004 row 25: keyframes that move their box 4px or more,

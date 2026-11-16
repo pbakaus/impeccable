@@ -47,8 +47,8 @@ const BUCKET_SECONDS: u64 = 600;
 const TOOL_CALL_ID_KEYS: &[&str] = &["tool_use_id", "toolUseId", "tool_call_id", "toolCallId"];
 
 /// The session the call belongs to: Claude Code and Codex send `session_id`,
-/// Cursor `conversation_id` (and `session_id`).
-const SESSION_KEYS: &[&str] = &["session_id", "sessionId", "conversation_id"];
+/// Cursor `conversation_id` (and `session_id`), Antigravity `conversationId`.
+const SESSION_KEYS: &[&str] = &["session_id", "sessionId", "conversation_id", "conversationId"];
 
 /// What happened to the claim for this invocation.
 #[derive(Debug, PartialEq, Eq)]
@@ -64,11 +64,32 @@ fn non_empty_str<'a>(event: &'a Map<String, Value>, keys: &[&str]) -> Option<&'a
     keys.iter().find_map(|k| event.get(*k).and_then(Value::as_str).filter(|s| !s.is_empty()))
 }
 
+/// The event's tool-call identity: a top-level id, else Antigravity's nested
+/// `toolCall.id`, else Antigravity's `stepIdx` (the step's index in its
+/// conversation, also unique per call; the published docs show a `toolCall`
+/// without an `id`). The step form is used only beside a `conversationId`,
+/// which scopes it.
+fn tool_call_id(event: &Map<String, Value>) -> Option<String> {
+    if let Some(id) = non_empty_str(event, TOOL_CALL_ID_KEYS) {
+        return Some(id.to_string());
+    }
+    let nested = event.get("toolCall").and_then(Value::as_object);
+    if let Some(id) = nested.and_then(|tc| tc.get("id")).and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return Some(id.to_string());
+    }
+    let conversation = event.get("conversationId").and_then(Value::as_str).filter(|s| !s.is_empty());
+    match (nested, conversation, event.get("stepIdx")) {
+        (Some(_), Some(_), Some(Value::Number(step))) => Some(format!("step:{step}")),
+        _ => None,
+    }
+}
+
 /// The claim key for an event, or `None` when the payload names no tool call.
 /// The project root and the scan targets are part of it, so two projects (or
 /// two test fixtures) that happen to reuse an id never collide.
 pub fn event_key(event: &Map<String, Value>, project_cwd: &str, files: &[String]) -> Option<String> {
-    let call = non_empty_str(event, TOOL_CALL_ID_KEYS)?;
+    let call = tool_call_id(event)?;
+    let call = call.as_str();
     let session = non_empty_str(event, SESSION_KEYS).unwrap_or("");
     let mut files: Vec<&str> = files.iter().map(String::as_str).collect();
     files.sort_unstable();
@@ -265,10 +286,132 @@ pub fn claim_key(rt: &Runtime, key: &str) -> Claim {
     }
 }
 
+/// The claim key for a turn-end deep pass over `root`. A Stop payload names
+/// no tool call, and Claude sends the same payload on every turn, so the key
+/// carries what the pass is about to scan: each touched file with its size
+/// and mtime. Duplicate copies of one Stop agree on it; a later turn that
+/// changed a file does not. Codex's `turn_id` is part of it when present.
+pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String], extra_inputs: &[String]) -> Option<String> {
+    let session = non_empty_str(event, SESSION_KEYS)?;
+    let turn = non_empty_str(event, &["turn_id", "turnId"]).unwrap_or("");
+    let mut files: Vec<&str> = files.iter().map(String::as_str).collect();
+    files.sort_unstable();
+    let mut h = Sha256::new();
+    for part in ["stop", session, turn, root] {
+        h.update(part.as_bytes());
+        h.update([0u8]);
+    }
+    // What the scan reads besides the files: the design system and the
+    // detector settings. A turn that only edited DESIGN.md or the config is a
+    // new pass, not a copy of the last one.
+    let inputs: Vec<String> = SCAN_INPUTS.iter().map(|rel| format!("{}/{rel}", root.trim_end_matches('/'))).collect();
+    // The stylesheets the touched files pull in: a later turn can change one
+    // through the shell, which the hook cache never sees.
+    let linked = linked_stylesheets(root, &files);
+    for f in files.iter().copied().chain(inputs.iter().map(String::as_str)).chain(extra_inputs.iter().map(String::as_str)).chain(linked.iter().map(String::as_str)) {
+        h.update(f.as_bytes());
+        h.update([0u8]);
+        if let Ok(meta) = std::fs::metadata(f) {
+            h.update(meta.len().to_le_bytes());
+            if let Ok(t) = meta.modified().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).map_err(std::io::Error::other)) {
+                h.update(t.as_nanos().to_le_bytes());
+            }
+        }
+        h.update([0u8]);
+    }
+    Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Local stylesheets the given files link or import (`<link href="x.css">`,
+/// `@import "x.css"`, `import "./x.css"`), resolved against each file's
+/// folder, or the project root for a leading `/`. Only files that exist, each
+/// once, sorted. Remote and query-only references are skipped. The caller
+/// passes only files the pass will scan (filtered and capped in `hook.rs`).
+fn linked_stylesheets(root: &str, files: &[&str]) -> Vec<String> {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    static CSS_REF: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r#"(?i)(?:href\s*=\s*|@import\s+(?:url\(\s*)?|\bimport\s+|\bfrom\s+)["']([^"'?#\s]+\.(?:css|scss|sass|less))["'?#]"#).unwrap()
+    });
+    let mut out: Vec<String> = Vec::new();
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let dir = Path::new(file).parent().unwrap_or(Path::new(root));
+        for cap in CSS_REF.captures_iter(&text) {
+            let spec = &cap[1];
+            if spec.contains("://") || spec.starts_with("//") {
+                continue;
+            }
+            let path = match spec.strip_prefix('/') {
+                Some(rest) => Path::new(root).join(rest),
+                None => dir.join(spec),
+            };
+            if path.is_file() {
+                let path = path.to_string_lossy().into_owned();
+                if !out.contains(&path) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Files under a project root that change what a deep pass reports without
+/// being scan targets themselves. The design documents the pass actually
+/// resolves (an inherited repo-root DESIGN.md, a `DESIGN.json` sidecar) come
+/// in as `extra_inputs`.
+const SCAN_INPUTS: &[&str] = &[
+    "DESIGN.md", "Design.md", "design.md",
+    ".agents/context/DESIGN.md", "docs/DESIGN.md",
+    ".impeccable/design.json",
+    ".impeccable/config.json", ".impeccable/config.local.json",
+];
+
+/// Claims the turn-end pass over `root`. No session id: no claim, scan.
+pub fn claim_stop(rt: &Runtime, event: &Map<String, Value>, root: &str, files: &[String], extra_inputs: &[String]) -> Claim {
+    match stop_key(event, root, files, extra_inputs) {
+        Some(key) => claim_key(rt, &key),
+        None => Claim::Scan,
+    }
+}
+
 /// Claims the event this invocation is about to scan.
 pub fn claim_event(rt: &Runtime, event: &Map<String, Value>, project_cwd: &str, files: &[String]) -> Claim {
     match event_key(event, project_cwd, files) {
         Some(key) => claim_key(rt, &key),
         None => Claim::Scan,
+    }
+}
+
+#[cfg(test)]
+mod linked_stylesheet_tests {
+    use super::*;
+
+    #[test]
+    fn a_changed_linked_stylesheet_makes_a_new_stop_key() {
+        let root = std::env::temp_dir().join(format!("impeccable-claim-css-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("css")).unwrap();
+        let page = root.join("index.html");
+        std::fs::write(&page, "<link rel=\"stylesheet\" href=\"css/site.css\"><link href=\"https://cdn.example/x.css\"><style>@import '/base.css';</style>").unwrap();
+        std::fs::write(root.join("css/site.css"), "body{color:red}").unwrap();
+        std::fs::write(root.join("base.css"), "p{margin:0}").unwrap();
+        let root_s = root.to_string_lossy().into_owned();
+        let page_s = page.to_string_lossy().into_owned();
+        let mut linked = linked_stylesheets(&root_s, &[page_s.as_str()]);
+        linked.iter_mut().for_each(|p| *p = p.replace('\\', "/"));
+        assert_eq!(linked.len(), 2, "{linked:?}");
+        assert!(linked.iter().any(|p| p.ends_with("css/site.css")) && linked.iter().any(|p| p.ends_with("base.css")), "{linked:?}");
+
+        let mut event = Map::new();
+        event.insert("session_id".into(), Value::from("s1"));
+        let files = vec![page_s.clone()];
+        let before = stop_key(&event, &root_s, &files, &[]).unwrap();
+        assert_eq!(stop_key(&event, &root_s, &files, &[]).unwrap(), before, "a copy of the same Stop agrees");
+        std::fs::write(root.join("css/site.css"), "body{color:blue;background:#000}").unwrap();
+        let after = stop_key(&event, &root_s, &files, &[]).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_ne!(after, before, "a stylesheet changed through the shell is a new pass");
     }
 }

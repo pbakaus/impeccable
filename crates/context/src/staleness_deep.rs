@@ -263,12 +263,12 @@ pub fn check_hook_installation(
     let mut installed_at: Option<String> = None;
     for (root, mp, is_user) in &entries {
         let Some(raw) = read_json(mp) else { continue };
-        let Some(hooks) = raw.get("hooks") else { continue };
-        if !js_truthy(hooks) {
+        let Some(hooks) = crate::hook_markers::active_manifest_hook_subtree(&raw) else { continue };
+        if !js_truthy(&hooks) {
             continue;
         }
         let mut commands = Vec::new();
-        collect_hook_commands(hooks, &mut commands);
+        collect_hook_commands(&hooks, &mut commands);
         if commands.is_empty() {
             continue;
         }
@@ -278,7 +278,10 @@ pub fn check_hook_installation(
             .iter()
             .filter(|c| {
                 let Some(token) = hook_script_token_from(c) else { return false };
-                let Some(abs) = resolve_hook_script_path(&token, root) else { return false };
+                // Antigravity runs each hook command from the directory that
+                // holds its `hooks.json`, so a relative launcher resolves there.
+                let base = if provider_id == "antigravity" { jsp::dirname(mp) } else { root.to_string() };
+                let Some(abs) = resolve_hook_script_path(&token, &base) else { return false };
                 !exists(&abs)
             })
             .collect();
@@ -311,7 +314,7 @@ pub fn check_hook_installation(
                 // `update --user` rewrites only Claude's user manifest; other
                 // providers get project hooks, and a launcher entry in their
                 // home file is never repointed.
-                if *is_user && provider_id == "claude-code" {
+                if *is_user && matches!(provider_id, "claude-code" | "antigravity") {
                     "Reinstall with `impeccable update --user`, which rewrites this user-level manifest against the skill's current location."
                 } else if *is_user {
                     "Edit this user-level manifest by hand: point the command at the installed skill's launcher, or remove the Impeccable entry. `impeccable update --user` installs project hooks and does not repoint this file."
@@ -368,6 +371,45 @@ pub fn check_legacy_live_state(project_root: &str) -> Vec<Finding> {
             present.iter().map(|r| format!("`{}`", r)).collect::<Vec<_>>().join(", ")
         ),
         "These are read only through backward-compatible fallbacks and are safe to delete once no live session is running. No user decision is needed.".to_string(),
+    )]
+}
+
+/// What is still on disk of the rejected comps, gate diffs, and captures
+/// `build-phase finish --disposition ship` recorded as spent (`finish.spent`).
+/// The build phase decides what a re-ship still reads; this only reports.
+pub fn check_spent_build_artifacts(project_root: &str) -> Vec<Finding> {
+    if project_root.is_empty() {
+        return vec![];
+    }
+    let Some(state) = read_json(&jsp::join(&[project_root, ".impeccable", "build", "state.json"])) else {
+        return vec![];
+    };
+    let spent: Vec<&str> = state
+        .pointer("/finish/spent")
+        .and_then(Value::as_array)
+        // The list sits in an editable project file and the finding says to delete what it names.
+        .map(|files| {
+            files
+                .iter()
+                .filter_map(Value::as_str)
+                .filter(|f| (f.starts_with(".impeccable/mocks/") || f.starts_with(".impeccable/review/")) && !f.split('/').any(|p| p == ".."))
+                .filter(|f| exists(&jsp::join(&[project_root, f])))
+                .collect()
+        })
+        .unwrap_or_default();
+    if spent.is_empty() {
+        return vec![];
+    }
+    let dirs: Vec<&str> = [".impeccable/mocks", ".impeccable/review"].into_iter().filter(|d| spent.iter().any(|f| f.starts_with(&format!("{d}/")))).collect();
+    let named = spent.iter().take(5).map(|f| format!("`{}`", f)).collect::<Vec<_>>().join(", ");
+    let more = if spent.len() > 5 { format!(" and {} more", spent.len() - 5) } else { String::new() };
+    vec![finding(
+        "spent-build-artifacts",
+        "build output",
+        Some(dirs.join(", ")),
+        "mention",
+        format!("The last build shipped and left {} rejected comp, gate diff, or capture file(s) that nothing reads any more: {}{}.", spent.len(), named, more),
+        "Delete those files to reclaim the space; the next gate run recaptures what it needs. Leave the rest of both directories: a re-ship reads the approved comp, its sidecar, `review/hero.json`, and `review/native/` (`build-phase restore-comp` recovers a lost approved comp). Doctor never deletes files.".to_string(),
     )]
 }
 
@@ -473,7 +515,7 @@ pub fn load_known_rule_ids() -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::check_hook_installation;
+    use super::{check_hook_installation, check_spent_build_artifacts};
 
     static TMP_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -537,6 +579,33 @@ mod tests {
     }
 
     #[test]
+    fn spent_build_artifacts_report_what_is_left_of_the_recorded_list() {
+        let root = tmp();
+        let rm = |rel: &str| std::fs::remove_file(std::path::Path::new(&root).join(rel)).unwrap();
+        // A comp from a later round is on disk but was never recorded as spent.
+        for rel in [".impeccable/mocks/comp-2.png", ".impeccable/review/diff/hero/side-by-side.png", ".impeccable/mocks/decision/next.png"] {
+            write(&root, rel, "x");
+        }
+        assert!(check_spent_build_artifacts(&root).is_empty(), "no state");
+        write(&root, ".impeccable/build/state.json", r#"{"finish":{"disposition":"fix"}}"#);
+        assert!(check_spent_build_artifacts(&root).is_empty(), "no recorded ship");
+        // Entries outside the two runtime directories are never named, even when they exist.
+        write(&root, "src/app.css", "x");
+        write(&root, ".impeccable/build/state.json", r#"{"finish":{"disposition":"ship","spent":["src/app.css",".impeccable/mocks/../../src/app.css"]}}"#);
+        assert!(check_spent_build_artifacts(&root).is_empty(), "outside paths");
+        write(&root, ".impeccable/build/state.json", r#"{"finish":{"disposition":"ship","spent":[".impeccable/mocks/comp-2.png",".impeccable/mocks/comp-3.png",".impeccable/review/diff/hero/side-by-side.png"]}}"#);
+        let f = check_spent_build_artifacts(&root);
+        assert_eq!(f.len(), 1, "{f:?}");
+        assert_eq!((f[0].id.as_str(), f[0].severity), ("spent-build-artifacts", "mention"));
+        assert_eq!(f[0].path.as_deref(), Some(".impeccable/mocks, .impeccable/review"));
+        assert!(f[0].summary.ends_with(" 2 rejected comp, gate diff, or capture file(s) that nothing reads any more: `.impeccable/mocks/comp-2.png`, `.impeccable/review/diff/hero/side-by-side.png`."), "{}", f[0].summary);
+        rm(".impeccable/mocks/comp-2.png");
+        rm(".impeccable/review/diff/hero/side-by-side.png");
+        assert!(check_spent_build_artifacts(&root).is_empty(), "all deleted");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn cursor_gate_is_an_auto_finding_and_the_post_edit_hook_is_not() {
         let root = tmp();
         write(&root, ".cursor/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
@@ -593,6 +662,26 @@ mod tests {
         assert_eq!(findings.len(), 1, "{findings:?}");
         assert_eq!(findings[0].id, "hook-script-missing");
         assert!(findings[0].fix.starts_with("Reinstall with `impeccable update --user`"), "{:?}", findings[0].fix);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn antigravity_named_hook_resolves_relative_launcher_from_manifest_dir() {
+        let root = tmp();
+        write(&root, ".agent/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+        let cmd = "\"../.agent/skills/impeccable/scripts/impeccable\" hook";
+        write(
+            &root,
+            ".agents/hooks.json",
+            &serde_json::json!({"impeccable": {"Stop": [{"type": "command", "command": cmd}]}}).to_string(),
+        );
+        // The launcher exists one level up from `.agents/`, where Antigravity
+        // runs the command; resolving it from the project root would miss it.
+        assert!(check_hook_installation(&root, None, "antigravity", None).is_empty());
+        std::fs::remove_file(crate::jsp::join(&[&root, ".agent/skills/impeccable/scripts/impeccable"])).unwrap();
+        let findings = check_hook_installation(&root, None, "antigravity", None);
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].id, "hook-script-missing");
         let _ = std::fs::remove_dir_all(&root);
     }
 

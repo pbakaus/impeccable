@@ -1,7 +1,7 @@
 {
-  "stdout": "",
-  "stderr": "[\n  {\n    \"slug\": \"src-app-tsx\",\n    \"path\": \".impeccable/surfaces/src-app-tsx.md\",\n    \"primaryTarget\": \"src/App.tsx\",\n    \"relatedTargets\": []\n  }\n]\n",
-  "exit": 2,
+  "stdout": "---\nversion: 1\nslug: \"src-app-tsx\"\nprimary_target: \"src/App.tsx\"\nrelated_targets: []\n---\n\n# Surface brief: A\n",
+  "stderr": "",
+  "exit": 0,
   "signal": null,
   "files": {}
 }

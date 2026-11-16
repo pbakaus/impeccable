@@ -36,7 +36,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     };
     match command {
         Some("path") => {
-            let Some(fp) = surface_brief_path_for_target(target, &project_root) else {
+            let Some(fp) = surface_brief_path_for_target(target, &project_root, &cwd) else {
                 io.err("surface brief path requires a concrete target\n");
                 return 1;
             };
@@ -49,7 +49,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Some("read") => {
-            let result = resolve_surface_brief(&project_root, target);
+            let result = resolve_surface_brief_from(&project_root, &cwd, target);
             if let Some(b) = result.brief {
                 io.out(&b.text);
                 return 0;
@@ -72,8 +72,10 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     return 1;
                 }
             };
-            match write_surface_brief(&project_root, t, &related, &body) {
+            match write_surface_brief(&project_root, &cwd, t, &related, &body) {
                 Ok(fp) => {
+                    // Every new surface records its brief before code, so its captures start ignored.
+                    impeccable_common::git::ignore_runtime_output(&cwd);
                     io.out(&format!("{}\n", rel_out(&fp)));
                     0
                 }
@@ -87,5 +89,24 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             io.err("usage: impeccable surface-brief <path|list|read|write> [target] [body-file] [related-target ...]\n");
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_keeps_the_surface_captures_out_of_git() {
+        let dir = std::env::temp_dir().join(format!("impeccable-brief-ignore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("body.md"), "# Pricing\n").unwrap();
+        let (mut io, _) = Io::captured("", dir.clone(), std::collections::HashMap::new());
+        let body = dir.join("body.md").to_string_lossy().into_owned();
+        let args: Vec<String> = ["write", "src/pricing.html", &body].iter().map(|s| s.to_string()).collect();
+        assert_eq!(run(&args, &mut io), 0);
+        assert!(dir.join(".impeccable/mocks/.gitignore").is_file() && dir.join(".impeccable/review/.gitignore").is_file());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

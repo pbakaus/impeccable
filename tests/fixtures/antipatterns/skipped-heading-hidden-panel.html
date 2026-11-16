@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>skipped-heading, headings in a closed menu panel</title>
+<!--
+  Should pass in a browser scan. The page's outline runs h1, h2, h3. The
+  mega-menu's closed panel holds h4 column titles at display: none, and a
+  footer widget waits at visibility: hidden (americanexpress.com,
+  kfu.edu.sa): headings not painted at capture leave the outline the page
+  shows (taste call r9-t3). The static engine cannot tell they are hidden
+  and reports the skip. The twin, skipped-heading-sr-only.html, keeps a
+  visually hidden heading in the outline.
+-->
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 16px; line-height: 24px; color: #1f2937; background: #ffffff; margin: 0; padding: 24px; }
+  .mega { display: none; }
+  .widget { visibility: hidden; height: 0; }
+  h1 { font-size: 36px; line-height: 44px; }
+  h2 { font-size: 26px; line-height: 34px; }
+  h3 { font-size: 20px; line-height: 28px; }
+  h4, h5 { font-size: 17px; line-height: 24px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Cards and services</h1>
+    <nav><div class="mega"><h4>Card accounts</h4><h4>More services</h4></div></nav>
+  </header>
+  <main>
+    <h2>Personal cards</h2>
+    <p>Compare the cards that fit how you spend, travel and pay.</p>
+    <h3>Travel rewards</h3>
+    <p>Earn points on every trip and every booking.</p>
+    <div class="widget"><h5>Search this site</h5></div>
+  </main>
+</body>
+</html>

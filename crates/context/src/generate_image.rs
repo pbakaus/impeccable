@@ -282,8 +282,13 @@ fn sniffed_type(bytes: &[u8]) -> Option<&'static str> {
 /// the caller names the URL.
 pub(crate) fn fetch_image(url: &str, timeout: std::time::Duration, redirects: u32) -> Result<(Vec<u8>, &'static str), String> {
     use std::io::Read;
-    let agent = crate::http::agent_builder().timeout_connect(timeout).timeout(timeout).redirects(redirects).build();
-    let response = match agent.get(url).call() {
+    // One deadline for the whole fetch, redirects included: each hop gets
+    // only the time that is left.
+    let started = std::time::Instant::now();
+    let response = match crate::http::get_following(url, redirects, |b| {
+        let left = timeout.saturating_sub(started.elapsed()).max(std::time::Duration::from_millis(1));
+        b.timeout_connect(left).timeout(left)
+    }) {
         Ok(r) => r,
         Err(ureq::Error::Status(code, _)) => return Err(format!("HTTP {}", code)),
         Err(_) => return Err("the request failed".into()),
@@ -313,7 +318,17 @@ fn url_file_name(url: &str) -> String {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
-    run_with_api_base(args, io, "https://api.openai.com/v1")
+    let api_base = api_base(&io.env);
+    run_with_api_base(args, io, &api_base)
+}
+
+/// OPENAI_BASE_URL is the variable the OpenAI SDKs read for a proxy or compatible endpoint, with
+/// the same meaning: the base that `/images/...` hangs off, `/v1` included.
+fn api_base(env: &Env) -> String {
+    env.get("OPENAI_BASE_URL")
+        .map(|b| b.trim().trim_end_matches('/').to_string())
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| "https://api.openai.com/v1".into())
 }
 
 fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
@@ -397,7 +412,7 @@ fn run_with_api_base(args: &[String], io: &mut Io, api_base: &str) -> i32 {
             }
         }
     }
-    let agent = crate::http::agent_builder().build();
+    let agent = crate::http::agent_builder(api_base).build();
     let response = if !refs.is_empty() {
         let boundary = format!("----impeccable{:x}", crate::util::now_ms() as u64);
         let mut body: Vec<u8> = Vec::new();
@@ -854,6 +869,16 @@ mod tests {
         }
         assert_eq!(raw[4], 0); // transparent corner
         assert_eq!(raw[8 * (16 * 4 + 1) + 1 + 8 * 4 + 3], 255); // opaque subject
+    }
+
+    #[test]
+    fn api_base_reads_openai_base_url() {
+        let env = |v: &str| Env::from([("OPENAI_BASE_URL".into(), v.into())]);
+        assert_eq!(api_base(&Env::new()), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("")), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("  ")), "https://api.openai.com/v1");
+        assert_eq!(api_base(&env("http://127.0.0.1:8790/openai/v1/")), "http://127.0.0.1:8790/openai/v1");
+        assert_eq!(api_base(&env("https://proxy.example/v1")), "https://proxy.example/v1");
     }
 
     #[test]

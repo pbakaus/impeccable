@@ -428,6 +428,41 @@ fn unrelated_user_mention_cannot_authorize_another_speakers_quote() {
     }
 }
 
+#[test]
+fn force_accepts_the_users_words_downgrading_the_comp_and_its_refusal_shows_the_shape() {
+    for reason in [
+        "The user said: \"Please downgrade the comp. It no longer represents my vision for the site.\"",
+        "The user said: \"The comp should be considered stale as of the writing of this statement.\"",
+        "The user said: \"Please consider the built page the site's design now. The comp was a reference. The status line, the card labels, and the sign do not need to match it.\"",
+        "The user answered: \"Yes, the build overrides the comp\"",
+    ] {
+        assert!(force_allowed(Some(reason)), "{reason}");
+    }
+    for reason in [
+        "The user said: \"Do not downgrade the comp.\"",
+        "The user said: \"The comp is not stale.\"",
+        "The user said: \"The comp should not be considered stale.\"",
+        "The user said: \"The comp was never a reference.\"",
+        "The user said: \"The build does not override the comp.\"",
+        "The user said: \"The page replaces the comp crops with real plates.\"",
+        "The user said: \"Do not\nignore the comp.\"",
+        "The user said: \"The comp was a reference and still is; do not deviate from it.\"",
+        "Please downgrade the comp. It no longer represents my vision for the site.",
+    ] {
+        assert!(!force_allowed(Some(reason)), "{reason}");
+    }
+    let ws = Workspace::new();
+    ws.write("comp.png", &png_io::encode_png(&r::create_image(64, 64, [230, 220, 200, 255]), &[]).unwrap());
+    let io = ws.io();
+    let mut state = json!({"phase":"spec","comp":"comp.png","phases":{"spec":{"attempts":0}}});
+    let opts = GateOpts { build_path: None, min: None, artifact: None };
+    let result = advance(&io, &mut state, true, Some("Please downgrade the comp, it is old."), &opts, &no_organic_scan, None);
+    assert!(!result.ok);
+    let refusal = result.reasons.iter().find(|r| r.starts_with("--force refused: \"")).expect("force is refused");
+    let example = refusal.split("for example: ").nth(1).unwrap().split(')').next().unwrap();
+    assert!(force_allowed(Some(example)), "{example}");
+}
+
 fn simple_hero_workspace() -> (Workspace, Value) {
     let ws = Workspace::new();
     let comp = r::create_image(100, 100, [150, 70, 30, 255]);
@@ -1440,6 +1475,33 @@ fn responsive_failures_print_crops_and_escalate_after_three_attempts() {
     let state: Value = serde_json::from_slice(&std::fs::read(ws.path.join(".impeccable/build/state.json")).unwrap()).unwrap();
     assert_eq!(state["phases"]["responsive"]["history"].as_array().unwrap().len(), 3);
     assert_eq!(state["phases"]["responsive"]["status"], "open");
+}
+
+#[test]
+fn forced_responsive_advance_records_inputs_so_finish_ships() {
+    let ws = menu_workspace();
+    ws.write("index.html", b"<main>Menu</main>");
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phase":"responsive","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    let mut io = ws.io();
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    #[cfg(unix)] {
+        // Unfingerprintable inputs (a symlink) could never be checked at ship, so force cannot close.
+        std::os::unix::fs::symlink("index.html", ws.path.join("link.html")).unwrap();
+        assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+        let state = load_state(&io).unwrap();
+        assert!(state["phases"]["responsive"]["status"] == "open" && state["responsiveInputSha256"].is_null());
+        std::fs::remove_file(ws.path.join("link.html")).unwrap();
+    }
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["phases"]["responsive"]["forced"].is_object() && state["responsiveInputSha256"].is_string());
+    let finish = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
 }
 
 #[test]

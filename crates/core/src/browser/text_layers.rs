@@ -278,6 +278,126 @@ fn gradient_is_decoration(layer: &str) -> bool {
             .any(|v| v > 0.0 && v <= HAIRLINE_MAX_PX)
 }
 
+/// Whether every background layer of a box is a sparse dot pattern: a
+/// `radial-gradient` that paints a dot ([`radial_dot`]: coloured stops
+/// first, then transparent to the end), repeated in cells at most
+/// [`TEXTURE_MAX_CELL_PX`] on both axes, whose ink (the dot's area over the
+/// cell's, times its strongest stop's alpha) is at most
+/// [`DOT_TEXTURE_MAX_INK`]. spacesheep.dev's body draws a 1px dot every
+/// 24px over its fill; the reader sees the fill, not the dot
+/// (observations-1010 row 8). A mesh of pinholes (clear centre, opaque
+/// outside), a dense halftone, an opaque checker and grid lines are not
+/// sparse dots and are read as before (juskoe.vercel.app's `bg-grid` lines
+/// are what several of its failing words were reported on, judged harmful
+/// there). A layer whose cell the style does not state is not one either.
+pub(crate) fn gradient_layers_are_dot_texture(dom: &dyn Dom, node: ElId, image: &str) -> bool {
+    let sizes = split_top_level_commas(&js::to_lower_case(&dom.style(node, "backgroundSize")));
+    let shorthand = split_top_level_commas(&js::to_lower_case(&dom.style(node, "background")));
+    let layers = split_top_level_commas(image);
+    if layers.is_empty() || sizes.is_empty() {
+        return false;
+    }
+    // The ink of every layer together: several sparse layers offset across
+    // one cell can make a dense pattern (#1201 review).
+    let mut ink = 0.0;
+    for (i, layer) in layers.iter().enumerate() {
+        let lower = js::to_lower_case(layer);
+        let repeats = !shorthand.get(i).map_or(false, |s| s.contains("no-repeat"));
+        let Some((w, h)) = explicit_cell(sizes[i % sizes.len()].as_str()) else {
+            return false;
+        };
+        let Some((radius, alpha)) = radial_dot(js::trim(&lower)) else {
+            return false;
+        };
+        // The default shape is an ellipse in the cell's own proportions:
+        // a circle only in a square cell.
+        let circular = lower.contains("circle") || (w - h).abs() < 0.5;
+        if !(repeats
+            && circular
+            && w > 0.0
+            && h > 0.0
+            && w <= TEXTURE_MAX_CELL_PX
+            && h <= TEXTURE_MAX_CELL_PX
+            && gradient_is_decoration(&lower))
+        {
+            return false;
+        }
+        ink += std::f64::consts::PI * radius * radius / (w * h) * alpha;
+    }
+    ink <= DOT_TEXTURE_MAX_INK
+}
+
+/// The most ink a dot pattern may lay over its cell, as a share of the
+/// cell's area times the dot's alpha, summed over its layers, and still be
+/// texture over the fill.
+const DOT_TEXTURE_MAX_INK: f64 = 0.15;
+
+/// A gradient argument split into its leading colour (a token, or a whole
+/// function call such as `rgba(26, 26, 31, 0.13)`) and the rest.
+fn leading_colour(arg: &str) -> Option<(&str, &str)> {
+    match arg.find('(') {
+        Some(open) if !arg[..open].contains(char::is_whitespace) => {
+            let close = arg.rfind(')')?;
+            Some((&arg[..=close], &arg[close + 1..]))
+        }
+        _ => Some(match arg.split_once(char::is_whitespace) {
+            Some((c, r)) => (c, r),
+            None => (arg, ""),
+        }),
+    }
+}
+
+/// A `radial-gradient` layer that paints a dot: its colour stops are opaque
+/// enough to see first (alpha over 0.05), then transparent to the end, with
+/// every position in pixels. The dot's radius (the first transparent stop's
+/// position, or the last coloured one's where that is larger) and its
+/// strongest alpha. `None` for any other shape: a ring, a hole, a stop
+/// placed in percent or not at all, and an ellipse written as one (the
+/// default shape is one too, which the caller allows only in a square
+/// cell).
+fn radial_dot(layer: &str) -> Option<(f64, f64)> {
+    let inner = layer.strip_prefix("radial-gradient(")?.strip_suffix(')')?;
+    // Only a circle: an ellipse's area is not the circle its stops give
+    // (`ellipse 4px 32px` paints far more of a tall cell).
+    let shape = split_top_level_commas(inner).into_iter().next().unwrap_or_default();
+    let shape = js::trim(&shape).to_string();
+    let starts_with_colour = leading_colour(&shape).is_some_and(|(c, _)| crate::color::parse_any_color(Some(c)).is_some());
+    if !starts_with_colour && !shape.starts_with("circle") {
+        return None;
+    }
+    let mut coloured: Vec<(f64, Option<f64>)> = Vec::new();
+    let mut clear: Vec<Option<f64>> = Vec::new();
+    for arg in split_top_level_commas(inner) {
+        let arg = js::trim(&arg).to_string();
+        let (colour, rest) = leading_colour(&arg)?;
+        let Some(c) = crate::color::parse_any_color(Some(colour)) else {
+            // The shape and position argument, allowed only first.
+            if coloured.is_empty() && clear.is_empty() {
+                continue;
+            }
+            return None;
+        };
+        let mut position = None;
+        for t in rest.split_ascii_whitespace() {
+            position = Some(px(t)?);
+        }
+        if c.alpha_or_one() > 0.05 {
+            if !clear.is_empty() {
+                return None;
+            }
+            coloured.push((c.alpha_or_one(), position));
+        } else {
+            clear.push(position);
+        }
+    }
+    let first_clear = (*clear.first()?)?;
+    // A stop placed before an earlier one is drawn at the earlier one's
+    // position, so the dot reaches the furthest coloured stop.
+    let last_coloured = coloured.iter().map(|(_, p)| *p).collect::<Option<Vec<f64>>>()?.into_iter().fold(0.0, f64::max);
+    let alpha = coloured.iter().map(|(a, _)| *a).fold(0.0, f64::max);
+    Some((first_clear.max(last_coloured), alpha))
+}
+
 /// What a box's background images paint. Every layer has to be texture for
 /// the box to be; one picture makes it a picture, and one layer this cannot
 /// place (a remote tile at its own size, an `image-set`) leaves it undecided.

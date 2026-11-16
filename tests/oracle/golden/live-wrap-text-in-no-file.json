@@ -1,0 +1,12 @@
+{
+  "stdout": "",
+  "stderr": "{\"error\":\"element_ambiguous\",\"fallback\":\"agent-driven\",\"reason\":\"rendered_text_not_in_source\",\"candidates\":[{\"file\":\"src/Components/Detail.html\",\"startLine\":2,\"endLine\":2},{\"file\":\"src/Pages/Show.html\",\"startLine\":2,\"endLine\":2}],\"hint\":\"Rendered text does not occur in any matching source branch of the files that contain the locator. The element may use dynamic props or expressions; inspect the candidates and wrap the intended instance manually.\"}\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".impeccable/live/config.json": "{\n  \"files\": [\"index.html\", \"public/**/*.html\"],\n  \"insertBefore\": \"</body>\",\n  \"commentSyntax\": \"html\"\n}\n",
+    "src/cards.html": "<section class=\"cards\">\n  <div class=\"card\">\n    <h3 class=\"card-title\">Alpha card</h3>\n    <p class=\"card-body\">First card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Beta card</h3>\n    <p class=\"card-body\">Second card body copy.</p>\n  </div>\n  <div class=\"card\">\n    <h3 class=\"card-title\">Gamma card</h3>\n    <p class=\"card-body\">Third card body copy.</p>\n  </div>\n</section>\n",
+    "src/Components/Detail.html": "<section>\n  <div class=\"panel-body\">Checklist item detail copy.</div>\n</section>\n",
+    "src/Pages/Show.html": "<main>\n  <div class=\"panel-body\">Company billing contact Primary contact for invoices and renewal notices.</div>\n</main>\n"
+  }
+}

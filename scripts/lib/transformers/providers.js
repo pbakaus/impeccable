@@ -4,10 +4,14 @@
  * Each config specifies:
  * - provider: key into PROVIDER_PLACEHOLDERS (e.g. 'claude-code')
  * - configDir: dot-directory name (e.g. '.claude')
+ * - hooksManifestDir: optional dot-directory the hook manifest is written
+ *   under when the harness reads it from outside configDir (Antigravity)
  * - displayName: human-readable name for log output (e.g. 'Claude Code')
  * - providerTags: markdown block tags kept for this target (e.g. <codex>...</codex>)
  * - frontmatterFields: which optional fields to emit beyond name + description
  * - bodyTransform: optional function (body, skill) => transformed body
+ * - descriptionKey: optional skill property used as the frontmatter description
+ *   instead of the shared one (falls back to it when empty)
  */
 export const PROVIDERS = {
   cursor: {
@@ -29,6 +33,10 @@ export const PROVIDERS = {
     providerTags: ['claude-code', 'claude'],
     configDir: '.claude',
     displayName: 'Claude Code',
+    // Claude Code caps its skill listing (1% of the context window in characters) and lists
+    // a skill that doesn't fit as its bare name, so it gets the short description
+    // (SKILL.src.md `claude-code-description`; tests/skill-behavior/README.md).
+    descriptionKey: 'claudeCodeDescription',
     frontmatterFields: ['user-invocable', 'argument-hint', 'license', 'compatibility', 'metadata'],
     // allowed-tools omitted: Claude Code blocks skill activation in non-interactive
     // sessions when the field is present (issue #736). Other providers keep it.
@@ -197,6 +205,14 @@ export const PROVIDERS = {
     configDir: '.agent',
     displayName: 'Antigravity',
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+    emitHooks: 'antigravity',
+    // Antigravity discovers workspace hooks from `.agents/hooks.json` (or
+    // global `~/.gemini/config/hooks.json`), not from beside its skills in
+    // `.agent/`. `hooksManifestDir` names the folder the manifest is written
+    // under, in place of `configDir`, in every output: the provider dist,
+    // the universal bundle, and the root harness sync.
+    hooksManifestDir: '.agents',
+    hooksManifestRel: 'hooks.json',
   },
   hermes: {
     provider: 'hermes',
@@ -207,9 +223,23 @@ export const PROVIDERS = {
     // (license, compatibility, metadata) are spec-defined; harness-specific
     // extensions (user-invocable, argument-hint, allowed-tools) are NOT
     // recognized by the Hermes skill loader and would be silently ignored.
-    // Hermes also has no hook surface, no equivalent of Claude's slash
-    // commands, and no per-skill tool ACL -- so no emitHooks, no agentFormat,
-    // no writeOpenAIMetadata. See hermes-agent/SKILL.md "Skills" section.
+    // The design hook ships as a Python plugin (skill/hermes-plugin/) under
+    // .hermes/plugins/, since Hermes hooks are in-process plugin callbacks.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
+    pluginPayload: { source: 'hermes-plugin', dest: 'plugins/impeccable-design-hook' },
+  },
+  devin: {
+    provider: 'devin',
+    providerTags: ['devin'],
+    configDir: '.devin',
+    displayName: 'Devin',
+    // Devin (web, CLI, Desktop) reads name, description, argument-hint, triggers,
+    // model, subagent, agent, permissions, allowed-tools. user-invocable is
+    // omitted: triggers already defaults to user and model. allowed-tools is
+    // omitted: the CLI docs call it an auto-approve list, the web docs a
+    // restriction, and our Claude-syntax entries match no Devin tool. The CLI
+    // has hooks (.devin/hooks.v1.json) and subagent profiles (.devin/agents/,
+    // Devin tool names), neither targeted yet: no emitHooks, no agentFormat.
+    frontmatterFields: ['argument-hint', 'license', 'compatibility', 'metadata'],
   },
 };

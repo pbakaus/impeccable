@@ -344,7 +344,8 @@ export async function createLlmAgent(opts = {}) {
             {
               ...llmRequestSettings(provider),
               model,
-              temperature: 0,
+              // Anthropic API 2026-10-21 rejects sampling parameters.
+              ...(provider === 'anthropic' ? {} : { temperature: 0 }),
               max_tokens: 16000,
               // When present, live.md is the final cacheable stable prefix.
               // Benchmarks omit it so external payloads contain only the
@@ -490,7 +491,7 @@ export async function createLlmAgent(opts = {}) {
             {
               ...llmRequestSettings(provider),
               model,
-              temperature: 0,
+              ...(provider === 'anthropic' ? {} : { temperature: 0 }),
               max_tokens: 16000,
               system: systemBlocks(MANUAL_EDIT_SYSTEM_INSTRUCTIONS),
               messages: [{ role: 'user', content: userMessage }],

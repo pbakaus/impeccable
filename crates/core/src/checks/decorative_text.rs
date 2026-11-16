@@ -44,6 +44,13 @@
 //!   together), whose words are the site's name (screen.movie's 222px
 //!   "Screen Movie" at 0.1 in the footer, incredible.one's 272px
 //!   "Incredible" at 0.07 alpha). Outside controls; a heading may carry it.
+//! - **Ghost words**: display type at [`WORDMARK_MIN_PX`] or more that the
+//!   page sets aside from reading and pointing (`aria-hidden`, no pointer
+//!   events, or behind a negative `z-index`), shown at
+//!   [`WORDMARK_MAX_OPACITY`] or less or at most [`GHOST_MAX_RATIO`] from
+//!   its ground, whatever it says (taste call r14-t3), unless its words are
+//!   part of a visually hidden heading or of the document title. Outside
+//!   controls.
 //!
 //! The adapters gather [`DecorativeTextFacts`] against their own DOM; the
 //! decision is made here, once, for both engines.
@@ -71,6 +78,10 @@ pub const WORDMARK_H1_PATH_MIN_PX: f64 = 80.0;
 /// The most a wordmark may show of its ink, its opacity and its colour's
 /// alpha together, and still be a shape rather than a line to read.
 pub const WORDMARK_MAX_OPACITY: f64 = 0.25;
+
+/// The most contrast a ghost word's ink may have with its ground and still
+/// read as a shape behind the page rather than a line (taste call r14-t3).
+pub const GHOST_MAX_RATIO: f64 = 1.5;
 
 /// Whether a box is the size and shape of a small avatar.
 pub fn avatar_sized(width: f64, height: f64) -> bool {
@@ -142,6 +153,19 @@ pub struct DecorativeTextFacts {
     /// title and the title's parts). Read only where the type is display
     /// size and faint; empty otherwise.
     pub site_names: Vec<String>,
+    /// The text is set aside from reading and pointing: it, or a box it sits
+    /// in, is `aria-hidden="true"`, it takes no pointer events, or a box it
+    /// sits in is laid behind the page at a negative `z-index`. Read only
+    /// where the type is at least [`WORDMARK_MIN_PX`]; false otherwise.
+    pub ghost_marked: bool,
+    /// The ink stands at most [`GHOST_MAX_RATIO`] from its ground, where the
+    /// caller measured it; false where it did not.
+    pub faint_ground: bool,
+    /// The text's words run word for word inside a visually hidden heading
+    /// on the page or the document title: the visible copy of the page's
+    /// heading, set `aria-hidden` beside an sr-only one. Read only where
+    /// [`Self::ghost_marked`] holds.
+    pub names_page_heading: bool,
 }
 
 /// The shape a text with no reading job was recognised by.
@@ -152,6 +176,9 @@ pub enum DecorativeShape {
     Signature,
     Mockup,
     Wordmark,
+    /// Display type set aside from reading and shown as a shape: a ghost
+    /// word behind a slide (taste call r14-t3).
+    GhostWord,
 }
 
 /// The decorative shape these facts show, if any.
@@ -174,6 +201,20 @@ pub fn classify_decorative_text(f: &DecorativeTextFacts) -> Option<DecorativeSha
         && names_the_site(&f.text, &f.site_names)
     {
         return Some(DecorativeShape::Wordmark);
+    }
+    // Taste call r14-t3: display type the page sets aside from reading and
+    // pointing, shown faint, is a shape whatever it says (intel.com's 240px
+    // "效率" behind a slide at 1.3:1, aproov.es's 410px "oo" at 0.055). The
+    // site-name test is the wordmark's alone.
+    if !f.in_control
+        && !f.control_label
+        && f.font_size_px.is_finite()
+        && f.font_size_px >= WORDMARK_MIN_PX
+        && f.ghost_marked
+        && !f.names_page_heading
+        && (f.shown_opacity <= WORDMARK_MAX_OPACITY || f.faint_ground)
+    {
+        return Some(DecorativeShape::GhostWord);
     }
     if f.avatar_box
         && !f.control_label
@@ -583,7 +624,33 @@ mod tests {
         assert_eq!(shape(&DecorativeTextFacts { in_control: true, ..ghost("Screen Movie", 222.0, 64.0, 0.1) }), None);
         // An adapter that reads no layout leaves the size at 0.
         assert_eq!(shape(&ghost("Screen Movie", 0.0, 0.0, 0.0)), None);
+        // A word that names nothing needs the ghost marks (r14-t3).
+        assert_eq!(shape(&ghost("oo", 410.0, 64.0, 0.055)), None);
         assert!(!names_the_site("Sc", &["sc".to_string()]));
+    }
+
+    #[test]
+    fn a_ghost_word_is_display_type_set_aside_and_faint() {
+        let ghost = |text: &str, size: f64, shown: f64, marked: bool, faint: bool| DecorativeTextFacts {
+            font_size_px: size,
+            shown_opacity: shown,
+            ghost_marked: marked,
+            faint_ground: faint,
+            ..facts(text)
+        };
+        let shape = |f: &DecorativeTextFacts| classify_decorative_text(f);
+        // aproov.es: 410px, aria-hidden, at 0.055.
+        assert_eq!(shape(&ghost("oo", 410.0, 0.055, true, false)), Some(DecorativeShape::GhostWord));
+        // intel.com: 240px, aria-hidden, shown whole but 1.3:1 on its ground.
+        assert_eq!(shape(&ghost("效率", 240.0, 1.0, true, true)), Some(DecorativeShape::GhostWord));
+        // Twins: the same words not set aside, shown, under 120px, or a control.
+        assert_eq!(shape(&ghost("oo", 410.0, 0.055, false, true)), None);
+        assert_eq!(shape(&ghost("效率", 240.0, 1.0, true, false)), None);
+        assert_eq!(shape(&ghost("效率", 110.0, 0.1, true, true)), None);
+        assert_eq!(shape(&DecorativeTextFacts { in_control: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
+        assert_eq!(shape(&DecorativeTextFacts { control_label: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
+        // The page's own heading, shown aria-hidden beside an sr-only copy.
+        assert_eq!(shape(&DecorativeTextFacts { names_page_heading: true, ..ghost("oo", 410.0, 0.05, true, true) }), None);
     }
 
     #[test]

@@ -82,9 +82,12 @@ fn the_line_break_rules_read_the_rendered_lines() {
             "flag-inline",
             "flag-centered",
             "flag-right",
+            "flag-pretty-elsewhere",
         ],
         &[
             "pass-pretty",
+            "pass-pretty-rule",
+            "pass-pretty-ancestor",
             "pass-balance",
             "pass-two-words",
             "pass-long-word",

@@ -1,0 +1,9 @@
+{
+  "stdout": "No impeccable skill folders found in this project or at the user level.\nFound an Impeccable skill at .codex/skills/impeccable, which update does not manage: Codex reads repository skills from .agents/skills, so that copy is never loaded. Run `npx impeccable install --providers=codex` to install it there, then delete .codex/skills/impeccable.\nRun `npx impeccable install` to install first.\n",
+  "stderr": "",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".codex/skills/impeccable/SKILL.md": "---\nname: impeccable\nversion: 3.9.1\n---\n"
+  }
+}

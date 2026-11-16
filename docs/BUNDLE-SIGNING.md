@@ -87,8 +87,8 @@ download endpoint, release asset, or both, but cannot use the signing key or
 replace the trusted engine. It is not a freshness protocol: a previously
 signed release can still be replayed. Signed timestamp metadata and rollback
 state are separate work. Signatures do not establish that authored skill
-content is safe, and do not authenticate separately downloaded engine
-binaries (those currently use their existing SHA-256 sidecars).
+content is safe. Separately downloaded engine binaries are covered only
+through the `scripts/engine-checksums.txt` digests the signed bundle carries.
 
 `IMPECCABLE_BUNDLE_PATH` and `impeccable link` are explicit local-development
 trust paths. They continue to accept unsigned local files/directories. Do not

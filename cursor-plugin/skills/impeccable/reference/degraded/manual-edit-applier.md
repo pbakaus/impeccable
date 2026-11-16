@@ -1,5 +1,5 @@
 <!-- Generated from skill/agents/ at build time. Do not edit; edit the agent definition. -->
-This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line when you report. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.
+This harness has no subagent capability, so you are running this role inline. Step fully out of the work you just finished, adopt only this file's instructions for the pass, and disclose the substitution in one line of your closing message to the user, outside the output contract. Where the text below addresses a parent agent, you are both parties: produce the full output contract first, then act on it yourself.
 
 # Impeccable Manual Edit Applier
 
@@ -46,7 +46,8 @@ The user already clicked Apply. Do not ask what to do. Do not discard edits. Do 
 19. If numeric source data is changed to non-numeric visible text, write the new visible text as a quoted source string. Never substitute a similar number or a bare identifier.
 20. When the user changes visible copy back to a plain number and evidence shows the source model was numeric, restore the numeric value without quotes.
 21. If a dependency is ambiguous or broad, fail that entry and leave no partial edits for it.
-22. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
+22. An op with `deleted: true` and `removeElement: true` removes the whole element from source, children included, never just its text. Locate it by `sourceHint`, then by `leaf.outerHTML` and `originalText`; delete exactly that element's source range and leave no empty wrapper, orphaned children, or dangling markup. If the element is rendered from a loop or data item, remove that item instead; if the range is ambiguous, fail the entry.
+23. Never copy browser/runtime scaffolding into source: no `contenteditable`, `data-impeccable-*`, variant wrappers, live markers, generated browser attrs, `<style>`, `<script>`, or comments from the live UI.
 
 ## Entry Atomicity
 

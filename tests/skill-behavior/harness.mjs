@@ -28,6 +28,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { getProviderOptions } from './providers.mjs';
 import { ENGINE_MISSING_MESSAGE, findEngineBinary } from '../lib/engine-bin.mjs';
+import { withoutProviderKeys } from '../lib/dev-keys.mjs';
 import { readSourceFiles, compileProviderBlocks, replacePlaceholders, stripRuleMarkers } from '../../scripts/lib/utils.js';
 import { createTransformer } from '../../scripts/lib/transformers/factory.js';
 
@@ -182,8 +183,7 @@ function execBash(workspace, command, timeoutMs = 20_000, extraEnv = {}) {
   return new Promise((resolve) => {
     // Model credentials belong to generateText, not to child image helpers.
     // Real decision pages have browser E2E; this suite has a structured user.
-    const shellEnv = Object.fromEntries(Object.entries({ ...process.env, ...extraEnv })
-      .filter(([name]) => !/(?:^|_)(?:API_KEY|AUTH_TOKEN|ACCESS_TOKEN)$/.test(name)));
+    const shellEnv = withoutProviderKeys({ ...process.env, ...extraEnv });
     const proc = spawn('bash', ['-lc', command], {
       cwd: workspace,
       // The agent may roll against the live API: tag its roll and choice
@@ -449,6 +449,9 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
       tools,
       onStepFinish: (step) => {
         (trace.assistantTexts ??= []).push(step.text ?? '');
+        // A step's text comes before its tool calls: record how many calls preceded it.
+        (trace.textSteps ??= []).push({ text: step.text ?? '', callsBefore: trace.textStepCalls ?? 0 });
+        trace.textStepCalls = trace.toolCalls.length;
         saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages });
       },
       stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],

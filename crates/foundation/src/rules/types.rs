@@ -125,6 +125,11 @@ pub struct BorderOpts {
     /// reported. The recorded call vectors predate the corner read and leave
     /// this `None`, which replays the behavior they pin.
     pub corners: Option<Corners>,
+    /// The element's border-box `[width, height]`, when the caller could
+    /// read it. `None` (the recorded call vectors, a static element with no
+    /// resolved size) skips the circle test.
+    #[serde(default)]
+    pub box_size: Option<[f64; 2]>,
 }
 
 // ─── isEmojiOnlyText ────────────────────────────────────────────────────────

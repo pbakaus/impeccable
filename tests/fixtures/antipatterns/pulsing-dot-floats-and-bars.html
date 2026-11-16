@@ -10,6 +10,12 @@
   4px, a translation every step repeats however it is spaced, a zero
   translation and a ripple that grows both sides still pulse (review of
   round 11), and so does a typing indicator's 2px bob.
+
+  observations-1010 row 11: an eye that blinks on one axis (looot.ai's
+  scaleY) and a dot that runs along a connector by its left offset
+  (zcad.ai) are not a pulse either. A dot that swells as it fades, one
+  that breathes a pixel by its margin, and a ripple kept centred by a
+  margin or an inset as it grows still pulse.
 -->
 <style>
   body { font-family: system-ui, sans-serif; font-size: 16px; }
@@ -57,6 +63,52 @@
     30% { opacity: 1; transform: translateY(-2px); }
   }
 
+  /* FLAG: a dot that swells and fades. */
+  .swell-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; animation: swell 1.8s infinite; }
+  @keyframes swell {
+    0%, 100% { transform: scale(0.5); opacity: 1; }
+    50% { transform: scale(1); opacity: 0.5; }
+  }
+
+  /* FLAG: a dot that breathes a pixel by its margin. */
+  .margin-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #0ea5e9; animation: margin-breathe 2s infinite; }
+  @keyframes margin-breathe {
+    0%, 100% { opacity: 1; margin-top: 0; }
+    50% { opacity: 0.5; margin-top: -1px; }
+  }
+
+  /* FLAG: a ripple kept centred by a margin as it grows. */
+  .margin-ripple { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: margin-ripple 2s infinite; }
+  @keyframes margin-ripple {
+    0% { width: 8px; height: 8px; margin: 0; opacity: 1; }
+    100% { width: 16px; height: 16px; margin: -4px; opacity: 0.3; }
+  }
+
+  /* FLAG: a ripple that grows by its inset. */
+  .inset-host { position: relative; display: inline-block; width: 8px; height: 8px; }
+  .inset-ripple { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: inset-ripple 2s infinite; }
+  .inset-host .inset-ripple { position: absolute; inset: 0; width: auto; height: auto; }
+  @keyframes inset-ripple {
+    0% { inset: 0; opacity: 1; }
+    100% { inset: -4px; opacity: 0; }
+  }
+
+  /* PASS: an eye that blinks. */
+  .eye-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #1f2937; animation: eye-blink 3.6s infinite; }
+  @keyframes eye-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95% { transform: scaleY(0.1); }
+  }
+
+  /* PASS: a dot that runs along a connector. */
+  .connector { position: relative; width: 240px; height: 8px; }
+  .run-dot { position: absolute; top: 2px; left: 0; width: 4px; height: 4px; border-radius: 50%; background: #38bdf8; animation: run-along 3s ease-in-out infinite; }
+  @keyframes run-along {
+    0% { opacity: 0; left: 0px; transform: scale(0.7); }
+    14% { opacity: 0.9; }
+    100% { opacity: 0; left: calc(100% - 4px); transform: scale(0.95); }
+  }
+
   /* PASS: a node that floats as it fades. */
   .float-node { width: 4px; height: 4px; border-radius: 50%; background: #94a3b8; animation: node-float 8s ease-in-out infinite; }
   @keyframes node-float {
@@ -89,6 +141,10 @@
   <span class="gpu-dot"></span> <span class="ripple-dot"></span> <span class="breathe-dot"></span>
   <h3>A typing indicator</h3>
   <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+  <h3>A swelling dot, a dot breathing by its margin</h3>
+  <span class="swell-dot"></span> <span class="margin-dot"></span>
+  <h3>Ripples kept centred by a margin and by an inset</h3>
+  <span class="margin-ripple"></span> <span class="inset-host"><span class="inset-ripple"></span></span>
 </div>
 <div class="col" id="should-pass">
   <h2>Should pass</h2>
@@ -96,6 +152,10 @@
   <span class="float-node"></span>
   <h3>Waveform bars</h3>
   <span class="wave-bar"></span><span class="blink-bar"></span>
+  <h3>A blinking eye</h3>
+  <span class="eye-dot"></span>
+  <h3>A dot running along a connector</h3>
+  <div class="connector"><span class="run-dot"></span></div>
 </div>
 </body>
 </html>

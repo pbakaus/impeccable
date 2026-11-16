@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
+// new-work.md plus the branch files it loads on the step that needs them.
+const newWorkFlow = () => ['new-work.md', 'new-work-world.md', 'new-work-comp.md']
+  .map((f) => readFileSync(join(ROOT, 'skill/reference', f), 'utf-8').replace(/\r\n?/g, '\n'))
+  .join('\n');
+
 describe('skill reference authoring contracts', () => {
   it('keeps direction contracts in development-only surface briefs', () => {
     const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
@@ -41,6 +46,31 @@ describe('skill reference authoring contracts', () => {
     assert.doesNotMatch(newWork, /grep the built output/);
     assert.doesNotMatch(newWork, /emitted markup/);
     assert.doesNotMatch(newWork, /first child of the document's body/);
+  });
+
+  it('defines the FORM seed value for a direction pinned whole', () => {
+    const newWork = newWorkFlow();
+    const reviewer = readFileSync(join(ROOT, 'skill/agents/impeccable-finish-reviewer.md'), 'utf-8');
+
+    assert.match(newWork, /pins whole, naming its world and its first-surface experience both in words you can quote/);
+    assert.match(newWork, /a pin that leaves a dimension open, a direction you completed from a partial brief/);
+    assert.match(newWork, /write `seed: none \(pinned\)` in place of both the list position and the reference, followed by the quoted words that pin it/);
+    assert.match(newWork, /`seed: none \(pinned\)` when a direction pinned whole skipped it\) are present/);
+    assert.match(newWork, /build-phase start --direction <seed reference, or none when it was unavailable or a direction pinned whole skipped the roll>/);
+    assert.match(reviewer, /`seed: none \(pinned\)` stands only when the original request or the confirmed user answers pin both/);
+  });
+
+  it('collects the existing-DESIGN.md choice before the documenter writes', () => {
+    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const documenter = readFileSync(join(ROOT, 'skill/agents/impeccable-documenter.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const handoff = newWork.match(/After the last correction[\s\S]*?<!-- rule:skill-documenter-records-the-world -->/)?.[0] ?? '';
+    const inputContract = documenter.match(/## Input Contract\n([\s\S]*?)\n## Workflow/)?.[1] ?? '';
+
+    assert.match(handoff, /\{\{ask_instruction\}\} Offer refresh, overwrite, or merge/);
+    assert.ok(handoff.indexOf('{{ask_instruction}}') < handoff.indexOf('spawn the shipped documenter'), 'the choice is collected before the documenter is spawned');
+    assert.match(inputContract, /refresh, overwrite, or merge/);
+    assert.doesNotMatch(documenter, /update, not replace/);
+    assert.match(documenter, /no choice arrived, write nothing/);
   });
 
   it('skips the detector and its degraded banner on native critique targets', () => {
@@ -81,7 +111,7 @@ describe('skill reference authoring contracts', () => {
   });
 
   it('routes visual decision fallback through wait capability and start failure', () => {
-    const newWork = readFileSync(join(ROOT, 'skill/reference/new-work.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    const newWork = newWorkFlow();
     const visualDecisionPage = newWork.match(
       /A harness that can leave a shell blocked[\s\S]*?<!-- rule:skill-visual-decision-page -->/,
     )?.[0] ?? '';
@@ -100,6 +130,30 @@ describe('skill reference authoring contracts', () => {
       visualDecisionPage,
       /only exit code 2 from starting it routes the decision to the structured tool; that exit is the fallback/,
     );
+  });
+
+  it('lists every card kind the engine accepts in the identity rule', () => {
+    const newWork = newWorkFlow();
+    const telemetry = readFileSync(join(ROOT, 'crates/context/src/telemetry.rs'), 'utf-8');
+    const cardKinds = telemetry.match(/pub const CARD_KINDS: .*? = \[(.*?)\];/)?.[1].match(/[a-z]+/g) ?? [];
+    const identityRule = newWork.match(/Every option declares its identity: ([\s\S]*?), and each challenger carries/)?.[1] ?? '';
+
+    assert.ok(cardKinds.includes('dealt'));
+    for (const kind of cardKinds) {
+      assert.match(identityRule, new RegExp(`\`${kind}\``));
+    }
+  });
+
+  it('sizes the hand by the verdicts, never by a requested count', () => {
+    const newWork = newWorkFlow();
+    const handComposition = newWork.match(
+      /A hand holds at most three full-card challengers[\s\S]*?Add one card for your own top-ranked grounded candidate/,
+    )?.[0] ?? '';
+
+    assert.match(handComposition, /follows the verdicts, never a number the user named/);
+    assert.match(handComposition, /say in one line why it is smaller, and offer a re-roll/);
+    assert.match(handComposition, /A declined challenger is never promoted to fill a slot/);
+    assert.match(handComposition, /standing exit does not count toward a requested number once the user has seen and rejected it/);
   });
 
   it('keeps touch-gesture verification in the adapt, audit, and harden references', () => {
@@ -122,6 +176,22 @@ describe('skill reference authoring contracts', () => {
     assert.match(edgeCases, /\*\*Interrupted gestures\*\*[\s\S]*works without a reload/);
     assert.match(edgeCases, /clear the dragging state and release capture/);
     assert.match(verifyHardening, /\*\*Interrupted gestures\*\*/);
+  });
+
+  it('reads project personas from PRODUCT.md, not the retired Design Context section (#985)', () => {
+    const critique = readFileSync(join(ROOT, 'skill/reference/critique.md'), 'utf-8');
+    assert.doesNotMatch(critique, /Design Context/);
+    assert.match(critique, /PRODUCT\.md has a `## Users` section/);
+  });
+
+  it('scales onboard empty states by type and lists permissive tour libraries (#985)', () => {
+    const onboard = readFileSync(join(ROOT, 'skill/reference/onboard.md'), 'utf-8').replace(/\r\n?/g, '\n');
+    assert.doesNotMatch(onboard, /^Every empty state needs:/m);
+    assert.doesNotMatch(onboard, /Popper\.js/);
+    const tours = onboard.match(/^\*\*Tour libraries\*\*:.*$/m)?.[0] ?? '';
+    assert.match(tours, /Driver\.js/);
+    assert.match(tours, /React Joyride/);
+    assert.doesNotMatch(tours, /Intro\.js|Shepherd\.js/);
   });
 
   it('keeps audit score-table dimensions aligned with their numbered sections', () => {
