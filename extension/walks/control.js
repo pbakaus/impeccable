@@ -198,7 +198,13 @@ const TOLD = { pause: 'paused', resume: 'resumed', takeover: 'takeover', handbac
 const GOING_ON = { resume: 'paused', handback: 'takeover' };
 
 /** Does what the person asked, if it is on offer right now. Resolves to whether it was. */
-export async function command(name) {
+export async function command(name) { return (await attempt(name)) === true; }
+
+/**
+ * As `command`, resolving to true, or why Continue or Hand back was refused (for the side panel): `sign-in` still
+ * shows, a `script` of the server's may still be on, the `tab` can't be got back, or it `closed`. Anything else: false.
+ */
+async function attempt(name) {
   if (name === 'yes' || name === 'no') {
     if (!answering) return false;
     settle(name);
@@ -217,13 +223,13 @@ export async function command(name) {
   }
   // Going on is checked again: while the debugger cannot get back on the tab (another extension's frame is in it), or
   // a sign-in host or a 401 still shows, the walk stays paused.
-  if (GOING_ON[name] === current().state && walk && !(await regain())) return false;
+  if (GOING_ON[name] === current().state && walk && !(await regain())) return walk ? 'tab' : 'closed';
   // Nor while a script of the server's may still be on the tab (driver.js `seal`): asked off once more on each press.
-  if (GOING_ON[name] === current().state && walk && !(await sealed())) return false;
+  if (GOING_ON[name] === current().state && walk && !(await sealed())) return 'script';
   // Continue at a sign-in is the person's word that it is done: a password field still on this page pauses no more.
   if (GOING_ON[name] === current().state && current().held === 'sign-in') letPast();
-  if (GOING_ON[name] === current().state && walk && (await signInNow())) { letPast(false); pauseFor('sign-in'); return false; }
-  if (GOING_ON[name] === current().state && walk?.lost) return false;
+  if (GOING_ON[name] === current().state && walk && (await signInNow())) { letPast(false); pauseFor('sign-in'); return 'sign-in'; }
+  if (GOING_ON[name] === current().state && walk?.lost) return 'tab';
   if (!Object.hasOwn(TOLD, name) || !dispatch({ type: name })) return false;
   say({ event: TOLD[name] });
   release();
@@ -273,6 +279,6 @@ const PANEL = chrome.runtime.getURL('walks/panel/');
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (typeof message?.control !== 'string') return false;
   if (sender.id !== chrome.runtime.id || sender.origin !== self.location.origin || !sender.url?.startsWith(PANEL)) return false;
-  void command(message.control).then((ok) => respond({ ok }));
+  void attempt(message.control).then((said) => respond(typeof said === 'string' ? { ok: false, why: said } : { ok: said }));
   return true;
 });

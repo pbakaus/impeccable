@@ -698,12 +698,15 @@ function question() {
 
 /** A walk that paused itself (a sign-in) or was held goes on only by the person's word. */
 function held() {
+  // Why the last Continue or Hand back was refused, said once under the pause's own line (`pre.refused`).
+  const why = (go) => (Object.hasOwn(COPY.refused, pre.refused ?? '') ? el('p', { class: 'status', role: 'status', 'data-refused': pre.refused, text: COPY.refused[pre.refused](go) }) : null);
   if (view.state === 'paused') {
+    const go = view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume;
     return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }),
       view.withheld ? el('p', { class: 'status', role: 'status', 'data-hint': 'stop-and-restart', text: COPY.signInHeld }) : null,
-      button('resume', view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume, 'gold'));
+      why(go), button('resume', go, 'gold'));
   }
-  if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), button('handback', COPY.controls.handback, 'gold'));
+  if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), why(COPY.controls.handback), button('handback', COPY.controls.handback, 'gold'));
   return null;
 }
 
@@ -1058,9 +1061,11 @@ async function start() {
     if (feed.length > 0) setTimeout(next, 1500);
   } else {
     act = async (action) => {
+      pre.refused = null;
       const answer = await chrome.runtime.sendMessage({ control: action }).catch(() => null);
-      // Continue or hand-back refused (the sign-in still shows): the pause as it stands, drawn again, focus kept.
+      // Continue or hand-back refused (the sign-in still shows): the pause as it stands, drawn again with why, focus kept.
       if (answer?.ok === true || (action !== 'resume' && action !== 'handback')) return;
+      pre.refused = typeof answer?.why === 'string' ? answer.why : null;
       const { view: now } = await chrome.storage.session.get('view').catch(() => ({}));
       if (now?.v === 1) view = now;
       render();
@@ -1072,6 +1077,8 @@ async function start() {
       if (changes.connected?.newValue === true) { connect(); void knowAccount().then(render); }
       if (!changes.view) return;
       view = changes.view.newValue ?? emptyView(false);
+      // A refusal is said only for the pause it was refused at: gone once the walk goes on or ends.
+      if (view.state !== 'paused' && view.state !== 'takeover') pre.refused = null;
       if (isLive(view)) ended = false;
       render();
     });
