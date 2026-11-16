@@ -29,6 +29,14 @@ export const COPY = {
   top: { walking: 'On', noSite: 'Open a web page to start a journey.', scan: 'Scan', back: 'Back' },
   /** The cog's popover: who is signed in, and Sign out. */
   account: { title: 'Account', signedIn: 'Signed in as', help: 'Having problems?', signOut: 'Sign out' },
+  /** Your personas, from the cog: the person's own, each with Remove (asking `ask.title` first), and the six everyone has. */
+  yours: {
+    title: 'Your personas',
+    remove: 'Remove',
+    removeOne: (name) => `Remove ${name}`,
+    default: 'Default',
+    unremoved: (name) => `Couldn’t remove ${name}. Try again.`,
+  },
   /** Just signed in: a moment, then the panel goes on. */
   connected: { line: 'You’re connected', who: 'Signed in as' },
 

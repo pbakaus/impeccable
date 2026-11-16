@@ -280,10 +280,9 @@ describe('account worker', () => {
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
-  // The side panel may ask who is signed in, to sign in or out, Get Pro, the personas, to make one, a plan and the walk: never to remove one.
+  // The popup and the side panel may ask; a page or another extension may not.
   for (const [label, sender, asks] of [
     ['a page', { id: 'ext', url: 'https://example.com/', tab: { id: 1 } }, ['status', 'sign-in', 'get-pro', 'create', 'remove', 'walk']],
-    ['the walk side panel removing a persona', fromPanel, ['remove']],
     ['another extension', { id: 'other', url: 'chrome-extension://other/popup/popup.html' }, ['status', 'sign-in', 'get-pro', 'create', 'remove', 'walk']],
   ]) {
     it(`refuses ${label}`, async () => {
@@ -639,11 +638,12 @@ describe('account worker', () => {
     assert.equal(made.length, before);
   });
 
-  for (const [status, ok] of [[204, true], [404, true], [500, false]]) {
-    it(`removes one of the person’s own personas: a ${status} is ${ok ? 'done' : 'not'}`, async () => {
+  // From the popup or the side panel's Your personas.
+  for (const [status, ok, sender] of [[204, true, fromPopup], [404, true, fromPopup], [500, false, fromPopup], [204, true, fromPanel]]) {
+    it(`removes one of the person’s own personas: a ${status} is ${ok ? 'done' : 'not'}${sender === fromPanel ? ', asked from the side panel' : ''}`, async () => {
       await loaded;
       startServer(() => json(404, {}), () => json(status, null));
-      assert.deepEqual(await ask({ account: 'remove', slug: 'rosa' }, fromPopup), { ok });
+      assert.deepEqual(await ask({ account: 'remove', slug: 'rosa' }, sender), { ok });
       assert.deepEqual(made.at(-1), { url: `${ISSUER}/extension/v1/personas/mine/rosa`, method: 'DELETE', body: null });
     });
   }

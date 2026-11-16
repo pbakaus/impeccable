@@ -101,6 +101,8 @@ const APP_CAST = [
 ].map(([name, role]) => ({ name, role, slug: name.toLowerCase() }));
 const APPS = [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }, { workspace: 'acme', repo: 'tidy', app: 'admin', name: 'Tidy admin' }, { workspace: 'acme', repo: 'ledgerly', app: 'web', name: 'Ledgerly' }];
 const MADE = { name: 'Rosa', role: 'A night-shift nurse who books her shifts on her phone', slug: 'rosa', mine: true };
+/** Three of the person's own, then the six. */
+const FULL = [MADE, { ...MADE, name: 'Theo', slug: 'theo', role: 'A shift lead, checks the rota between calls' }, { ...MADE, name: 'June', slug: 'june', role: 'A ward clerk, books cover for the night' }, ...PERSONAS];
 const DESCRIBED = 'Rosa, a night-shift nurse who books her shifts on her phone: tired, in a hurry, one hand free.';
 const PLAN = { id: 'p-1', risky: true, steps: [{ text: 'Open tidy.example', risky: false }, { text: 'Add a to-do', risky: false }, { text: 'Rename it', risky: false }, { text: 'Delete it', risky: true }] };
 const TASK = HANDOFF.errand.goal;
@@ -147,7 +149,7 @@ export const PRE = {
   'make-made': { personas: PERSONAS, screen: 'make', apps: APPS, made: MADE },
   'make-refused': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, note: COPY.make.limit(3) },
   // Three of their own already: the + is greyed and says why.
-  'home-full': { personas: [MADE, { ...MADE, name: 'Theo', slug: 'theo', role: 'A shift lead, checks the rota between calls' }, { ...MADE, name: 'June', slug: 'june', role: 'A ward clerk, books cover for the night' }, ...PERSONAS], task: TASK, here: 'https://shop.example/' },
+  'home-full': { personas: FULL, task: TASK, here: 'https://shop.example/' },
   // A task longer than the box: it grows to six lines, then scrolls inside.
   'home-long': { personas: PERSONAS, pick: 3, here: 'https://shop.example/', task: 'Sign up with a new email, confirm it from the inbox, then fill in the profile: a name, a photo and a short bio. Then go to Settings and turn on two-step sign-in with an authenticator app. Then sign out, sign back in with the code, and check that the bio still shows on the profile page. If anything asks for a phone number, skip it and say where it asked.' },
   // An app with more personas than two rows of five: one two-row block that scrolls sideways, the + still last.
@@ -166,11 +168,14 @@ export const PRE = {
   'history-loading': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: undefined },
   'history-failed': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: null },
   'history-long': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: LONG },
+  // Your personas (from the cog): their own with Remove, the six marked Default; and one row asking "Are you sure?".
+  personas: { personas: FULL, yours: FULL, screen: 'personas', here: 'https://shop.example/' },
+  'personas-sure': { personas: FULL, yours: FULL, screen: 'personas', sure: 'theo', here: 'https://shop.example/' },
 };
 STUBS.before = STUBS.idle;
 STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

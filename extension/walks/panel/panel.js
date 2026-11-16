@@ -171,17 +171,18 @@ function accountMenu() {
     el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeMenu() }),
     el('div', { class: 'acct', id: 'account-menu', role: 'dialog', 'aria-label': COPY.account.title },
       signedIn && account.email ? el('p', { class: 'acct-who' }, el('small', { text: COPY.account.signedIn }), el('b', { 'data-email': true, text: account.email })) : null,
+      signedIn ? button('your-personas', COPY.yours.title, 'sec full', openYours) : null,
       el('button', { class: 'btn btn-sec full', type: 'button', 'data-act': 'help',
         onclick: () => { void chrome.tabs.create({ url: helpUrl(), active: true }).catch(() => undefined); closeMenu(); } },
       COPY.account.help),
       signedIn ? button('sign-out', COPY.account.signOut, 'sec full', () => { void signOut(); }) : null),
   ];
 }
-/** Opens the account popover, focus on its first button (Having problems?). */
+/** Opens the account popover, focus on its first button (Your personas, signed in; else Having problems?). */
 function openMenu() {
   pre.menu = true;
   render();
-  app.querySelector('[data-act="help"]')?.focus();
+  (app.querySelector('[data-act="your-personas"]') ?? app.querySelector('[data-act="help"]'))?.focus();
 }
 /** Closes it; focus goes back to the cog. */
 function closeMenu() {
@@ -276,9 +277,9 @@ let faceWait = null;
 let faceRun = 0;
 /** Set when the waits ran out, so a list asked for again later does not start them over; a persona made does. */
 let facesWaited = false;
-const ownFaceless = () => [pre.made, ...(pre.personas ?? [])].some((each) => each?.mine && !each.face);
-const facelessSlugs = () => [...new Set([pre.made, ...(pre.personas ?? [])].filter((each) => each?.mine && !each.face && each.slug).map((each) => each.slug))];
-const facesShow = () => screen() === 'home' || screen() === 'make';
+const ownFaceless = () => [pre.made, ...(pre.personas ?? []), ...(pre.yours ?? [])].some((each) => each?.mine && !each.face);
+const facelessSlugs = () => [...new Set([pre.made, ...(pre.personas ?? []), ...(pre.yours ?? [])].filter((each) => each?.mine && !each.face && each.slug).map((each) => each.slug))];
+const facesShow = () => screen() === 'home' || screen() === 'make' || screen() === 'personas';
 function waitForFaces(round = 0, run = (faceRun += 1)) {
   if (run !== faceRun) return;
   clearTimeout(faceWait);
@@ -294,6 +295,7 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
     const dressed = (each) => (each?.mine && !each.face && faces.has(each.slug) ? { ...each, face: faces.get(each.slug) } : each);
     if (pre.made) pre.made = dressed(pre.made);
     if (pre.personas) pre.personas = pre.personas.map(dressed);
+    if (pre.yours) pre.yours = pre.yours.map(dressed);
     for (const node of app.querySelectorAll('[data-face]')) {
       const slug = node.getAttribute('data-face');
       if (!faces.has(slug)) continue;
@@ -370,8 +372,8 @@ function useApp() {
 
 /** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
-// Escape closes the modal wherever the focus is, and the account popover.
-document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.menu) closeMenu(); });
+// Escape closes the modal wherever the focus is, and the account popover; on Your personas it answers No.
+document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.menu) closeMenu(); else if (event.key === 'Escape' && pre.sure && screen() === 'personas') keep(pre.sure); });
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
 function appModal() {
@@ -845,6 +847,99 @@ function history() {
     icon('out')))))];
 }
 
+/* ------------------------------ your personas ------------------------------ */
+
+/**
+ * Your personas, from the cog: the person's own (each with Remove) then the six everyone has, as the server lists them
+ * with no page (undefined while they come, null when they couldn't be read). `sure`: the slug whose row asks "Are you
+ * sure?"; `removing` while its Yes is out. A stand-in lists its own personas.
+ */
+const ownAndDefaults = (list) => [...list.filter((each) => each.mine && each.slug), ...list.filter((each) => each.default)];
+function openYours() {
+  Object.assign(pre, { menu: false, screen: 'personas', sure: null, removing: false, yoursNote: '' });
+  void loadYours();
+  render();
+  app.querySelector('[data-act="back"]')?.focus();
+}
+async function loadYours() {
+  if (stubbed) { pre.yours = ownAndDefaults(pre.personas ?? []); return; }
+  pre.yours = undefined;
+  const answer = await chrome.runtime.sendMessage({ account: 'personas' }).catch(() => null);
+  pre.yours = answer?.ok ? ownAndDefaults(answer.personas) : null;
+  pre.yoursWhy = answer?.ok ? null : answer?.why ?? null;
+  if (screen() !== 'personas') return;
+  render();
+  if (!faceWait) { facesWaited = false; waitForFaces(); }
+}
+
+/** Remove: that row asks "Are you sure?", focus on No. */
+function ask(slug) {
+  Object.assign(pre, { sure: slug, yoursNote: '' });
+  render();
+  app.querySelector('[data-act="sure-no"]')?.focus();
+}
+/** No (or Escape): the row as it was, focus back on its Remove. */
+function keep(slug) {
+  if (pre.sure !== slug || pre.removing) return;
+  pre.sure = null;
+  render();
+  app.querySelector(`[data-act="remove-${slug}"]`)?.focus();
+}
+/** Yes: the persona goes, from here and from the home's grid; focus on the next Remove, else Back. Journeys stay. */
+async function removeMine(person) {
+  if (pre.removing) return;
+  pre.removing = true;
+  render();
+  const answer = stubbed ? { ok: true } : await chrome.runtime.sendMessage({ account: 'remove', slug: person.slug }).catch(() => null);
+  Object.assign(pre, { removing: false, sure: null });
+  if (!answer?.ok) {
+    pre.yoursNote = COPY.yours.unremoved(person.name);
+    render();
+    app.querySelector(`[data-act="remove-${person.slug}"]`)?.focus();
+    return;
+  }
+  const gone = (each) => each?.mine && each.slug === person.slug;
+  const at = pre.yours?.findIndex(gone) ?? -1;
+  pre.yours = pre.yours?.filter((each) => !gone(each)) ?? pre.yours;
+  if (gone(pre.made)) pre.made = null;
+  if (pre.personas) {
+    const was = picked();
+    pre.personas = pre.personas.filter((each) => !gone(each));
+    const still = was && !gone(was) ? pre.personas.indexOf(was) : -1;
+    if (still >= 0) pre.pick = still; else choose(0);
+  }
+  render();
+  const mine = (pre.yours ?? []).filter((each) => each.mine);
+  const next = mine[Math.min(Math.max(at, 0), mine.length - 1)];
+  app.querySelector(next ? `[data-act="remove-${next.slug}"]` : '[data-act="back"]')?.focus();
+}
+
+/** A row: the face, name and role, then Remove (their own) or Default; asking, only the question with No and Yes. */
+function yourRow(person) {
+  const sure = pre.sure === person.slug;
+  const end = sure
+    ? [el('button', { class: 'btn btn-sec sm', type: 'button', 'data-act': 'sure-no', disabled: pre.removing, text: COPY.ask.no, onclick: () => keep(person.slug) }),
+      el('button', { class: 'btn btn-gold sm', type: 'button', 'data-act': 'sure-yes', disabled: pre.removing, text: COPY.ask.yes, onclick: () => { void removeMine(person); } })]
+    : person.mine ? [el('button', { class: 'btn sm', type: 'button', 'data-act': `remove-${person.slug}`, 'aria-label': COPY.yours.removeOne(person.name), text: COPY.yours.remove, onclick: () => ask(person.slug) })]
+      : [el('span', { class: 'hist-when', text: COPY.yours.default })];
+  return el('li', { class: 'yours-row', 'data-slug': person.slug, 'data-state': sure ? 'sure' : person.mine ? 'mine' : 'default',
+    onkeydown: sure ? (event) => { if (event.key === 'Escape') { event.stopPropagation?.(); keep(person.slug); } } : undefined },
+  sure ? null : face(person, 40),
+  sure ? el('span', { class: 'hist-t' }, el('span', { class: 'hist-task', role: 'alert', text: COPY.ask.title }))
+    : el('span', { class: 'hist-t' }, el('span', { class: 'hist-task', text: person.name }), person.role ? el('span', { class: 'where', text: person.role }) : null),
+  end);
+}
+
+function yours() {
+  const list = pre.yours;
+  const head = [top(hereUrl, { back: () => goHome() }), el('h2', { class: 'hd hist-hd', text: COPY.yours.title })];
+  if (list === undefined) return [...head, el('div', { class: 'mid' }, dots())];
+  // Every account has the six at least: none is a list that didn't load.
+  if (!list?.length) return [...head, el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.failed }), unloaded(pre.yoursWhy, () => { void loadYours(); render(); }))];
+  return [...head, pre.yoursNote ? el('p', { class: 'err below', role: 'alert', text: pre.yoursNote }) : null,
+    el('ul', { class: 'hist scrolls', 'aria-label': COPY.yours.title }, list.map(yourRow))];
+}
+
 /* ------------------------------ signed out, and no account ------------------------------ */
 
 const MARK = ['M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z', 'M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z'];
@@ -1010,7 +1105,7 @@ function render() {
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.
-Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history });
+Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history, personas: yours });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
