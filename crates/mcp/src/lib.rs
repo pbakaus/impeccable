@@ -158,13 +158,16 @@ fn failed(id: &Value, f: Failure) -> Value {
 /// The real account service, under the CLI's stored sign-in. `browser`: whether one can open here; `open` opens one
 /// on the authorization URL and says whether it did (tests hand in the fake service's).
 pub fn service(env: HashMap<String, String>, browser: bool, open: Box<dyn FnMut(&str) -> bool>) -> impl Upstream {
-    Service { env, browser, open }
+    Service { env, browser, open, unopened: None }
 }
 
 struct Service {
     env: HashMap<String, String>,
     browser: bool,
     open: Box<dyn FnMut(&str) -> bool>,
+    /// A sign-in whose browser did not open, still waiting out its own deadline on its worker (which holds the
+    /// machine's sign-in lock): until it ends, every call answers without starting another.
+    unopened: Option<std::sync::mpsc::Receiver<bool>>,
 }
 
 impl Upstream for Service {
@@ -201,8 +204,14 @@ impl Upstream for Service {
         if !self.browser {
             return Err(NO_BROWSER.into());
         }
+        if let Some(pending) = &self.unopened {
+            if matches!(pending.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)) {
+                return Err(NO_BROWSER.into());
+            }
+            self.unopened = None;
+        }
         let dir = Account::from_env(&self.env).map_err(|_| NO_BROWSER.to_string())?.dir();
-        let Some(_held) = SignInLock::take(&dir)? else {
+        let Some(held) = SignInLock::take(&dir)? else {
             // Another agent's sign-in is open: wait for it, then try with what it stored.
             return Ok(());
         };
@@ -211,7 +220,9 @@ impl Upstream for Service {
         let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
         let env = self.env.clone();
         let (url_tx, url_rx) = std::sync::mpsc::channel::<String>();
+        // The worker holds the machine's sign-in lock until its login ends, so no other sign-in overlaps it.
         std::thread::spawn(move || {
+            let _held = held;
             let signed = impeccable_account::login(&env, &mut |url: &str| { let _ = url_tx.send(url.to_string()); }, SIGN_IN_WAIT);
             let _ = done_tx.send(signed.is_ok());
         });
@@ -220,6 +231,7 @@ impl Upstream for Service {
             return Err(NOT_APPROVED.into());
         };
         if !(self.open)(&url) {
+            self.unopened = Some(done_rx);
             return Err(NO_BROWSER.into());
         }
         match done_rx.recv_timeout(SIGN_IN_WAIT + Duration::from_secs(5)) {

@@ -71,5 +71,10 @@ fn answers_at_once_when_the_browser_does_not_open() {
     serve(call.to_string().as_bytes(), &mut out, &mut err, &mut up);
     let said: Value = serde_json::from_str(String::from_utf8(out).unwrap().lines().last().unwrap()).unwrap();
     assert_eq!(said["result"]["content"][0]["text"], NO_BROWSER);
+    // A second call while that sign-in is still waiting answers at once too, and starts no second sign-in.
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    serve(call.to_string().as_bytes(), &mut out, &mut err, &mut up);
+    let again: Value = serde_json::from_str(String::from_utf8(out).unwrap().lines().last().unwrap()).unwrap();
+    assert_eq!(again["result"]["content"][0]["text"], NO_BROWSER);
     assert!(started.elapsed() < Duration::from_secs(20));
 }
