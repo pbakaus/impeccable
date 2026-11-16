@@ -49,7 +49,7 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
-    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask']"],
     ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
@@ -1227,6 +1227,37 @@ describe('walk worker', () => {
       rearm();
       dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
       await ops.open({ url: `${SITE}/`, name: 'Mira' });
+    }
+  });
+
+  // REN-2086: a journey's server that asks before a submit opens its walk `free`: no write is held and the page may write
+  // to any origin but ours, while the tab still never goes off the site, nor sends a form there. An older server never
+  // says `free`, so its walk holds as ever.
+  it('holds no write on a free walk, to other origins too, and still keeps the tab on its site', async () => {
+    const { ops, rearm, dispatch } = await walked();
+    page.seen = {};
+    const reopen = async (free) => {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira', ...(free ? { free } : {}) });
+      await settle(5);
+    };
+    try {
+      await reopen(true);
+      for (const [method, url, resourceType, done] of [
+        ['POST', `${SITE}/api/basket`, 'XHR', 'continue'],
+        ['POST', 'https://sik.search.example.com/search', 'Fetch', 'continue'],
+        ['POST', 'https://impeccable.reviews/api/x', 'Fetch', 'fail'],
+        ['GET', 'https://example.com/', 'Document', 'fail'],
+        ['POST', 'https://example.com/form', 'Document', 'fail'],
+      ]) assert.deepEqual(await answeredAs(method, url, resourceType), [`Fetch.${done}Request`], `${method} ${url} ${resourceType}`);
+      assert.deepEqual(chrome.declarativeNetRequest.rules, [], 'no network rule either');
+      await reopen(undefined);
+      assert.deepEqual(await answeredAs('POST', `${SITE}/api/basket`), ['Fetch.fulfillRequest'], 'an older server: held');
+      assert.deepEqual(await answeredAs('POST', 'https://sik.search.example.com/search', 'Fetch'), ['Fetch.failRequest']);
+    } finally {
+      await reopen(undefined);
     }
   });
 

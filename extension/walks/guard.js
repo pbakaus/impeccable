@@ -5,7 +5,9 @@
 // A walk is our server's persona engine clicking in the person's own Chrome, signed in as them everywhere. The
 // engine's own safety layer (the request boundary it installs on a browser it owns) does not exist here, so this
 // file is the whole of it. It is fixed code: nothing a page shows the persona, and nothing the server asks, changes
-// what it allows.
+// what it allows, but one word: a journey's `open` may say `free` (REN-2086), and then writes are not held (below) and
+// the page may write to any origin but our own pages, from the walk's own site. Its server asks the person before a
+// submit instead, and the driver asks before one the server did not mark (control.js). Every other rule here stands.
 //
 // It defends against a page talking the persona into
 //   - leaving the site: a link, a script, a redirect, a meta refresh, a form or a `goto` to another origin never

@@ -65,7 +65,8 @@ export const INPUT_WINDOW_MS = 5000;
 /** When the person last pressed or typed in the tab while it was paused at a sign-in. */
 let touched = -Infinity;
 const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && touched >= driver.since && at - touched <= INPUT_WINDOW_MS);
-const holding = (tab, at) => !tab.writesOpen && !persons(at);
+// A free walk (`open`'s `free`, REN-2086) holds no write: its server asks before a submit instead, and so does control.js.
+const holding = (tab, at) => !tab.free && !tab.writesOpen && !persons(at);
 /** Whether the walk's writes are held right now, for the network rules beside this hold (net-hold.js). */
 export const writesHeld = (at = Date.now()) => Boolean(walk) && holding(walk, at);
 /** Tells whoever follows the hold that it may have changed: resolves once they have caught up. */
@@ -766,10 +767,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
       const allowed = signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
-      const writable = [...tab.writable, ...signIn];
+      const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
+      // A free walk's page may write to any origin but our own pages (guard.js `verdict`), from its own site: never a form
+      // the top of the page sends off the site, nor anything on another site the person let it go to, where it only looks.
+      const writable = [...tab.writable, ...signIn, ...(tab.free && !top && !lookOnly() ? [webOrigin(params.request?.url)] : [])];
       // A sign-in page asked for: paused before the guard answers, whatever it answers; unless the person is the one
       // signing in.
-      const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
       if (!heldAtSignIn && top && isSignInPage(params.request?.url)) spotted();
       // Another site, on a walk of the person's own tab: held until the person says whether it may go there.
       // A form sent to it is never asked about; a question that fails leaves the move refused.
@@ -1154,7 +1157,7 @@ async function press(name) {
  * `open` for a walk of the person's own tab: the debugger goes on the tab main named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
-async function adopt(name, allow) {
+async function adopt(name, allow, free) {
   const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
@@ -1181,7 +1184,7 @@ async function adopt(name, allow) {
     still();
     // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
     const writable = [...new Set([site, ...allowedFor(allow)])];
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1209,9 +1212,10 @@ async function adopt(name, allow) {
 
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
-  async open({ url, name, allow }) {
+  // `free` (REN-2086): its writes are not held; an older server never says it, so its walks are held as ever.
+  async open({ url, name, allow, free }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow);
+    if (adopted) return adopt(name, allow, free);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -1235,7 +1239,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
