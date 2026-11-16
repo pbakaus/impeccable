@@ -485,8 +485,42 @@ fn personal_switches_reach_gemini_copilot_and_an_existing_opencode_file_and_crea
     refresh();
     assert!(read(&opencode).starts_with("Mine.\n\n<!-- impeccable start -->\n"), "{}", read(&opencode));
     let out = impeccable(&env, &["switches"]).output().unwrap();
-    let listed = String::from_utf8_lossy(&out.stdout).to_string();
+    let listed = String::from_utf8_lossy(&out.stdout).replace('\\', "/");
     for name in ["Gemini CLI (~/.gemini/GEMINI.md): taste, a11y", "GitHub Copilot (~/.copilot/copilot-instructions.md): taste, a11y", "opencode (~/.config/opencode/AGENTS.md): taste, a11y"] {
         assert!(listed.contains(name), "{listed}");
     }
+}
+
+#[test]
+fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing() {
+    // Catches (review): a newly installed agent's rule file, with no block yet, read as
+    // "every switch off" and sent to the page, wiping the person's switches everywhere.
+    let fake = Fake::start();
+    let mut env = fake.env("switch-new-agent");
+    env.insert("IMPECCABLE_NO_UPDATE_CHECK".into(), "1".into());
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let project = home.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let git = |args: &[&str]| assert!(Command::new("git").args(args).current_dir(&project).output().unwrap().status.success());
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "https://github.com/acme/site.git"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    std::fs::create_dir_all(home.join(".claude")).unwrap();
+    let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["taste"]}"#);
+    fake.route("POST", "/cli/v1/agents/me", 200, vec![], r#"{"outcome":"set","rev":2,"team":null,"me":[]}"#);
+    refresh();
+    // Gemini arrives later, with a GEMINI.md of the person's own and no block.
+    std::fs::create_dir_all(home.join(".gemini")).unwrap();
+    std::fs::write(home.join(".gemini/GEMINI.md"), "Mine.\n").unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 0, "nothing sent");
+    let claude = std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap();
+    let gemini = std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap();
+    assert!(claude.contains("Impeccable Taste"), "{claude}");
+    assert!(gemini.starts_with("Mine.\n\n<!-- impeccable start -->\nImpeccable Taste"), "{gemini}");
 }

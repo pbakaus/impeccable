@@ -227,6 +227,15 @@ pub(crate) fn switches_in(path: &Path) -> Result<Vec<&'static str>> {
     switches(&read(path)?.unwrap_or_default())
 }
 
+/// The switches in `path`'s block, or `None` when the file has no Impeccable block (nor
+/// the old taste block) yet; an error for one that can't be read or has broken markers.
+pub(crate) fn block_in(path: &Path) -> Result<Option<Vec<&'static str>>> {
+    let text = read(path)?.unwrap_or_default();
+    let ids = switches(&text)?;
+    let has = span(&text, START, END)?.is_some() || span(&text, OLD_TASTE.0, OLD_TASTE.1)?.is_some();
+    Ok(has.then_some(ids))
+}
+
 /// Whether switch `id` is on in `path`. An unreadable file reads as off.
 pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))

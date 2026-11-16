@@ -62,17 +62,23 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
     v
 }
 
-pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[Vec<String>]) -> Step {
+/// `files` holds each file's set, or `None` for a file with no block yet (an agent
+/// installed since the last sync, or a block never written): such a file is never read
+/// as an edit, only brought up to the page's set.
+pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[Option<Vec<String>>]) -> Step {
     let base = base.map(|b| sorted(b.to_vec()));
+    let written: Vec<Vec<String>> = files.iter().flatten().map(|f| sorted(f.clone())).collect();
     let Some(page) = page.map(|p| sorted(p.to_vec())) else {
-        let union = sorted(files.iter().flatten().cloned().collect());
+        let union = sorted(written.into_iter().flatten().collect());
         return if union.is_empty() { Step::Nothing } else { Step::Seed(union) };
     };
+    let behind = !page.is_empty() && files.iter().any(Option::is_none);
     if base.as_ref() != Some(&page) {
-        return if files.iter().all(|f| sorted(f.clone()) == page) { Step::Nothing } else { Step::Write(page) };
+        return if written.iter().all(|f| *f == page) && !behind { Step::Nothing } else { Step::Write(page) };
     }
-    match files.iter().map(|f| sorted(f.clone())).find(|f| *f != page) {
+    match written.into_iter().find(|f| *f != page) {
         Some(changed) => Step::Push(changed),
+        None if behind => Step::Write(page),
         None => Step::Nothing,
     }
 }
@@ -138,8 +144,8 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     let mut sets = Vec::new();
     for f in &files {
         // Only a missing file reads as no switches; one that can't be read stops here.
-        match agent_block::switches_in(f) {
-            Ok(ids) => sets.push(ids.into_iter().map(str::to_string).collect::<Vec<_>>()),
+        match agent_block::block_in(f) {
+            Ok(ids) => sets.push(ids.map(|ids| ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
             Err(_) => return 0,
         }
     }
@@ -189,15 +195,18 @@ mod tests {
     fn the_page_wins_a_file_change_is_sent_and_an_unset_page_is_seeded() {
         // Catches (REN-2056): a sync that wipes a machine's Loop and taste lines the first
         // time it runs, or undoes the page's change with a stale file, or the reverse.
-        assert_eq!(decide(None, None, &[v(&["taste", "loop"]), v(&[])]), Step::Seed(v(&["loop", "taste"])));
-        assert_eq!(decide(None, None, &[v(&[])]), Step::Nothing);
+        assert_eq!(decide(None, None, &[Some(v(&["taste", "loop"])), None]), Step::Seed(v(&["loop", "taste"])));
+        assert_eq!(decide(None, None, &[None]), Step::Nothing);
         let base = v(&["loop"]);
-        assert_eq!(decide(Some(&v(&["loop", "a11y"])), Some(&base), &[v(&["loop"])]), Step::Write(v(&["a11y", "loop"])));
-        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop", "taste"])]), Step::Push(v(&["loop", "taste"])));
-        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop"]), v(&["loop"])]), Step::Nothing);
+        assert_eq!(decide(Some(&v(&["loop", "a11y"])), Some(&base), &[Some(v(&["loop"]))]), Step::Write(v(&["a11y", "loop"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop", "taste"]))]), Step::Push(v(&["loop", "taste"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop"])), Some(v(&["loop"]))]), Step::Nothing);
         // A first sync on a machine whose files already match the page writes nothing.
-        assert_eq!(decide(Some(&base), None, &[v(&["loop"])]), Step::Nothing);
+        assert_eq!(decide(Some(&base), None, &[Some(v(&["loop"]))]), Step::Nothing);
         // Both changed: the page wins.
-        assert_eq!(decide(Some(&v(&["wide"])), Some(&base), &[v(&["taste"])]), Step::Write(v(&["wide"])));
+        assert_eq!(decide(Some(&v(&["wide"])), Some(&base), &[Some(v(&["taste"]))]), Step::Write(v(&["wide"])));
+        // A file with no block yet is brought up to the page, never sent.
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop"])), None]), Step::Write(v(&["loop"])));
+        assert_eq!(decide(Some(&v(&[])), Some(&v(&[])), &[None]), Step::Nothing);
     }
 }
