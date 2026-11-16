@@ -2193,6 +2193,7 @@ describe('derived extension manifests', () => {
     assert.deepEqual(files('walks').filter((file) => !shipped.includes(file)), [], 'every walk file');
     assert.deepEqual(shipped.filter((file) => /^account\b|popup\/(account|words)\.js$/.test(file)), []);
     assert.deepEqual(files('account').filter((file) => isStoreFile(file)), []);
+    assert.equal(isStoreFile('outing.json'), false, 'a browser test\'s outing.json');
     assert.deepEqual(moduleReferences(store, manifest.background.service_worker).filter((file) => !existsSync(path.join(store, file))), []);
     assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js).sort(), ['walks/handoff-content.js', 'walks/present.js']);
     const matches = manifest.content_scripts.flatMap((entry) => entry.matches);

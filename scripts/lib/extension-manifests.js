@@ -19,7 +19,8 @@ const under = (folder, file) => file === folder || file.startsWith(`${folder}/`)
 const isWalkFile = (file) => under('walks', file);
 /** What the store build and Firefox leave out: the account, its half of the popup and its options page. */
 const isAccountFile = (file) => under('account', file) || ['popup/account.js', 'popup/words.js', 'popup/settings.html', 'popup/settings.js'].includes(file);
-const notListing = (rel) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel));
+/** Files of a developer's checkout no build ships: the listing's text, Finder's litter, and a browser test's `outing.json` (walks/link.js). */
+const notListing = (rel) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel)) && rel !== 'outing.json';
 const onlyStoreHosts = (entries) => entries
   .map((entry) => ({ ...entry, matches: entry.matches.filter((match) => STORE_HOSTS.some((host) => match.startsWith(host))) }))
   .filter((entry) => entry.matches.length > 0);
