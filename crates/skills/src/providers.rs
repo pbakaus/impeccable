@@ -137,13 +137,12 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
         ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
-        // Claude Code reads user skills from its config dir, which CLAUDE_CONFIG_DIR moves (REN-2029).
-        ".claude" => env
-            .get("CLAUDE_CONFIG_DIR")
-            .filter(|v| !v.is_empty())
-            .map(|dir| jsp::join(&[&jsp::resolve(cwd, &[dir]), "skills"])),
         _ => None,
     }
+}
+
+fn has_home_override(provider: &str) -> bool {
+    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -180,13 +179,24 @@ impl Sys {
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
     pub fn provider_skills_dir_candidates(&self, root: &str, provider: &str, scope: Option<Scope>) -> Vec<String> {
-        if scope == Some(Scope::User) {
-            return vec![self.user_provider_skills_dir(root, provider)];
-        }
-        let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
-        if scope != Some(Scope::Project) && self.is_home_dir(root) {
-            if let Some(user) = home_skills_dir_override(&self.env, &self.cwd, provider, root) {
-                dirs.insert(0, user);
+        let mut dirs = if scope == Some(Scope::User) {
+            vec![self.user_provider_skills_dir(root, provider)]
+        } else {
+            let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
+            if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
+                dirs.insert(0, self.user_provider_skills_dir(root, provider));
+            }
+            dirs
+        };
+        // Claude Code reads user skills from $CLAUDE_CONFIG_DIR/skills when that is set
+        // (REN-2029): a copy there is found, named and updated like the home one. Fresh
+        // installs still go to ~/.claude/skills, where their hooks point.
+        if provider == ".claude" && scope != Some(Scope::Project) && self.is_home_dir(root) {
+            if let Some(dir) = self.env.get("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
+                let skills = jsp::join(&[&jsp::resolve(&self.cwd, &[dir]), "skills"]);
+                if !dirs.contains(&skills) {
+                    dirs.insert(0, skills);
+                }
             }
         }
         dirs
@@ -920,7 +930,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_user_skills_follow_claude_config_dir() {
+    fn a_claude_copy_in_claude_config_dir_is_found_beside_the_home_one() {
         // Catches (REN-2029): an older Impeccable in $CLAUDE_CONFIG_DIR/skills wins over a project
         // install while install's warning and `update --user` only look in ~/.claude/skills.
         let tmp = std::env::temp_dir().join(format!("impeccable-ccd-{}", std::process::id()));
@@ -933,12 +943,14 @@ mod tests {
         env.insert("CLAUDE_CONFIG_DIR".into(), config.clone());
         let sys = Sys { env, cwd: home.clone(), home: home.clone() };
 
-        assert_eq!(sys.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&config, "skills"]));
         assert_eq!(sys.get_skills_version(&home, Some(Scope::User)).as_deref(), Some("4.8.2"));
-        // Unset, it stays ~/.claude/skills, listed once.
+        assert_eq!(sys.is_already_installed(&home, Some(Scope::User)), Some(".claude"));
+        // Installs still land where the hooks point.
+        assert_eq!(sys.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&home, ".claude", "skills"]));
+        // A project is never read through it, and without the variable nothing changes.
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".claude", None), vec![jsp::join(&["/project", ".claude", "skills"])]);
         let plain = Sys { env: Env::new(), cwd: home.clone(), home: home.clone() };
-        assert_eq!(plain.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&home, ".claude", "skills"]));
-        assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", None), vec![jsp::join(&[&home, ".claude", "skills"])]);
+        assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", Some(Scope::User)), vec![jsp::join(&[&home, ".claude", "skills"])]);
         std::fs::remove_dir_all(&tmp).ok();
     }
 
