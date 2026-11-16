@@ -585,7 +585,7 @@ async function renew(tab) {
   if (tab.seals !== seals || !(await scriptsOn(tab, seals))) return;
   tab.withdrawn = false;
   tab.secret = false;
-  // A document that started with them off gets them now: written to run more than once (pristine persona-session.ts).
+  // A document that started with them off gets them now: written to run more than once (the server's persona session).
   // Only while it is still that document: one the tab moved on to since started with them on, or is a sign-in.
   const loader = tab.loader;
   if (!tab.clean?.delete(loader)) return;
@@ -622,7 +622,7 @@ export const passwordIn = async () => (await look())?.filled === true;
 const READER = 'impeccable-walk-read';
 /**
  * The one read that needs the page's own world: the consent rules the server loads into each document
- * (pristine consent.ts `loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and
+ * (the server's consent store, `loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and
  * `markConsentSeen` read it.
  */
 const PAGE_WORLD = /__impeccableConsent/;
