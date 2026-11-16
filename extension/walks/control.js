@@ -255,7 +255,7 @@ hooks.closed.push((why) => {
 hooks.said.push((message) => {
   if (message.event === 'blocked') dispatch({ type: 'blocked', what: message.what, url: message.url });
 });
-// A sign-in the person did without a press or key in the tab (a passkey, a phone, another site's frame): the panel says to take over.
+// A sign-in the person did without a press or key in the tab (a passkey, a phone, another site's frame): the panel says to stop and start again.
 hooks.withheld.push(() => { dispatch({ type: 'withheld' }); });
 
 // Only the side panel controls a walk: not a content script, nor any other page of this extension.

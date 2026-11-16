@@ -640,8 +640,8 @@ function question() {
 function held() {
   if (view.state === 'paused') {
     return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }),
-      view.withheld ? el('p', { class: 'status', role: 'status', 'data-hint': 'take-over', text: COPY.signInHeld }) : null,
-      button('resume', COPY.controls.resume, 'gold'));
+      view.withheld ? el('p', { class: 'status', role: 'status', 'data-hint': 'stop-and-restart', text: COPY.signInHeld }) : null,
+      button('resume', view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume, 'gold'));
   }
   if (view.state === 'takeover') return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: COPY.takeover.line(name()) }), button('handback', COPY.controls.handback, 'gold'));
   return null;

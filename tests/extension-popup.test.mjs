@@ -386,7 +386,12 @@ test('the side panel shows a finished walk on its own tab alone, with one button
 test('the side panel’s sign-in pause says how else to sign in only once a write was held, and not after Continue', async () => {
   const { reduce } = await import('../extension/walks/view.js');
   const h = await sidePanel({ view: STUBS['paused-sign-in'], status: signedIn });
-  const hinted = () => [h.acts(), h.app.querySelectorAll('[data-hint="take-over"]').length];
+  const hinted = () => [h.acts(), h.app.querySelectorAll('[data-hint="stop-and-restart"]').length];
+  const resume = () => h.app.querySelector('[data-act="resume"]').textContent;
+  const atSignIn = resume();
+  await h.show(STUBS.paused);
+  assert.notEqual(resume(), atSignIn, 'a sign-in pause names its Continue apart from a plain pause, the same command');
+  await h.show(STUBS['paused-sign-in']);
   assert.deepEqual(hinted(), [['resume', 'stop'], 0], 'no write held');
   await h.show(STUBS['paused-sign-in-held']);
   assert.deepEqual(hinted(), [['resume', 'stop'], 1], 'one line, no new control');

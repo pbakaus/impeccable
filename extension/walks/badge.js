@@ -148,7 +148,7 @@ export function badgeState(view) {
     return { state: 'asking', step, title: COPY.ask.title, sub: what, resume: COPY.ask.yes, go: 'yes', no: COPY.ask.no, stop: COPY.badge.stop, glow: true };
   }
   const title = view.state === 'paused' ? COPY.badge.paused(name) : view.state === 'takeover' ? COPY.badge.yours : COPY.badge.here(name);
-  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state === 'paused' ? COPY.controls.resume : '', stop: COPY.badge.stop, glow: view.state === 'walking' };
+  return { state: view.state, step, title, sub: COPY.badge.step(step), resume: view.state !== 'paused' ? '' : view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume, stop: COPY.badge.stop, glow: view.state === 'walking' };
 }
 
 let badge = null;

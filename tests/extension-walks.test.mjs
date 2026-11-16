@@ -1789,6 +1789,13 @@ describe('walk glow', () => {
   ]) {
     it(`${glow ? 'glows' : 'does not glow'} ${label}`, async () => { assert.equal((await badge()).badgeState(shown, adopted).glow, glow); });
   }
+
+  it('names Continue apart at a sign-in pause, pressing the same command', async () => {
+    const { badgeState } = await badge();
+    const [plain, signIn] = [view('paused'), view('paused', { held: 'sign-in' })].map((one) => badgeState(one));
+    assert.notEqual(signIn.resume, plain.resume);
+    assert.equal(signIn.go, plain.go);
+  });
 });
 
 describe('derived extension manifests', () => {

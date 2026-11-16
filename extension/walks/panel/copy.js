@@ -120,7 +120,8 @@ export const COPY = {
     line: (name) => `${name || 'Your persona'} is on the way`,
     first: (name) => `${name || 'Your persona'} is taking a first look.`,
   },
-  controls: { resume: 'Continue', handback: 'Hand back', stop: 'Stop' },
+  /** `signedIn`: Continue at a sign-in pause. */
+  controls: { resume: 'Continue', signedIn: 'I’ve signed in', handback: 'Hand back', stop: 'Stop' },
 
   paused: { line: (name) => `Paused. ${name || 'Your persona'} waits right here.` },
   /**
@@ -130,7 +131,7 @@ export const COPY = {
    */
   signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
   /** At that sign-in, once the tab sent something the pause held back: a sign-in with no press or key in the tab (a passkey, a phone, another site's frame). */
-  signInHeld: 'Signing in another way? Take over the tab, then sign in.',
+  signInHeld: 'Signing in another way? Press Stop, sign in, then start the journey again.',
   /** Before a deed the server marked (delete, pay, send), or before another site, on a journey with no plan: nothing is done until Yes. */
   ask: {
     title: 'Are you sure?',
