@@ -833,9 +833,11 @@ for (const [label, through] of [['seen to the end', ['intro-next', 'intro-next',
     const personas = [{ name: 'Mira', role: '', slug: 'mira' }];
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: false, personas });
     await h.press('make-persona');
-    const steps = [h.app.querySelector('.fr-mid').attributes['data-step']];
-    for (const act of through) { await h.press(act); steps.push(h.app.querySelector('.fr-mid')?.attributes['data-step']); }
-    assert.deepEqual([steps.slice(0, -1), h.body.dataset.screen, h.local.personaIntroSeen], [['0', '1', '2', '3'].slice(0, through.length), 'make', true]);
+    // Each step's button is described by the headline shown above it, so a screen reader hears both.
+    const step = () => { const next = h.app.querySelector('[data-act="intro-next"]'); return next && [h.app.querySelector('.fr-mid').attributes['data-step'], next.attributes['aria-describedby'] === h.app.querySelectorAll('.intro-line').find((line) => line.className.split(' ').includes('on')).attributes.id]; };
+    const steps = [step()];
+    for (const act of through) { await h.press(act); steps.push(step()); }
+    assert.deepEqual([steps.slice(0, -1), h.body.dataset.screen, h.local.personaIntroSeen], [['0', '1', '2', '3'].slice(0, through.length).map((on) => [on, true]), 'make', true]);
     const next = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: h.local.personaIntroSeen, personas });
     await next.press('make-persona');
     assert.equal(next.body.dataset.screen, 'make');

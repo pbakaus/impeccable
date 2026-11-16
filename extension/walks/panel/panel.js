@@ -1147,9 +1147,14 @@ function intro() {
     el('div', { class: 'top' }, el('span', { class: 'grow' }), button('skip-intro', COPY.intro.skip, 'sec sm', endIntro)),
     el('div', { class: 'fr-mid', 'data-step': String(on) },
       el('span', { class: 'intro-pics', 'aria-hidden': true }, screens.map((_, i) => el('img', { class: `intro-pic${i === on ? ' on' : ''}`, src: `intro/intro-${i + 1}.webp`, alt: '' }))),
-      el('div', { class: 'intro-lines', 'aria-live': 'polite' }, screens.map(([line], i) => el('h2', { class: `hd intro-line${i === on ? ' on' : ''}`, text: line })))),
-    foot(on, 'intro-next', screens[on][1], stepIntro, screens.length),
+      el('div', { class: 'intro-lines', 'aria-live': 'polite' }, screens.map(([line], i) => el('h2', { class: `hd intro-line${i === on ? ' on' : ''}`, id: `intro-line-${i}`, text: line })))),
+    describeIntro(foot(on, 'intro-next', screens[on][1], stepIntro, screens.length)),
   ];
+}
+/** The button is heard with the headline shown above it: focus lands on it, and the headline alone would go unread. */
+function describeIntro(root = app) {
+  root.querySelector('[data-act="intro-next"]')?.setAttribute('aria-describedby', `intro-line-${pre.intro}`);
+  return root;
 }
 function stepIntro() {
   const screens = COPY.intro.screens;
@@ -1160,6 +1165,7 @@ function stepIntro() {
   app.querySelectorAll('.intro-line').forEach((line, i) => { line.className = `hd intro-line${i === on ? ' on' : ''}`; });
   [...(app.querySelector('.fr-dots')?.children ?? [])].forEach((dot, i) => { dot.className = i === on ? 'on' : ''; });
   app.querySelector('[data-act="intro-next"]').textContent = screens[on][1];
+  describeIntro();
 }
 function endIntro() {
   introSeen = true;
