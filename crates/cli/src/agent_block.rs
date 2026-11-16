@@ -35,6 +35,22 @@ pub(crate) const CATALOG: [(&str, &str, &str); 9] = [
 
 type Result<T> = std::result::Result<T, String>;
 
+/// Earlier wording of a switch's line, still read as that switch and replaced by its
+/// current line on the next write, so a copy edit never strands an old line. When a
+/// line in CATALOG changes, its previous text goes here.
+const ALIASES: &[(&str, &str)] = &[];
+
+/// The switch a line stands for, by its current wording or an earlier one.
+fn switch_of(line: &str) -> Option<&'static str> {
+    CATALOG
+        .iter()
+        .find(|(_, _, l)| *l == line)
+        .map(|(id, _, _)| *id)
+        .or_else(|| ALIASES.iter().find(|(_, l)| *l == line).map(|(id, _)| *id))
+}
+
+
+
 /// Where a block sits in `text`: the start of its start marker to the end of its end
 /// marker. Markers that are duplicated, unbalanced, out of order or not on lines of
 /// their own are an error, and the file is then left as it is.
@@ -62,7 +78,7 @@ fn other_lines(text: &str) -> Result<Vec<String>> {
     Ok(text[a + START.len()..b - END.len()]
         .lines()
         .map(|l| l.trim_end_matches('\r'))
-        .filter(|l| !l.trim().is_empty() && !CATALOG.iter().any(|(_, _, line)| line == l))
+        .filter(|l| !l.trim().is_empty() && switch_of(l).is_none())
         .map(str::to_string)
         .collect())
 }
@@ -73,7 +89,11 @@ pub(crate) fn switches(text: &str) -> Result<Vec<&'static str>> {
     let mut on = Vec::new();
     if let Some((a, b)) = span(text, START, END)? {
         let body: Vec<&str> = text[a..b].lines().map(|l| l.trim_end_matches('\r')).collect();
-        on.extend(CATALOG.iter().filter(|(_, _, line)| body.contains(line)).map(|(id, _, _)| *id));
+        for (id, _, _) in CATALOG {
+            if body.iter().any(|l| switch_of(l) == Some(id)) {
+                on.push(id);
+            }
+        }
     }
     if span(text, OLD_TASTE.0, OLD_TASTE.1)?.is_some() && !on.contains(&"taste") {
         on.push("taste");
@@ -343,6 +363,18 @@ mod tests {
         ] {
             assert!(with_switches(&text, &["loop"]).is_err(), "{text:?}");
         }
+    }
+
+    #[test]
+    fn an_alias_reads_as_its_switch() {
+        // Copy edits (review): an earlier wording must read as its switch, not as an
+        // unknown line kept beside the new one. Every alias names a catalog id.
+        for (id, line) in ALIASES {
+            assert!(CATALOG.iter().any(|(i, _, _)| i == id), "{id}");
+            assert_eq!(switch_of(line), Some(*id));
+        }
+        assert_eq!(switch_of(TASTE), Some("taste"));
+        assert_eq!(switch_of("A newer switch's line."), None);
     }
 
     #[test]
