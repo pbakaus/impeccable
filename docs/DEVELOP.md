@@ -95,6 +95,9 @@ The folder you load is the permissive development build (`extension/shared/build
 #### Known limits
 
 - The outing page on Impeccable's site is the trust root of a journey: the extension asks the person nothing before it starts the journey that page hands over. A script injected into that page could start a journey on the origins it names (up to eight). Revisit this before the Chrome Web Store launch.
+- After the person presses Continue at a sign-in, an empty password field at that same address no longer pauses the journey.
+- Code the server put in a page before a sign-in pause stays in that page.
+- Password fields in a frame on another origin or in a closed shadow root are not seen, so a screenshot can include them (typing into them is still refused).
 
 ## Build System Details
 
