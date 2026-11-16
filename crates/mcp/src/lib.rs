@@ -96,10 +96,10 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
     let mut agent: Option<String> = None;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
-    // Which relay socket was there at the last tools/list (its device and inode, so a relay replacing a crashed
-    // one's leftover file counts as new): when that changes (Chrome opened, closed or restarted after the agent
+    // Which relay socket was there at the last tools/list (its device, inode and change time, so a relay
+    // replacing a crashed one's leftover file counts as new): when that changes (Chrome opened, closed or restarted after the agent
     // listed), the agent is told its tools changed, once. One stat per request, no probe.
-    let mut listed_with: Option<Option<(u64, u64)>> = None;
+    let mut listed_with: Option<Option<(u64, u64, i64, i64)>> = None;
     let relay_there = || socket.and_then(browser::socket_identity);
     for line in input.lines() {
         let Ok(line) = line else { break };

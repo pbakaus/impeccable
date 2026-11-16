@@ -90,15 +90,16 @@ pub fn tools() -> Vec<Value> {
     ]
 }
 
-/// Which socket file is at `socket` now (device and inode), or None when there's none: a new relay's socket differs
-/// from a crashed one's leftover even at the same path.
+/// Which socket file is at `socket` now (device, inode and change time, since a filesystem may reuse a deleted file's
+/// inode at once), or None when there's none: a new relay's socket differs from a crashed one's leftover even at the
+/// same path.
 #[cfg(unix)]
-pub fn socket_identity(socket: &Path) -> Option<(u64, u64)> {
+pub fn socket_identity(socket: &Path) -> Option<(u64, u64, i64, i64)> {
     use std::os::unix::fs::MetadataExt;
-    std::fs::symlink_metadata(socket).ok().map(|m| (m.dev(), m.ino()))
+    std::fs::symlink_metadata(socket).ok().map(|m| (m.dev(), m.ino(), m.ctime(), m.ctime_nsec()))
 }
 #[cfg(not(unix))]
-pub fn socket_identity(_: &Path) -> Option<(u64, u64)> {
+pub fn socket_identity(_: &Path) -> Option<(u64, u64, i64, i64)> {
     None
 }
 
