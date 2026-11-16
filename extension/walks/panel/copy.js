@@ -157,6 +157,7 @@ export const COPY = {
     open: 'History',
     title: 'Your journeys',
     none: 'No journeys yet. Yours will show up here.',
+    failed: 'Couldn’t load your journeys.',
     /** How a journey ended, as its end screen says it. */
     ended: {
       issues: (name, n) => `${name} found ${issues(n)}`,

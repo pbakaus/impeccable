@@ -84,21 +84,22 @@ const overtaken = () => fail('Paused', 'the journey was paused before this was d
 
 /* ------------------------------ asking the person first ------------------------------ */
 
-/** How long a question waits for the person: no answer is a No. */
+/** How long a question waits for the person (the server's `OUTING_ASK_MS`). */
 const ASK_MS = 120_000;
 /** The question standing, if one is: its answer. */
 let answering = null;
 
 /**
- * Asks the person, in the side panel and on the badge, and waits: `yes`, `no`, or `void` when the walk stopped
- * walking first (paused, taken over, ended). Nothing else the walk asks is done meanwhile (`clear`).
+ * Asks the person, in the side panel and on the badge, and waits: `yes`, `no`, `timeout` when nobody answered in time
+ * (not a No: the deed is said as `TimeoutError`, the server's `unanswered`), or `void` when the walk stopped walking
+ * first (paused, taken over, ended). Nothing else the walk asks is done meanwhile (`clear`).
  */
 function consent(ask) {
   // The approved plan approved its steps up front, another site among them.
   if (plannedWalk) return Promise.resolve('yes');
   if (!dispatch({ type: 'ask', ask })) return Promise.resolve('void');
   return new Promise((resolve) => {
-    const timer = setTimeout(() => settle('no'), ASK_MS);
+    const timer = setTimeout(() => settle('timeout'), ASK_MS);
     answering = (said) => { clearTimeout(timer); resolve(said); };
   });
 }
@@ -111,7 +112,8 @@ function settle(said) {
   done(said);
   release();
 }
-onAsk(consent);
+// Another site nobody answered for in time stays shut, as a No to it does (driver.js `mayGo`).
+onAsk((ask) => consent(ask).then((said) => (said === 'timeout' ? 'no' : said)));
 
 /** A click or key the server marked (`ask`: delete, pay or send) is done only once the person says yes to it. */
 const askOf = (name, req) => (ACTS.has(name) && req?.ask && typeof req.ask === 'object' && req.action !== 'up' && req.action !== 'move' ? { kind: req.ask.kind, what: req.ask.what } : null);
@@ -139,6 +141,7 @@ for (const [name, run] of Object.entries(ops)) {
           const asked = writesNow();
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');
+          if (said === 'timeout') throw fail('TimeoutError', 'nobody answered in time');
           if (said !== 'yes' || at !== fenced()) throw overtaken();
           // The Yes opens the deed's writes (REN-2034) until the server closes them or the walk stops walking. Looked at
           // afresh before it is done: a sign-in that showed meanwhile still pauses it, and closes them.

@@ -311,15 +311,17 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      * The signed-in person's personas, `[{ name, role, slug?, mine?, face? }]`, or null. `url`: the tab's address, for
      * the personas of the app there, else the six defaults (the server matches by host, REN-2039). `app`: one app's
      * (`{ workspace, repo, app }`) instead. `face`: the face sheet as a `data:` address, for those with one stored.
+     * `faceless`: the slugs of the person's own still waiting for a face: only theirs are fetched (the panel's re-asks).
      */
-    async personas({ url, app } = {}) {
+    async personas({ url, app, faceless } = {}) {
       const at = issuer();
       const one = appOf(app);
       const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
       const list = await read(at, `/personas${query}`);
       const rows = Array.isArray(list?.personas) ? list.personas.filter((p) => typeof p?.name === 'string').slice(0, 100) : null;
       if (!rows) return null;
-      const faces = await Promise.all(rows.map((p) => faceOf(at, p.face)));
+      const only = Array.isArray(faceless) ? faceless : null;
+      const faces = await Promise.all(rows.map((p) => (!only || (p.mine === true && only.includes(p.slug)) ? faceOf(at, p.face) : null)));
       return rows.map((p, i) => ({ ...personaOf(p), ...(faces[i] ? { face: faces[i] } : {}) }));
     },
 

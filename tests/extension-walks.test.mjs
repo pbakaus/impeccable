@@ -1230,6 +1230,27 @@ describe('walk worker', () => {
     }
   });
 
+  it('leaves the person’s tabs alone when Chrome will not list them: only the walked tab’s rule goes up', async (t) => {
+    const { ops, rearm, dispatch } = await walked();
+    const { query } = chrome.tabs;
+    chrome.tabs.query = async () => { throw new Error('no tabs'); };
+    t.mock.method(console, 'warn', () => undefined);
+    try {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira' });
+      await settle(5);
+      assert.deepEqual(chrome.declarativeNetRequest.rules.map(({ condition }) => condition.tabIds), [[11]]);
+    } finally {
+      chrome.tabs.query = query;
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira' });
+    }
+  });
+
   it('never queues an open: refused while paused, so a close before Continue leaves writes held', async () => {
     const { ops, command } = await walked();
     page.seen = {};
@@ -1591,20 +1612,23 @@ describe('walk worker', () => {
     assert.deepEqual([tabs.made, tabs.removed], [[], []]);
   });
 
-  it('asks the person before a deed the server marked: no click before Yes, and none at all on No', async () => {
+  it('asks the person before a deed the server marked: no click before Yes, none on No, and no answer is not a No', async (t) => {
     const { ops, command, current } = await ownTab();
     page.seen = {};
+    // The question's own clock, ticked by hand; the test waits on turns of the event loop instead.
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const turns = async (n) => { for (let i = 0; i < n; i++) await new Promise(setImmediate); };
     const clicks = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchMouseEvent').length;
-    for (const [answer, done] of [['yes', 3], ['no', 0]]) {
+    for (const [answer, done, failed] of [['yes', 3], ['no', 0, 'Declined'], ['timeout', 0, 'TimeoutError']]) {
       const at = sent.length;
       const click = ops.mouse({ action: 'click', x: 5, y: 5, ask: { kind: 'delete', what: 'Delete “Buy oat milk”' } });
-      await settle(20);
+      await turns(20);
       let looked = false;
       const meanwhile = ops.url().then(() => { looked = true; });
-      await settle(20);
+      await turns(20);
       assert.deepEqual([current().ask?.kind, clicks(at), looked], ['delete', 0, false], 'it waits, and so does everything after it');
-      assert.equal(await command(answer), true);
-      if (answer === 'yes') await click; else await assert.rejects(click, { name: 'Declined' });
+      if (answer === 'timeout') t.mock.timers.tick(120_000); else assert.equal(await command(answer), true);
+      if (!failed) await click; else await assert.rejects(click, { name: failed });
       await meanwhile;
       assert.deepEqual([clicks(at), current().ask], [done, null]);
       // As the server does once the deed settles.

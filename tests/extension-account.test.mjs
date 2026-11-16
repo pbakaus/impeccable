@@ -419,6 +419,7 @@ describe('account worker', () => {
       await loaded;
       startServer(walks);
       delete session.handoff;
+      (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
       assert.deepEqual(await start(), answer);
       assert.deepEqual(posted.at(-1), { body: { persona: { preset: 'ines' }, task: 'Read the top story.', url: 'https://news.example.com/' }, auth: 'Bearer access-walk', method: 'POST' });
       assert.deepEqual(panels.at(-1), { tabId: 7 });
@@ -435,10 +436,24 @@ describe('account worker', () => {
     assert.equal(posted.length, sent, 'the server is not asked');
   });
 
+  // The hand-off would be refused: an outing made then would wait two minutes for nothing, and block the next start (REN-2072).
+  it('starts no walk while another is under way: the server is not asked', async () => {
+    await loaded;
+    startServer(() => json(201, { handoff: HANDOFF }));
+    const { dispatch } = await import('../extension/walks/store.js');
+    dispatch({ type: 'stop' });
+    dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
+    const sent = posted.length;
+    assert.deepEqual(await start(), { ok: false, why: 'failed' });
+    assert.equal(posted.length, sent);
+    dispatch({ type: 'stop' });
+  });
+
   for (const [label, persona] of [['one of the person’s own personas as `mine`, never `own`', { mine: 'night-nurse' }], ['a default persona, which has no app (REN-2039)', { own: 'default:robert' }]]) {
     it(`starts a walk with ${label}`, async () => {
       await loaded;
       startServer(() => json(201, { handoff: HANDOFF }));
+      (await import('../extension/walks/store.js')).dispatch({ type: 'stop' });
       const sent = posted.length;
       await ask({ account: 'walk', persona, task: 'Read the top story.', tabId: 7 }, fromPopup);
       assert.deepEqual(posted.slice(sent).map((p) => p.body.persona), [persona]);
@@ -578,6 +593,25 @@ describe('account worker', () => {
     const answer = await ask({ account: 'personas' }, fromPanel);
     assert.deepEqual(answer.personas.map((p) => p.face ?? null), ['data:image/jpeg;base64,AQID', null, null]);
     assert.equal(asked.includes(away), false);
+    records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
+  });
+
+  // The panel waiting for a new persona's photo asks again every few seconds: one face a round, not every one (REN-2075).
+  it('fetches only the faces of the person’s own personas the side panel says are still faceless', async () => {
+    await loaded;
+    session.personaCreate = null;
+    const asked = [];
+    globalThis.fetch = async (url) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-face', refresh_token: 'refresh-walk', expires_in: 900 });
+      if (url === `${ISSUER}/extension/v1/personas`) {
+        return json(200, { personas: [['Nora', 'nora', true], ['Ada', 'ada', true], ['Maya', 'default:maya', false]].map(([name, slug, mine]) => ({ name, role: '', slug, ...(mine ? { mine } : { default: true }), face: { src: `${ISSUER}/extension/v1/faces?link=${name}`, crop: { x: 0, y: 0, zoom: 1 } } })) });
+      }
+      asked.push(url);
+      return new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } });
+    };
+    const answer = await ask({ account: 'personas', faceless: ['nora', 'default:maya'] }, fromPanel);
+    assert.deepEqual([asked, answer.personas.map((p) => Boolean(p.face))], [[`${ISSUER}/extension/v1/faces?link=Nora`], [true, false, false]]);
     records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
   });
 
