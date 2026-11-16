@@ -1,5 +1,5 @@
 //! Which agents are connected right now (REN-2124). Each agent session runs one `impeccable mcp`, which lives exactly
-//! as long as the session: at `initialize` it writes a record under `<IMPECCABLE_HOME>/agents/`, and it removes it
+//! as long as the session: at `initialize` it writes a record under `<IMPECCABLE_HOME>/running/`, and it removes it
 //! when it ends. A record whose process is gone, or whose pid now belongs to a process started at another time, is a
 //! session that crashed; the reader drops it. Nothing expires on a timer and nothing leaves the machine: Loop reads
 //! `impeccable agents running --json` and forwards its own summary.
@@ -89,13 +89,16 @@ pub fn harness_process(procs: &HashMap<u32, Proc>, pid: u32) -> Option<&Proc> {
 }
 
 /// The session's name as the harness was started with it (Claude Code's `--name` / `-n`).
+/// `ps` gives the arguments split at spaces, so a quoted name reads as the words up to the next option.
 fn session_name(p: &Proc) -> Option<String> {
     let at = p.args.iter().position(|a| a == "--name" || a == "-n")?;
-    p.args.get(at + 1).map(|n| n.chars().take(40).collect()).filter(|n: &String| !n.trim().is_empty())
+    let words: Vec<&str> = p.args[at + 1..].iter().map(String::as_str).take_while(|w| !w.starts_with('-')).collect();
+    Some(words.join(" ").chars().take(40).collect::<String>()).filter(|n| !n.trim().is_empty())
 }
 
 pub fn dir(env: &HashMap<String, String>) -> Option<PathBuf> {
-    Some(impeccable_account::config::impeccable_home(env)?.join("agents"))
+    // Not `agents/`: that holds the agents engine's install journals.
+    Some(impeccable_account::config::impeccable_home(env)?.join("running"))
 }
 
 /// This session's record, written at `initialize` and again when the session first names itself. It is removed when
@@ -183,6 +186,10 @@ fn display_name(r: &Value) -> String {
 /// records are removed.
 pub fn agents(dir: Option<&Path>, procs: &HashMap<u32, Proc>) -> Vec<Value> {
     let mut out = Vec::new();
+    // No process list (ps failed): nothing can be told dead, so nothing is removed or listed.
+    if procs.is_empty() {
+        return out;
+    }
     let mut parents = Vec::new();
     let mut entries: Vec<PathBuf> = dir
         .and_then(|d| std::fs::read_dir(d).ok())
@@ -235,6 +242,10 @@ pub fn agents(dir: Option<&Path>, procs: &HashMap<u32, Proc>) -> Vec<Value> {
 
 /// `impeccable agents running [--json]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    if args.iter().any(|a| a != "--json") {
+        let _ = writeln!(io.stderr, "Usage: impeccable agents running [--json]");
+        return 2;
+    }
     let list = agents(dir(&io.env).as_deref(), &snapshot());
     if args.iter().any(|a| a == "--json") {
         let _ = writeln!(io.stdout, "{}", Value::Array(list));
@@ -254,7 +265,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 mod tests {
     use super::*;
 
-    const PS: &str = "  100     1 Mon Nov 16 09:00:00 2026     /Applications/Claude.app/claude --name t1jp
+    const PS: &str = "  100     1 Mon Nov 16 09:00:00 2026     /Applications/Claude.app/claude --name t1jp review --resume
   200   100 Mon Nov 16 09:00:05 2026     node /usr/lib/node_modules/npm/bin/npx-cli.js impeccable mcp
   201   200 Mon Nov 16 09:00:06 2026     /home/u/.npm/_npx/x/impeccable mcp
   300     1 Mon Nov 16 10:00:00 2026     /usr/local/bin/codex
@@ -267,7 +278,8 @@ mod tests {
         let procs = parse_ps(PS);
         assert_eq!(procs[&100].start, "Mon Nov 16 09:00:00 2026");
         let harness = harness_process(&procs, 201).unwrap();
-        assert_eq!((harness.pid, session_name(harness).as_deref()), (100, Some("t1jp")));
+        // A quoted name with a space comes back whole, up to the next option.
+        assert_eq!((harness.pid, session_name(harness).as_deref()), (100, Some("t1jp review")));
     }
 
     // Catches a crashed session listed as connected, a pid reused by another process read as the old session, and an
@@ -281,6 +293,10 @@ mod tests {
         let record = |pid: u32, start: &str, from: Value| json!({ "v": 1, "pid": pid, "start": start,
             "parent": { "pid": 100, "start": "Mon Nov 16 09:00:00 2026" }, "harness": "claude-code", "session": "t1jp",
             "from": from, "cwd": "/w", "repo": { "key": "k", "label": "web" }, "since": 1 });
+        // A failed ps can tell nothing dead: no record goes.
+        std::fs::write(dir.join("999.json"), record(999, "x", Value::Null).to_string()).unwrap();
+        assert!(agents(Some(&dir), &HashMap::new()).is_empty());
+        assert!(dir.join("999.json").exists());
         std::fs::write(dir.join("201.json"), record(201, "Mon Nov 16 09:00:06 2026", Value::Null).to_string()).unwrap();
         std::fs::write(dir.join("999.json"), record(999, "Mon Nov 16 08:00:00 2026", Value::Null).to_string()).unwrap();
         std::fs::write(dir.join("400.json"), record(400, "Sun Nov 15 08:00:00 2026", Value::Null).to_string()).unwrap();
