@@ -18,6 +18,8 @@ const FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 /// The steps of one run, or `None` where they aren't drawn (`Steps::new`).
 pub struct Steps {
     prompt: Prompt,
+    /// OSC 8 hyperlinks: not inside tmux or screen, where some versions print the escape as text.
+    hyperlinks: bool,
 }
 
 impl Steps {
@@ -27,7 +29,8 @@ impl Steps {
         let prompt = Prompt::new(io);
         let terminal = prompt.interactive() && std::io::stderr().is_terminal();
         let plain = io.env("NO_COLOR").is_some() || io.env("TERM") == Some("dumb") || io.env("CI").is_some();
-        (terminal && !plain).then_some(Steps { prompt })
+        let multiplexed = io.env("TMUX").is_some() || io.env("STY").is_some() || io.env("TERM").is_some_and(|t| t.starts_with("screen") || t.starts_with("tmux"));
+        (terminal && !plain).then_some(Steps { prompt, hyperlinks: !multiplexed })
     }
 
     /// `impeccable <verb>`, as `install` opens.
@@ -39,6 +42,23 @@ impl Steps {
     pub fn done(&self, io: &mut Io, title: &str, details: &[&str]) {
         io.err("\n");
         self.finished(io, title, details);
+    }
+
+    /// `▲ title`: a step that didn't go through, never drawn with the success marker.
+    pub fn failed(&self, io: &mut Io, title: &str, details: &[&str]) {
+        io.err("\n");
+        self.failed_here(io, title, details);
+    }
+
+    fn failed_here(&self, io: &mut Io, title: &str, details: &[&str]) {
+        io.err(&format!("{} {}\n", self.warn("▲"), self.prompt.bold(title)));
+        for d in details {
+            io.err(&format!("  {}\n", self.prompt.dim(d)));
+        }
+    }
+
+    fn warn(&self, v: &str) -> String {
+        format!("\x1b[33m{v}\x1b[0m")
     }
 
     /// The finished step on the line a progress line drew on (no blank line of its own).
@@ -53,7 +73,7 @@ impl Steps {
     /// framed, so a terminal that wraps it keeps it one piece to click or copy (a hyperlink where the terminal has them).
     pub fn link(&self, io: &mut Io, label: &str, url: &str) {
         // Dim: the step under way is what to watch; the link is there for when the browser didn't open.
-        io.err(&format!("  {}\n\n\x1b]8;;{url}\x1b\\{}\x1b]8;;\x1b\\\n", self.prompt.dim(label), self.prompt.dim(url)));
+        io.err(&format!("  {}\n\n{}\n", self.prompt.dim(label), self.linked(url, &self.prompt.dim(url))));
     }
 
     /// `◆ label` with a spinner, redrawn in place until the returned line is finished or dropped.
@@ -64,6 +84,7 @@ impl Steps {
         let text = format!("{} {}", self.prompt.accent("◆"), self.prompt.bold(label));
         let spin: Vec<String> = FRAMES.iter().map(|f| self.prompt.accent(f)).collect();
         let running = Arc::clone(&stop);
+        interrupt::arm();
         // Its own handle on the terminal: the step it waits on may have taken the run's streams (the first scan does).
         let handle = std::thread::spawn(move || {
             let mut err = std::io::stderr();
@@ -98,7 +119,7 @@ impl Steps {
             match value.split_once("\nhttps://") {
                 Some((text, rest)) => {
                     let url = format!("https://{rest}");
-                    io.err(&format!("  {}{pad}  {text}\n\x1b]8;;{url}\x1b\\{}\x1b]8;;\x1b\\\n", self.prompt.dim(name), self.prompt.accent(&url)));
+                    io.err(&format!("  {}{pad}  {text}\n{}\n", self.prompt.dim(name), self.linked(&url, &self.prompt.accent(&url))));
                 }
                 None => io.err(&format!("  {}{pad}  {value}\n", self.prompt.dim(name))),
             }
@@ -121,6 +142,11 @@ impl Steps {
         for l in lines {
             io.err(&format!("  {}\n", self.prompt.dim(l)));
         }
+    }
+
+    /// `shown` as a hyperlink to `url` where the terminal has them; the address itself stays the visible text.
+    fn linked(&self, url: &str, shown: &str) -> String {
+        if self.hyperlinks { format!("\x1b]8;;{url}\x1b\\{shown}\x1b]8;;\x1b\\") } else { shown.to_string() }
     }
 
     /// Accent, for a word the caller marks inside its own line.
@@ -163,6 +189,7 @@ impl Progress {
         self.stop.store(true, Ordering::Relaxed);
         if let Some(h) = self.handle.take() {
             let _ = h.join();
+            interrupt::disarm();
         }
     }
 
@@ -170,6 +197,12 @@ impl Progress {
     pub fn done(mut self, steps: &Steps, io: &mut Io, title: &str, details: &[&str]) {
         self.halt();
         steps.finished(io, title, details);
+    }
+
+    /// Stop the spinner and draw a step that didn't go through in its place.
+    pub fn failed(mut self, steps: &Steps, io: &mut Io, title: &str, details: &[&str]) {
+        self.halt();
+        steps.failed_here(io, title, details);
     }
 
     /// Stop the spinner and leave the line empty, for a caller that prints its own outcome.
@@ -181,5 +214,36 @@ impl Progress {
 impl Drop for Progress {
     fn drop(&mut self) {
         self.halt();
+    }
+}
+
+/// While a progress line draws, Ctrl-C clears it before the process ends as Ctrl-C would, so the shell prompt never
+/// lands on a half-drawn line.
+mod interrupt {
+    #[cfg(unix)]
+    extern "C" fn clear_then_exit(sig: libc::c_int) {
+        const CLEAR: &[u8] = b"\r\x1b[2K";
+        // SAFETY: write, signal and raise are async-signal-safe; the default action then ends the process.
+        unsafe {
+            libc::write(2, CLEAR.as_ptr().cast(), CLEAR.len());
+            libc::signal(sig, libc::SIG_DFL);
+            libc::raise(sig);
+        }
+    }
+
+    pub(super) fn arm() {
+        #[cfg(unix)]
+        // SAFETY: installs a handler that only uses async-signal-safe calls.
+        unsafe {
+            libc::signal(libc::SIGINT, clear_then_exit as extern "C" fn(libc::c_int) as libc::sighandler_t);
+        }
+    }
+
+    pub(super) fn disarm() {
+        #[cfg(unix)]
+        // SAFETY: restores the default disposition.
+        unsafe {
+            libc::signal(libc::SIGINT, libc::SIG_DFL);
+        }
     }
 }

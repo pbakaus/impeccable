@@ -277,20 +277,22 @@ fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
     let result = login(&env, &mut open, timeout);
     if let Some(steps) = &steps {
         // The waiting line turns into the outcome in place.
-        let finish = |io: &mut Io, waiting: Option<impeccable_common::steps::Progress>, title: &str| match waiting {
-            Some(p) => p.done(steps, io, title, &[]),
-            None => steps.done(io, title, &[]),
+        let finish = |io: &mut Io, waiting: Option<impeccable_common::steps::Progress>, title: &str, ok: bool| match (waiting, ok) {
+            (Some(p), true) => p.done(steps, io, title, &[]),
+            (Some(p), false) => p.failed(steps, io, title, &[]),
+            (None, true) => steps.done(io, title, &[]),
+            (None, false) => steps.failed(io, title, &[]),
         };
         return match result {
             Ok(done) => {
                 // The plan's lines under the step, as the plain path prints them.
                 let ((), plan) = steps.held(io, |io| report_after_sign_in(io, &done, &env));
-                finish(io, waiting.take(), &format!("Signed in to {}", done.account.display_name()));
+                finish(io, waiting.take(), &format!("Signed in to {}", done.account.display_name()), true);
                 steps.details(io, &plan);
                 LoginOutcome::SignedIn(done.account)
             }
             Err(e) => {
-                finish(io, waiting.take(), &format!("Sign-in failed: {e}"));
+                finish(io, waiting.take(), &format!("Sign-in failed: {e}"), false);
                 LoginOutcome::Failed
             }
         };

@@ -377,7 +377,7 @@ pub(crate) fn scan_after_login(
                 None => steps.details(io, &["Find it under Foundations in your Impeccable account.".to_string()]),
             }
         } else {
-            scanning.done(steps, io, &format!("Scanned this repository ({found})"), &["Couldn't add it to your account just now. Run impeccable detect here to try again."]);
+            scanning.failed(steps, io, &format!("Scanned this repository ({found})"), &["Couldn't add it to your account just now. Run impeccable detect here to try again."]);
         }
         set_last_scan(found);
         return if recorded { "done" } else { "failed" };

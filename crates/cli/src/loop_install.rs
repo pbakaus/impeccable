@@ -503,7 +503,7 @@ pub(crate) fn after_login(io: &mut Io) {
                 set_last_loop(format!("{names} connected"));
             }
             Err(e) => {
-                connecting.done(&steps, io, &format!("Couldn't connect {names}: {e}"), &["You're signed in. Run impeccable loop connect again once that is sorted."]);
+                connecting.failed(&steps, io, &format!("Couldn't connect {names}: {e}"), &["You're signed in. Run impeccable loop connect again once that is sorted."]);
                 set_last_loop("not connected yet: impeccable loop connect".to_string());
             }
         }
