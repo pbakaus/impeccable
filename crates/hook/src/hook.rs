@@ -870,6 +870,8 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
                     && !is_generated_path(f)
                     && (ALLOWED_EXTS.contains(&ext.as_str()) || match_configured_extension(f, &root_config.extensions).is_some())
                     && !is_ignored_file(&rt.proc_cwd, f, root, &root_config.ignore_files)
+                    && exists(f)
+                    && is_scan_target_inside_project(rt, f, root)
             })
             .filter(|(_, found)| {
                 let n = if *found { &mut found_n } else { &mut cached_n };
