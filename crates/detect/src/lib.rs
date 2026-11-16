@@ -27,6 +27,7 @@ pub mod project_tokens;
 pub mod regex_matchers;
 pub mod sarif;
 pub mod skills;
+pub mod unused_ignores;
 pub mod util;
 pub mod wiring;
 

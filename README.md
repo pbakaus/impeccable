@@ -84,6 +84,7 @@ npx impeccable detect --json .               # machine-readable output
 npx impeccable detect --github src/          # GitHub Actions annotations
 npx impeccable detect --sarif src/           # SARIF 2.1.0 for code scanning
 npx impeccable detect --list-rules           # every rule with its id and description
+npx impeccable detect --report-unused-ignores src/  # inline ignores that waive nothing
 ```
 
 GitHub code scanning keeps these alerts on the pull request, lets reviewers dismiss them, and fails only on findings that are new in that PR. `--github` annotates a single Actions run; `--sarif` is the log you upload:
@@ -105,7 +106,7 @@ Exit code `2` (findings) still uploads the log; exit code `1` (a target couldn't
 
 Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`. An HTML file scan reads the pixels of a local background image that is the ground behind text, so white copy on a near-white photo fails a CI gate without a browser. An image that only decorates its box is left alone, and a remote image is never fetched.
 
-Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
+Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. When that comment no longer matches a finding it will swallow the next one; `npx impeccable detect --report-unused-ignores src/` names each stale waiver so CI fails on it instead. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
 
 **In your browser.** The [Chrome extension](https://chromewebstore.google.com/detail/impeccable/bdkgmiklpdmaojlpflclinlofgjfpabf) overlays the same findings on any live page, yours or anyone else's. [Review with a visual overlay](https://impeccable.style/tutorials/critique-with-overlay).
 

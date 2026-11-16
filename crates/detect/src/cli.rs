@@ -32,6 +32,9 @@ use crate::list_rules::{
 use crate::sarif::{
     format_sarif, SARIF_GITHUB_CONFLICT, SARIF_JSON_CONFLICT, SARIF_LIST_RULES_CONFLICT,
 };
+use crate::unused_ignores::{
+    merge_unused_ignores, partition_unused_ignores, ScanEngine, NEEDS_INLINE_IGNORES,
+};
 use crate::util::{exists, re, D};
 
 pub const USAGE: &str = "Usage: impeccable detect [options] [file-or-dir-or-url...]
@@ -58,6 +61,10 @@ Options:
   --no-config         Do not apply project config, detector ignores, inline
                       ignore comments, or DESIGN.md
   --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
+  --report-unused-ignores
+                      Report inline ignore comments that waived no
+                      finding. Not with --no-inline-ignores or
+                      --no-config
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
   --no-advisory       Suppress advisory findings entirely (e.g. em-dash overuse)
   --no-consent-hiding URL scans: keep known consent managers' banners
@@ -116,6 +123,10 @@ Inline ignores:
     // impeccable-disable-next-line bounce-easing: intentional bounce
   impeccable-disable applies to the whole file; -line / -next-line are scoped.
   List one or more rule ids (comma-separated), or omit them / use * for all.
+  --report-unused-ignores lists each rule in those comments that waived
+  nothing, as a warning (unused-ignore) on the same findings stream. A *
+  waiver is listed only when it waived no finding at all. Advisory findings
+  count as a use. URL and --cdp scans have no source text and report none.
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -135,6 +146,7 @@ Examples:
   impeccable detect --github src/
   impeccable detect --sarif src/
   impeccable detect --list-rules
+  impeccable detect --report-unused-ignores src/
   impeccable detect --no-config src/
   impeccable detect --before index.html
   impeccable detect --kept index.html
@@ -166,11 +178,36 @@ fn take_value_flag(args: &mut Vec<String>, name: &str) -> Option<Option<String>>
     found
 }
 
-fn format_finding_summary(count: usize) -> String {
-    format!(
-        "{count} anti-pattern{} found.",
-        if count == 1 { "" } else { "s" }
-    )
+/// The summary line. `--report-unused-ignores` findings are counted on
+/// their own: a stale waiver is not an anti-pattern, and a run whose only
+/// findings are stale waivers should not read as one that found
+/// anti-patterns. With none, this is the usual line, byte for byte.
+fn format_finding_summary(count: usize, unused: usize) -> String {
+    let unused = unused.min(count);
+    let antipatterns = count - unused;
+    let ap = format!(
+        "{antipatterns} anti-pattern{}",
+        if antipatterns == 1 { "" } else { "s" }
+    );
+    if unused == 0 {
+        return format!("{ap} found.");
+    }
+    let ui = format!(
+        "{unused} unused inline ignore{}",
+        if unused == 1 { "" } else { "s" }
+    );
+    if antipatterns == 0 {
+        format!("{ui} found.")
+    } else {
+        format!("{ap} and {ui} found.")
+    }
+}
+
+fn count_unused_ignores(findings: &[&Finding]) -> usize {
+    findings
+        .iter()
+        .filter(|f| f.antipattern == crate::unused_ignores::UNUSED_IGNORE_ID)
+        .count()
 }
 
 /// JS: main.mjs#expandJoinedUrlTargets
@@ -295,7 +332,10 @@ pub fn format_findings(findings: &[Finding], json_mode: bool, stderr_tty: bool) 
     }
     let (primary, advisory) = partition_advisory(findings);
     let mut out = format_findings_body(&primary);
-    out.push(format!("\n{}", format_finding_summary(primary.len())));
+    out.push(format!(
+        "\n{}",
+        format_finding_summary(primary.len(), count_unused_ignores(&primary))
+    ));
     let section = format_advisory_section(&advisory, stderr_tty);
     if !section.is_empty() {
         out.push(section);
@@ -343,6 +383,9 @@ struct Ctx<'a> {
     /// target (a DESIGN.md that declares a purple), and per URL scan note (a
     /// consent banner the engine hid), in first-seen order.
     design_notes: Vec<String>,
+    /// `--report-unused-ignores`: engines returned raw findings, and this
+    /// run appends a warning for each waiver that matched nothing.
+    report_unused_ignores: bool,
     /// Custom properties per project, read once for the stripe colours a
     /// component takes from a token sheet elsewhere.
     tokens: ProjectTokens,
@@ -386,16 +429,19 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// The file's findings, plus the source text when the regex path read
+    /// it (`None` for the HTML engine, which reads the file itself).
     fn detect_local_file(
         &mut self,
         file_path: &str,
         options: &ScanOptions,
-    ) -> Result<Vec<Finding>, EngineError> {
+    ) -> Result<(Vec<Finding>, Option<String>), EngineError> {
         if uses_html_engine(file_path, &self.config.extensions) {
             return self
                 .engines
                 .html
-                .detect_html(file_path, options, &mut *self.io.stderr);
+                .detect_html(file_path, options, &mut *self.io.stderr)
+                .map(|findings| (findings, None));
         }
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
@@ -413,7 +459,7 @@ impl<'a> Ctx<'a> {
         self.regex_only_files += 1;
         self.regex_only_exts.insert(ext_from_file_path(file_path));
         let tokens = may_need_tokens(&content).then(|| self.tokens.for_file(file_path));
-        Ok(detect_text(
+        let findings = detect_text(
             &content,
             file_path,
             &TextOptions {
@@ -423,6 +469,50 @@ impl<'a> Ctx<'a> {
                 rule_pack: options.rule_pack,
                 tokens: tokens.as_deref(),
             },
+        );
+        Ok((findings, Some(content)))
+    }
+
+    /// [`detect_local_file`], then (only under `--report-unused-ignores`)
+    /// re-apply the file's waivers and append one finding per rule that
+    /// waived nothing. The flag-off path returns the engine findings as-is.
+    fn scan_local_file(
+        &mut self,
+        file_path: &str,
+        options: &ScanOptions,
+    ) -> Result<Vec<Finding>, EngineError> {
+        let (findings, source) = self.detect_local_file(file_path, options)?;
+        if !self.report_unused_ignores {
+            return Ok(findings);
+        }
+        // The regex path hands back the text it scanned. The HTML engine
+        // reads the file itself, so read it once more with the same decode as
+        // its `read_source` (`String::from_utf8_lossy`): `read_to_string`
+        // fails on a non-UTF-8 file that engine still scanned, and returning
+        // those raw findings would leak every waiver (and report no
+        // unused-ignore). A real IO failure is a scan error, same as the
+        // first read, so the run says so instead of publishing ignores-off
+        // findings.
+        let source_was_regex = source.is_some();
+        let content = match source {
+            Some(content) => content,
+            None => match std::fs::read(file_path) {
+                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                Err(err) => return Err(EngineError::new(node_scan_error(file_path, &err))),
+            },
+        };
+        // The regex path is the one that handed back its text.
+        let engine = if source_was_regex {
+            ScanEngine::regex_for(&content, file_path)
+        } else {
+            ScanEngine::Html
+        };
+        Ok(merge_unused_ignores(
+            file_path,
+            findings,
+            &content,
+            engine,
+            options.design_system.as_deref(),
         ))
     }
 
@@ -437,14 +527,14 @@ impl<'a> Ctx<'a> {
             if let Some(fp) = fp {
                 if !fp.is_empty() && exists(&fp) {
                     let opts = self.scan_options_for(Some(&fp));
-                    let found = self.detect_local_file(&fp, &opts)?;
+                    let found = self.scan_local_file(&fp, &opts)?;
                     self.note_scanned(&opts);
                     return Ok(found);
                 }
             }
         }
         let opts = self.scan_options_for(None);
-        Ok(detect_text(
+        let found = detect_text(
             &input,
             "<stdin>",
             &TextOptions {
@@ -454,7 +544,17 @@ impl<'a> Ctx<'a> {
                 rule_pack: opts.rule_pack,
                 tokens: None,
             },
-        ))
+        );
+        if self.report_unused_ignores {
+            return Ok(merge_unused_ignores(
+                "<stdin>",
+                found,
+                &input,
+                ScanEngine::regex_for(&input, "<stdin>"),
+                opts.design_system.as_deref(),
+            ));
+        }
+        Ok(found)
     }
 }
 
@@ -736,8 +836,11 @@ fn detect_cli(
         && !has(&args, "--no-design-system")
         && detection_config.design_system_not_disabled();
     let inline_ignores_enabled = config_enabled && !has(&args, "--no-inline-ignores");
+    let report_unused_ignores = has(&args, "--report-unused-ignores");
     let base = ScanOptions {
-        inline_ignores: inline_ignores_enabled,
+        // The flag asks the engines for raw findings. The CLI applies the
+        // waivers itself so it can see which comments matched nothing.
+        inline_ignores: inline_ignores_enabled && !report_unused_ignores,
         design_system: None,
         viewport,
         profile: None,
@@ -825,6 +928,10 @@ fn detect_cli(
         io.err(GITHUB_JSON_CONFLICT);
         return Err(Exit(1));
     }
+    if report_unused_ignores && !inline_ignores_enabled {
+        io.err(NEEDS_INLINE_IGNORES);
+        return Err(Exit(1));
+    }
     if cdp.is_some() && !targets.is_empty() {
         io.err("Error: --cdp scans the page of a running app and takes no file or URL targets\n");
         return Err(Exit(1));
@@ -876,6 +983,7 @@ fn detect_cli(
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
         tokens: ProjectTokens::default(),
+        report_unused_ignores,
     };
 
     let mut all: Vec<Finding> = Vec::new();
@@ -964,6 +1072,16 @@ fn detect_cli(
         }
     }
 
+    // Hold unused-ignore findings out of the config and scope filters.
+    // They are not catalog rules, so `--scope` would drop every one, and
+    // the flag asked for them by name. Without the flag this is a no-op.
+    let unused_reports = if ctx.report_unused_ignores {
+        let (rest, unused) = partition_unused_ignores(std::mem::take(&mut all));
+        all = rest;
+        unused
+    } else {
+        Vec::new()
+    };
     all = filter_detection_findings(all, &ctx.config);
     let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
     all = filter_by_scopes(all, &scope_refs, |f: &Finding| f.antipattern.as_str());
@@ -1053,8 +1171,12 @@ fn detect_cli(
             });
         }
     }
+    // Unused-ignore findings join after the design-health snapshot: they
+    // are not catalog rules, so they must not count toward the repo's health.
+    all.extend(unused_reports);
     let (primary, advisory) = partition_advisory(&all);
     let (primary_len, advisory_len) = (primary.len(), advisory.len());
+    let unused_len = count_unused_ignores(&primary);
     // Exit 1 means at least one requested scan could not complete. It takes
     // precedence over exit 2 because findings from the remaining targets do
     // not turn a partial scan into a complete one (#711).
@@ -1078,8 +1200,10 @@ fn detect_cli(
         } else if sarif_mode {
             emit_sarif(&mut ctx, &all, &scopes, no_advisory);
         } else if quiet_mode {
-            ctx.io
-                .err(&format!("{}\n", format_finding_summary(primary_len)));
+            ctx.io.err(&format!(
+                "{}\n",
+                format_finding_summary(primary_len, unused_len)
+            ));
             if advisory_len > 0 {
                 let note = dim(
                     &format!(
@@ -1356,7 +1480,7 @@ fn scan_targets(
                     continue;
                 }
                 let opts = ctx.scan_options_for(Some(file));
-                let mut file_findings = match ctx.detect_local_file(file, &opts) {
+                let mut file_findings = match ctx.scan_local_file(file, &opts) {
                     Ok(f) => {
                         ctx.note_scanned(&opts);
                         ctx.files_scanned += 1;
@@ -1400,7 +1524,7 @@ fn scan_targets(
                 continue;
             }
             let opts = ctx.scan_options_for(Some(&resolved));
-            match ctx.detect_local_file(&resolved, &opts) {
+            match ctx.scan_local_file(&resolved, &opts) {
                 Ok(f) => {
                     ctx.note_scanned(&opts);
                     all.extend(f)

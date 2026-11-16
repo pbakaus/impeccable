@@ -45,6 +45,8 @@ npx impeccable detect --sarif src/ > impeccable.sarif
 
 # Catalog of detector rules (no scan)
 npx impeccable detect --list-rules
+# Inline ignore comments that no longer waive a finding
+npx impeccable detect --report-unused-ignores src/
 ```
 
 Upload that log with `github/codeql-action/upload-sarif` (`sarif_file: impeccable.sarif`, and `category: impeccable` so it sits beside CodeQL); the job needs `security-events: write`. Write it with `npx impeccable detect --sarif src/ > impeccable.sarif || test $? -eq 2` so findings (exit `2`) still upload while an unscannable target (exit `1`) fails the step; that log also says `executionSuccessful: false`. A clean scan still writes a log with an empty `results` array, which is what closes alerts that were fixed. `partialFingerprints.primaryLocationLineHash` is left unset; the upload action fills it.
@@ -87,6 +89,8 @@ impeccable detect [options] [file-or-dir-or-url...]
   --github      Write GitHub Actions annotations for each finding
   --sarif       Write a SARIF 2.1.0 log for code scanning
   --list-rules  Print the detector rule catalog and exit
+  --report-unused-ignores
+                Report inline ignore comments that waived no finding
   --scope       Only report rules in a design domain (type, layout)
   --help        Show help
 ```

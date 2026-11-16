@@ -3047,18 +3047,21 @@ pub const TEXT_CONTENT_ANALYZER_IDS: &[&str] = &[
     "aphoristic-cadence",
 ];
 
+/// The rule id each of [`REGEX_ANALYZERS`] reports, by index.
+pub const REGEX_ANALYZER_IDS: &[&str] = &[
+    "monotonous-spacing",
+    "em-dash-overuse",
+    "marketing-buzzword",
+    "aphoristic-cadence",
+    "dark-glow",
+    "radial-halo",
+    "marquee",
+];
+
 /// The ruleIds the JS assigns to analyzers by index (`analyzerIds[i] || analyzer-${i+1}`).
 pub fn analyzer_rule_id(i: usize) -> String {
-    const IDS: &[&str] = &[
-        "monotonous-spacing",
-        "em-dash-overuse",
-        "marketing-buzzword",
-        "aphoristic-cadence",
-        "dark-glow",
-        "radial-halo",
-        "marquee",
-    ];
-    IDS.get(i)
+    REGEX_ANALYZER_IDS
+        .get(i)
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("analyzer-{}", i + 1))
 }
