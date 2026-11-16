@@ -782,7 +782,7 @@ function end() {
   const n = found();
   const link = resultsUrl();
   const reason = state === 'failed' ? view.failure?.reason ?? 'connection' : null;
-  const why = reason ? (typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site) : COPY.failed[reason]) : null;
+  const why = reason ? (typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site, name()) : COPY.failed[reason]) : null;
   // The first deed the person said No to (a walk with no plan): the walk's page says it in these words. `held` is not a No.
   const saidNo = view.outcome && !view.outcome.finished ? view.steps.find((step) => step.refused === 'no')?.n : undefined;
   const head = state === 'done' ? COPY.end.done(name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;

@@ -1771,14 +1771,15 @@ describe('walk worker', () => {
     assert.deepEqual([tabs.made, tabs.removed], [[], []]);
   });
 
-  it('asks the person before a deed the server marked: no click before Yes, none on No, and no answer is not a No', async (t) => {
+  // Catches a walk ended for want of an answer being told in the panel as a dropped connection (16 Nov).
+  it('asks the person before a deed the server marked: no click before Yes, none on No, and no answer is not a No but its own ending', async (t) => {
     const { ops, command, current } = await ownTab();
     page.seen = {};
     // The question's own clock, ticked by hand; the test waits on turns of the event loop instead.
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const turns = async (n) => { for (let i = 0; i < n; i++) await new Promise(setImmediate); };
     const clicks = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchMouseEvent').length;
-    for (const [answer, done, failed] of [['yes', 3], ['no', 0, 'Declined'], ['timeout', 0, 'TimeoutError']]) {
+    for (const [answer, done, failed, unanswered = false] of [['yes', 3], ['no', 0, 'Declined'], ['timeout', 0, 'TimeoutError', true]]) {
       const at = sent.length;
       const click = ops.mouse({ action: 'click', x: 5, y: 5, ask: { kind: 'delete', what: 'Delete “Buy oat milk”' } });
       await turns(20);
@@ -1789,7 +1790,7 @@ describe('walk worker', () => {
       if (answer === 'timeout') t.mock.timers.tick(120_000); else assert.equal(await command(answer), true);
       if (!failed) await click; else await assert.rejects(click, { name: failed });
       await meanwhile;
-      assert.deepEqual([clicks(at), current().ask], [done, null]);
+      assert.deepEqual([clicks(at), current().ask, current().unanswered], [done, null, unanswered]);
       // As the server does once the deed settles.
       await ops.writes({ open: false });
     }

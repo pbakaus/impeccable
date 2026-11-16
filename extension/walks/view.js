@@ -10,7 +10,7 @@ export const LIVE = ['waiting', 'walking', 'paused', 'takeover'];
 /** The debugger is on the tab. */
 export const ON_TAB = ['walking', 'paused', 'takeover'];
 /** Why a walk failed, as the panel shows it. */
-export const FAILURES = ['tab-closed', 'connection', 'left-site', 'switched-off'];
+export const FAILURES = ['tab-closed', 'connection', 'left-site', 'switched-off', 'unanswered'];
 
 const STEPS_KEPT = 200;
 const NOTES_KEPT = 20;
@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null, withheld: false };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null, withheld: false, unanswered: false };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -101,6 +101,8 @@ function step(view, action) {
       if (view.state !== 'walking' || view.ask || !ASKS.includes(action.ask?.kind)) return view;
       return { ...view, ask: { kind: action.ask.kind, what: text(action.ask.what, 200) } };
     case 'answer': return view.ask ? { ...view, ask: null } : view;
+    // Nobody answered a deed's question in time: the server ends the walk, and its socket closing is not a lost connection.
+    case 'unanswered': return ON_TAB.includes(view.state) ? { ...view, unanswered: true } : view;
     // The tab sent a write the hold kept back while paused at a sign-in (a passkey, an approval on a phone, a sign-in
     // button in another site's frame): said once a pause, so a page that keeps sending changes nothing more.
     case 'withheld': return atSignIn(view) && !view.withheld ? { ...view, withheld: true } : view;

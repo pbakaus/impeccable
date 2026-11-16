@@ -153,7 +153,7 @@ for (const [name, run] of Object.entries(ops)) {
           const asked = writesNow();
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');
-          if (said === 'timeout') throw fail('TimeoutError', 'nobody answered in time');
+          if (said === 'timeout') { dispatch({ type: 'unanswered' }); throw fail('TimeoutError', 'nobody answered in time'); }
           if (said !== 'yes' || at !== fenced()) throw overtaken();
           // The Yes opens the deed's writes (REN-2034) until the server closes them or the walk stops walking. Looked at
           // afresh before it is done: a sign-in that showed meanwhile still pauses it, and closes them.

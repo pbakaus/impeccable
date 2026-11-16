@@ -79,6 +79,7 @@ export const STUBS = {
   'failed-connection': run(walking, [{ type: 'fail', reason: 'connection' }]),
   'failed-switched-off': run(walking, [{ type: 'fail', reason: 'switched-off' }]),
   'failed-left-site': run(walking, [{ type: 'fail', reason: 'left-site' }]),
+  'failed-unanswered': run(walking, [{ type: 'fail', reason: 'unanswered' }]),
 };
 
 /** The six every app has (REN-2039), as the personas read lists them: no faces yet, so their initials. */
