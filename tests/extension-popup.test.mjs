@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, remove = { ok: true }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -333,8 +333,8 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   Object.assign(globalThis, {
     document, location: { search }, addEventListener() {},
     chrome: {
-      // A persona made is in the list from then on, as the worker's is.
-      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
+      // A persona made is in the list from then on, as the worker's is; one removed is gone from it.
+      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); if (message.account === 'remove' && remove.ok) personas.splice(personas.findIndex((p) => p.mine && p.slug === message.slug) >>> 0, 1); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, remove, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -677,9 +677,35 @@ test('the side panel’s cog opens the account in the panel: the email, a way to
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
   // Signed out, the same cog: the way to report a problem alone, for someone who can't sign in (REN-2076).
   await h.press('settings');
-  assert.deepEqual([h.body.dataset.screen, h.acts().filter((act) => ['help', 'sign-out', 'scan', 'history'].includes(act)), h.app.querySelector('b[data-email]')], ['signed-out', ['help'], null]);
+  assert.deepEqual([h.body.dataset.screen, h.acts().filter((act) => ['your-personas', 'help', 'sign-out', 'scan', 'history'].includes(act)), h.app.querySelector('b[data-email]')], ['signed-out', ['help'], null]);
   await h.press('help');
   assert.deepEqual([issue(), cog().attributes['aria-expanded']], [['https://github.com/pbakaus/impeccable/issues/new', ['body'], true, false], 'false']);
+});
+
+// Your personas, from the cog: their own with Remove, the six without (the owner hasn't decided). Remove asks in its own
+// row; No or Escape puts the row back, Yes removes it, here and from the home's grid.
+test('the side panel’s Your personas removes only their own, after Are you sure, and the grid loses it', async () => {
+  const own = [{ name: 'Rosa', role: 'A nurse', slug: 'rosa', mine: true }, { name: 'Theo', role: 'A shift lead', slug: 'theo', mine: true }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [...own, { name: 'Maya', role: 'A student', slug: 'default:maya', default: true }] });
+  await h.press('settings');
+  assert.deepEqual(h.acts().filter((act) => ['your-personas', 'help', 'sign-out'].includes(act)), ['your-personas', 'help', 'sign-out'], 'above Having problems?');
+  await h.press('your-personas');
+  const rows = () => h.app.querySelectorAll('li.yours-row').map((row) => `${row.attributes['data-slug']}:${row.attributes['data-state']}`);
+  const removes = () => h.acts().filter((act) => act.startsWith('remove-'));
+  const focused = () => document.activeElement?.attributes['data-act'];
+  assert.deepEqual([h.body.dataset.screen, rows(), removes(), h.sent.at(-1)], ['personas', ['rosa:mine', 'theo:mine', 'default:maya:default'], ['remove-rosa', 'remove-theo'], { account: 'personas' }], 'asked with no page: their own, then the six');
+  await h.press('remove-theo');
+  assert.deepEqual([rows(), removes(), focused()], [['rosa:mine', 'theo:sure', 'default:maya:default'], ['remove-rosa'], 'sure-no']);
+  await h.press('sure-no');
+  assert.deepEqual([rows()[1], focused()], ['theo:mine', 'remove-theo'], 'No: the row as it was');
+  await h.press('remove-theo');
+  for (const listener of h.app.querySelector('li[data-state="sure"]').listeners.keydown) listener({ key: 'Escape' });
+  assert.deepEqual([rows()[1], focused(), h.sent.some((m) => m.account === 'remove')], ['theo:mine', 'remove-theo', false], 'Escape counts as No');
+  await h.press('remove-theo');
+  await h.press('sure-yes');
+  assert.deepEqual([h.sent.filter((m) => m.account === 'remove'), rows(), focused()], [[{ account: 'remove', slug: 'theo' }], ['rosa:mine', 'default:maya:default'], 'remove-rosa']);
+  await h.press('back');
+  assert.deepEqual([h.body.dataset.screen, h.acts().filter((act) => act.startsWith('pick-')).map((act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-label'])], ['home', ['Rosa', 'Maya']]);
 });
 
 // History, beside the cog: the account worker's `journeys`, the dots while they come. A row opens its journey's page in a new tab; Back goes home.

@@ -311,7 +311,7 @@ b { font-weight: 500; }
 
 /* ---------- history: the walking list's rows, each a button to its journey's page ---------- */
 /* As a walk does, the screen fills the panel and only the list scrolls, fading at an edge with more past it (panel.js `fade`). */
-#app.screen-history { height: 100%; min-height: 0; }
+#app.screen-history, #app.screen-personas { height: 100%; min-height: 0; }
 .hist-hd { flex: none; margin-top: 20px; font-size: 2.25rem; }
 .hist { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 16px; }
 .hist-row { width: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 12px 10px 12px 8px; border: 1px solid transparent; border-top-color: var(--rule); border-radius: 0; text-align: left; }
@@ -331,6 +331,9 @@ b { font-weight: 500; }
 .hist-when { flex: none; margin-left: auto; font-size: 12px; line-height: 1.4; color: var(--muted); white-space: nowrap; }
 .hist-row > .ic { margin-top: 2px; color: var(--mute-deep); }
 .hist-row:hover > .ic { color: var(--ink); }
+/* Your personas: History's list and words, each row the face, name and role, then Remove (or Default) on the right. Asking, the row keeps its height without the face. */
+.yours-row { display: flex; gap: 12px; align-items: center; min-height: 65px; padding: 12px 8px; border-top: 1px solid var(--rule); }
+.yours-row:first-child { border-top-color: transparent; }
 
 /* ---------- just signed in: a gold check, then the panel goes on ---------- */
 .done-mark { width: 72px; height: 72px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); margin-bottom: 4px; }
