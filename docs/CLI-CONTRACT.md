@@ -3195,7 +3195,10 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
 - **Each agent its own asker.** Every agent on the machine shares the CLI's
   one sign-in, so a `needs_you.*` call whose arguments carry no `from` is sent
   with `from` set to the `clientInfo.name` the agent gave at `initialize`
-  (first 40 characters). A call that names its own `from` is left as it is.
+  (its ASCII letters, digits and `-_.@/+ `, first 40; none added when nothing
+  is left). A call that names its own `from` is left as it is, so an agent
+  that names its sessions must name them on every call: a call without one
+  reads only the cards asked under the agent's name.
 - **Stateless.** Each request is its own POST to `/mcp`; no `Mcp-Session-Id`
   is carried, and the service keeps no MCP session.
 - **What counts as a sign-in failure:** no stored sign-in (or one only a

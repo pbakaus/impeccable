@@ -76,13 +76,20 @@ pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upst
             continue;
         };
         if request.get("method").and_then(Value::as_str) == Some("initialize") {
-            agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(|n| n.chars().take(40).collect());
+            agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
         }
         asked_as(&mut request, agent.as_deref());
         if let Some(reply) = answer(&request, out, err, upstream) {
             frame(out, &reply);
         }
     }
+}
+
+/// An agent's name in a form the service always accepts as a session label: plain ASCII letters, digits and
+/// `-_.@/+ `, at most 40 characters; empty when nothing is left (then no `from` is added).
+fn agent_label(name: &str) -> String {
+    let kept: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || " -_.@/+".contains(*c)).take(40).collect();
+    kept.trim().to_string()
 }
 
 /// Every agent on this machine shares the CLI's one sign-in, so a Needs-you call that doesn't name its session is

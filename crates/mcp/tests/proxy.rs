@@ -106,4 +106,16 @@ fn names_needs_you_calls_for_the_agent_that_made_them() {
     assert_eq!(args(1)["from"], "codex-mcp-client");
     assert_eq!(args(2)["from"], "tab 2");
     assert!(args(3).get("from").is_none());
+
+    // A name the service would refuse as a label is cut to what it accepts, and dropped when nothing is left.
+    for (name, from) in [("Claude\u{200B} Code\n✨", Some("Claude Code")), ("\u{2800}\u{200B}", None)] {
+        let lines = [
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "clientInfo": { "name": name } } }),
+            json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "needs_you.list", "arguments": {} } }),
+        ];
+        let input: String = lines.iter().map(|l| format!("{l}\n")).collect();
+        let mut seen = Seen(Vec::new());
+        serve(input.as_bytes(), &mut Vec::new(), &mut Vec::new(), &mut seen);
+        assert_eq!(seen.0[1]["params"]["arguments"]["from"].as_str(), from);
+    }
 }
