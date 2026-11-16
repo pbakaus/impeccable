@@ -93,7 +93,14 @@ pub fn harness_process(procs: &HashMap<u32, Proc>, pid: u32) -> Option<&Proc> {
 fn session_name(p: &Proc) -> Option<String> {
     let at = p.args.iter().position(|a| a == "--name" || a == "-n")?;
     let words: Vec<&str> = p.args[at + 1..].iter().map(String::as_str).take_while(|w| !w.starts_with('-')).collect();
-    Some(words.join(" ").chars().take(40).collect::<String>()).filter(|n| !n.trim().is_empty())
+    clean(&words.join(" "))
+}
+
+/// A name as it may be saved and shown: no control characters (a newline or an escape would reach Loop and the
+/// terminal), at most 40 characters, never blank.
+fn clean(name: &str) -> Option<String> {
+    let name: String = name.chars().filter(|c| !c.is_control()).take(40).collect();
+    (!name.trim().is_empty()).then_some(name)
 }
 
 pub fn dir(env: &HashMap<String, String>) -> Option<PathBuf> {
@@ -131,12 +138,13 @@ impl Presence {
         presence.save(&dir).then_some(presence)
     }
 
-    /// The session's own name, once a Needs-you call gives one: it outranks every other.
+    /// The session's own name: the first a Needs-you call gives, which outranks every other and is kept.
     pub fn named(&mut self, from: &str) {
-        if self.record["from"].as_str() == Some(from) {
+        let Some(from) = clean(from) else { return };
+        if !self.record["from"].is_null() {
             return;
         }
-        self.record["from"] = json!(from.chars().take(40).collect::<String>());
+        self.record["from"] = json!(from);
         if let Some(dir) = self.file.parent().map(Path::to_path_buf) {
             self.save(&dir);
         }
@@ -174,7 +182,7 @@ fn now() -> u64 {
 
 /// The name Loop shows: the session's own (`from`), else the harness's session name, else the repository and harness.
 fn display_name(r: &Value) -> String {
-    let text = |k: &str| r[k].as_str().filter(|s| !s.trim().is_empty()).map(str::to_string);
+    let text = |k: &str| r[k].as_str().and_then(clean);
     let harness = r["harness"].as_str().unwrap_or("agent");
     text("from").or_else(|| text("session")).unwrap_or_else(|| match r["repo"]["label"].as_str() {
         Some(label) => format!("{label} · {harness}"),
@@ -183,21 +191,26 @@ fn display_name(r: &Value) -> String {
 }
 
 /// Every agent: each live record as connected, then each harness process with none as seen, not connected. Dead
-/// records are removed.
-pub fn agents(dir: Option<&Path>, procs: &HashMap<u32, Proc>) -> Vec<Value> {
+/// records are removed. The records are read before `procs` takes its snapshot, so a session that starts in between
+/// is in the snapshot and its record is never taken for a dead one.
+pub fn agents(dir: Option<&Path>, procs: impl FnOnce() -> HashMap<u32, Proc>) -> Vec<Value> {
     let mut out = Vec::new();
-    // No process list (ps failed): nothing can be told dead, so nothing is removed or listed.
-    if procs.is_empty() {
-        return out;
-    }
-    let mut parents = Vec::new();
     let mut entries: Vec<PathBuf> = dir
         .and_then(|d| std::fs::read_dir(d).ok())
         .map(|it| it.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect())
         .unwrap_or_default();
     entries.sort();
-    for path in entries {
-        let Some(r) = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()) else { continue };
+    let records: Vec<(PathBuf, Value)> = entries
+        .into_iter()
+        .filter_map(|path| std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|r| (path, r)))
+        .collect();
+    let procs = procs();
+    // No process list (ps failed): nothing can be told dead, so nothing is removed or listed.
+    if procs.is_empty() {
+        return out;
+    }
+    let mut parents = Vec::new();
+    for (path, r) in records {
         let pid = r["pid"].as_u64().unwrap_or(0) as u32;
         let alive = procs.get(&pid).is_some_and(|p| Some(p.start.as_str()) == r["start"].as_str());
         if !alive {
@@ -246,7 +259,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         let _ = writeln!(io.stderr, "Usage: impeccable agents running [--json]");
         return 2;
     }
-    let list = agents(dir(&io.env).as_deref(), &snapshot());
+    let list = agents(dir(&io.env).as_deref(), snapshot);
     if args.iter().any(|a| a == "--json") {
         let _ = writeln!(io.stdout, "{}", Value::Array(list));
         return 0;
@@ -295,13 +308,13 @@ mod tests {
             "from": from, "cwd": "/w", "repo": { "key": "k", "label": "web" }, "since": 1 });
         // A failed ps can tell nothing dead: no record goes.
         std::fs::write(dir.join("999.json"), record(999, "x", Value::Null).to_string()).unwrap();
-        assert!(agents(Some(&dir), &HashMap::new()).is_empty());
+        assert!(agents(Some(&dir), HashMap::new).is_empty());
         assert!(dir.join("999.json").exists());
         std::fs::write(dir.join("201.json"), record(201, "Mon Nov 16 09:00:06 2026", Value::Null).to_string()).unwrap();
         std::fs::write(dir.join("999.json"), record(999, "Mon Nov 16 08:00:00 2026", Value::Null).to_string()).unwrap();
         std::fs::write(dir.join("400.json"), record(400, "Sun Nov 15 08:00:00 2026", Value::Null).to_string()).unwrap();
 
-        let list = agents(Some(&dir), &procs);
+        let list = agents(Some(&dir), || procs.clone());
         let shown: Vec<(String, bool)> = list.iter().map(|a| (a["name"].as_str().unwrap().to_string(), a["connected"] == true)).collect();
         assert_eq!(shown, [("t1jp".to_string(), true), ("codex".to_string(), false)]);
         assert!(!dir.join("999.json").exists() && !dir.join("400.json").exists() && dir.join("201.json").exists());
@@ -312,6 +325,9 @@ mod tests {
         named["from"] = Value::Null;
         named["session"] = Value::Null;
         assert_eq!(display_name(&named), "web · claude-code");
+        // A newline or an escape never reaches Loop or the terminal.
+        named["from"] = json!("review\nbot\u{1b}[2J");
+        assert_eq!(display_name(&named), "reviewbot[2J");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
