@@ -192,3 +192,84 @@ fn replies_reach_only_the_agent_that_asked() {
     assert_eq!(names(&reply).len(), 4);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A server the test talks to line by line: it sends requests and reads each reply as the server writes it, so
+/// nothing depends on thread timing.
+struct Live {
+    to: UnixStream,
+    from: std::io::BufReader<UnixStream>,
+    server: std::thread::JoinHandle<()>,
+}
+
+impl Live {
+    fn start(socket: &Path) -> Live {
+        let (to, server_in) = UnixStream::pair().unwrap();
+        let (server_out, from) = UnixStream::pair().unwrap();
+        // A missing reply fails the test instead of hanging it.
+        from.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let s = socket.to_path_buf();
+        let server = std::thread::spawn(move || {
+            let mut out = server_out;
+            serve_with(std::io::BufReader::new(server_in), &mut out, &mut Vec::new(), &mut Remote, Some(&s));
+        });
+        Live { to, from: std::io::BufReader::new(from), server }
+    }
+
+    fn send(&mut self, v: Value) {
+        use std::io::Write as _;
+        writeln!(self.to, "{v}").unwrap();
+    }
+
+    fn read(&mut self) -> Value {
+        use std::io::BufRead as _;
+        let mut line = String::new();
+        self.from.read_line(&mut line).unwrap();
+        serde_json::from_str(&line).unwrap()
+    }
+
+    fn end(self) {
+        drop(self.to);
+        self.server.join().unwrap();
+    }
+}
+
+fn said(m: &Value) -> String {
+    m["method"].as_str().map(str::to_string).unwrap_or_else(|| m["id"].to_string())
+}
+
+// Catches an agent that listed before Chrome opened never learning the browser tools exist, and a server that
+// doesn't say it sends that notice.
+#[test]
+fn tells_the_agent_its_tools_changed_when_chrome_connects_later() {
+    let dir = short_dir("changed");
+    let socket = dir.join("browser").join("host.sock");
+    let mut live = Live::start(&socket);
+    live.send(json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }));
+    assert_eq!(live.read()["result"]["capabilities"]["tools"]["listChanged"], true);
+    live.send(json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }));
+    assert_eq!(said(&live.read()), "2");
+    let _ext = relay(&socket);
+    live.send(json!({ "jsonrpc": "2.0", "id": 3, "method": "ping" }));
+    assert_eq!([said(&live.read()), said(&live.read())], ["notifications/tools/list_changed", "3"]);
+    live.send(json!({ "jsonrpc": "2.0", "id": 4, "method": "ping" }));
+    assert_eq!(said(&live.read()), "4");
+    live.end();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+// Catches a crashed relay's leftover socket file hiding the relay that replaces it: same path, a new socket.
+#[test]
+fn a_relay_replacing_a_crashed_ones_file_is_news() {
+    let dir = short_dir("stale");
+    let socket = dir.join("browser").join("host.sock");
+    std::fs::create_dir_all(socket.parent().unwrap()).unwrap();
+    std::fs::write(&socket, b"").unwrap();
+    let mut live = Live::start(&socket);
+    live.send(json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }));
+    assert_eq!(said(&live.read()), "1");
+    let _ext = relay(&socket);
+    live.send(json!({ "jsonrpc": "2.0", "id": 2, "method": "ping" }));
+    assert_eq!(said(&live.read()), "notifications/tools/list_changed");
+    live.end();
+    let _ = std::fs::remove_dir_all(dir);
+}
