@@ -28,6 +28,6 @@ The browser extension ships two fonts under `extension/fonts/`, each with its li
 
 The browser extension's journeys answer cookie and consent banners with DuckDuckGo's autoconsent: its engine and rule set, unmodified, ship in `extension/walks/consent-rules.js` behind a small bridge of our own.
 
-**Original work:** https://github.com/duckduckgo/autoconsent
-**Original license:** Mozilla Public License 2.0
+**Original work:** https://github.com/duckduckgo/autoconsent (version 17.2.0: `dist/autoconsent.playwright.js` and `rules/compact-rules.json`)
+**Original license:** Mozilla Public License 2.0, https://mozilla.org/MPL/2.0/ (the whole of `consent-rules.js`, our bridge included; the rest of this repository is Apache-2.0)
 **Copyright:** DuckDuckGo, Inc.
