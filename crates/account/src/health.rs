@@ -663,6 +663,12 @@ fn output_within(mut command: Command, timeout: Duration) -> Result<Option<Strin
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| ())?;
+    // Read while it runs, so output past the pipe's buffer can't stall it.
+    let mut stdout = child.stdout.take().ok_or(())?;
+    let reader = std::thread::spawn(move || {
+        let mut out = String::new();
+        std::io::Read::read_to_string(&mut stdout, &mut out).ok().map(|_| out)
+    });
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -677,11 +683,7 @@ fn output_within(mut command: Command, timeout: Duration) -> Result<Option<Strin
             }
         }
     };
-    let mut out = String::new();
-    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
-    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
-        return Ok(None);
-    }
+    let Some(out) = reader.join().ok().flatten() else { return Ok(None) };
     let s = out.trim().to_string();
     Ok((status.success() && !s.is_empty()).then_some(s))
 }
@@ -733,13 +735,13 @@ pub fn resolve_remote(raw: &str) -> Option<String> {
 
 /// `raw` with its SSH host replaced by what `hostname` says it stands for.
 /// Any other remote, or a host `hostname` can't resolve, is unchanged.
-fn unalias(raw: &str, hostname: impl Fn(&str) -> Option<String>) -> String {
+fn unalias(raw: &str, hostname: impl Fn(&str, &str) -> Option<String>) -> String {
     let raw = raw.trim();
     if !raw.contains("://") {
         // scp-like: [user@]host:path
         let Some((login, path)) = raw.split_once(':') else { return raw.to_string() };
         let (user, host) = login.rsplit_once('@').map_or(("", login), |(u, h)| (u, h));
-        return match hostname(host) {
+        return match hostname(user, host) {
             Some(real) if !login.contains('/') && real != host => {
                 let at = if user.is_empty() { "" } else { "@" };
                 format!("{user}{at}{real}:{path}")
@@ -751,24 +753,30 @@ fn unalias(raw: &str, hostname: impl Fn(&str) -> Option<String>) -> String {
     if !matches!(url.scheme(), "ssh" | "git+ssh") {
         return raw.to_string();
     }
-    match url.host_str().and_then(&hostname) {
+    let user = url.username().to_string();
+    match url.host_str().and_then(|h| hostname(&user, h)) {
         Some(real) if url.set_host(Some(&real)).is_ok() => url.to_string(),
         _ => raw.to_string(),
     }
 }
 
-/// The host `ssh` connects to for `alias`, from the SSH config (`ssh -G`, which
-/// reads it and connects nowhere). `None` for anything that isn't a plain host
-/// name or when ssh can't say within half a second.
-fn ssh_hostname(alias: &str) -> Option<String> {
-    let plain = !alias.is_empty()
-        && !alias.starts_with('-')
-        && alias.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
-    if !plain {
+/// The host `ssh` connects to for `alias` as `user` (the remote's login, which a
+/// `Match user` block can depend on), from the SSH config (`ssh -G`, which reads
+/// it and connects nowhere). `None` for anything that isn't a plain name or when
+/// ssh can't say within half a second.
+fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
+    let plain = |v: &str| {
+        !v.starts_with('-') && v.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    };
+    if alias.is_empty() || !plain(alias) || !plain(user) {
         return None;
     }
     let mut ssh = Command::new("ssh");
-    ssh.args(["-G", alias]).stderr(Stdio::null());
+    ssh.arg("-G");
+    if !user.is_empty() {
+        ssh.args(["-l", user]);
+    }
+    ssh.arg(alias);
     let out = output_within(ssh, Duration::from_millis(500)).ok()??;
     let real = out.lines().find_map(|l| l.strip_prefix("hostname "))?.trim().to_lowercase();
     (!real.is_empty()).then_some(real)
@@ -1026,21 +1034,24 @@ mod tests {
     #[test]
     fn an_ssh_host_alias_reads_as_the_host_it_stands_for() {
         // Catches (REN-2058): a clone through an SSH host alias never matching its repository.
-        let config = |host: &str| match host {
-            "work" | "github.com-work" => Some("github.com".to_string()),
-            other => Some(other.to_lowercase()),
+        let config = |user: &str, host: &str| match (user, host) {
+            ("git", "work") | (_, "github.com-work") => Some("github.com".to_string()),
+            (_, other) => Some(other.to_lowercase()),
         };
         for raw in ["git@work:a/b.git", "github.com-work:a/b", "ssh://git@work/a/b.git", "git+ssh://git@github.com-work:22/a/b"] {
             assert_eq!(normalize_remote(&unalias(raw, config)).as_deref(), Some("https://github.com/a/b"), "{raw}");
         }
         // Not SSH, a local path, or a host ssh can't resolve: unchanged.
         for raw in ["https://work/a/b", "/srv/work:a/b", "git@unknown:a/b"] {
-            assert_eq!(unalias(raw, |_| None), raw);
+            assert_eq!(unalias(raw, |_, _| None), raw);
         }
         assert_eq!(unalias("https://work/a/b", config), "https://work/a/b");
-        // Only plain host names reach ssh.
-        assert_eq!(ssh_hostname("-oProxyCommand=x"), None);
-        assert_eq!(ssh_hostname("a b"), None);
+        // The remote's login reaches the lookup, for a `Match user` block.
+        assert_eq!(normalize_remote(&unalias("deploy@work:a/b", config)).as_deref(), Some("https://work/a/b"));
+        // Only plain names reach ssh.
+        assert_eq!(ssh_hostname("git", "-oProxyCommand=x"), None);
+        assert_eq!(ssh_hostname("-oProxyCommand=x", "work"), None);
+        assert_eq!(ssh_hostname("", "a b"), None);
     }
 
     #[test]
