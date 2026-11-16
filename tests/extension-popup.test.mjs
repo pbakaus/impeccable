@@ -334,7 +334,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
+      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -509,7 +509,7 @@ test('the side panel asks for the personas again until each of the person’s ow
   const made = asks(h);
   assert.deepEqual(faces(h, 'nora'), [[false, 1]], 'Confirm shows the letter while the photo is drawn');
   await wait(3000);
-  assert.deepEqual([asks(h), faces(h, 'nora')], [made + 1, [[false, 1]]], 'a list without the face is asked for again');
+  assert.deepEqual([asks(h), faces(h, 'nora'), h.sent.filter((m) => m.account === 'personas').at(-1).faceless], [made + 1, [[false, 1]], ['nora']], 'a list without the face is asked for again, with only the faceless one’s face (REN-2075)');
   personas[1] = { ...personas[1], face: photo };
   await wait(6000);
   const confirm = h.app.querySelector('[data-act="confirm"]');
@@ -519,11 +519,15 @@ test('the side panel asks for the personas again until each of the person’s ow
   await wait(60_000);
   assert.equal(asks(h), made + 2, 'every own persona has a face: no more asks');
 
-  // An own persona whose photo never comes: four asks, then none; and none once the panel leaves the home.
-  for (const [label, leave, expected] of [['stays home', null, 4], ['opens History', 'history', 0]]) {
-    const home = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Rosa', role: '', slug: 'rosa', mine: true }, maya] });
+  // An own persona whose photo never comes: four asks, then none, a list that doesn't come included; and none once the panel leaves the home.
+  const down = Promise.reject(new Error('down'));
+  down.catch(() => undefined);
+  for (const [label, leave, expected] of [['stays home', null, 4], ['the list fails', 'fail', 4], ['opens History', 'history', 0]]) {
+    const hold = {};
+    const home = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Rosa', role: '', slug: 'rosa', mine: true }, maya], hold });
     const loaded = asks(home);
-    if (leave) await home.press(leave);
+    if (leave === 'fail') hold.personas = down;
+    else if (leave) await home.press(leave);
     for (const ms of [3000, 6000, 12000, 20000, 60_000]) await wait(ms);
     assert.equal(asks(home) - loaded, expected, label);
   }
@@ -607,7 +611,7 @@ for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' },
 
 // No walk running: never a dead end. Signed out, the panel signs in and then shows the personas; with no account, the terminal.
 for (const [label, status, offers] of [
-  ['signed out', { ok: true, available: true, signedIn: false }, ['sign-in']],
+  ['signed out', { ok: true, available: true, signedIn: false }, ['settings', 'sign-in']],
   ['a server that takes no sign-ins', { ok: true, available: false }, ['copy']],
   // The server says who has Impeccable Pro: without it, Get Pro or another account, and no personas asked for.
   ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, ['get-pro', 'another-account']],
@@ -623,7 +627,7 @@ for (const [label, status, offers] of [
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
       return;
     }
-    if (offers[0] !== 'sign-in') return;
+    if (!offers.includes('sign-in')) return;
     await h.press('sign-in');
     assert.ok(h.sent.some((m) => m.account === 'sign-in'), 'the extension’s own sign-in');
     // "You're connected" with the email and nothing to press, for a moment; then the home.
@@ -662,12 +666,19 @@ test('the side panel’s cog opens the account in the panel: the email, a way to
   assert.deepEqual([cog().attributes['aria-expanded'], h.acts().includes('sign-out')], ['false', false], 'a second press closes it');
   await h.press('settings');
   assert.deepEqual(h.acts().filter((act) => act === 'help' || act === 'sign-out'), ['help', 'sign-out'], 'the way to report a problem, above Sign out');
+  // A new issue on the public repository: the extension's version, nothing of the person or their journeys.
+  const issue = () => { const at = new URL(h.opened.at(-1).url); return [`${at.origin}${at.pathname}`, [...at.searchParams.keys()], at.searchParams.get('body').includes('9.9.9'), at.href.includes(signedIn.email)]; };
   await h.press('help');
-  assert.deepEqual([h.opened, cog().attributes['aria-expanded'], h.acts().includes('help')], [[{ url: 'https://github.com/pbakaus/impeccable/issues/new', active: true }], 'false', false], 'it opens a new issue in a tab and closes');
+  assert.deepEqual([issue(), h.opened.at(-1).active, cog().attributes['aria-expanded'], h.acts().includes('help')], [['https://github.com/pbakaus/impeccable/issues/new', ['body'], true, false], true, 'false', false], 'it opens a new issue in a tab and closes');
   h.opened.length = 0;
   await h.press('settings');
   await h.press('sign-out');
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
+  // Signed out, the same cog: the way to report a problem alone, for someone who can't sign in (REN-2076).
+  await h.press('settings');
+  assert.deepEqual([h.body.dataset.screen, h.acts().filter((act) => ['help', 'sign-out', 'scan', 'history'].includes(act)), h.app.querySelector('b[data-email]')], ['signed-out', ['help'], null]);
+  await h.press('help');
+  assert.deepEqual([issue(), cog().attributes['aria-expanded']], [['https://github.com/pbakaus/impeccable/issues/new', ['body'], true, false], 'false']);
 });
 
 // History, beside the cog: the account worker's `journeys`, the dots while they come. A row opens its journey's page in a new tab; Back goes home.
@@ -686,11 +697,15 @@ test('the side panel’s History opens from the top row, a row opens its journey
   assert.deepEqual(h.opened, [{ url: HISTORY[1].url, active: true }]);
   await h.press('back');
   assert.equal(h.body.dataset.screen, 'home');
-  // None, or none read: the empty line, never the dots.
-  for (const journeys of [{ ok: true, journeys: [] }, { ok: false, why: 'journeys' }]) {
+  // None: the empty line. None read is not none: Try again, which asks again, or Sign in again when the sign-in is gone (REN-2073).
+  for (const [journeys, offer] of [[{ ok: true, journeys: [] }, null], [{ ok: false, why: 'journeys' }, 'retry'], [{ ok: false, why: 'signed-out' }, 'sign-in']]) {
     const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys });
     await empty.press('history');
-    assert.deepEqual([empty.app.querySelectorAll('span.dots').length, empty.app.querySelectorAll('button.hist-row').length, empty.app.querySelectorAll('p.task').length], [0, 0, 1]);
+    assert.deepEqual([empty.app.querySelectorAll('span.dots').length, empty.app.querySelectorAll('button.hist-row').length, empty.app.querySelectorAll('p.task').length, ['retry', 'sign-in'].filter((act) => empty.acts().includes(act))], [0, 0, offer ? 0 : 1, offer ? [offer] : []]);
+    if (offer !== 'retry') continue;
+    await empty.press('retry');
+    for (let n = 0; n < 3; n += 1) await tick();
+    assert.deepEqual([empty.sent.filter((m) => m.account === 'journeys').length, empty.acts().includes('retry')], [2, true]);
   }
   // A journey still going reads as one.
   const going = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys: { ok: true, journeys: [{ ...HISTORY[0], outcome: 'running', issues: 0 }] } });

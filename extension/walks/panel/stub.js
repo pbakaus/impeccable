@@ -159,10 +159,11 @@ export const PRE = {
   plan: { personas: PERSONAS, task: TASK, screen: 'plan', plan: PLAN, pick: 3, here: 'https://shop.example/' },
   before: { personas: PERSONAS, screen: 'before' },
   'tab-group': { personas: PERSONAS, screen: 'tab-group', pick: 3, here: 'https://shop.example/' },
-  // History (the button beside the cog): eight journeys, none yet, still coming, and a long list that scrolls inside.
+  // History (the button beside the cog): eight journeys, none yet, still coming, not read, and a long list that scrolls inside.
   history: { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/' },
   'history-empty': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: [] },
   'history-loading': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: undefined },
+  'history-failed': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: null },
   'history-long': { personas: PERSONAS, pick: 3, screen: 'history', here: 'https://shop.example/', history: LONG },
 };
 STUBS.before = STUBS.idle;
@@ -170,5 +171,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-long']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

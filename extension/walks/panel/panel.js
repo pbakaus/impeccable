@@ -140,35 +140,45 @@ const walking = () => (walker && walker.name === view.who?.name ? walker : { nam
 /** The site the panel walks; before a walk, Scan and the cog beside it, which opens the account (`accountMenu`) under it. */
 function top(url = hereUrl, { tools = false, back = null } = {}) {
   const host = hostOf(url);
-  const open = tools && pre.menu;
   return el('div', { class: 'top' },
     back ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: back }, icon('back')) : null,
     host ? el('span', { class: 'where' }, COPY.top.walking, ' ', el('b', { text: host })) : el('span', { class: 'where', text: COPY.top.noSite }),
     el('span', { class: 'grow' }),
     tools ? button('scan', COPY.top.scan, 'sec sm', () => { pre.back = pre.screen; pre.screen = 'scan'; render(); }) : null,
     tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'history', title: COPY.history.open, 'aria-label': COPY.history.open, onclick: () => { pre.screen = 'history'; void loadHistory(); render(); } }, icon('history')) : null,
-    tools ? el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.account.title, 'aria-label': COPY.account.title, 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', 'aria-controls': open ? 'account-menu' : undefined, onclick: () => { if (pre.menu) closeMenu(); else openMenu(); } }, icon('cog')) : null,
-    open ? accountMenu() : null,
+    tools ? cog() : null,
   );
 }
 
-/** Where "Having problems?" sends the person: a new issue on the extension's own repository. */
-const HELP_URL = 'https://github.com/pbakaus/impeccable/issues/new';
-/** The account, in a popover under the cog: who is signed in, the way to report a problem, and Sign out last. A click outside it, Esc, or the cog again closes it. */
+/** The cog, and the account popover under it while open. */
+const cog = () => [
+  el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'settings', title: COPY.account.title, 'aria-label': COPY.account.title, 'aria-haspopup': 'dialog', 'aria-expanded': pre.menu ? 'true' : 'false', 'aria-controls': pre.menu ? 'account-menu' : undefined, onclick: () => { if (pre.menu) closeMenu(); else openMenu(); } }, icon('cog')),
+  ...(pre.menu ? accountMenu() : []),
+];
+
+/**
+ * Where "Having problems?" sends the person: a new issue on the extension's own repository, which is public: it
+ * carries the extension's version and nothing else of the person or their journeys.
+ */
+const helpUrl = () => `https://github.com/pbakaus/impeccable/issues/new?${new URLSearchParams({ body: `Extension version: ${chrome.runtime.getManifest?.()?.version ?? 'unknown'}\n\n` })}`;
+/**
+ * The account, in a popover under the cog: who is signed in, the way to report a problem, and Sign out last; signed
+ * out, the way to report a problem alone. A click outside it, Esc, or the cog again closes it.
+ */
 function accountMenu() {
+  const signedIn = account?.signedIn === true;
   return [
     el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeMenu() }),
     el('div', { class: 'acct', id: 'account-menu', role: 'dialog', 'aria-label': COPY.account.title },
-      account?.email ? el('p', { class: 'acct-who' }, el('small', { text: COPY.account.signedIn }), el('b', { 'data-email': true, text: account.email })) : null,
+      signedIn && account.email ? el('p', { class: 'acct-who' }, el('small', { text: COPY.account.signedIn }), el('b', { 'data-email': true, text: account.email })) : null,
       el('button', { class: 'btn btn-sec full', type: 'button', 'data-act': 'help',
-        onclick: () => { void chrome.tabs.create({ url: HELP_URL, active: true }).catch(() => undefined); closeMenu(); } },
+        onclick: () => { void chrome.tabs.create({ url: helpUrl(), active: true }).catch(() => undefined); closeMenu(); } },
       COPY.account.help),
-      button('sign-out', COPY.account.signOut, 'sec full', () => { void signOut(); })),
+      signedIn ? button('sign-out', COPY.account.signOut, 'sec full', () => { void signOut(); }) : null),
   ];
 }
-/** Opens the account popover, focus on its first button (Having problems?); only signed in, as there is no one to show otherwise. */
+/** Opens the account popover, focus on its first button (Having problems?). */
 function openMenu() {
-  if (account?.signedIn !== true) return;
   pre.menu = true;
   render();
   app.querySelector('[data-act="help"]')?.focus();
@@ -257,7 +267,8 @@ async function loadPersonas() {
 /**
  * A persona of the person's own gets its photo drawn on the server after it is made (about 4–25 s): until then it shows
  * its letter. While one has no face and the home or Make a persona shows, the list is asked again after each of these
- * waits, and each face that has come is swapped in where its letter is, nothing else redrawn.
+ * waits, with the faces of those still without one only, and each face that has come is swapped in where its letter
+ * is, nothing else redrawn. The waits running out leave the letter, and say nothing.
  */
 const FACE_WAITS = [3000, 6000, 12000, 20000];
 /** The waits under way (its timer, kept while its ask is out), and which run it is: a fresh start ends the one before. */
@@ -266,6 +277,7 @@ let faceRun = 0;
 /** Set when the waits ran out, so a list asked for again later does not start them over; a persona made does. */
 let facesWaited = false;
 const ownFaceless = () => [pre.made, ...(pre.personas ?? [])].some((each) => each?.mine && !each.face);
+const facelessSlugs = () => [...new Set([pre.made, ...(pre.personas ?? [])].filter((each) => each?.mine && !each.face && each.slug).map((each) => each.slug))];
 const facesShow = () => screen() === 'home' || screen() === 'make';
 function waitForFaces(round = 0, run = (faceRun += 1)) {
   if (run !== faceRun) return;
@@ -275,8 +287,9 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
   if (round >= FACE_WAITS.length) { facesWaited = true; return; }
   faceWait = setTimeout(async () => {
     if (!ownFaceless() || !facesShow()) { faceWait = null; return; }
-    const answer = await chrome.runtime.sendMessage({ account: 'personas', url: siteOf(hereUrl) }).catch(() => null);
+    const answer = await chrome.runtime.sendMessage({ account: 'personas', url: siteOf(hereUrl), faceless: facelessSlugs() }).catch(() => null);
     if (run !== faceRun) return;
+    // A list that didn't come leaves the letters as they are: the next wait asks again.
     const faces = new Map((answer?.ok ? answer.personas : []).filter((each) => each.mine && each.face).map((each) => [each.slug, each.face]));
     const dressed = (each) => (each?.mine && !each.face && faces.has(each.slug) ? { ...each, face: faces.get(each.slug) } : each);
     if (pre.made) pre.made = dressed(pre.made);
@@ -456,9 +469,9 @@ function cast() {
   ], { role: 'group', 'aria-label': COPY.home.who }, people);
 }
 
-/** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
-function unloaded() {
-  if (pre.failed !== 'signed-out') return button('retry', COPY.home.retry, 'gold', () => { pre.personas = undefined; render(); void loadPersonas(); });
+/** Personas (or History) that didn't load: sign in again when the sign-in is gone, else try again. */
+function unloaded(why = pre.failed, retry = () => { pre.personas = undefined; render(); void loadPersonas(); }) {
+  if (why !== 'signed-out') return button('retry', COPY.home.retry, 'gold', retry);
   const again = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'sign-in', text: COPY.home.signIn, onclick: () => { void signIn(again); } });
   return again;
 }
@@ -792,7 +805,7 @@ function end() {
 
 /**
  * Every journey this person started (from here, the terminal or an agent), newest first, as the account worker reads
- * them; undefined while they come, none when they couldn't be read. A stand-in keeps its own list (stub.js `HISTORY`).
+ * them; undefined while they come, null when they couldn't be read. A stand-in keeps its own list (stub.js `HISTORY`).
  */
 const historyItems = () => pre.history;
 let historyLoad = null;
@@ -802,7 +815,8 @@ function loadHistory() {
   historyLoad ??= (async () => {
     pre.history = undefined;
     const answer = await chrome.runtime.sendMessage({ account: 'journeys' }).catch(() => null);
-    pre.history = answer?.ok ? answer.journeys : [];
+    pre.history = answer?.ok ? answer.journeys : null;
+    pre.historyWhy = answer?.ok ? null : answer?.why ?? null;
     if (pre.screen === 'history') render();
   })().finally(() => { historyLoad = null; });
   return historyLoad;
@@ -813,6 +827,8 @@ function history() {
   const items = historyItems();
   const head = [top(hereUrl, { back: () => goHome() }), el('h2', { class: 'hd hist-hd', text: COPY.history.title })];
   if (items === undefined) return [...head, el('div', { class: 'mid' }, dots())];
+  // Not read is not none: said as the home says personas that didn't load, and asked again.
+  if (items === null) return [...head, el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.history.failed }), unloaded(pre.historyWhy, () => { void loadHistory(); render(); }))];
   if (!items.length) return [...head, el('div', { class: 'mid' }, el('p', { class: 'task', text: COPY.history.none }))];
   return [...head, el('ul', { class: 'hist scrolls', 'aria-label': COPY.history.title }, items.map((one, i) => el('li', {},
     el('button', { type: 'button', class: 'hist-row', 'data-act': `journey-${i}`, 'data-outcome': one.outcome,
@@ -849,6 +865,8 @@ async function signIn(control) {
   signInFailed = answer?.ok !== true;
   if (!signInFailed) account = answer.available === true ? answer : null;
   if (account?.signedIn === true) void loadPersonas();
+  // History that couldn't be read for want of a sign-in is asked again too.
+  if (account?.signedIn === true && pre.history === null) void loadHistory();
   // Only a sign-in that worked, to an account with Pro, says so ("Sign in again" runs while `account` still says signed in).
   if (!signInFailed && account?.signedIn === true && account.pro !== false) connect();
   render();
@@ -872,7 +890,8 @@ const connected = () => [el('div', { class: 'mid connected', role: 'status' },
 
 function signedOut() {
   const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', disabled: pre.signingIn, onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), pre.signingIn ? dots() : el('span', { class: 'arrow', text: '→' }));
-  return [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed && !pre.signingIn ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro,
+  // The cog where the home has it: the way to report a problem, for someone who can't sign in.
+  return [el('div', { class: 'top' }, el('span', { class: 'grow' }), cog()), el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed && !pre.signingIn ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro,
     pre.signingIn ? el('p', { class: 'task', role: 'status', text: COPY.signedOut.signingIn }) : null)];
 }
 
@@ -955,8 +974,8 @@ const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': 
 function render() {
   const shown = screen();
   if (shown !== 'home') hush();
-  // The account popover belongs to the home: another screen closes it.
-  if (shown !== 'home' && shown !== 'loading') pre.menu = false;
+  // The account popover belongs to the home, and signed out to that screen: another screen closes it.
+  if (shown !== 'home' && shown !== 'loading' && shown !== 'signed-out') pre.menu = false;
   // The moment's time runs from when it is first drawn; a stand-in holds it.
   if (shown === 'connected' && !connectedFor && !stubbed) connectedFor = setTimeout(() => { pre.connected = false; connectedFor = null; render(); }, CONNECTED_MS);
   const focused = document.activeElement?.getAttribute?.('data-act');

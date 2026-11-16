@@ -8,7 +8,8 @@
 import { BUILD } from '../shared/build.js';
 import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
-import { faceOf } from '../walks/view.js';
+import { current, ready } from '../walks/store.js';
+import { faceOf, isLive } from '../walks/view.js';
 import { offerPanel, signedIn as pointToolbar, withoutPro } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { PLAN_ID, appOf, createSession, idbStore } from './session.js';
@@ -148,6 +149,10 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };
   if (approved !== undefined && !PLAN_ID.test(approved)) return { ok: false, why: 'failed' };
+  // A walk under way would refuse this one's hand-off (link.js `adopt`): refused before the server makes an outing that
+  // nothing would come for.
+  await ready;
+  if (isLive(current())) return { ok: false, why: 'failed' };
   const at = issuer;
   // Told only to a server that says it takes it (REN-1890): an older one refuses a key it does not know. The tab is laid
   // out at the width either way (link.js `adopt`).
@@ -198,11 +203,13 @@ async function create({ description }) {
  * The personas, and the description of one still being made (or sent and never answered), for the popup to wait on.
  * None: `signed-out` when no sign-in is kept any more (the server ended it), else `personas`.
  */
-async function personas({ url, app }) {
+async function personas({ url, app, faceless }) {
   // `url`: the side panel's tab, by its origin alone (the server matches an app by host); `app`: one app's, from Make a persona.
+  // `faceless`: the panel waiting for its own personas' faces, by slug: only theirs are fetched.
   let origin = null;
   try { origin = /^https?:\/\//.test(url) ? new URL(url).origin : null; } catch { /* no address */ }
-  const [list, was] = await Promise.all([session.personas({ ...(origin ? { url: origin } : {}), ...(app ? { app } : {}) }), making ? null : kept()]);
+  const only = Array.isArray(faceless) ? { faceless: faceless.filter((slug) => typeof slug === 'string').slice(0, 10) } : {};
+  const [list, was] = await Promise.all([session.personas({ ...(origin ? { url: origin } : {}), ...(app ? { app } : {}), ...only }), making ? null : kept()]);
   const creating = making?.description ?? (was?.open ? was.description : null);
   if (list) return { ok: true, personas: list, ...(creating ? { creating } : {}) };
   return { ok: false, why: (await session.signedIn().catch(() => true)) ? 'personas' : 'signed-out' };
@@ -212,7 +219,7 @@ const ANSWERS = {
   create,
   personas,
   async apps() { const apps = await session.apps(); return apps ? { ok: true, apps } : { ok: false, why: 'apps' }; },
-  async journeys() { const journeys = await session.journeys(); return journeys ? { ok: true, journeys } : { ok: false, why: 'journeys' }; },
+  async journeys() { const journeys = await session.journeys(); return journeys ? { ok: true, journeys } : { ok: false, why: (await session.signedIn().catch(() => true)) ? 'journeys' : 'signed-out' }; },
   plan,
   async remove({ slug }) { return session.removePersona(slug); },
   walk,
