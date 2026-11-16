@@ -5945,7 +5945,7 @@
     // variants still starts from that variant's defaults.
     const retainedParams = svelteComponentSession.mountedVariant === variantNum
       ? { ...paramsCurrentValues }
-      : (svelteComponentSession.mountedVariant === 0 ? restoredParamValuesForVisibleVariant() : null);
+      : (svelteComponentSession.mountedVariant === 0 ? keptParamValuesForVisibleVariant() : null);
     // Resolved before the first await so the failure report can name the module
     // the browser could not reach, whichever step threw.
     const extension = manifest.componentExtension || 'svelte';
