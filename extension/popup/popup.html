@@ -7,35 +7,37 @@
 </head>
 <body>
   <header>
-    <span class="ks-mark" aria-hidden="true">
-      <svg viewBox="0 0 32 32" fill="currentColor">
-        <path d="M7 1 L18 1 L8 31 L7 31 Q1 31 1 25 L1 7 Q1 1 7 1 Z"/>
-        <path d="M22 1 L25 1 Q31 1 31 7 L31 25 Q31 31 25 31 L12 31 Z"/>
-      </svg>
-    </span>
+    <svg class="mark" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg>
     <h1>Impeccable</h1>
   </header>
 
-  <div class="count-display" id="count-display">
-    <span class="count-number" id="count-number">0</span>
-    <span class="count-label" id="count-label">anti-patterns</span>
-  </div>
+  <main id="panel-scan">
+    <div class="count" id="count-display">
+      <span class="count-number" id="count-number">0</span>
+      <span class="count-rule" aria-hidden="true"></span>
+      <span class="count-label" id="count-label">anti-patterns</span>
+    </div>
 
-  <div class="actions">
-    <button class="btn btn-primary" id="btn-scan">Scan page</button>
-    <button class="btn btn-secondary" id="btn-copy-all" disabled>Copy all findings</button>
-    <button class="btn btn-secondary" id="btn-toggle">Hide overlays</button>
-  </div>
+    <div class="pair">
+      <button class="btn" id="btn-copy-all" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></svg>
+        <span id="copy-label">Copy all</span>
+      </button>
+      <button class="btn" id="btn-toggle" type="button" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span id="toggle-label">Hide outlines</span>
+      </button>
+    </div>
 
-  <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+    <button class="btn btn-scan" id="btn-scan" type="button">Scan page</button>
 
-  <p class="scan-error" id="scan-error" hidden></p>
+    <p class="line" id="scan-error" role="status" aria-live="polite"></p>
+  </main>
 
-  <footer>
-    <a href="https://impeccable.style" id="link-site">impeccable.style</a>
-  </footer>
-
+  <footer class="pro"><button class="btn-pro" id="btn-pro" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M5 2.5 L13.5 2.5 L5.5 21.5 L5 21.5 Q2.5 21.5 2.5 19 L2.5 5 Q2.5 2.5 5 2.5 Z"/><path d="M16.5 2.5 L19 2.5 Q21.5 2.5 21.5 5 L21.5 19 Q21.5 21.5 19 21.5 L8.5 21.5 Z"/></svg><span>Impeccable Pro</span><svg class="arrow" viewBox="0 0 16 8" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M0 4h14M10 0l4 4-4 4"/></svg></button></footer>
   <script src="../shared/findings-report.js"></script>
   <script src="popup.js"></script>
+  <script src="words.js"></script>
+  <script src="account.js"></script>
 </body>
 </html>

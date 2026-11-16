@@ -1,9 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
+import { DEV_HOSTS, moduleReferences, stageDev, stageStore } from '../scripts/lib/extension-manifests.js';
 import { webcrypto } from 'node:crypto';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -772,4 +774,55 @@ describe('deferred rule-core preparation after background restart', () => {
     release({ ok: true });
     assert.equal((await ready).superseded, true);
   });
+});
+
+it('the store listing describes the extension as its manifest does, and justifies every permission it asks for', () => {
+  const manifest = JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8'));
+  const listing = readFileSync(path.join(ROOT, 'extension/STORE_LISTING.md'), 'utf8');
+  const short = listing.split('## Short description')[1].split('\n')[1];
+  assert.equal(short, manifest.description);
+  assert.ok(short.length <= 132);
+  assert.deepEqual(manifest.permissions.filter((permission) => !listing.includes(`- **${permission}**:`)), []);
+  assert.ok(listing.includes(`version notes for ${manifest.version}`));
+});
+
+// The Chrome Web Store build (scripts/lib/extension-manifests.js `stageStore`), staged as scripts/build-extension.js stages it.
+it('ships everything in the store build but the stand-in screens, held to production hosts', async () => {
+  const store = path.join(mkdtempSync(path.join(tmpdir(), 'impeccable-store-')), 'extension');
+  stageStore(path.join(ROOT, 'extension'), store);
+  const manifest = JSON.parse(readFileSync(path.join(store, 'manifest.json'), 'utf8'));
+  const shipped = readdirSync(store, { recursive: true });
+  const source = readdirSync(path.join(ROOT, 'extension'), { recursive: true }).filter((file) => !/(^|\/)(STORE_LISTING\.md|\.DS_Store)$|^dev-hosts\.[^/]*\.json$/.test(file));
+  assert.deepEqual(source.filter((file) => !shipped.includes(file)), ['walks/panel/stub.js']);
+  const loaded = moduleReferences(store, manifest.background.service_worker);
+  assert.deepEqual(loaded.filter((file) => !existsSync(path.join(store, file))), []);
+  assert.deepEqual(['account/worker.js', 'walks/worker.js'].filter((file) => !loaded.includes(file)), []);
+  // Sign-in and its settings page come with the account.
+  assert.deepEqual([manifest.permissions.includes('identity'), manifest.options_ui?.page], [true, 'popup/settings.html']);
+  assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.js).sort(), ['account/welcome.js', 'walks/handoff-content.js', 'walks/present.js']);
+  assert.deepEqual(manifest.content_scripts.flatMap((entry) => entry.matches).filter((match) => /staging|localhost/.test(match)), []);
+  assert.equal('key' in manifest, false);
+  // It signs in to production alone, whatever server a development build left chosen.
+  const { BUILD } = await import(pathToFileURL(path.join(store, 'shared/build.js')).href);
+  assert.equal(BUILD.devHosts, false);
+  rmSync(path.dirname(store), { recursive: true, force: true });
+});
+
+// A developer's own servers (extension/dev-hosts.local.json, never committed) reach the development build alone.
+it('takes a developer\'s own servers into the development build, and none into any file of the store build', async () => {
+  const tmp = mkdtempSync(path.join(tmpdir(), 'impeccable-dev-'));
+  const source = path.join(tmp, 'source');
+  cpSync(path.join(ROOT, 'extension'), source, { recursive: true });
+  const server = { api: 'https://api.staging.example', app: 'https://app.staging.example', site: 'https://staging.example' };
+  writeFileSync(path.join(source, DEV_HOSTS), JSON.stringify({ servers: [server] }));
+  const dev = stageDev(source, path.join(tmp, 'dev')).manifest;
+  const matches = dev.content_scripts.flatMap((entry) => entry.matches);
+  assert.deepEqual([server.site, server.app].map((origin) => matches.some((match) => match.startsWith(`${origin}/app/`))), [true, true]);
+  const { BUILD } = await import(pathToFileURL(path.join(tmp, 'dev/shared/build.js')).href);
+  assert.deepEqual(BUILD.servers, [server]);
+  const store = path.join(tmp, 'store');
+  stageStore(source, store);
+  const files = readdirSync(store, { recursive: true }).filter((file) => statSync(path.join(store, file)).isFile());
+  assert.deepEqual(files.filter((file) => /staging/i.test(readFileSync(path.join(store, file), 'latin1'))), []);
+  rmSync(tmp, { recursive: true, force: true });
 });

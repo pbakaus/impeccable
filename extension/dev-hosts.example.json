@@ -1,0 +1,4 @@
+{
+  "about": "Copy to dev-hosts.local.json (never committed) and list your own servers there; bun run build:extension then stages dist/extension-dev/, which signs in to them and takes journeys from them. This machine's stand-ins (localhost, app.localhost, api.localhost) are built in, so this example lists none. A server is three https origins: { \"api\": \"https://api.example.com\", \"app\": \"https://app.example.com\", \"site\": \"https://example.com\" }.",
+  "servers": []
+}

@@ -9,12 +9,18 @@
  *    WebAssembly and concatenates it with the page JS in browser-bundle/.
  * 2. Checks that every path the manifest and the service worker reference
  *    exists in extension/.
- * 3. Packages extension.zip (Chrome Web Store) and extension-firefox.zip (AMO).
+ * 3. Packages, from the one source (scripts/lib/extension-manifests.js):
+ *    - extension.zip: "Impeccable" for the Chrome Web Store: the detector,
+ *      walks and the account, held to production hosts. Unpacked, it is
+ *      extension/ itself.
+ *    - extension-firefox.zip: the detector for AMO. Firefox cannot drive a
+ *      tab through the debugger, so it has no walks.
+ *    - extension-dev/ (no zip): extension/ plus the servers a developer names
+ *      in the untracked extension/dev-hosts.local.json, to load unpacked.
  *
- * The source `extension/manifest.json` is the Chrome manifest. The Firefox
- * variant is derived at build time: the MV3 background service worker is
- * declared as an event-page `scripts` entry (the universally-supported path on
- * Gecko), and `browser_specific_settings.gecko` is added for AMO signing.
+ * The Firefox manifest declares the detector's background worker as an
+ * event-page `scripts` entry (the universally-supported path on Gecko), and
+ * `browser_specific_settings.gecko` is added for AMO signing.
  *
  * Chrome hosts the WebAssembly rule core in an offscreen document; Firefox
  * loads the same document in a hidden iframe inside its background event page.
@@ -30,6 +36,7 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { DETECTOR_WORKER, DEV_HOSTS, moduleReferences, stageDev, stageFirefox, stageStore } from './lib/extension-manifests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -81,7 +88,9 @@ function manifestReferences(manifest) {
   add(manifest.background?.service_worker);
   for (const script of manifest.background?.scripts || []) add(script);
   add(manifest.devtools_page);
+  add(manifest.side_panel?.default_path);
   add(manifest.action?.default_popup);
+  add(manifest.options_ui?.page);
   for (const icon of Object.values(manifest.action?.default_icon || {})) add(icon);
   for (const icon of Object.values(manifest.icons || {})) add(icon);
   for (const entry of manifest.content_scripts || []) {
@@ -109,15 +118,25 @@ function serviceWorkerReferences(source) {
   return refs;
 }
 
-const swSource = fs.readFileSync(path.join(EXT_DIR, serviceWorker), 'utf-8');
-const referenced = [...new Set([...manifestReferences(chromeManifest), ...serviceWorkerReferences(swSource)])];
-const missingRefs = referenced.filter((rel) => !fs.existsSync(path.join(EXT_DIR, rel)));
-if (missingRefs.length) {
-  throw new Error(
-    `extension/ is missing referenced file(s):\n${missingRefs.map((r) => `  · ${r}`).join('\n')}`,
-  );
+/** Throws unless every path `manifest` and its background reference exists under `dir`. */
+function checkReferences(dir, manifest, label) {
+  const background = manifest.background?.service_worker;
+  const swSource = fs.readFileSync(path.join(EXT_DIR, DETECTOR_WORKER), 'utf-8');
+  const declared = manifestReferences(manifest);
+  const loaded = background && manifest.background?.type === 'module' ? moduleReferences(dir, background) : [];
+  // The detector's worker opens and injects its files by path.
+  const detector = [...declared, ...loaded].includes(DETECTOR_WORKER) ? serviceWorkerReferences(swSource) : [];
+  const referenced = [...new Set([...declared, ...loaded, ...detector])];
+  const missingRefs = referenced.filter((rel) => !fs.existsSync(path.join(dir, rel)));
+  if (missingRefs.length) {
+    throw new Error(
+      `${label} is missing referenced file(s):\n${missingRefs.map((r) => `  · ${r}`).join('\n')}`,
+    );
+  }
+  console.log(`Checked ${referenced.length} referenced paths; all present in ${label}`);
 }
-console.log(`Checked ${referenced.length} referenced paths; all present in extension/`);
+
+checkReferences(EXT_DIR, chromeManifest, 'extension/');
 
 // --- 3. Zip packaging ---
 
@@ -137,52 +156,26 @@ function packZip(zipPath, cwd, excludes = []) {
   console.log(`Packaged ${path.relative(ROOT, zipPath)} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-// --- 3a. Chrome zip (manifest unchanged) ---
+// --- 3a. The Chrome store zip ---
 
-packZip(path.join(DIST, 'extension.zip'), EXT_DIR, ['STORE_LISTING.md', '*.DS_Store']);
+const chromeStageDir = path.join(DIST, 'extension-chrome');
+const chromeStoreManifest = stageStore(EXT_DIR, chromeStageDir);
+console.log(`Staged ${path.relative(ROOT, chromeStageDir)}/ (Chrome store manifest)`);
+checkReferences(chromeStageDir, chromeStoreManifest, `${path.relative(ROOT, chromeStageDir)}/`);
+packZip(path.join(DIST, 'extension.zip'), chromeStageDir, ['*.DS_Store']);
 
-// --- 3b. Firefox: derive a Gecko-compatible manifest and stage an unpacked
-// build (consumed by `web-ext lint` in CI), then zip it for AMO. ---
-
-const firefoxManifest = {
-  ...chromeManifest,
-  // Gecko supports MV3 via non-persistent event pages. Declaring `scripts`
-  // (rather than `service_worker`) is the path supported across all MV3 Firefox
-  // releases. The shared worker hosts the rule core in a background-page
-  // iframe when Chrome's offscreen API is unavailable.
-  background: { scripts: [serviceWorker] },
-  permissions: chromeManifest.permissions.filter(permission => permission !== 'offscreen'),
-  // Required by AMO for signing/distribution. Ignored by Chrome.
-  browser_specific_settings: {
-    gecko: {
-      id: 'impeccable@bakaus.com',
-      // `data_collection_permissions` (below) is required by AMO for new
-      // submissions and is only honored on Firefox 140+. We set the floor to
-      // 140 so the declared min version actually supports every key we ship;
-      // everything else this extension uses (MV3 action, scripting, devtools,
-      // object-form web_accessible_resources, storage.sync) landed long before.
-      strict_min_version: '140.0',
-      // The rules run in the extension's own document; nothing is
-      // transmitted off-device.
-      data_collection_permissions: { required: ['none'] },
-    },
-  },
-};
+// --- 3b. Firefox: stage an unpacked build (consumed by `web-ext lint` in CI),
+// then zip it for AMO. ---
 
 const ffStageDir = path.join(DIST, 'extension-firefox');
-fs.rmSync(ffStageDir, { recursive: true, force: true });
-fs.cpSync(EXT_DIR, ffStageDir, {
-  recursive: true,
-  filter: (src) => {
-    const base = path.basename(src);
-    return base !== 'STORE_LISTING.md' && base !== '.DS_Store';
-  },
-});
-fs.writeFileSync(
-  path.join(ffStageDir, 'manifest.json'),
-  JSON.stringify(firefoxManifest, null, 2) + '\n',
-);
+const firefoxManifest = stageFirefox(EXT_DIR, ffStageDir);
 console.log(`Staged ${path.relative(ROOT, ffStageDir)}/ (Firefox manifest)`);
-
-// STORE_LISTING.md is already filtered out of the stage dir above.
+checkReferences(ffStageDir, firefoxManifest, `${path.relative(ROOT, ffStageDir)}/`);
 packZip(path.join(DIST, 'extension-firefox.zip'), ffStageDir, ['*.DS_Store']);
+
+// --- 3c. The development build: loaded unpacked, never zipped. ---
+
+const devStageDir = path.join(DIST, 'extension-dev');
+const dev = stageDev(EXT_DIR, devStageDir);
+console.log(`Staged ${path.relative(ROOT, devStageDir)}/ (development; ${dev.servers.length} server(s) from extension/${DEV_HOSTS})`);
+checkReferences(devStageDir, dev.manifest, `${path.relative(ROOT, devStageDir)}/`);
