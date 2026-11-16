@@ -95,7 +95,7 @@ English
 https://impeccable.style/privacy
 
 ## Single purpose description
-Detects and highlights UI anti-patterns (AI-generated design tells and general quality issues) on any web page.
+Check and test your site's design: find design problems on any page, and watch personas try your site.
 
 ## Permission justifications (Privacy practices tab)
 
