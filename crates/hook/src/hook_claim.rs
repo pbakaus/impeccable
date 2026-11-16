@@ -304,7 +304,8 @@ pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String], extra_
 /// Local stylesheets the given files link or import (`<link href="x.css">`,
 /// `@import "x.css"`, `import "./x.css"`), resolved against each file's
 /// folder, or the project root for a leading `/`. Only files that exist, each
-/// once, sorted. Remote and query-only references are skipped.
+/// once, sorted. Remote and query-only references are skipped. The caller
+/// passes only files the pass will scan (filtered and capped in `hook.rs`).
 fn linked_stylesheets(root: &str, files: &[&str]) -> Vec<String> {
     use once_cell::sync::Lazy;
     use regex::Regex;

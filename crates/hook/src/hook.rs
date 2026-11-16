@@ -858,7 +858,26 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         }
         // A plugin hook next to a project hook fires this pass twice at once:
         // only the first copy scans, as PostToolUse does.
-        let touched_paths: Vec<String> = touched.iter().map(|(f, _)| f.clone()).collect();
+        // The key covers only what the pass below can scan, under the same
+        // filters and caps, so it never reads a file the pass would skip.
+        let (mut cached_n, mut found_n) = (0usize, 0usize);
+        let touched_paths: Vec<String> = touched
+            .iter()
+            .filter(|(f, _)| {
+                let ext = js::to_lower_case(&jsp::extname(f));
+                !has_path_traversal(f)
+                    && !is_sensitive_path(f)
+                    && !is_generated_path(f)
+                    && (ALLOWED_EXTS.contains(&ext.as_str()) || match_configured_extension(f, &root_config.extensions).is_some())
+                    && !is_ignored_file(&rt.proc_cwd, f, root, &root_config.ignore_files)
+            })
+            .filter(|(_, found)| {
+                let n = if *found { &mut found_n } else { &mut cached_n };
+                *n += 1;
+                *n <= STOP_MAX_FILES
+            })
+            .map(|(f, _)| f.clone())
+            .collect();
         let design_inputs = stop_design_inputs(rt, root);
         if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths, &design_inputs) == crate::hook_claim::Claim::Duplicate {
             // A duplicate says more than an empty root's skip, so it wins.
