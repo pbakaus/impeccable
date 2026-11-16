@@ -1,5 +1,5 @@
 // How the persona sees the page, for one journey: what the side panel picked (the hand-off's `sees`), else what the
-// persona's card says (its `persona.sees`, REN-2039), else normally. Older eyes or colour-blind, every picture the walk
+// persona's card says (its `persona.sees`), else normally. Older eyes or colour-blind, every picture the walk
 // sends (stills and film) is drawn the way those eyes see it, with a small label in the corner. The persona works from that picture, and the replay is made of the
 // same pictures, so whoever watches sees what it saw. Off, a picture goes as it came.
 import { COPY } from './panel/copy.js';
@@ -12,7 +12,7 @@ const GAMMA = Uint8ClampedArray.from({ length: STEPS + 1 }, (_, i) => { const c 
 /**
  * Older eyes: a light blur (presbyopia), contrast pulled towards grey (lower contrast sensitivity, glare), a little
  * dimmer (smaller pupils) and warmer, with less blue (a yellowing lens). Colour-blind: deuteranopia, Machado et al.
- * 2009 at severity 1.0. Each is `rgb' = m · rgb + add`, in 0–1. Research: REN-1892.
+ * 2009 at severity 1.0. Each is `rgb' = m · rgb + add`, in 0–1.
  */
 const gain = [0.94, 0.92, 0.8];
 const contrast = 0.74;

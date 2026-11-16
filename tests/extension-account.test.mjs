@@ -258,7 +258,7 @@ describe('account worker', () => {
   const local = {};
   const area = (kept) => ({ async get(key) { return { [key]: kept[key] }; }, async set(values) { Object.assign(kept, values); }, async remove(key) { delete kept[key]; } });
   const none = { addListener() {} };
-  /** The alarms kept, the notices shown, and the worker's alarm and notice-button listeners (REN-1909). */
+  /** The alarms kept, the notices shown, and the worker's alarm and notice-button listeners. */
   const alarms = new Map();
   const notices = [];
   const heard = { alarm: [], button: [] };
@@ -324,7 +324,7 @@ describe('account worker', () => {
       return json(404, {});
     };
   };
-  it('checks in on the alarm, shows each journey an agent asked for once, opens only our outing page on Start, and tells the server Not now until it hears (REN-1909)', async () => {
+  it('checks in on the alarm, shows each journey an agent asked for once, opens only our outing page on Start, and tells the server Not now until it hears', async () => {
     await loaded;
     const page = 'https://app.impeccable.style/app/acme/outings/o7';
     const journeys = [
@@ -423,7 +423,7 @@ describe('account worker', () => {
     ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
     ['says the account has no Pro when the server refuses it', () => json(403, { error: 'not-pro' }), { ok: false, why: 'not-pro' }],
     ['says too many when the server caps the person’s journeys', () => json(429, { error: 'too-many' }), { ok: false, why: 'too-many' }],
-    // Refused after the server made the outing: called off at once, so it does not block the next start for two minutes (B22).
+    // Refused after the server made the outing: called off at once, so it does not block the next start for two minutes.
     ['hands nothing over for a socket off the server’s pair, and calls the outing off', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }, true],
     ['hands nothing over for a block of another site than the tab’s, and calls the outing off', () => json(201, { handoff: { ...HANDOFF, url: 'https://other.example.com/' } }), { ok: false, why: 'failed' }, true],
   ]) {
@@ -451,7 +451,7 @@ describe('account worker', () => {
     assert.equal(posted.length, sent, 'the server is not asked');
   });
 
-  // The hand-off would be refused: an outing made then would wait two minutes for nothing, and block the next start (REN-2072).
+  // The hand-off would be refused: an outing made then would wait two minutes for nothing, and block the next start.
   it('starts no walk while another is under way: the server is not asked', async () => {
     await loaded;
     startServer(() => json(201, { handoff: HANDOFF }));
@@ -464,7 +464,7 @@ describe('account worker', () => {
     dispatch({ type: 'stop' });
   });
 
-  for (const [label, persona] of [['one of the person’s own personas as `mine`, never `own`', { mine: 'night-nurse' }], ['a default persona, which has no app (REN-2039)', { own: 'default:robert' }]]) {
+  for (const [label, persona] of [['one of the person’s own personas as `mine`, never `own`', { mine: 'night-nurse' }], ['a default persona, which has no app', { own: 'default:robert' }]]) {
     it(`starts a walk with ${label}`, async () => {
       await loaded;
       startServer(() => json(201, { handoff: HANDOFF }));
@@ -475,8 +475,8 @@ describe('account worker', () => {
     });
   }
 
-  // REN-1890: the width picked goes to the server only where its /me says it takes one (`widths`); the walk runs at it either way.
-  // REN-2038: likewise an app persona's app beside its slug (`ownApp`), as slugs repeat across apps.
+  // The width picked goes to the server only where its /me says it takes one (`widths`); the walk runs at it either way.
+  // Likewise an app persona's app beside its slug (`ownApp`), as slugs repeat across apps.
   const TIDY = { workspace: 'acme', repo: 'tidy', app: 'web' };
   for (const [label, widths, device] of [['a server that takes widths and apps', true, 'mobile'], ['an older server, which refuses a key it does not know', false, undefined]]) {
     it(`starts a walk at Phone width, telling ${label} ${device ? 'the device and the app' : 'nothing of them'}`, async () => {
@@ -565,7 +565,7 @@ describe('account worker', () => {
   // The side panel's home asks for the personas itself, and is told whether signing in again would help.
   for (const [label, personas, token, answer, asked = {}, path = '/extension/v1/personas'] of [
     ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
-    // One of the six everyone has (REN-2039): its `default:` slug, and how it sees, kept for the walk.
+    // One of the six everyone has: its `default:` slug, and how it sees, kept for the walk.
     ['lists a default persona', () => json(200, { personas: [{ name: 'Robert', role: '', profile: 'Retired.', slug: 'default:robert', default: true, sees: 'older-eyes' }] }), () => json(200, {}),
       { ok: true, personas: [{ name: 'Robert', role: '', slug: 'default:robert', default: true, sees: 'older-eyes', about: 'Retired.' }] }],
     // A card on a phone or tablet: its screen, kept for the panel's Screen.
@@ -611,7 +611,7 @@ describe('account worker', () => {
     records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
   });
 
-  // The panel waiting for a new persona's photo asks again every few seconds: one face a round, not every one (REN-2075).
+  // The panel waiting for a new persona's photo asks again every few seconds: one face a round, not every one.
   it('fetches only the faces of the person’s own personas the side panel says are still faceless', async () => {
     await loaded;
     session.personaCreate = null;
@@ -668,7 +668,7 @@ describe('account worker', () => {
 // The welcome page's script (manifest.json), on a stub page: the mark the page reads, and its button.
 describe('agent check-in', () => {
   // A worker Chrome ended and started again: the same session storage and alarms, a new check-in.
-  it('never shows a journey twice across a worker started again, and shows a server its own journeys alone (REN-1909)', async () => {
+  it('never shows a journey twice across a worker started again, and shows a server its own journeys alone', async () => {
     const { checkIns } = await import('../extension/account/waiting.js');
     const kept = {};
     const made = [];

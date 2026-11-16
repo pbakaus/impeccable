@@ -62,7 +62,7 @@ const sealed = { credentials: 'omit', redirect: 'error' };
 const SIGNED_IN = ['signed-in', 'refreshing'];
 /** A persona's name in the person's own list, as the server gives it. */
 const SLUG = /^[a-z0-9-]{1,80}$/;
-/** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`, REN-2039). */
+/** A listed persona's slug: an app's or the person's own, or one of the six everyone has (`default:maya`). */
 const LISTED = /^(?:[a-z0-9-]{1,80}|default:[a-z]{1,20})$/;
 /** An app as the server lists it (`/apps`): its workspace, repository and app, and its name. */
 const APP_PART = /^[A-Za-z0-9._-]{1,100}$/;
@@ -313,7 +313,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
 
     /**
      * Who is signed in: `{ email, name, pro, widths, ownApp }`, or null. `pro` is the server's word alone: true only when it
-     * says so. `widths`: its walk door takes the width the person picked (REN-1890); `ownApp`: an app persona's app beside
+     * says so. `widths`: its walk door takes the width the person picked; `ownApp`: an app persona's app beside
      * its slug.
      */
     async me() {
@@ -323,7 +323,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
 
     /**
      * The signed-in person's personas, `[{ name, role, slug?, mine?, face? }]`, or null. `url`: the tab's address, for
-     * the personas of the app there, else the six defaults (the server matches by host, REN-2039). `app`: one app's
+     * the personas of the app there, else the six defaults (the server matches by host). `app`: one app's
      * (`{ workspace, repo, app }`) instead. `face`: the face sheet as a `data:` address, for those with one stored.
      * `faceless`: the slugs of the person's own still waiting for a face: only theirs are fetched (the panel's re-asks).
      */
@@ -365,7 +365,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
-     * The check-in (REN-1909): the server hears Chrome is open, and answers the journeys an agent asked for that wait
+     * The check-in: the server hears Chrome is open, and answers the journeys an agent asked for that wait
      * for the person's Start, `[{ id, page, persona, site, task }]` (at most 3), or null.
      */
     async waiting() {
@@ -424,7 +424,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       return { ok: true, handoff, ...(typeof answer.json.walkUrl === 'string' ? { walkUrl: answer.json.walkUrl } : {}) };
     },
 
-    /** Calls off a walk the server made that this browser then refused to start, so it does not wait out its browser and block the next (B22). `{ ok }`; a 404 is one already gone. */
+    /** Calls off a walk the server made that this browser then refused to start, so it does not wait out its browser and block the next. `{ ok }`; a 404 is one already gone. */
     async cancelWalk(id) {
       if (typeof id !== 'string' || !WAITING_ID.test(id)) return { ok: false };
       const answer = await call(issuer(), `/walks/${id}/cancel`, undefined, 'POST').catch(() => null);

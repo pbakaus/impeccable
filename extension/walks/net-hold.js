@@ -1,9 +1,9 @@
-// The write hold's second layer (REN-2054): Chrome's own request rules, beside the debugger's Fetch hold (guard.js).
+// The write hold's second layer: Chrome's own request rules, beside the debugger's Fetch hold (guard.js).
 //
 // The Fetch hold sees what the walked tab's page asks for. It does not see a form the page posts into a new tab (that
 // tab's first request is the post itself), a shared worker's or a service worker's requests (no tab: Chrome's tab -1),
 // nor a frame Chrome runs in a process of its own. While a walk drives and its writes are closed, two session rules
-// block every request that is not a GET, HEAD or OPTIONS (measured on Chrome for Testing 156, REN-2054):
+// block every request that is not a GET, HEAD or OPTIONS (measured on Chrome for Testing 156):
 //   - FRAMES: in the walked tab, sent by anything but the walk's own sites: a frame on another site.
 //   - ELSEWHERE: anywhere but the walked tab and the tabs open when the walk began, sent by the walk's own sites: a
 //     tab the walk opened, and every worker of those sites.

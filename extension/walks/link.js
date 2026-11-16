@@ -174,7 +174,7 @@ async function take(text, sender, sees) {
 }
 
 /**
- * A walk of the person's own tab, which main started (contact.js): its block, the tab, and the width it runs at
+ * A walk of the person's own tab, which the account worker started (account/worker.js): its block, the tab, and the width it runs at
  * (driver.js `DEVICES`; anything else keeps the tab's own), and how the persona sees it (sight.js). Kept as `adopt`, never as
  * `tabId`: there is no page of ours to reload for a fresh ticket, so a spent one ends the walk.
  */

@@ -123,7 +123,7 @@ for (const [name, run] of Object.entries(ops)) {
   const acting = unseen(name, run);
   ops[name] = async (req) => {
     if (name === 'cdp' && req?.method === 'Page.stopScreencast') return acting(req);
-    // The tab's writes never wait (REN-2034): a close is done whoever drives; an open only while walking, else refused.
+    // The tab's writes never wait: a close is done whoever drives; an open only while walking, else refused.
     if (name === 'writes') {
       if (req?.open === true && stopped) throw fail('Stopped', 'the person stopped this journey');
       if (req?.open === true && current().state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
@@ -132,7 +132,7 @@ for (const [name, run] of Object.entries(ops)) {
     }
     let ask = askOf(name, req);
     let agreed = ask === null;
-    // A free walk holds no write (REN-2086): a submit the server did not mark is asked here first, once the walk may act.
+    // A free walk holds no write: a submit the server did not mark is asked here first, once the walk may act.
     let checked = ask !== null || !ACTS.has(name);
     for (;;) {
       const at = fenced();
@@ -153,7 +153,7 @@ for (const [name, run] of Object.entries(ops)) {
           if (said === 'no') throw fail('Declined', 'the person said no');
           if (said === 'timeout') { dispatch({ type: 'unanswered' }); throw fail('TimeoutError', 'nobody answered in time'); }
           if (said !== 'yes' || at !== fenced()) throw overtaken();
-          // The Yes opens the deed's writes (REN-2034) until the server closes them or the walk stops walking. Looked at
+          // The Yes opens the deed's writes until the server closes them or the walk stops walking. Looked at
           // afresh before it is done: a sign-in that showed meanwhile still pauses it, and closes them.
           await letWrite(asked);
           agreed = true;

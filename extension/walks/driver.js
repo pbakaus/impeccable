@@ -48,12 +48,12 @@ let fences = 0;
 export const fenced = () => fences;
 export function fence() {
   fences += 1;
-  // Writes opened for a deed close with it: whatever stops the walk walking settles that deed (REN-2034).
+  // Writes opened for a deed close with it: whatever stops the walk walking settles that deed.
   shutWrites();
 }
 
 /**
- * The write hold (REN-2034): every write the tab sends is held, unless writes are open: by the server's `writes`, or
+ * The write hold: every write the tab sends is held, unless writes are open: by the server's `writes`, or
  * by the person's Yes to a deed ({@link letWrite}). The person drives once they took the tab over. Paused at a sign-in
  * (which a page can bring on itself, never a take-over), only what the tab sends soon after the person's own press or
  * key in it is theirs ({@link feelInput}): a page's timer or autosave stays held. A plain pause holds them as walking does.
@@ -65,7 +65,7 @@ export const INPUT_WINDOW_MS = 5000;
 /** When the person last pressed or typed in the tab while it was paused at a sign-in. */
 let touched = -Infinity;
 const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && touched >= driver.since && at - touched <= INPUT_WINDOW_MS);
-// A free walk (`open`'s `free`, REN-2086) holds no write: its server asks before a submit instead, and so does control.js.
+// A free walk (`open`'s `free`) holds no write: its server asks before a submit instead, and so does control.js.
 const holding = (tab, at) => !tab.free && !tab.writesOpen && !persons(at);
 /** Whether the walk's writes are held right now, for the network rules beside this hold (net-hold.js). */
 export const writesHeld = (at = Date.now()) => Boolean(walk) && holding(walk, at);
@@ -117,7 +117,7 @@ export function note(what, why) {
 }
 export function unnote() { noted.clear(); }
 
-/** What the tab sent that the walk kept from going out: writes held (REN-2034), and writes refused off its site. */
+/** What the tab sent that the walk kept from going out: writes held, and writes refused off its site. */
 const writesOf = (tab) => ({ held: tab.heldWrites ?? 0, refused: tab.refusedWrites ?? 0 });
 
 /** The origins the hand-off allowed beyond this machine (guard.js `admit`). */
@@ -135,7 +135,7 @@ let home = null;
 export function openIn(windowId) { home = typeof windowId === 'number' ? windowId : null; }
 
 /**
- * The person's own tab a walk main started is to walk (`{ tabId, site, device }`, `device` one of DEVICES or none), or
+ * The person's own tab a walk the account worker started is to walk (`{ tabId, site, device }`, `device` one of DEVICES or none), or
  * null: the walk opens a tab of its own.
  * Such a walk opens and closes no tab, starts where the tab is, keeps its size, takes stills only, and may go to
  * another site when the person says yes (guard.js `askable`).
@@ -182,7 +182,7 @@ async function mayGo(url) {
 }
 
 /**
- * The widths a walk of the person's own tab may run at, picked in the side panel (REN-1890): the server's own sizes for
+ * The widths a walk of the person's own tab may run at, picked in the side panel: the server's own sizes for
  * them (its `mobile` and `tablet`). Desktop is not here: the tab keeps its own size. Both take touch and name
  * themselves as Chrome on Android, a phone as a mobile one.
  *
@@ -358,7 +358,7 @@ let filmed = 0;
 /**
  * A film's picture and the walk's pointer never overlap. Measured (Chrome for Testing on a 2x Mac display, the tab at
  * the engine's 1280x800, scale 1): a mouse event Chrome takes while `Page.captureScreenshot` runs lands at twice its
- * coordinates, so a click on a link at (1150, 32) reached the page at (2300, 64), on nothing (HR Pilot's login links,
+ * coordinates, so a click on a link at (1150, 32) reached the page at (2300, 64), on nothing (a test app's login links,
  * which never navigated). The film takes no picture while the pointer acts, and the pointer waits out the one being
  * taken, no longer than a picture may take (`FILM_SHOT_MS`): one Chrome never answers is not one it is taking.
  */
@@ -505,7 +505,7 @@ export async function unhold() {
 const LOOKOUT = 'impeccable-walk-lookout';
 
 /*
- * What the server put in the page never meets the person signing in (REN-2052). At a sign-in pause or a take-over its
+ * What the server put in the page never meets the person signing in. At a sign-in pause or a take-over its
  * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them. Before
  * the walk's next op ({@link fresh}):
  *   1. A sign-in on the page keeps them off, so the page the person signs in on runs none of them.
@@ -668,7 +668,7 @@ async function inLookout(expression) {
 
 /**
  * The control a click at `at` would press, or the focused one a key would (`at` null), when pressing it sends
- * something (REN-2086): the server's own rule (persona-session.ts `confirmingControl`, as a journey reads it). Its words
+ * something: the same rule the server applies when a journey reads a control. Its words
  * approve, save, delete, send, pay, add, buy, order, book or follow (a plain link's go somewhere), it is a switch or a
  * toggle, Enter is in a text box, or it sends a form that does more than search. Runs in the walk's own world. Its name, or null.
  */
@@ -702,7 +702,7 @@ function submitsAt(at, enter) {
 }
 
 /**
- * What a free walk asks the person before (REN-2086): the control a click, Enter or Space, or a typed new line would
+ * What a free walk asks the person before: the control a click, Enter or Space, or a typed new line would
  * press that sends something, unless the server marked it or has opened writes for a deed its plan approved. Its name, or null.
  */
 export async function submitIn(name, req) {
@@ -719,7 +719,7 @@ export async function submitIn(name, req) {
 /*
  * A native list (a `<select>` showing one option) opens a menu of Chrome's own, drawn outside the page: no picture the
  * persona sees shows it, and on a Mac a click or an arrow key opens it rather than changing the choice (measured: a
- * click and two ArrowDowns left Northside Live's "How did you hear about us?" on "Choose one"). So a click on one only
+ * click and two ArrowDowns left a test app's "How did you hear about us?" on "Choose one"). So a click on one only
  * gives it focus, and an arrow key, Home or End on a focused one steps its choice the way Chrome does on Windows,
  * with the `input` and `change` a person's choice fires. Space and Enter, which only open the menu, do nothing there.
  */
@@ -1242,7 +1242,7 @@ async function press(name) {
 }
 
 /**
- * `open` for a walk of the person's own tab: the debugger goes on the tab main named, where it is now. It must still
+ * `open` for a walk of the person's own tab: the debugger goes on the tab the account worker named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
 async function adopt(name, allow, free) {
@@ -1300,7 +1300,7 @@ async function adopt(name, allow, free) {
 
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
-  // `free` (REN-2086): its writes are not held; an older server never says it, so its walks are held as ever.
+  // `free`: its writes are not held; an older server never says it, so its walks are held as ever.
   async open({ url, name, allow, free }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
     if (adopted) return adopt(name, allow, free);
@@ -1591,7 +1591,7 @@ export const ops = {
     return { value: { active: tab.active, width: tab.width, height: tab.height, groupId: tab.groupId, window: { focused: win.focused, state: win.state, width: win.width, height: win.height } } };
   },
 
-  // Opens or closes the tab's writes (REN-2034): the server opens them only around a deed fixed code approved.
+  // Opens or closes the tab's writes: the server opens them only around a deed fixed code approved.
   // A close, at once and whoever drives; an open only while walking (control.js), at once, and never queued.
   async writes({ open }) {
     if (open !== true) shutWrites();

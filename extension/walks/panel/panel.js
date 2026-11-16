@@ -43,10 +43,10 @@ const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null
 Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
-/** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`, REN-2039). */
+/** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
 const SIGHTS = { normal: 'eye', older: 'glasses', 'colour-blind': 'palette' };
 const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
-/** The screen a persona's card names (`device`, REN-2039), else the width the person last picked (`ownWidth`). */
+/** The screen a persona's card names (`device`), else the width the person last picked (`ownWidth`). */
 const SCREEN_OF = { mobile: 'phone', tablet: 'tablet' };
 let ownWidth = 'desktop';
 /** The persona walking (kept in chrome.storage.session `walker`), for its face; and the walk's results page. */

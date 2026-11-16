@@ -1,4 +1,4 @@
-// The check-in (REN-1909): while signed in with Impeccable Pro, every half minute (a Chrome alarm, which outlives the
+// The check-in: while signed in with Impeccable Pro, every half minute (a Chrome alarm, which outlives the
 // worker), once when the worker starts and once right after sign-in, the server is asked which journeys an agent asked
 // for. The asking is the check-in: it is how the server knows Chrome is open. Each new journey is shown once, as a
 // Chrome notice with Start and Not now. Start opens the journey's page, and only one of our app's outing pages

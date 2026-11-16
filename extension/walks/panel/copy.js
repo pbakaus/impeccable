@@ -48,7 +48,7 @@ export const COPY = {
     retry: 'Try again',
     signIn: 'Sign in again',
     make: 'Create a persona',
-    /** The width a journey runs at (REN-1890): the group, and each choice. */
+    /** The width a journey runs at: the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
     /** How the persona sees the page on this journey (../sight.js): the group, each choice, and what it means (its hover label). */

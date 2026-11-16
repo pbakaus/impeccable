@@ -82,7 +82,7 @@ export const STUBS = {
   'failed-unanswered': run(walking, [{ type: 'fail', reason: 'unanswered' }]),
 };
 
-/** The six every app has (REN-2039), as the personas read lists them: no faces yet, so their initials. */
+/** The six every app has, as the personas read lists them: no faces yet, so their initials. */
 const PERSONAS = [
   ['Maya', 'A 19-year-old student on her phone, always in a hurry'],
   ['Daniel', 'A 34-year-old busy professional, good with tech'],

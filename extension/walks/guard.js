@@ -5,7 +5,7 @@
 // A walk is our server's persona engine clicking in the person's own Chrome, signed in as them everywhere. The
 // engine's own safety layer (the request boundary it installs on a browser it owns) does not exist here, so this
 // file is the whole of it. It is fixed code: nothing a page shows the persona, and nothing the server asks, changes
-// what it allows, but one word: a journey's `open` may say `free` (REN-2086), and then writes are not held (below) and
+// what it allows, but one word: a journey's `open` may say `free`, and then writes are not held (below) and
 // the page may write to any origin but our own pages, from the walk's own site. Its server asks the person before a
 // submit instead, and the driver asks before one the server did not mark (control.js). Every other rule here stands.
 //
@@ -16,7 +16,7 @@
 //     navigation is aborted (the tab stays on the page it was on) and told as `blocked`.
 //   - opening other tabs: a tab or window the walked tab opens is closed as soon as it starts to load, and told.
 //   - acting elsewhere in this Chrome: the debugger is attached to one tab, and no op may name another. It is the tab
-//     this extension opened for the walk, or, for a walk the person started from main's popup on the tab they were on,
+//     this extension opened for the walk, or, for a walk the person started from the popup on the tab they were on,
 //     that tab and no other (driver.js `adopt`). Only loopback addresses and the origins the hand-off allowed may be
 //     walked from a new tab; the person's own tab is walked on its own site, and refused before anything if it is ours.
 //   - wandering off on the person's own tab: another site is gone to only once the person says yes to it, and never
@@ -26,7 +26,7 @@
 //     the hand-off allowed them or they are on this machine.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
 //     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
-//   - writing unapproved (REN-2034): even a write to its own origins is refused (a 409, or aborted for a form the top
+//   - writing unapproved: even a write to its own origins is refused (a 409, or aborted for a form the top
 //     of the page sent) unless the server opened writes (`writes`) or the person said Yes to the deed. Service
 //     workers are bypassed, so what one would answer for the page passes the hold too. Taken over, the person drives:
 //     only the rule above holds. Paused at a sign-in, so does what the tab sends within a few seconds of the person's
@@ -218,13 +218,13 @@ export async function arm(send) {
 /**
  * Answers one held request, always: let through, or aborted. A request this cannot judge is aborted. `refused` hears
  * the address before the abort is sent, so whoever asked for the navigation knows why it failed by the time it does.
- * `holding`: writes are held (REN-2034), so a write is refused (a 409) even where the guard would let it go.
+ * `holding`: writes are held, so a write is refused (a 409) even where the guard would let it go.
  * Resolves to what became of the request: `continued`, `held`, `refused` or `gone`.
  */
 export async function held(send, paused, mainFrame, allowed, writable, refused, holding = false) {
   let answer = 'block';
   try { answer = verdict(paused, mainFrame, allowed, writable); } catch { /* unreadable: refused */ }
-  // The write hold (REN-2034): a write the guard would let through is held, untold, while writes are not open.
+  // The write hold: a write the guard would let through is held, untold, while writes are not open.
   if (holding && answer === 'continue' && !reads(paused)) answer = 'hold';
   const pass = answer === 'continue';
   if (answer === 'block') refused(String(paused.request?.url ?? '').slice(0, 500));

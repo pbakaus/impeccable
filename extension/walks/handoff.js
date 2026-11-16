@@ -32,7 +32,7 @@ const MAX_ALLOW = 8;
 const MAX_DONE_WHEN = 6;
 /** The screen sizes a walk runs at. A contract with the web app: change it there and here together. */
 const DEVICES = ['desktop', 'mobile', 'tablet'];
-/** How a persona's card says it sees the page (REN-2039), for the sight filter (sight.js). */
+/** How a persona's card says it sees the page, for the sight filter (sight.js). */
 export const CARD_SIGHTS = ['older-eyes', 'colour-blind'];
 /**
  * The most each line may hold. `errand`, `goal` and `check` are the web app's own limits, copied here because this
@@ -122,7 +122,7 @@ export function readHandoff(text, pageUrl, server) {
   return readBlock(text, (socket, outing) => ownSocket(socket, new URL(pageUrl), outing), admit);
 }
 
-/** The sockets a walk main started may be on: our servers' (the pairing main signed in to), never another host. */
+/** The sockets a walk the account worker started may be on: our servers' (the pairing it signed in to), never another host. */
 function startedSocket(socket, outing) {
   let url;
   try { url = new URL(socket); } catch { return false; }
@@ -132,7 +132,7 @@ function startedSocket(socket, outing) {
 }
 
 /**
- * Reads the block main passes on for a walk of the person's own tab: the same block, its socket on one of our servers.
+ * Reads the block the account worker passes on for a walk of the person's own tab: the same block, its socket on one of our servers.
  * The tab's own origin is walked (never one of our pages). Its `allow` is empty: only the person's Yes adds a site.
  */
 export function readStartedHandoff(text) {
@@ -158,7 +158,7 @@ function readBlock(text, socketOk, admitted) {
   if (!only(persona, ['name', 'role', 'visit', 'device', 'sees']) || !line(persona.name, MAX.name) || !fits(persona.role, MAX.role)) return no('persona');
   if (persona.visit !== undefined && persona.visit !== 'new' && persona.visit !== 'returning') return no('persona');
   if (persona.device !== undefined && !DEVICES.includes(persona.device)) return no('persona');
-  // How the persona sees the page (REN-2039): the sight filter's default for this journey (sight.js).
+  // How the persona sees the page: the sight filter's default for this journey (sight.js).
   if (persona.sees !== undefined && !CARD_SIGHTS.includes(persona.sees)) return no('persona');
   if (!only(errand, ['name', 'goal', 'doneWhen']) || !fits(errand.name, MAX.errand) || !line(errand.goal, MAX.goal)) return no('errand');
   if (!Array.isArray(errand.doneWhen) || errand.doneWhen.length > MAX_DONE_WHEN || !errand.doneWhen.every((check) => line(check, MAX.check))) return no('errand');

@@ -11,7 +11,7 @@ const PART_CHARS = 256 * 1024;
 /**
  * What this extension can do beyond the protocol: walk the person's own tab, ask the person before a deed, go to
  * another site on their Yes, attach its sample photo, and hold every write the tab sends until the server opens them
- * (REN-2034, driver.js `holding`).
+ * (driver.js `holding`).
  */
 const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */

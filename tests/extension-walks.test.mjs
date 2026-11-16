@@ -62,7 +62,7 @@ describe('walk hand-off', () => {
     const read = readHandoff(JSON.stringify(block()), PAGE);
     assert.equal(read.ok, true);
     assert.equal(read.handoff.site, 'http://localhost:3000');
-    // How the persona sees the page (REN-2039) is kept for the sight filter (sight.js).
+    // How the persona sees the page is kept for the sight filter (sight.js).
     assert.equal(readHandoff(JSON.stringify(block({ persona: { name: 'Robert', role: '', sees: 'older-eyes' } })), PAGE).handoff.persona.sees, 'older-eyes');
   });
 
@@ -416,7 +416,7 @@ describe('walk worker', () => {
     assert.deepEqual({ url, protocols }, { url: block().socket, protocols: ['impeccable-outing', block().ticket] });
   });
 
-  // The server walks the person's Chrome only with a helper that says it holds every write (REN-2034).
+  // The server walks the person's Chrome only with a helper that says it holds every write.
   it('says in its hello that it holds the tab’s writes', async () => {
     await loaded;
     const ws = sockets.at(-1);
@@ -569,9 +569,9 @@ describe('walk worker', () => {
   after(async () => { if (opened) await (await opened).ops.close(); });
 
   // Chrome (a 2x display, the tab at the engine's size) lands a mouse event it takes while a picture is being taken at
-  // twice its coordinates: HR Pilot's login links were clicked on nothing while the step was filmed.
+  // twice its coordinates: a test app's login links were clicked on nothing while the step was filmed.
   // A native list's menu is Chrome's own, outside every picture, and on a Mac a click or an arrow opens it: Talia never
-  // got past Northside Live's "How did you hear about us?" (W14t).
+  // got past a test app's "How did you hear about us?".
   it('focuses a native list on a click and steps its choice by arrow key, with input and change, never opening its menu', async () => {
     const { ops } = await walked();
     page.seen = {};
@@ -650,7 +650,7 @@ describe('walk worker', () => {
     fire('Page.javascriptDialogOpening', { type: 'alert', message: 'Hello' });
     await settle(250);
     assert.equal(since(paused, 'Page.captureScreenshot'), 0, 'no picture is taken while paused');
-    assert.ok(!sent.includes('Network.disable'), 'the network stays on: a service worker stays bypassed (REN-2034)');
+    assert.ok(!sent.includes('Network.disable'), 'the network stays on: a service worker stays bypassed');
     assert.deepEqual(told.slice(heard).map((m) => m.event ?? 'reply'), [], 'nothing of the page is told');
     assert.equal(await command('resume'), true);
     await settle(150);
@@ -687,7 +687,7 @@ describe('walk worker', () => {
     ['the load of the page a script sent it on to', () => { commit('g2', 203); load('g2'); }, 203],
     ['no load from a page that did not follow its own', () => load('l1'), 'TimeoutError'],
   ]) {
-    it(`settles a goto on ${label} (REN-1910)`, async () => {
+    it(`settles a goto on ${label}`, async () => {
       const { ops } = await walked();
       const navigate = answers['Page.navigate'];
       answers['Page.navigate'] = () => { commit('g1', 200); return { loaderId: 'g1' }; };
@@ -825,7 +825,7 @@ describe('walk worker', () => {
   // Off the page Continue was pressed on (its sign-in let past), for the tests after.
   const moveOff = () => fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `off-${(navigations += 1)}`, url: 'http://localhost:3000/' } });
 
-  // Server code from before a pause never meets what the person typed (REN-2052). Each row: a page with a server script
+  // Server code from before a pause never meets what the person typed. Each row: a page with a server script
   // for new pages, a pause (a sign-in, or a take-over), what happens meanwhile, then Continue or hand-back and the next
   // picture. The page is never left or loaded again; `window.name` is empty before the next server op; the script is
   // back on, and runs once in a page that started without it (`ran`).
@@ -839,7 +839,7 @@ describe('walk worker', () => {
     // Catches: a take-over losing the person's page and their work on it.
     ['a take-over', 'takeover', () => {}, 0],
   ]) {
-    it(`takes the server’s page scripts off for ${row}, and puts them back without leaving the page (REN-2052)`, async () => {
+    it(`takes the server’s page scripts off for ${row}, and puts them back without leaving the page`, async () => {
       const { ops, command, current, walk } = await walked();
       page.seen = {};
       const before = `before-${(navigations += 1)}`;
@@ -890,7 +890,7 @@ describe('walk worker', () => {
     // Catches: a script Chrome no longer has (its debugger gone and back) keeping the walk paused for good.
     [Infinity, 'Script not found', true],
   ]) {
-    it(`goes on after a sign-in only once the server’s scripts are off: ${refusals} refused, “${said}” (REN-2052)`, async () => {
+    it(`goes on after a sign-in only once the server’s scripts are off: ${refusals} refused, “${said}”`, async () => {
       const { ops, command, current } = await walked();
       page.seen = {};
       fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `stuck-${(navigations += 1)}`, url: `http://localhost:3000/stuck-${navigations}` } });
@@ -928,7 +928,7 @@ describe('walk worker', () => {
     // Catches: the scripts put back with a copy left in `window.name` for them to read.
     ['window.name cannot be cleared', () => { const was = answers['Runtime.evaluate']; answers['Runtime.evaluate'] = (p) => { if (p.contextId !== undefined) return was(p); answers['Runtime.evaluate'] = was; throw new Error('Cannot find context with specified id'); }; }, true],
   ]) {
-    it(`puts the server’s scripts back once after a sign-in when ${row} (REN-2052)`, async () => {
+    it(`puts the server’s scripts back once after a sign-in when ${row}`, async () => {
       const { ops, command, dispatch, walk } = await walked();
       const kept = { ...answers };
       page.seen = {};
@@ -958,7 +958,7 @@ describe('walk worker', () => {
   }
 
   // Catches: a page-start script run in the sign-in page a redirect landed on while they were being run.
-  it('runs the server’s scripts once in a page that started without them only while the tab is still on it (REN-2052)', async () => {
+  it('runs the server’s scripts once in a page that started without them only while the tab is still on it', async () => {
     const { ops, command, dispatch } = await walked();
     const { world, done } = inWindow();
     try {
@@ -982,7 +982,7 @@ describe('walk worker', () => {
   });
 
   // Catches: the server's scripts put back on a sign-in page the walk reached right after Continue.
-  it('keeps the server’s scripts off while a sign-in shows after Continue, and puts them back once (REN-2052)', async () => {
+  it('keeps the server’s scripts off while a sign-in shows after Continue, and puts them back once', async () => {
     const { ops, command, current, dispatch } = await walked();
     page.seen = {};
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `app-${(navigations += 1)}`, url: 'http://localhost:3000/app' } });
@@ -1005,7 +1005,7 @@ describe('walk worker', () => {
     moveOff();
   });
 
-  it('runs the server’s page reads in a world of their own, and only the consent rules’ reads in the page’s (REN-2052)', async () => {
+  it('runs the server’s page reads in a world of their own, and only the consent rules’ reads in the page’s', async () => {
     const { ops } = await walked();
     page.seen = {};
     // The worlds each read ran in, besides the walk's own lookout.
@@ -1019,7 +1019,7 @@ describe('walk worker', () => {
   });
 
   // Catches: a script run while the password is in its field, or refused where the server waits out a pause.
-  it('holds a script while a password is in a field, and runs it after Continue on the same page (REN-2052)', async () => {
+  it('holds a script while a password is in a field, and runs it after Continue on the same page', async () => {
     const { ops, command, current, walk } = await walked();
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
     page.seen = { password: true, filled: true };
@@ -1061,7 +1061,7 @@ describe('walk worker', () => {
     assert.equal(sent.slice(atContinue).filter((m) => m === 'Input.dispatchMouseEvent').length, 3, 'one asked for after Continue is made');
   });
 
-  // How the persona sees (REN-1892, REN-2038): the journey's pictures are drawn as the side panel picked for it, else as
+  // How the persona sees: the journey's pictures are drawn as the side panel picked for it, else as
   // the persona's card says, and go as taken for one who sees normally. A picture here is raw RGBA bytes, pixel by
   // pixel: red, green, blue, white, black.
   it('sends the persona pictures as this journey’s sight sees them, and untouched for normal eyes', async () => {
@@ -1192,7 +1192,7 @@ describe('walk worker', () => {
     assert.equal(current().state, 'walking');
   });
 
-  // REN-2034: every write the tab sends is held (refused), the walk's own site's too, unless writes are open.
+  // Every write the tab sends is held (refused), the walk's own site's too, unless writes are open.
   const SITE = 'http://localhost:3000';
   let writes = 0;
   const answeredAs = async (method, url, resourceType = 'XHR') => {
@@ -1239,7 +1239,7 @@ describe('walk worker', () => {
     assert.equal(args[sent.indexOf('Fetch.failRequest', at)].errorReason, 'Aborted');
   });
 
-  // REN-2054: what the Fetch hold cannot see (a form posted into a new tab, workers, a frame on another site) is blocked
+  // What the Fetch hold cannot see (a form posted into a new tab, workers, a frame on another site) is blocked
   // by Chrome's rules while writes are held, and only then. The walked page's own requests stay the Fetch hold's.
   it('blocks writes the page cannot be held from only while the walk drives with writes closed', async () => {
     const { ops, command, rearm, dispatch } = await walked();
@@ -1288,7 +1288,7 @@ describe('walk worker', () => {
   });
 
   // A tab list Chrome refuses is asked again; refused twice, the walk's site is held in every other tab rather than let
-  // a form posted into a new tab, or a worker, write (REN-2074).
+  // a form posted into a new tab, or a worker, write.
   it('asks Chrome for the person’s tabs again, and never leaves new tabs or workers unheld when it cannot list them', async (t) => {
     const { ops, rearm, dispatch } = await walked();
     const { query } = chrome.tabs;
@@ -1314,7 +1314,7 @@ describe('walk worker', () => {
     }
   });
 
-  // REN-2086: a journey's server that asks before a submit opens its walk `free`: no write is held and the page may write
+  // A journey's server that asks before a submit opens its walk `free`: no write is held and the page may write
   // to any origin but ours, while the tab still never goes off the site, nor sends a form there. An older server never
   // says `free`, so its walk holds as ever.
   it('holds no write on a free walk, to other origins too, and still keeps the tab on its site', async () => {
@@ -1345,7 +1345,7 @@ describe('walk worker', () => {
     }
   });
 
-  // REN-2086: on a free walk nothing holds a write, so a submit the server did not mark (a click, Enter or Space) is
+  // On a free walk nothing holds a write, so a submit the server did not mark (a click, Enter or Space) is
   // asked here first, and the server told so its clock stops; a search, a GET form and a plain link are not.
   it('asks before a submit the server did not mark on a free walk, never before a search or a GET form', async () => {
     const { ops, rearm, dispatch, command, current } = await walked();
@@ -1458,7 +1458,7 @@ describe('walk worker', () => {
     assert.deepEqual(args.slice(-2).map((a) => a.responseCode ?? a.errorReason), ['Aborted', 409], 'the move refused, the write held');
     // The write held during the pause tells the panel to say how else to sign in (a passkey, a phone): until Continue.
     assert.deepEqual([current().state, current().held, current().withheld], ['paused', 'sign-in', true]);
-    // Chrome's network rules (REN-2054) say the same as the Fetch hold, row by row: up while it fails a write, down while it lets one go.
+    // Chrome's network rules say the same as the Fetch hold, row by row: up while it fails a write, down while it lets one go.
     const ruled = () => chrome.declarativeNetRequest.rules.length > 0;
     for (const [label, act, answer] of [
       ['however long the pause shows', () => t.mock.timers.tick(INPUT_WINDOW_MS * 2), 'fail'],
@@ -1503,7 +1503,7 @@ describe('walk worker', () => {
     });
   }
 
-  // REN-1891: the op says where, never what. Whatever else it carries, the page gets the picture shipped in walks/.
+  // The op says where, never what. Whatever else it carries, the page gets the picture shipped in walks/.
   it('attaches only the bundled sample picture, whatever file, path or address the op names', async () => {
     const { ops } = await walked();
     page.seen = {};
@@ -1530,7 +1530,7 @@ describe('walk worker', () => {
     }
   });
 
-  // REN-1891: dragover bubbles, so a page that cancels it on the document would make any point read as a drop box.
+  // Dragover bubbles, so a page that cancels it on the document would make any point read as a drop box.
   // The page script runs against a stand-in page whose events go in and back out through the parents, as Chrome's do.
   for (const [cancels, gives] of [['document', 'NotFound'], ['box', 'drop']]) {
     it(`drops the picture only where the box at the point takes it: cancelled on the ${cancels} gives ${gives}`, async () => {
@@ -1579,7 +1579,7 @@ describe('walk worker', () => {
     });
   }
 
-  // REN-1891: a pause that lands while the upload's world is being made gives the page no picture.
+  // A pause that lands while the upload's world is being made gives the page no picture.
   it('gives no picture when a pause lands while the upload is under way', async () => {
     const { ops, command } = await walked();
     page.seen = {};
@@ -1754,7 +1754,7 @@ describe('walk worker', () => {
     ['a tab that is on another site now', started({ url: 'https://elsewhere.example.com/' }), 'tab'],
     ['sites of its own to allow', started({ allow: ['https://api.shop.example.com'] }), 'allow'],
   ]) {
-    it(`refuses main's walk of a tab with ${label}`, async () => {
+    it(`refuses a started walk of a tab with ${label}`, async () => {
       await ownTab();
       assert.deepEqual(await fromMain({ walks: 'walk', handoff, tabId: 21 }), { ok: false, why });
     });
@@ -1965,7 +1965,7 @@ describe('walk worker', () => {
     assert.equal(since(at, 'Fetch.disable'), 1, 'the tab’s requests are held no more');
   });
 
-  // REN-1890: a journey at phone or tablet width lays the person's tab out at that size, and gives the tab its own size
+  // A journey at phone or tablet width lays the person's tab out at that size, and gives the tab its own size
   // back before the debugger leaves, however the journey ends. Chrome would keep a leftover override no longer than the
   // debugger stays, but the clear is what a stop or a failure is checked by here.
   for (const [label, device, end] of [
@@ -2207,7 +2207,7 @@ describe('derived extension manifests', () => {
 // Chrome's permission warnings (developer.chrome.com, "Permissions list" and "Permission warning guidelines"): the
 // permissions below show none. Any other permission, and any host, counts as one. An update that adds a warning
 // switches the extension off until the person accepts it: walks add the four of driving a tab, and nothing else. The
-// account (not in the store build) adds one more: the notice when an agent asks for a journey (REN-1909).
+// account (not in the store build) adds one more: the notice when an agent asks for a journey.
 describe('extension install warnings', () => {
   const SILENT = ['activeTab', 'alarms', 'declarativeNetRequestWithHostAccess', 'identity', 'offscreen', 'scripting', 'sidePanel', 'storage'];
   /** As published in 1.4.0, the version people have installed. */

@@ -397,7 +397,7 @@ test('the side panel’s sign-in pause says how else to sign in only once a writ
   // Continue refused (the worker answers no `ok`): the pause is drawn again as it stands, here with a write held.
   h.session.view = STUBS['paused-sign-in-held'];
   await h.press('resume');
-  assert.deepEqual([...hinted(), why(), document.activeElement?.attributes['data-act']], [['resume', 'stop'], 1, ['sign-in'], 'resume'], 'why it was refused, no new control, focus kept (B23)');
+  assert.deepEqual([...hinted(), why(), document.activeElement?.attributes['data-act']], [['resume', 'stop'], 1, ['sign-in'], 'resume'], 'why it was refused, no new control, focus kept');
   await h.show(reduce(STUBS['paused-sign-in-held'], { type: 'resume' }));
   assert.deepEqual([...hinted(), why()], [['stop'], 0, []], 'gone once the walk goes on');
 });
@@ -514,7 +514,7 @@ test('the side panel asks for the personas again until each of the person’s ow
   personas[1] = { ...personas[1], about: 'Works nights; checks forms on a phone between rounds.' };
   const hero = h.app.querySelector('.hero[data-slug="nora"]');
   await wait(3000);
-  assert.deepEqual([asks(h), faces(h, 'nora'), h.sent.filter((m) => m.account === 'personas').at(-1).faceless, about(), h.app.querySelector('.hero[data-slug="nora"]') === hero], [made + 1, [[false, 1]], ['nora'], personas[1].about, true], 'a list without the face is asked for again, with only the faceless one’s face (REN-2075), and its profile shows in place');
+  assert.deepEqual([asks(h), faces(h, 'nora'), h.sent.filter((m) => m.account === 'personas').at(-1).faceless, about(), h.app.querySelector('.hero[data-slug="nora"]') === hero], [made + 1, [[false, 1]], ['nora'], personas[1].about, true], 'a list without the face is asked for again, with only the faceless one’s face, and its profile shows in place');
   personas[1] = { ...personas[1], face: photo };
   await wait(6000);
   const confirm = h.app.querySelector('[data-act="confirm"]');
@@ -712,7 +712,7 @@ test('the side panel shows only its loading dots until the account and its perso
   assert.deepEqual([h.body.dataset.screen, h.app.querySelectorAll('.dots').length, h.acts().includes('send')], ['home', 0, true]);
 });
 
-// The account lives in the panel: the cog opens it under itself, never the options page in a window of its own (REN-2038).
+// The account lives in the panel: the cog opens it under itself, never the options page in a window of its own.
 test('the side panel’s cog opens the account in the panel: the email, a way to report a problem, and Sign out, which signs out', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
   const cog = () => h.app.querySelector('[data-act="settings"]');
@@ -730,7 +730,7 @@ test('the side panel’s cog opens the account in the panel: the email, a way to
   await h.press('settings');
   await h.press('sign-out');
   assert.deepEqual([h.sent.filter((m) => m.account === 'sign-out'), h.body.dataset.screen, h.opened], [[{ account: 'sign-out' }], 'signed-out', []]);
-  // Signed out, the same cog: the way to report a problem alone, for someone who can't sign in (REN-2076).
+  // Signed out, the same cog: the way to report a problem alone, for someone who can't sign in.
   await h.press('settings');
   assert.deepEqual([h.body.dataset.screen, h.acts().filter((act) => ['your-personas', 'help', 'sign-out', 'scan', 'history'].includes(act)), h.app.querySelector('b[data-email]')], ['signed-out', ['help'], null]);
   await h.press('help');
@@ -779,7 +779,7 @@ test('the side panel’s History opens from the top row, a row opens its journey
   assert.deepEqual(h.opened, [{ url: HISTORY[1].url, active: true }]);
   await h.press('back');
   assert.equal(h.body.dataset.screen, 'home');
-  // None: the empty line. None read is not none: Try again, which asks again, or Sign in again when the sign-in is gone (REN-2073).
+  // None: the empty line. None read is not none: Try again, which asks again, or Sign in again when the sign-in is gone.
   for (const [journeys, offer] of [[{ ok: true, journeys: [] }, null], [{ ok: false, why: 'journeys' }, 'retry'], [{ ok: false, why: 'signed-out' }, 'sign-in']]) {
     const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys });
     await empty.press('history');

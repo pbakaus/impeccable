@@ -134,7 +134,7 @@ const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: w
 const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
 
 /**
- * Whether the server in use takes a walk's width (`widths` on /me, REN-1890): its answer now, else the last it gave,
+ * Whether the server in use takes a walk's width (`widths` on /me): its answer now, else the last it gave,
  * kept per server; null when it never answered. A walk then runs at Desktop rather than at a width it could not file.
  */
 async function takes(field) {
@@ -154,14 +154,14 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
   await ready;
   if (isLive(current())) return { ok: false, why: 'failed' };
   const at = issuer;
-  // Told only to a server that says it takes it (REN-1890): an older one refuses a key it does not know. The tab is laid
+  // Told only to a server that says it takes it: an older one refuses a key it does not know. The tab is laid
   // out at the width either way (link.js `adopt`).
   const widths = Object.hasOwn(SERVER_DEVICE, message.device) ? await takesWidths() : false;
   if (widths === null) message.device = 'desktop';
   const device = widths ? { device: SERVER_DEVICE[message.device] } : {};
   const started = await session.startWalk({ ...ask.body, ...(approved ? { plan: approved } : {}), ...device });
   if (!started.ok) return started;
-  // The server made the outing: one refused here is called off at once, once, not waited for (B22). Only on the server
+  // The server made the outing: one refused here is called off at once, once, not waited for. Only on the server
   // that made it: one changed since has no such outing.
   const refused = () => { if (issuer === at) void session.cancelWalk(started.handoff.outing).catch(() => undefined); return { ok: false, why: 'failed' }; };
   const socket = socketOf(at);
