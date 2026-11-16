@@ -526,28 +526,42 @@ export async function sealed(tab = walk) {
  */
 export function fresh() {
   const tab = walk;
-  if (!tab?.withdrawn) return Promise.resolve();
-  // One at a time, each looking afresh: one that started before another pause returns early.
+  if (!tab || (!tab.withdrawn && !tab.freshening)) return Promise.resolve();
+  // One at a time, each looking afresh: one that started before another pause returns early. An op that comes while
+  // one is under way waits for all of it, the scripts run in a page that started without them too.
   const run = (tab.freshening ?? Promise.resolve()).then(() => renew(tab));
-  tab.freshening = run.catch(() => undefined);
+  const settled = run.catch(() => undefined);
+  tab.freshening = settled;
+  void settled.then(() => { if (tab.freshening === settled) tab.freshening = null; });
   return run;
 }
 
 async function renew(tab) {
   if (walk !== tab || !tab.withdrawn) return;
   const seals = tab.seals;
-  if ((await signInNow()) !== false || tab.seals !== seals) return;
-  await cmd('Runtime.evaluate', { expression: `window.name = ''` }).catch(() => undefined);
+  // A page that could not be read is no sign-in seen: the scripts go back on, or the walk would wait on them for good.
+  if ((await signInNow()) === true || tab.seals !== seals) return;
+  // Not cleared: the scripts stay off, and the op is refused; the next one tries again.
+  const named = await cmd('Runtime.evaluate', { expression: `window.name = ''` }).catch(() => null);
+  if (!named || named.exceptionDetails) throw fail('NotAllowed', 'the page could not be read after the sign-in');
   if (tab.seals !== seals || !(await scriptsOn(tab, seals))) return;
   tab.withdrawn = false;
   tab.secret = false;
   // A document that started with them off gets them now: written to run more than once (pristine persona-session.ts).
-  if (tab.clean?.delete(tab.loader)) for (const script of tab.newDocument ?? []) await cmd('Runtime.evaluate', { expression: script.source }).catch(() => undefined);
+  // Only while it is still that document: one the tab moved on to since started with them on, or is a sign-in.
+  const loader = tab.loader;
+  if (!tab.clean?.delete(loader)) return;
+  for (const script of tab.newDocument ?? []) {
+    if (walk !== tab || tab.seals !== seals || tab.loader !== loader) return;
+    await cmd('Runtime.evaluate', { expression: script.source }).catch(() => undefined);
+  }
 }
 
 /** Puts the server's new-document scripts back on the tab: false, with none of them on, if a seal came meanwhile. */
 async function scriptsOn(tab, seals) {
   for (const script of tab.newDocument ?? []) {
+    // On already: put back before a later one failed.
+    if (script.identifier) continue;
     const identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
     // Sealed while this was on its way: `seal` took off the ones before it, this one goes now.
     if (tab.seals !== seals || walk !== tab) {
