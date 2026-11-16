@@ -153,4 +153,5 @@ After the report is delivered, save a copy so the findings outlive this conversa
 IMPECCABLE_REPORT_META='{"target":"<user phrasing, or .>","total_score":<n>,"max_score":20,"p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
   {{scripts_path}}/impeccable audit-storage write "<resolved target, or . for the whole project>" <temp-file>
 ```
- The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.
+
+The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.
