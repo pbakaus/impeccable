@@ -205,6 +205,8 @@ impl Live {
     fn start(socket: &Path) -> Live {
         let (to, server_in) = UnixStream::pair().unwrap();
         let (server_out, from) = UnixStream::pair().unwrap();
+        // A missing reply fails the test instead of hanging it.
+        from.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let s = socket.to_path_buf();
         let server = std::thread::spawn(move || {
             let mut out = server_out;
