@@ -1,4 +1,5 @@
 import { after, describe, it } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -420,7 +421,7 @@ describe('walk worker', () => {
   });
 
   // The server walks the person's Chrome only with a helper that says it holds every write.
-  it('says in its hello that it holds the tab’s writes', async () => {
+  it('says in its hello that it holds the tab’s writes, and which page helpers it carries', async () => {
     await loaded;
     const ws = sockets.at(-1);
     const heard = [];
@@ -428,6 +429,10 @@ describe('walk worker', () => {
     ws.onopen();
     assert.ok(heard[0].hello.can.includes('hold'));
     assert.equal(heard[0].hello.version, MANIFEST.version);
+    // Which page helpers it carries: the hash of the two files as they are, so a server can tell an older set.
+    const [helperFile, consentFile] = ['page-helpers.js', 'consent-rules.js'].map((f) => readFileSync(path.join(ROOT, 'extension/walks', f), 'utf8'));
+    const hashed = createHash('sha256').update(helperFile.slice(0, helperFile.indexOf('\n/** This file'))).update(consentFile).digest('hex').slice(0, 16);
+    assert.equal(heard[0].hello.helpers, hashed);
   });
 
   it('points the toolbar icon at the walk panel while a walk is under way, and back at the popup after', async () => {
@@ -1022,22 +1027,24 @@ describe('walk worker', () => {
   });
 
   // The store bars running code a server sent: a server that names helpers gets only this extension's own run, and no code.
-  it('on a walk whose server names helpers, runs each of its own page helpers by name in its world, its own consent rules, and refuses code', async () => {
+  it('on a walk whose server names helpers, runs each of its own page helpers by name for its op and in its world, its own consent rules, and refuses code', async () => {
     const { ops, walk } = await walked();
-    const { helpers, pageWorld } = await import('../extension/walks/page-helpers.js');
-    const { consentRules } = await import('../extension/walks/consent-rules.js');
+    const { helpers, pageWorld, newDocument } = await import('../extension/walks/page-helpers.js');
+    const consentRules = readFileSync(path.join(ROOT, 'extension/walks/consent-rules.js'), 'utf8');
     page.seen = {};
     const href = 'http://localhost:3000/list';
-    const world = vm.createContext({ location: { href }, scrollTo(x, y) { world.scrolled = [x, y]; }, document: { documentElement: { lang: 'de' }, body: null, activeElement: null, querySelectorAll: (sel) => (sel === 'a[href]' ? [{ href: `${href}#1` }, { href: '' }] : []) } });
+    const world = vm.createContext({ URL, setTimeout, clearTimeout, location: { href }, scrollTo(x, y) { world.scrolled = [x, y]; }, document: { documentElement: { lang: 'de' }, body: null, activeElement: null, querySelectorAll: (sel) => (sel === 'a[href]' ? [{ href: `${href}#1` }, { href: '' }] : []) } });
     world.globalThis = world;
     const was = answers['Runtime.evaluate'];
+    const fetched = globalThis.fetch;
+    // The extension's own package, as Chrome serves it to its worker.
+    globalThis.fetch = async (url) => (url === 'chrome-extension://ext/walks/consent-rules.js' ? new Response(consentRules) : new Response('', { status: 404 }));
     const ran = [];
     answers['Runtime.evaluate'] = (params) => {
       if (params.contextId === worlds['impeccable-walk-lookout']) return was(params);
       ran.push(params);
-      new vm.Script(params.expression);
-      // By value, as Chrome hands it back.
-      try { const value = vm.runInContext(params.expression, world); return { result: value === undefined ? {} : { value: JSON.parse(JSON.stringify(value)) } }; } catch { return { result: {} }; }
+      // By value, as Chrome hands it back. A helper may throw on a stub page, never reach for a name it does not have.
+      try { const value = vm.runInContext(params.expression, world); return { result: value === undefined ? {} : { value: JSON.parse(JSON.stringify(value)) } }; } catch (err) { if (err?.name === 'ReferenceError' || err?.name === 'SyntaxError') throw err; return { result: {} }; }
     };
     walk.named = true;
     try {
@@ -1051,18 +1058,21 @@ describe('walk worker', () => {
         ['scrollPageTo', [40], undefined],
       ]) assert.deepEqual((await ops.evaluate({ helper, args })).value, value, helper);
       assert.deepEqual(world.scrolled, [0, 40]);
-      // Every helper is called by its own name, with what the server gave: each one a script Chrome can run.
-      for (const helper of Object.keys(helpers)) await ops.evaluate({ helper, args: [null] });
-      assert.equal(ran.length, 7 + Object.keys(helpers).length);
+      // Every read is called by its own name, with what the server gave: each one a script that runs.
+      const reads = Object.keys(helpers).filter((h) => !newDocument.includes(h));
+      for (const helper of reads) await ops.evaluate({ helper, args: [null] });
+      assert.equal(ran.length, 7 + reads.length);
       // The reads' own world, but for the consent rules' readers: they read what the rules left in the page's.
-      assert.deepEqual(ran.slice(7).map((p) => p.contextId), Object.keys(helpers).map((h) => (pageWorld.includes(h) ? undefined : worlds['impeccable-walk-read'])));
+      assert.deepEqual(ran.slice(7).map((p) => p.contextId), reads.map((h) => (pageWorld.includes(h) ? undefined : worlds['impeccable-walk-read'])));
       assert.deepEqual(ran.slice(0, 7).map((p) => p.contextId), Array(7).fill(worlds['impeccable-walk-read']));
       for (const req of [{ fn: '() => 1', args: [] }, { fn: 'document.title' }, { fn: 'function readConsentState() { return 1; }', args: [] }]) {
         await assert.rejects(ops.evaluate(req), { name: 'NotAllowed' });
         await assert.rejects(ops.evaluateOnNewDocument(req), { name: 'NotAllowed' });
       }
-      for (const helper of ['nope', 'constructor', '__proto__', 'toString']) await assert.rejects(ops.evaluate({ helper, args: [] }), { name: 'NotSupported' });
-      assert.equal(ran.length, 7 + Object.keys(helpers).length, 'nothing refused reached the page');
+      // Each op its own helpers: a read never on every new document, a new document's script never as a read.
+      for (const helper of ['nope', 'constructor', '__proto__', 'toString', 'browserLanguage', 'loadConsent']) await assert.rejects(ops.evaluate({ helper, args: [] }), { name: 'NotSupported' }, helper);
+      for (const helper of ['clickByText', 'nope']) await assert.rejects(ops.evaluateOnNewDocument({ helper, args: [] }), { name: 'NotSupported' }, helper);
+      assert.equal(ran.length, 7 + reads.length, 'nothing refused reached the page');
       const at = sent.length;
       await ops.evaluateOnNewDocument({ helper: 'browserLanguage', args: ['de'] });
       // The consent rules are the ones it carries: the address the server names is never loaded.
@@ -1073,6 +1083,7 @@ describe('walk worker', () => {
     } finally {
       walk.named = false;
       answers['Runtime.evaluate'] = was;
+      globalThis.fetch = fetched;
     }
   });
 

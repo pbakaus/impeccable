@@ -1,5 +1,6 @@
 // The only code a journey runs in a page: the server names one of these and gives its arguments. Generated from the
-// functions the server's own browser runs, so the two read a page alike; do not edit by hand.
+// functions the server's own browser runs, so the two read a page alike. Changes arrive as a whole new copy of this
+// file and consent-rules.js, with HASH below: an edit by hand here is overwritten, and makes HASH untrue.
 
 function clickByText(wanted, opts) {
   const w = globalThis, doc = w.document, norm = (s) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(), stop = ["the", "a", "an", "button", "link", "in", "on", "header", "footer", "nav", "menu", "at", "top", "of", "to"], spoken = norm(wanted).split(" "), nextTo = / (?:next to|beside) /.test(` ${spoken.join(" ")} `), real = spoken.filter((x, i) => stop.indexOf(x) === -1 && !(x === "next" && spoken[i + 1] === "to")), wantsBeside = nextTo || /\b(?:icons?|arrows?|carets?|chevrons?|plus|minus)\b/i.test(wanted), wantsMenu = /\b(?:hamburger|burger|menu (?:button|icon|toggle)|nav(?:igation)? (?:toggle|button|icon|menu)|toggle navigation)\b/i.test(wanted), words = real.length > 0 || wantsMenu ? real : spoken.filter((x) => !/^(?:the|a|an|in|on|at|of|to)$/.test(x));
@@ -943,3 +944,9 @@ export const helpers = Object.freeze({ clickByText, confirmingControl, currentUr
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
+
+/** The helpers added to each new document, and only there (`loadConsent` is consent-rules.js). */
+export const newDocument = Object.freeze(["browserLanguage","installSystemFace","loadConsent"]);
+
+/** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
+export const HASH = '9cb4ae4ff01ad73e';

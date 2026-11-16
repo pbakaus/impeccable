@@ -3,8 +3,7 @@
 // guard.js says where the tab may be and what it may start.
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
-import { consentRules } from './consent-rules.js';
-import { helpers, pageWorld } from './page-helpers.js';
+import { helpers, newDocument, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
 
@@ -1140,15 +1139,23 @@ async function idle(idleTime, timeout) {
   }
 }
 
+/** The consent rules this extension carries (`consent-rules.js`), read from its own package once. */
+let consentScript = null;
+function consentRules() {
+  consentScript ??= fetch(chrome.runtime.getURL('walks/consent-rules.js')).then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))));
+  return consentScript.catch(() => { consentScript = null; throw fail('Error', 'the consent rules could not be read'); });
+}
+
 /**
- * What a server's `evaluate` runs: one of this extension's page helpers by name, called with its arguments, or the
- * consent rules it carries (`loadConsent`, whose address argument is never loaded). Code from the server only on a
- * walk whose server named no helpers (an older one): its function's source, or an expression.
+ * What a server's `evaluate` (or, `onNew`, `evaluateOnNewDocument`) runs: one of this extension's page helpers for that
+ * op, by name, called with its arguments, or the consent rules it carries (`loadConsent`, whose address argument is
+ * never loaded). Code from the server only on a walk whose server named no helpers (an older one): its function's
+ * source, or an expression.
  */
-function serverExpression({ helper, fn, args, undef }) {
-  if (helper === 'loadConsent') return consentRules;
+async function serverExpression({ helper, fn, args, undef }, onNew = false) {
   if (helper !== undefined) {
-    if (!Object.hasOwn(helpers, helper)) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)}`);
+    if (newDocument.includes(helper) !== onNew || (helper !== 'loadConsent' && !Object.hasOwn(helpers, helper))) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)} for this`);
+    if (helper === 'loadConsent') return consentRules();
     return expression({ fn: String(helpers[helper]), args: Array.isArray(args) ? args : [], undef });
   }
   if (walk?.named) throw fail('NotAllowed', 'a journey runs only the page helpers this extension carries');
@@ -1468,7 +1475,7 @@ export const ops = {
   async evaluate(req) {
     const tab = walk;
     if (!tab) throw fail('OutingClosed', 'no tab is open');
-    const source = serverExpression(req);
+    const source = await serverExpression(req);
     const run = async () => {
       let world = {};
       // A helper names its world; an older server's code is matched for the consent rules' mark.
@@ -1498,7 +1505,7 @@ export const ops = {
 
   // In the page's own world, as the server's own browser runs them (its system face, its consent rules).
   async evaluateOnNewDocument(req) {
-    const source = serverExpression(req);
+    const source = await serverExpression(req, true);
     const tab = walk;
     const seals = tab.seals;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });

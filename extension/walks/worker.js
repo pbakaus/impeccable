@@ -50,6 +50,7 @@ import { fail, hushed, ops, speak, walk } from './driver.js';
 import { needsNoTab } from './control.js';
 import { dial, linked, unlinked, whereTo } from './link.js';
 import { isStartPage } from './handoff.js';
+import { HASH as HELPERS } from './page-helpers.js';
 import './toolbar.js';
 import './net-hold.js';
 
@@ -86,7 +87,7 @@ async function connect() {
   const ws = new WebSocket(to.socket, to.ticket ? [SUBPROTOCOL, to.ticket] : []);
   socket = ws;
   let opened = false;
-  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN, version: chrome.runtime.getManifest().version } }); void linked(); };
+  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN, helpers: HELPERS, version: chrome.runtime.getManifest().version } }); void linked(); };
   ws.onmessage = (event) => { void handle(event.data, ws); };
   ws.onclose = (event) => {
     if (socket !== ws) return;
