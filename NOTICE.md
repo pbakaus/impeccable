@@ -9,3 +9,17 @@ The `skill/reference/ios.md` and `skill/reference/android.md` platform reference
 **Original work:** https://github.com/ehmo/platform-design-skills
 **Original license:** MIT
 **Author:** ehmo
+
+## Fonts in the browser extension
+
+The browser extension ships two fonts under `extension/fonts/`, each with its licence text beside it.
+
+**Albert Sans** (`albertsans.ttf`)
+**Original work:** https://github.com/usted/Albert-Sans
+**Original license:** SIL Open Font License 1.1 (`albertsans-OFL.txt`)
+**Copyright:** 2021 The Albert Sans Project Authors
+
+**Alumni Sans** (`alumnisans.ttf`)
+**Original work:** https://github.com/googlefonts/alumni
+**Original license:** SIL Open Font License 1.1 (`alumnisans-OFL.txt`)
+**Copyright:** 2015 The Alumni Sans Project Authors
