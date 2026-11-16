@@ -304,7 +304,7 @@ fn directive_rule_used(index: &FindingIndex, directive: &Directive, rule: &str) 
 /// A pair is used when [`is_inline_ignored`] would drop some finding. Each
 /// rule of a multi-rule comment is judged on its own. `*` is used when it
 /// waived any finding at all, and unused only when it waived none. Findings
-/// the caller still has — advisory ones included — count as a use. The same
+/// the caller still has (advisory ones included) count as a use. The same
 /// finding can use every directive that would waive it. Findings are indexed
 /// once by rule and line, so this stays linear in the file like
 /// [`apply_inline_ignores`].

@@ -390,3 +390,49 @@ fn a_css_scan_does_not_judge_element_rule_waivers() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn the_design_health_scan_leaves_unused_ignores_out() {
+    let dir = std::env::temp_dir().join(format!("impeccable-unused-health-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::copy(fixture_dir().join("brand.css"), dir.join("brand.css")).unwrap();
+    let scan = |args: &[&str]| {
+        let argv: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let (mut io, cap) = Io::captured("", dir.clone(), HashMap::new());
+        let engines = Engines {
+            html: &MissingHtmlEngine,
+            url: None,
+        };
+        let mut report = None;
+        let code = impeccable_detect::cli::run_detect_reporting(
+            &argv,
+            &mut io,
+            &engines,
+            None,
+            &mut report,
+        );
+        let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+        (code, out, report.expect("a whole-directory scan"))
+    };
+    let (code, out, with_flag) = scan(&[
+        "--no-design-system",
+        "--json",
+        "--report-unused-ignores",
+        ".",
+    ]);
+    let (_, _, without) = scan(&["--no-design-system", "--json", "."]);
+    let _ = std::fs::remove_dir_all(&dir);
+    // The flag still reports the stale waivers to the user...
+    assert_eq!(code, 2, "{out}");
+    assert!(json_findings(&out)
+        .iter()
+        .any(|f| f["antipattern"] == UNUSED_IGNORE_ID));
+    // ...but the snapshot design health uploads is the one without it.
+    assert!(with_flag
+        .findings
+        .iter()
+        .all(|f| f.antipattern != UNUSED_IGNORE_ID));
+    assert_eq!(with_flag.findings.len(), without.findings.len());
+    assert_eq!(with_flag.ruleset, without.ruleset);
+}

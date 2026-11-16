@@ -1088,7 +1088,6 @@ fn detect_cli(
     if no_advisory {
         all.retain(|f| !is_advisory(f));
     }
-    all.extend(unused_reports);
     if let Some(report) = report {
         // One local directory, the whole of it, with nothing skipped.
         let whole = cdp.is_none()
@@ -1161,9 +1160,6 @@ fn detect_cli(
                 format!("ignore-values={}", serde_json::json!(values)),
                 format!("extensions={}", serde_json::json!(extensions)),
             ]);
-            if ctx.report_unused_ignores {
-                ruleset.push("report-unused-ignores=true".to_string());
-            }
             *report = Some(FullScan {
                 root,
                 files_scanned: ctx.files_scanned,
@@ -1175,6 +1171,9 @@ fn detect_cli(
             });
         }
     }
+    // Unused-ignore findings join after the design-health snapshot: they
+    // are not catalog rules, so they must not count toward the repo's health.
+    all.extend(unused_reports);
     let (primary, advisory) = partition_advisory(&all);
     let (primary_len, advisory_len) = (primary.len(), advisory.len());
     let unused_len = count_unused_ignores(&primary);
