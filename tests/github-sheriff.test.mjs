@@ -852,6 +852,44 @@ describe('github sheriff', () => {
     assert.equal(customExemptPlan.shouldClose, false);
   });
 
+  it('never warns or auto-closes a never-close author, even with auto-close-regulars', () => {
+    const source = {
+      authorLogin: 'MVanHorn',
+      createdAt: '2026-06-20T00:00:00Z',
+      latestCommitAt: '2026-06-20T01:00:00Z',
+      comments: [
+        comment('pbakaus', '2026-06-21T00:00:00Z', '/sheriff wait'),
+      ],
+    };
+    const warnPlan = evaluatePullRequest(pr(source), { now: NOW, autoCloseRegulars: true });
+    const closePlan = evaluatePullRequest(pr({
+      ...source,
+      comments: [
+        ...source.comments,
+        comment('github-actions[bot]', '2026-06-27T00:00:00Z', WARNING_MARKER),
+      ],
+    }), { now: NOW, autoCloseRegulars: true, regularContributors: ['mvanhorn'] });
+
+    assert.equal(warnPlan.contributorActionRequired, true);
+    assert.ok(warnPlan.labelsToAdd.includes('waiting on contributor'));
+    assert.ok(!warnPlan.desiredLabels.includes('stale'));
+    assert.equal(warnPlan.shouldWarn, false);
+    assert.equal(warnPlan.shouldClose, false);
+    assert.equal(closePlan.shouldClose, false);
+
+    const otherList = evaluatePullRequest(pr(source), {
+      now: NOW,
+      autoCloseRegulars: true,
+      neverCloseAuthors: ['someone-else'],
+    });
+    assert.equal(otherList.shouldWarn, true);
+  });
+
+  it('parses the never-close author list', () => {
+    assert.deepEqual(parseArgs([]).neverCloseAuthors, ['mvanhorn']);
+    assert.deepEqual(parseArgs(['--never-close-authors', 'mvanhorn,friend']).neverCloseAuthors, ['mvanhorn', 'friend']);
+  });
+
   it('keeps stale comments idempotent', () => {
     const plan = evaluatePullRequest(pr({
       createdAt: '2026-06-20T00:00:00Z',

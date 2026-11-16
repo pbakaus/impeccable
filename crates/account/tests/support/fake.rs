@@ -34,6 +34,8 @@ pub struct Knobs {
     pub critiques_denied: bool,
     /// `scopes_supported` lists `worlds:read`.
     pub worlds: bool,
+    /// The service's CLI sign-in also serves /mcp (`impeccable_cli_mcp`), listing the MCP scopes.
+    pub cli_mcp: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -77,6 +79,8 @@ pub struct Record {
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
     pub setups: Vec<serde_json::Value>,
+    /// The `Impeccable-Project` header of each setup read (`GET /cli/v1/setup`).
+    pub setup_projects: Vec<Option<String>>,
     pub designs: Vec<serde_json::Value>,
     /// The query of each browser landing on Your setup.
     pub setup_landings: Vec<String>,
@@ -302,6 +306,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .routes
         .get(&(method.clone(), path.to_string()))
         .cloned();
+    if method == "GET" && path == "/cli/v1/setup" {
+        record.lock().unwrap().setup_projects.push(headers.get("impeccable-project").cloned());
+    }
     let (status, extra, out): (u16, Vec<(String, String)>, Vec<u8>) = if let Some(c) = custom {
         let authorized = bearer
             .as_ref()
@@ -332,8 +339,14 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         if k.worlds { scopes.push("worlds:read"); }
+                        if k.cli_mcp {
+                            for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start"] {
+                                if !scopes.contains(&s) { scopes.push(s); }
+                            }
+                        }
                         scopes
                     }),
+                    "impeccable_cli_mcp": knobs.lock().unwrap().cli_mcp,
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -349,9 +362,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiques:write" => k.critiques,
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
-                        "taste:read" => k.taste,
+                        "taste:read" => k.taste || k.cli_mcp,
                         "design:write" => k.design,
                         "worlds:read" => k.worlds,
+                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" => k.cli_mcp,
                         _ => false,
                     })
                 };
@@ -623,8 +637,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                             serde_json::json!({"error": "invalid_request", "field": field}),
                         )
                     } else {
-                        record.lock().unwrap().critiques.push(v);
-                        json(200, serde_json::json!({"outcome": "recorded"}))
+                        let n = {
+                            let mut r = record.lock().unwrap();
+                            r.critiques.push(v);
+                            r.critiques.len()
+                        };
+                        // As the service answers while the critiques page is served.
+                        json(200, serde_json::json!({"outcome": "recorded", "url": format!("{issuer}/app/-/critiques?report=fake{n}")}))
                     }
                 }
             }

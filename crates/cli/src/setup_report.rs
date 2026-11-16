@@ -17,7 +17,7 @@ pub fn schedule_taste(io: &Io) {
     }
 }
 
-fn spawn_refresh(io: &Io, verb: &str) {
+pub(crate) fn spawn_refresh(io: &Io, verb: &str) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
@@ -99,42 +99,54 @@ pub fn run(io: &Io) -> i32 {
     let Some(inventory) = inventory(cmd, io, std::time::Duration::from_secs(5)) else {
         return 0;
     };
+    let skills = skill_versions(io);
+    attempt.report(io, &inventory["result"], crate::VERSION, &skills);
+    0
+}
+
+/// The installed skill's version per harness: the user-level folders, the
+/// project's own (`impeccable install --scope=project` puts the skill in the
+/// repository, not in HOME), and the skill beside the running binary.
+fn skill_versions(io: &Io) -> Value {
     let mut skills = json!({});
+    let cwd = io.cwd.to_string_lossy().to_string();
     let home = impeccable_context::util::homedir(&io.env);
-    for (h, dir) in [
-        ("claude", ".claude"),
-        ("codex", ".agents"),
-        ("codex", ".codex"),
-    ] {
-        let mut env = io.env.clone();
-        env.insert(
-            "IMPECCABLE_SKILL_DIR".into(),
-            format!("{home}/{dir}/skills/impeccable"),
-        );
-        if let Some(v) = impeccable_context::context_cli::installed_skill_version(
-            &env,
-            &io.cwd.to_string_lossy(),
-        ) {
-            skills[h] = v.into();
+    let project = project_root(&io.cwd);
+    // Codex reads a repository's skills from .agents only; a stray project
+    // .codex copy is not an installation.
+    let user_dirs: &[(&str, &str)] = &[("claude", ".claude"), ("codex", ".agents"), ("codex", ".codex")];
+    let project_dirs: &[(&str, &str)] = &[("claude", ".claude"), ("codex", ".agents")];
+    for (base, dirs) in [(home, user_dirs), (project, project_dirs)] {
+        if base.is_empty() {
+            continue;
+        }
+        for &(h, dir) in dirs {
+            if skills.get(h).is_some() {
+                continue;
+            }
+            let mut env = io.env.clone();
+            env.insert("IMPECCABLE_SKILL_DIR".into(), format!("{base}/{dir}/skills/impeccable"));
+            if let Some(v) = impeccable_context::context_cli::installed_skill_version(&env, &cwd) {
+                skills[h] = v.into();
+            }
         }
     }
-    let provider = impeccable_context::provider::detect(&io.env, &io.cwd.to_string_lossy());
+    let provider = impeccable_context::provider::detect(&io.env, &cwd);
     let harness = match provider.id.as_str() {
         "claude-code" => Some("claude"),
         "codex" | "agents" => Some("codex"),
         _ => None,
     };
-    if let (Some(h), Some(v)) = (
-        harness,
-        impeccable_context::context_cli::installed_skill_version(
-            &io.env,
-            &io.cwd.to_string_lossy(),
-        ),
-    ) {
+    if let (Some(h), Some(v)) = (harness, impeccable_context::context_cli::installed_skill_version(&io.env, &cwd)) {
         skills[h] = v.into();
     }
-    attempt.report(io, &inventory["result"], crate::VERSION, &skills);
-    0
+    skills
+}
+
+/// The repository holding `cwd` (the nearest folder with `.git`), else `cwd`.
+fn project_root(cwd: &std::path::Path) -> String {
+    let root = cwd.ancestors().find(|d| d.join(".git").exists()).unwrap_or(cwd);
+    root.to_string_lossy().to_string()
 }
 
 /// Inventory probes may invoke harness CLIs. Bound the whole process tree,
@@ -260,5 +272,39 @@ mod tests {
             "temporary inventory output was removed"
         );
         let _ = std::fs::remove_dir(home);
+    }
+}
+
+#[cfg(test)]
+mod skill_version_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn a_skill_installed_into_the_project_is_reported() {
+        let base = std::env::temp_dir().join(format!("impeccable-setup-skills-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let home = base.join("home");
+        let repo = base.join("repo");
+        let sub = repo.join("site");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&sub).unwrap();
+        let skill = repo.join(".claude/skills/impeccable");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: impeccable\nversion: 4.9.1\n---\n").unwrap();
+        let env: HashMap<String, String> = [
+            ("HOME".to_string(), home.to_string_lossy().to_string()),
+            ("USERPROFILE".to_string(), home.to_string_lossy().to_string()),
+        ]
+        .into();
+        let (io, _) = Io::captured("", sub, env);
+        let codex_copy = repo.join(".codex/skills/impeccable");
+        std::fs::create_dir_all(&codex_copy).unwrap();
+        std::fs::write(codex_copy.join("SKILL.md"), "---\nname: impeccable\nversion: 4.8.0\n---\n").unwrap();
+        let skills = skill_versions(&io);
+        assert_eq!(skills["claude"], "4.9.1");
+        assert!(skills.get("codex").is_none(), "a project .codex copy is not an install: {skills}");
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

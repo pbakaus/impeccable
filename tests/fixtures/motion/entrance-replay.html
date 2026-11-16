@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>entrance-replay</title>
+<style>
+body { font: 18px system-ui; margin: 40px; }
+button { margin-bottom: 20px; }
+#region { position: relative; width: 500px; height: 400px; }
+#card { position: relative; width: 180px; height: 100px; padding: 20px; box-sizing: border-box; background: #eedcc5; view-transition-name: card; }
+::view-transition-group(card) { animation-duration: 600ms; animation-timing-function: linear; }
+.entrance { animation: enter 300ms both; } @keyframes enter { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+</style>
+<button id="go">Run motion</button><div id="region"><div id="card"><span id="copy" class="entrance">Existing content</span></div></div>
+<script>
+go.onclick = () => document.startViewTransition(() => { copy.replaceWith(copy.cloneNode(true)); card.style.width = '280px'; });
+</script>

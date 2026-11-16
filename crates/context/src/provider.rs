@@ -61,7 +61,11 @@ fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
     if jsp::basename(&skills) != "skills" {
         return None;
     }
-    let harness = jsp::basename(&jsp::dirname(&skills));
+    let harness_dir = jsp::dirname(&skills);
+    let harness = jsp::basename(&harness_dir);
+    if harness == "config" && jsp::basename(&jsp::dirname(&harness_dir)) == ".gemini" {
+        return Some("antigravity");
+    }
     Some(match harness.as_str() {
         ".claude" => "claude-code",
         ".cursor" => "cursor",

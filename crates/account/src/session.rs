@@ -70,6 +70,28 @@ impl Session {
         })
     }
 
+    /// [`Session::load`] that never prompts (no macOS Keychain dialog): for a process an agent started, which nobody
+    /// is watching. A secret that can only be read with a prompt reads as not signed in.
+    pub fn load_quietly(account: &Account) -> Result<Session, SessionError> {
+        let store = Store::new(account);
+        let state = store
+            .try_state()
+            .map_err(SessionError::Local)?
+            .filter(|s| s.signed_in)
+            .ok_or(SessionError::NotSignedIn)?;
+        let secret = store
+            .try_secret_noninteractive(&state)
+            .map_err(SessionError::Local)?
+            .ok_or(SessionError::NotSignedIn)?;
+        Ok(Session {
+            client: Client::new(account),
+            store,
+            state,
+            secret,
+            noninteractive: true,
+        })
+    }
+
     /// Read existing credentials without prompting, with a caller-owned deadline.
     /// The worker only reads; timing out cannot rotate tokens or upload later.
     pub(crate) fn load_for_upload(account: &Account, wait: std::time::Duration) -> Option<Session> {

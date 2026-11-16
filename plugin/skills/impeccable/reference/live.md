@@ -326,7 +326,7 @@ After source edits finish, reply exactly once with `"<skill-base-dir>/scripts/im
 
 ## Exit
 
-The user stops live mode by saying so in chat, closing the tab (SSE drops; poll returns `exit` after 8s), or the browser's exit button. On `exit`, kill any still-running background poll, then clean up.
+The user stops live mode by saying so in chat, closing the tab (SSE drops; poll returns `exit` a minute later unless a tab reconnects), or the browser's exit button. On `exit`, kill any still-running background poll, then clean up.
 
 ## Cleanup
 

@@ -248,6 +248,10 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd, &rt.env) {
+            last_skip = "plain-script";
+            continue;
+        }
         if is_ignored_file(&rt.proc_cwd, file_path, &project_cwd, &config.ignore_files) {
             last_skip = "config-ignore-file";
             continue;
@@ -375,7 +379,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         // pass. Remembering here would dedupe those findings out of Stop.
         // Touch the file so Stop has it, and leave the finding list empty
         // (#646).
-        if harness == "grok" {
+        if matches!(harness, "grok" | "antigravity") {
             touch_file(&mut cache, &session_id, file_path);
         } else {
             // Deferred findings a Stop pass already reported stay remembered;
@@ -426,7 +430,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
 
-    if !fresh_groups.is_empty() {
+    if !fresh_groups.is_empty() && harness != "antigravity" {
         let scan = &scans[&fresh_groups[0].file_path];
         let short = footer_mode_short(&mut cache, &session_id);
         let reserve = design_note_reserve(rt, scan, &mut cache, &session_id);
@@ -509,11 +513,29 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // this, clean-edit editCount bumps would stop persisting the moment
     // state relocates. Under stock paths the cache sits inside
     // `.impeccable/`, so the extra check changes nothing there.
+    // Antigravity skips the emit branch above (its PostToolUse stdout is
+    // ignored), which is where every other harness persists fresh findings.
+    // Persist them here instead so Stop sees the touched file even in a
+    // project with no `.impeccable/` yet.
     let wants_persist = deferred_total > 0
+        || (harness == "antigravity" && !fresh_groups.is_empty())
         || (cache_dirty
             && (exists(&jsp::join(&[&project_cwd, ".impeccable"])) || exists(&get_cache_path(&project_cwd))));
     if wants_persist && persist_cache(rt, &project_cwd, &cache) {
         record_session_root(rt, harness, &session_value, &project_cwd);
+    }
+
+    if harness == "antigravity" {
+        return RunResult {
+            stdout: "{}".to_string(),
+            audit: with(
+                &audit,
+                vec![
+                    ("emitted", Value::Bool(false)),
+                    ("durationMs", ms_since(started)),
+                ],
+            ),
+        };
     }
 
     if detector_threw_any && pending_winner.is_none() && clean_winner.is_none() {
@@ -700,6 +722,22 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
     }
+    if harness == "antigravity" {
+        // The binary spells the reason `NO_TOOL_CALL`; the published docs
+        // show `model_stop` for the same natural end of a turn.
+        if let Some(Value::String(reason)) = event.get("terminationReason") {
+            if !reason.eq_ignore_ascii_case("NO_TOOL_CALL") && !reason.eq_ignore_ascii_case("model_stop") {
+                return result(
+                    &audit,
+                    vec![
+                        ("skipped", Value::from("stop-reason")),
+                        ("reason", Value::String(reason.clone())),
+                        ("durationMs", ms_since(started)),
+                    ],
+                );
+            }
+        }
+    }
     let session_value = session_id_of(&event);
     let session_id = session_key(&session_value);
     let named_session = session_value.is_some();
@@ -825,6 +863,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
                 root,
                 &home,
+                &rt.env,
                 since,
                 &root_config.extensions,
                 root_config.limits.max_file_bytes,
@@ -848,6 +887,39 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
                 vec![("skipped", Value::from("no-touched-files")), ("durationMs", ms_since(started))],
+            ));
+            continue;
+        }
+        // A plugin hook next to a project hook fires this pass twice at once:
+        // only the first copy scans, as PostToolUse does.
+        // The key covers only what the pass below can scan, under the same
+        // filters and caps, so it never reads a file the pass would skip.
+        let (mut cached_n, mut found_n) = (0usize, 0usize);
+        let touched_paths: Vec<String> = touched
+            .iter()
+            .filter(|(f, _)| {
+                let ext = js::to_lower_case(&jsp::extname(f));
+                !has_path_traversal(f)
+                    && !is_sensitive_path(f)
+                    && !is_generated_path(f)
+                    && (ALLOWED_EXTS.contains(&ext.as_str()) || match_configured_extension(f, &root_config.extensions).is_some())
+                    && !is_ignored_file(&rt.proc_cwd, f, root, &root_config.ignore_files)
+                    && exists(f)
+                    && is_scan_target_inside_project(rt, f, root)
+            })
+            .filter(|(_, found)| {
+                let n = if *found { &mut found_n } else { &mut cached_n };
+                *n += 1;
+                *n <= STOP_MAX_FILES
+            })
+            .map(|(f, _)| f.clone())
+            .collect();
+        let design_inputs = stop_design_inputs(rt, root);
+        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths, &design_inputs) == crate::hook_claim::Claim::Duplicate {
+            // A duplicate says more than an empty root's skip, so it wins.
+            first_skip = Some(result(
+                &root_audit,
+                vec![("skipped", Value::from("duplicate-event")), ("durationMs", ms_since(started))],
             ));
             continue;
         }
@@ -1075,6 +1147,13 @@ fn is_stop_event(stdin: &str) -> bool {
     }
 }
 
+fn antigravity_stdin(rt: &Runtime, stdin: &str) -> bool {
+    match serde_json::from_str::<Value>(stdin) {
+        Ok(Value::Object(o)) => resolve_harness(rt, Some(&o)) == "antigravity",
+        _ => rt.env("IMPECCABLE_HOOK_HARNESS") == Some("antigravity"),
+    }
+}
+
 /// `impeccable hook` (hook.mjs main). Returns the exit code (always 0).
 pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     if let Ok(Value::Object(event)) = serde_json::from_str::<Value>(stdin) {
@@ -1110,6 +1189,11 @@ pub fn run(rt: &Runtime, stdin: &str, io: &mut impeccable_common::Io) -> i32 {
     write_audit_log(rt, &result.audit, &rt.proc_cwd);
     if !result.stdout.is_empty() {
         io.out(&result.stdout);
+    } else if antigravity_stdin(rt, stdin) {
+        // Antigravity reads hook stdout as JSON; an early skip (disabled, no
+        // file, duplicate, a Stop with nothing to report) still answers with
+        // the empty object.
+        io.out("{}");
     }
     0
 }

@@ -6,7 +6,11 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = []
+default = ["image-sampling"]
+# The sampled-contrast path's decoders (#560). Off in the wasm `detect`
+# build: without a filesystem it could only ever sample data URIs, and the
+# decoders add 0.8 MB to the module.
+image-sampling = ["dep:image", "dep:base64"]
 # Vector dispatcher used by tests/vectors.rs to replay the recorded JS call
 # vectors through the Rust port.
 vectors = ["impeccable-core/vectors"]
@@ -26,7 +30,12 @@ html5ever = "0.39"
 selectors = "0.38"
 cssparser = "0.37"
 thiserror = { workspace = true }
+# Decoding the background images behind text for the sampled-contrast path
+# (#560): pure-Rust decoders only (the comp crate's set plus `png`), so the
+# wasm `detect` build keeps working and nothing native is linked.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"], optional = true }
+base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 impeccable-core = { workspace = true, features = ["vectors"] }
-impeccable-html = { path = ".", features = ["vectors"] }
+impeccable-html = { path = ".", features = ["vectors", "image-sampling"] }

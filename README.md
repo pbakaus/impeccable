@@ -82,10 +82,28 @@ npx impeccable detect src/                   # scan a directory
 npx impeccable detect https://example.com    # scan a rendered page (uses your installed Chrome or Edge)
 npx impeccable detect --json .               # machine-readable output
 npx impeccable detect --github src/          # GitHub Actions annotations
+npx impeccable detect --sarif src/           # SARIF 2.1.0 for code scanning
 npx impeccable detect --list-rules           # every rule with its id and description
 ```
 
-Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`.
+GitHub code scanning keeps these alerts on the pull request, lets reviewers dismiss them, and fails only on findings that are new in that PR. `--github` annotates a single Actions run; `--sarif` is the log you upload:
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - run: npx impeccable detect --sarif src/ > impeccable.sarif || test $? -eq 2
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: impeccable.sarif
+      category: impeccable
+```
+
+Exit code `2` (findings) still uploads the log; exit code `1` (a target couldn't be scanned) fails the step, and the log it wrote says `executionSuccessful: false` so it is never read as a clean scan. `category` keeps this upload beside CodeQL instead of replacing it. Run it from the repository root: paths are written relative to `GITHUB_WORKSPACE`, and a file outside it becomes a `file://` URI. A clean scan still prints a log with an empty `results` array, which is what closes alerts that were fixed. HTML findings without a line are anchored to the file. The upload action fills `partialFingerprints.primaryLocationLineHash`; detect leaves it unset.
+
+Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`. An HTML file scan reads the pixels of a local background image that is the ground behind text, so white copy on a near-white photo fails a CI gate without a browser. An image that only decorates its box is left alone, and a remote image is never fetched.
 
 Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
 
@@ -165,7 +183,7 @@ Notes:
 
 ## Project files and git
 
-Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/*.md`. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
+Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/ignore.md`. Critique reports stay local unless `reports.commit` is true. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
 
 <details>
 <summary><b>Copy the <code>.gitignore</code> entries</b></summary>
@@ -175,7 +193,7 @@ Impeccable writes its working files under `.impeccable/`. A few are shared proje
 # Ephemeral output, runtime state, and per-dev overrides.
 # The **/ prefix covers .impeccable at the repo root or in a nested workspace.
 # Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, surfaces/*.md, critique/*.md.
+# design.json, surfaces/*.md, critique/ignore.md.
 **/.impeccable/config.local.json
 **/.impeccable/hook.cache.json
 **/.impeccable/hook.pending.json
