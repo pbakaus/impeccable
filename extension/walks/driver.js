@@ -3,7 +3,7 @@
 // guard.js says where the tab may be and what it may start.
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
-import { helpers, newDocument, pageWorld } from './page-helpers.js';
+import { helpers, newDocument, noSecrets, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
 
@@ -1149,14 +1149,18 @@ function consentRules() {
 /**
  * What a server's `evaluate` (or, `onNew`, `evaluateOnNewDocument`) runs: one of this extension's page helpers for that
  * op, by name, called with its arguments, or the consent rules it carries (`loadConsent`, whose address argument is
- * never loaded). Code from the server only on a walk whose server named no helpers (an older one): its function's
- * source, or an expression.
+ * never loaded). A helper that types or reads a field always gets its `noSecrets` argument, whatever the server sent, so
+ * no password, card or one-time-code field is typed into or read, as `type` refuses. Code from the server only on a walk
+ * whose server named no helpers (an older one): its function's source, or an expression.
  */
 async function serverExpression({ helper, fn, args, undef }, onNew = false) {
   if (helper !== undefined) {
     if (newDocument.includes(helper) !== onNew || (helper !== 'loadConsent' && !Object.hasOwn(helpers, helper))) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)} for this`);
     if (helper === 'loadConsent') return consentRules();
-    return expression({ fn: String(helpers[helper]), args: Array.isArray(args) ? args : [], undef });
+    const given = Array.isArray(args) ? args : [];
+    const at = Object.hasOwn(noSecrets, helper) ? noSecrets[helper] : -1;
+    const sent = at < 0 ? given : [...Array.from({ length: at }, (_, i) => (i < given.length ? given[i] : null)), true];
+    return expression({ fn: String(helpers[helper]), args: sent, undef: undef?.filter((i) => i !== at) });
   }
   if (walk?.named) throw fail('NotAllowed', 'a journey runs only the page helpers this extension carries');
   return expression({ fn, args, undef });

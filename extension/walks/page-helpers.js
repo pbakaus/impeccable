@@ -355,9 +355,12 @@ function currentUrlOf() {
   return globalThis.location.href;
 }
 
-function fieldReads(point) {
+function fieldReads(point, noSecrets = !1) {
   const doc = globalThis.document, read = (el) => {
     if (!el)
+      return null;
+    const tokens = (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/);
+    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -503,7 +506,7 @@ function scrollToSurface(name, scroll = !0, headingAlone = !1) {
   return { what: label, top: Math.round(r.top + (scope.scrollY ?? 0)) };
 }
 
-function typeInto(wanted, text, keys) {
+function typeInto(wanted, text, keys, noSecrets = !1) {
   const w = globalThis, doc = w.document, norm = (s) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim(), words = norm(wanted).split(" ").filter((x) => x.length > 1), fields = Array.prototype.slice.call(doc.querySelectorAll('input:not([type=hidden]):not([type=submit]), textarea, [contenteditable="true"]'));
   let best = null;
   for (const el of fields) {
@@ -520,6 +523,9 @@ function typeInto(wanted, text, keys) {
   const focused = doc.activeElement;
   if (best.score === 0 && focused && fields.includes(focused))
     best = { el: focused, score: 0 };
+  const tokens = (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/), secret = best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"));
+  if (noSecrets && secret)
+    return null;
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect(), target = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
   best.el.focus();
@@ -948,5 +954,8 @@ export const pageWorld = Object.freeze(["readConsentState","consentSeen","markCo
 /** The helpers added to each new document, and only there (`loadConsent` is consent-rules.js). */
 export const newDocument = Object.freeze(["browserLanguage","installSystemFace","loadConsent"]);
 
+/** Each helper's `noSecrets` argument, which this extension always sets: no password, card or one-time-code field is typed into or read. */
+export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
+
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '9cb4ae4ff01ad73e';
+export const HASH = '71300b8c9cb54072';

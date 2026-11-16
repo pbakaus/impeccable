@@ -1080,6 +1080,15 @@ describe('walk worker', () => {
       const added = args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument');
       assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`, consentRules]);
       assert.match(consentRules, /autoconsent/);
+      // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`.
+      for (const attrs of [{ type: 'password' }, { autocomplete: 'section-pay cc-number' }, { autocomplete: 'one-time-code' }]) {
+        const field = { tagName: 'INPUT', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
+        world.document = { activeElement: field, querySelectorAll: () => [field], elementFromPoint: () => field };
+        for (const [helper, args] of [['typeInto', ['Secret', 'hunter2', false]], ['typeInto', ['Secret', 'hunter2', true, false]], ['fieldReads', [{ x: 1, y: 1 }]], ['fieldReads', [null, false]]]) {
+          assert.equal((await ops.evaluate({ helper, args })).value, null, `${helper} ${JSON.stringify(attrs)}`);
+        }
+        assert.deepEqual([field.value, field.focused], ['kept', false]);
+      }
     } finally {
       walk.named = false;
       answers['Runtime.evaluate'] = was;
