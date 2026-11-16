@@ -1705,6 +1705,23 @@ describe('walk worker', () => {
     });
   }
 
+  // Catches a look held at a pause spinning forever once the socket went, which froze the worker.
+  it('refuses a look held at a pause once the socket goes, and the worker goes on', async () => {
+    const { ops, command, dispatch, rearm } = await walked();
+    await ops.close();
+    rearm();
+    dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
+    await ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+    page.seen = {};
+    assert.equal(await command('pause'), true);
+    const shot = ops.screenshot({ format: 'png' }).then(() => 'answered', (err) => err.name);
+    await settle(5);
+    // The socket's close, as worker.js has it: the walk fails, then its tab is let go.
+    dispatch({ type: 'fail', reason: 'connection' });
+    await ops.close();
+    assert.equal(await shot, 'OutingClosed');
+  });
+
   // Last, as it ends the walk: Stop, or the socket going (it closes the walk), while the walk's tab is still being
   // opened ends the walk and closes it.
   for (const [step, by] of [['create', 'stop'], ['attach', 'stop'], ['create', 'close'], ['attach', 'close']]) {

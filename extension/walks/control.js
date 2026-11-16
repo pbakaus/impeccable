@@ -6,7 +6,7 @@ import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
 import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
-import { detachAction, isLive } from './view.js';
+import { ON_TAB, detachAction, isLive } from './view.js';
 
 /** Ops the hub may always ask: opening and letting go, a look at the tab, and what it tells the panel. */
 const FREE = new Set(['open', 'close', 'tab', 'brief', 'step', 'checks', 'finish']);
@@ -55,6 +55,8 @@ async function clear(name) {
     const { state } = current();
     if (stopped) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
+    // Over (the socket went, the tab closed, it failed): nothing is coming back to wait for.
+    if (!ON_TAB.includes(state)) throw fail('OutingClosed', 'no tab is open');
     if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
     // Not before the server's scripts are back on after a sign-in pause or a take-over (driver.js `seal`). Paused again
     // meanwhile, or its scripts still off at a sign-in: the op waits, as for any pause.
