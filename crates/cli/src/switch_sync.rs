@@ -181,11 +181,17 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
             .filter(|f| !f.ends_with(".cursor/rules/impeccable.mdc"))
             .all(|f| agent_block::write_switches(f, &refs).is_ok())
     };
+    // What this refresh sent and the service took, if anything: Cursor's rule follows it.
+    let mut pushed: Option<Vec<String>> = None;
     let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
             let first = remote.me.is_none();
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
-            match link.push(&catalog, &refs, first) {
+            let sent = link.push(&catalog, &refs, first);
+            if sent.is_some() {
+                pushed = Some(on.clone());
+            }
+            match sent {
                 Some(_) if write_all(&on, &link) => Some(on),
                 Some(_) => Some(on),
                 // Not sent: the base stays, so the next refresh still sees the change.
@@ -200,7 +206,8 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     // Cursor's rule in this repository ends at the set this refresh settled on (what it
     // just sent, or the page's), whatever the step; a repository that can't take it is
     // skipped without touching the shared state.
-    let settled = synced.clone().or_else(|| remote.me.clone());
+    // The retry base is never Cursor's target: a set just sent, else the page's.
+    let settled = pushed.or_else(|| remote.me.clone());
     if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
         if link.still_current() {
             let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
