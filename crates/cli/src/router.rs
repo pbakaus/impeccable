@@ -316,7 +316,7 @@ pub(crate) fn scan_after_login(
     if health::first_scan_done(&io.env, &root) {
         return "already";
     }
-    io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
+    io.err("\nScanning this repository for your account (Ctrl-C skips it)...\n");
     let _ = io.stderr.flush();
     let started = std::time::SystemTime::now();
     let mut report = None;
@@ -356,12 +356,12 @@ pub(crate) fn scan_after_login(
     if recorded {
         // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
-            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            Some(url) => format!("See it in Foundations:\n{url}/-/foundations"),
             None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
         let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
         io.err(&format!(
-            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}.\nSent {sent} and foundations checks, never your code or file names.\n{find}\n"
         ));
     } else {
         io.err(&format!(

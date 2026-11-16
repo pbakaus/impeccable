@@ -138,9 +138,9 @@ if [ "$EXPECT_PRO" = 1 ]; then
   check "detect: no 'Pro rules are off' line" '! grep -qE "Pro rules are off|Pro rules aren" "$H/detect.err"'
 fi
 if offers design:write; then
-  check "DESIGN.md: first-upload notice" 'grep -q "Uploaded your DESIGN.md to your Impeccable account." "$H/detect.err"'
+  check "DESIGN.md: first-upload notice" 'grep -q "Saved your DESIGN.md to your account" "$H/detect.err"'
   (cd "$H/repo" && imp detect . > /dev/null 2> "$H/detect2.err")
-  check "DESIGN.md: notice not repeated" '! grep -q "Uploaded your DESIGN.md" "$H/detect2.err"'
+  check "DESIGN.md: notice not repeated" '! grep -q "Saved your DESIGN.md" "$H/detect2.err"'
 fi
 
 # 5. Critique history: one saved report, its first-upload notice.
@@ -151,7 +151,7 @@ if offers critiques:write; then
   (cd "$H/repo" && IMPECCABLE_CRITIQUE_META='{"target":"Smoke","total_score":24,"max_score":32,"na_heuristics":"3,7","p0_count":0,"p1_count":1}' \
     imp critique-storage write smoke "$H/report.md" > "$H/crit.out" 2> "$H/crit.err"); rc=$?
   check "critique: saved" '[ $rc = 0 ]'
-  check "critique: first-upload notice" 'grep -q "Uploaded this critique report to your Impeccable account." "$H/crit.out" "$H/crit.err"'
+  check "critique: first-upload notice" 'grep -q "Saved this critique report to your account" "$H/crit.out" "$H/crit.err"'
 fi
 
 # 6. Setup status reports on by default.

@@ -473,7 +473,13 @@ pub(crate) fn after_login(io: &mut Io) {
         ));
         return;
     }
-    io.err(&format!("Loop is installed. Connect {names} to it now? [Y/n] "));
+    // Set apart, and plain about what Enter does; a sign-in other than production's names its account there.
+    let to = impeccable_account::config::Account::from_env(&io.env)
+        .ok()
+        .filter(|a| a.issuer != impeccable_account::config::DEFAULT_ACCOUNT_URL)
+        .map(|a| format!(" to {}", a.display_name()))
+        .unwrap_or_default();
+    io.err(&format!("\nLoop is installed. Connect {names} to it, so their questions reach you in Loop?\nEnter connects them{to}; n skips. [Y/n] "));
     let _ = std::io::Write::flush(&mut io.stderr);
     let mut line = String::new();
     let yes = std::io::stdin()
