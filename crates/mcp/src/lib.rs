@@ -116,7 +116,8 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
         }
         let listing = request.get("method").and_then(Value::as_str) == Some("tools/list");
         if let Some(mut reply) = answer(&request, out, err, upstream) {
-            if listing && socket.is_some_and(browser::ready) {
+            // The agent driving keeps its tools; any other lists them while the relay is up and free.
+            if listing && (link.is_some() || socket.is_some_and(browser::ready)) {
                 if let Some(list) = reply.pointer_mut("/result/tools").and_then(Value::as_array_mut) {
                     list.extend(browser::tools());
                 }

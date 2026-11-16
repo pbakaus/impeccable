@@ -111,3 +111,24 @@ fn serves_only_the_impeccable_extension() {
     assert!(!browser::is_extension_origin("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"));
     assert!(!browser::is_extension_origin("mcp"));
 }
+
+// Catches the driving agent losing its browser tools on a re-list: its own probe would read the browser as busy.
+#[test]
+fn the_driving_agent_keeps_its_tools_when_it_lists_again() {
+    let dir = short_dir("relist");
+    let socket = dir.join("browser").join("host.sock");
+    let mut ext = relay(&socket);
+    std::thread::spawn(move || {
+        while let Ok(Some(call)) = read_frame(&mut ext, FROM_EXTENSION_MAX) {
+            if call.get("id").is_some() {
+                let _ = write_frame(&mut ext, &json!({ "id": call["id"], "result": { "content": [] } }), FROM_EXTENSION_MAX);
+            }
+        }
+    });
+    let replies = agent_session(&socket, &[
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "browser_open", "arguments": { "url": "https://example.com" } } }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" }),
+    ]);
+    assert!(names(&replies[1]).contains(&"browser_act".to_string()));
+    let _ = std::fs::remove_dir_all(dir);
+}

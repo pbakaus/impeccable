@@ -171,22 +171,34 @@ mod unix {
     fn agent(n: u64, mut stream: UnixStream, ext_out: &Mutex<impl Write>, driver: &Mutex<Option<(u64, UnixStream)>>) {
         let mut driving = false;
         while let Ok(Some(frame)) = read_frame(&mut stream, TO_EXTENSION_MAX) {
-            let held_by_other = driver.lock().unwrap().as_ref().is_some_and(|(d, _)| *d != n);
-            if frame["type"] == "probe" {
-                let reply = if held_by_other { json!({ "error": BUSY }) } else { json!({ "type": "ready" }) };
+            // Whether another agent drives, and this one's claim, are decided under one lock: two can't both claim.
+            let admitted = {
+                let mut slot = driver.lock().unwrap();
+                match slot.as_ref() {
+                    Some((d, _)) if *d != n => false,
+                    Some(_) => true,
+                    None if frame["type"] == "probe" => true,
+                    None => match stream.try_clone() {
+                        Ok(writer) => {
+                            *slot = Some((n, writer));
+                            driving = true;
+                            true
+                        }
+                        Err(_) => break,
+                    },
+                }
+            };
+            let reply = match (frame["type"] == "probe", admitted) {
+                (true, true) => Some(json!({ "type": "ready" })),
+                (true, false) => Some(json!({ "error": BUSY })),
+                (false, false) => Some(json!({ "id": frame["id"], "error": BUSY })),
+                (false, true) => None,
+            };
+            if let Some(reply) = reply {
                 if write_frame(&mut stream, &reply, TO_EXTENSION_MAX).is_err() {
                     break;
                 }
                 continue;
-            }
-            if held_by_other {
-                let _ = write_frame(&mut stream, &json!({ "id": frame["id"], "error": BUSY }), TO_EXTENSION_MAX);
-                continue;
-            }
-            if !driving {
-                let Ok(writer) = stream.try_clone() else { break };
-                *driver.lock().unwrap() = Some((n, writer));
-                driving = true;
             }
             if write_frame(&mut *ext_out.lock().unwrap(), &frame, TO_EXTENSION_MAX).is_err() {
                 break;
