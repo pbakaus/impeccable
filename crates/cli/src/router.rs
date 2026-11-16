@@ -23,6 +23,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         return 0;
     };
     let rest = &args[1..];
+    // Chrome starts the binary as the Impeccable extension's native-messaging host, its origin first (REN-2053).
+    if impeccable_mcp::browser::is_extension_origin(verb) {
+        return impeccable_mcp::native_host(args, io);
+    }
     // A small allowlist excludes every hook and internal verb. All I/O beyond
     // the cheap daily gate belongs to a detached process.
     if matches!(
