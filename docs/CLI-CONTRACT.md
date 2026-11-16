@@ -3191,6 +3191,14 @@ and every 30 s). macOS and Linux; on Windows the list is empty for now.
   `since` null and `parent` set to themselves.
 - **Text** prints one line per agent: `<name>  (<harness>, connected|seen, not connected)`,
   or `No agents running.`
+- **Calling it without npx (Loop):** run the cached engine directly:
+  `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable agents running --json`,
+  where `<version>` is the highest semver folder whose `impeccable` (`impeccable.exe`
+  on Windows) has an `impeccable.verified` stamp. The launcher writes that stamp
+  (`<sha256> <size>`) after checking the binary against the release manifest, so a
+  stamp whose size differs from the file's, or that is older than the binary, is not
+  verified. Engines from before this verb answer with a non-zero exit and no JSON
+  array: read that as "this engine has no presence list yet".
 
 ## `mcp` (REN-2053)
 
