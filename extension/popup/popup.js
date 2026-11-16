@@ -120,6 +120,15 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
   }
 });
 
+// The side panel stays open as the person moves from tab to tab (walks/panel/panel.html): it shows the front tab's scan.
+chrome.tabs.onActivated?.addListener(() => {
+  activeTabId = null;
+  clearScan();
+  showLine('');
+  btnScan.disabled = false;
+  void loadState();
+});
+
 btnScan.addEventListener('click', async () => {
   const tab = await getActiveTab();
   if (!tab) return;

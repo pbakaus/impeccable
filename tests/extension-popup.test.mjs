@@ -67,7 +67,8 @@ async function popup({ initial = state(), deferState = false, account, root = SO
           if (message.account) { const answer = account[message.account]; void Promise.resolve(typeof answer === 'function' ? answer(message) : answer ?? { ok: false }).then(callback); return; }
           if (message.action === 'get-state') {
             if (deferState) h.deliverState = callback;
-            else callback(initial);
+            // `initial` may answer per tab: a function of the tab asked about.
+            else callback(typeof initial === 'function' ? initial(message.tabId) : initial);
           }
         },
       },
@@ -82,6 +83,7 @@ async function popup({ initial = state(), deferState = false, account, root = SO
   await tick();
   h.broadcast = message => listeners.message(message);
   h.navigate = change => listeners.updated(7, change);
+  h.activate = async tab => { h.tab = tab; listeners.activated({ tabId: tab.id, windowId: 1 }); await tick(); };
   h.click = id => node(id).listeners.click();
   h.body = body;
   return h;
@@ -148,6 +150,19 @@ for (const [label, change] of [
     assert.match(h.node('scan-error').textContent, /Scan/);
   });
 }
+
+// Catches the side panel's Scan, which stays open across tabs, showing and taking the first tab's findings.
+test('Scan follows the front tab: its saved findings, and only its updates', async () => {
+  const other = 'https://example.test/other';
+  const h = await popup({ initial: tabId => (tabId === 8 ? { findings: [], url: other, scanComplete: true } : state()) });
+  assert.equal(h.node('count-number').textContent, '2');
+  await h.activate({ id: 8, url: other, status: 'complete' });
+  assert.deepEqual([h.node('count-number').textContent, h.node('btn-copy-all').disabled], ['0', false], 'the new tab’s clean scan');
+  h.broadcast({ action: 'findings-updated', tabId: 7, ...state() });
+  assert.equal(h.node('count-number').textContent, '0', 'the tab left behind writes nothing here');
+  h.broadcast({ action: 'findings-updated', tabId: 8, ...state(), url: other });
+  assert.equal(h.node('count-number').textContent, '2');
+});
 
 test('navigation clears results before a same-URL reload completes', async () => {
   const h = await popup();
