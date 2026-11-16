@@ -480,8 +480,7 @@ function fieldReads(point, noSecrets = false) {
   const read = (el) => {
     if (!el)
       return null;
-    const tokens = (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/);
-    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -676,9 +675,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const focused = doc.activeElement;
   if (best.score === 0 && focused && fields.includes(focused))
     best = { el: focused, score: 0 };
-  const tokens = (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/);
-  const secret = best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"));
-  if (noSecrets && secret)
+  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
     return null;
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
@@ -1196,4 +1193,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'fbebeba509b879f9';
+export const HASH = '09ce45f97135455b';
