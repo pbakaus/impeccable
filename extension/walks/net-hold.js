@@ -32,7 +32,7 @@ const WRITES = ['post', 'put', 'patch', 'delete', 'connect', 'other'];
 const EVERY_KIND = { resourceTypes: ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'webtransport', 'webbundle', 'other'] };
 const RECHECK_MS = 250;
 
-/** The tabs that were open when the walk began, besides its own: the person's, left alone. Null when Chrome would not list them. */
+/** The tabs that were open when the walk began, besides its own: the person's, left alone. None when Chrome would not list them. */
 let theirs = [];
 
 /** The walk's sites by name, as a rule takes them: no scheme, no port, no brackets. */
@@ -48,8 +48,7 @@ function wanted() {
   const block = { type: 'block' };
   return [
     { id: FRAMES, priority: 1, action: block, condition: { tabIds: [walk.tabId], excludedInitiatorDomains: sites, requestMethods: WRITES, ...EVERY_KIND } },
-    // Not knowing the person's tabs, ELSEWHERE would block their own: it stays down, and the Fetch hold holds the walked tab as ever.
-    ...(theirs ? [{ id: ELSEWHERE, priority: 1, action: block, condition: { excludedTabIds: [walk.tabId, ...theirs], initiatorDomains: sites, requestMethods: WRITES, ...EVERY_KIND } }] : []),
+    { id: ELSEWHERE, priority: 1, action: block, condition: { excludedTabIds: [walk.tabId, ...theirs], initiatorDomains: sites, requestMethods: WRITES, ...EVERY_KIND } },
   ];
 }
 
@@ -87,9 +86,13 @@ function sync() {
 }
 
 hooks.opened.push(async (tab) => {
-  const open = await Promise.resolve().then(() => chrome.tabs.query({})).catch(() => null);
-  if (!open) console.warn('walk network rules not set', 'tabs');
-  theirs = open?.map((one) => one.id).filter((id) => Number.isInteger(id) && id !== tab.tabId) ?? null;
+  // Asked twice. Still unknown, the person's tabs are not left out: ELSEWHERE is all that holds a form the walk posts
+  // into a new tab, and the site's workers, and a rule cannot leave out tabs it is not told of without letting those
+  // through too. Their tabs on the walk's site then cannot write either while the walk's writes are held.
+  const list = () => Promise.resolve().then(() => chrome.tabs.query({}));
+  const open = (await list().catch(() => null)) ?? (await list().catch(() => null));
+  if (!open) console.warn('walk network rules: the person’s tabs could not be listed', 'tabs');
+  theirs = (open ?? []).map((one) => one.id).filter((id) => Number.isInteger(id) && id !== tab.tabId);
   await sync();
 });
 hooks.closed.push(() => sync());

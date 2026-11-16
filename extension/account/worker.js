@@ -219,7 +219,7 @@ const ANSWERS = {
   create,
   personas,
   async apps() { const apps = await session.apps(); return apps ? { ok: true, apps } : { ok: false, why: 'apps' }; },
-  async journeys() { const journeys = await session.journeys(); return journeys ? { ok: true, journeys } : { ok: false, why: 'journeys' }; },
+  async journeys() { const journeys = await session.journeys(); return journeys ? { ok: true, journeys } : { ok: false, why: (await session.signedIn().catch(() => true)) ? 'journeys' : 'signed-out' }; },
   plan,
   async remove({ slug }) { return session.removePersona(slug); },
   walk,

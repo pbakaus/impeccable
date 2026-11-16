@@ -519,11 +519,15 @@ test('the side panel asks for the personas again until each of the person’s ow
   await wait(60_000);
   assert.equal(asks(h), made + 2, 'every own persona has a face: no more asks');
 
-  // An own persona whose photo never comes: four asks, then none; and none once the panel leaves the home.
-  for (const [label, leave, expected] of [['stays home', null, 4], ['opens History', 'history', 0]]) {
-    const home = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Rosa', role: '', slug: 'rosa', mine: true }, maya] });
+  // An own persona whose photo never comes: four asks, then none, a list that doesn't come included; and none once the panel leaves the home.
+  const down = Promise.reject(new Error('down'));
+  down.catch(() => undefined);
+  for (const [label, leave, expected] of [['stays home', null, 4], ['the list fails', 'fail', 4], ['opens History', 'history', 0]]) {
+    const hold = {};
+    const home = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Rosa', role: '', slug: 'rosa', mine: true }, maya], hold });
     const loaded = asks(home);
-    if (leave) await home.press(leave);
+    if (leave === 'fail') hold.personas = down;
+    else if (leave) await home.press(leave);
     for (const ms of [3000, 6000, 12000, 20000, 60_000]) await wait(ms);
     assert.equal(asks(home) - loaded, expected, label);
   }
@@ -693,12 +697,12 @@ test('the side panel’s History opens from the top row, a row opens its journey
   assert.deepEqual(h.opened, [{ url: HISTORY[1].url, active: true }]);
   await h.press('back');
   assert.equal(h.body.dataset.screen, 'home');
-  // None: the empty line. None read is not none: Try again, which asks again (REN-2073).
-  for (const [journeys, retry] of [[{ ok: true, journeys: [] }, false], [{ ok: false, why: 'journeys' }, true]]) {
+  // None: the empty line. None read is not none: Try again, which asks again, or Sign in again when the sign-in is gone (REN-2073).
+  for (const [journeys, offer] of [[{ ok: true, journeys: [] }, null], [{ ok: false, why: 'journeys' }, 'retry'], [{ ok: false, why: 'signed-out' }, 'sign-in']]) {
     const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: mira, journeys });
     await empty.press('history');
-    assert.deepEqual([empty.app.querySelectorAll('span.dots').length, empty.app.querySelectorAll('button.hist-row').length, empty.app.querySelectorAll('p.task').length, empty.acts().includes('retry')], [0, 0, retry ? 0 : 1, retry]);
-    if (!retry) continue;
+    assert.deepEqual([empty.app.querySelectorAll('span.dots').length, empty.app.querySelectorAll('button.hist-row').length, empty.app.querySelectorAll('p.task').length, ['retry', 'sign-in'].filter((act) => empty.acts().includes(act))], [0, 0, offer ? 0 : 1, offer ? [offer] : []]);
+    if (offer !== 'retry') continue;
     await empty.press('retry');
     for (let n = 0; n < 3; n += 1) await tick();
     assert.deepEqual([empty.sent.filter((m) => m.account === 'journeys').length, empty.acts().includes('retry')], [2, true]);

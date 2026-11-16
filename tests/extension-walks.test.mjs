@@ -1230,18 +1230,24 @@ describe('walk worker', () => {
     }
   });
 
-  it('leaves the person’s tabs alone when Chrome will not list them: only the walked tab’s rule goes up', async (t) => {
+  // A tab list Chrome refuses is asked again; refused twice, the walk's site is held in every other tab rather than let
+  // a form posted into a new tab, or a worker, write (REN-2074).
+  it('asks Chrome for the person’s tabs again, and never leaves new tabs or workers unheld when it cannot list them', async (t) => {
     const { ops, rearm, dispatch } = await walked();
     const { query } = chrome.tabs;
-    chrome.tabs.query = async () => { throw new Error('no tabs'); };
     t.mock.method(console, 'warn', () => undefined);
     try {
-      await ops.close();
-      rearm();
-      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
-      await ops.open({ url: `${SITE}/`, name: 'Mira' });
-      await settle(5);
-      assert.deepEqual(chrome.declarativeNetRequest.rules.map(({ condition }) => condition.tabIds), [[11]]);
+      for (const [fails, spared] of [[1, [4]], [2, []]]) {
+        let asked = 0;
+        chrome.tabs.query = async () => { asked += 1; if (asked <= fails) throw new Error('no tabs'); return [{ id: 4 }, { id: 11 }]; };
+        await ops.close();
+        rearm();
+        dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+        await ops.open({ url: `${SITE}/`, name: 'Mira' });
+        await settle(5);
+        const elsewhere = chrome.declarativeNetRequest.rules.find(({ condition }) => condition.excludedTabIds)?.condition;
+        assert.deepEqual([elsewhere?.excludedTabIds, elsewhere?.initiatorDomains], [[11, ...spared], ['localhost']], `refused ${fails}`);
+      }
     } finally {
       chrome.tabs.query = query;
       await ops.close();

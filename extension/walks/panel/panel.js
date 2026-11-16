@@ -268,7 +268,7 @@ async function loadPersonas() {
  * A persona of the person's own gets its photo drawn on the server after it is made (about 4–25 s): until then it shows
  * its letter. While one has no face and the home or Make a persona shows, the list is asked again after each of these
  * waits, with the faces of those still without one only, and each face that has come is swapped in where its letter
- * is, nothing else redrawn. A list that doesn't come, or the waits running out, leaves the letter, and says nothing.
+ * is, nothing else redrawn. The waits running out leave the letter, and say nothing.
  */
 const FACE_WAITS = [3000, 6000, 12000, 20000];
 /** The waits under way (its timer, kept while its ask is out), and which run it is: a fresh start ends the one before. */
@@ -289,8 +289,8 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
     if (!ownFaceless() || !facesShow()) { faceWait = null; return; }
     const answer = await chrome.runtime.sendMessage({ account: 'personas', url: siteOf(hereUrl), faceless: facelessSlugs() }).catch(() => null);
     if (run !== faceRun) return;
-    if (!answer?.ok) { faceWait = null; facesWaited = true; return; }
-    const faces = new Map(answer.personas.filter((each) => each.mine && each.face).map((each) => [each.slug, each.face]));
+    // A list that didn't come leaves the letters as they are: the next wait asks again.
+    const faces = new Map((answer?.ok ? answer.personas : []).filter((each) => each.mine && each.face).map((each) => [each.slug, each.face]));
     const dressed = (each) => (each?.mine && !each.face && faces.has(each.slug) ? { ...each, face: faces.get(each.slug) } : each);
     if (pre.made) pre.made = dressed(pre.made);
     if (pre.personas) pre.personas = pre.personas.map(dressed);
@@ -469,9 +469,9 @@ function cast() {
   ], { role: 'group', 'aria-label': COPY.home.who }, people);
 }
 
-/** Personas that didn't load: sign in again when the sign-in is gone, else try again. */
-function unloaded() {
-  if (pre.failed !== 'signed-out') return button('retry', COPY.home.retry, 'gold', () => { pre.personas = undefined; render(); void loadPersonas(); });
+/** Personas (or History) that didn't load: sign in again when the sign-in is gone, else try again. */
+function unloaded(why = pre.failed, retry = () => { pre.personas = undefined; render(); void loadPersonas(); }) {
+  if (why !== 'signed-out') return button('retry', COPY.home.retry, 'gold', retry);
   const again = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'sign-in', text: COPY.home.signIn, onclick: () => { void signIn(again); } });
   return again;
 }
@@ -816,6 +816,7 @@ function loadHistory() {
     pre.history = undefined;
     const answer = await chrome.runtime.sendMessage({ account: 'journeys' }).catch(() => null);
     pre.history = answer?.ok ? answer.journeys : null;
+    pre.historyWhy = answer?.ok ? null : answer?.why ?? null;
     if (pre.screen === 'history') render();
   })().finally(() => { historyLoad = null; });
   return historyLoad;
@@ -827,7 +828,7 @@ function history() {
   const head = [top(hereUrl, { back: () => goHome() }), el('h2', { class: 'hd hist-hd', text: COPY.history.title })];
   if (items === undefined) return [...head, el('div', { class: 'mid' }, dots())];
   // Not read is not none: said as the home says personas that didn't load, and asked again.
-  if (items === null) return [...head, el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.history.failed }), button('retry', COPY.home.retry, 'gold', () => { void loadHistory(); render(); }))];
+  if (items === null) return [...head, el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.history.failed }), unloaded(pre.historyWhy, () => { void loadHistory(); render(); }))];
   if (!items.length) return [...head, el('div', { class: 'mid' }, el('p', { class: 'task', text: COPY.history.none }))];
   return [...head, el('ul', { class: 'hist scrolls', 'aria-label': COPY.history.title }, items.map((one, i) => el('li', {},
     el('button', { type: 'button', class: 'hist-row', 'data-act': `journey-${i}`, 'data-outcome': one.outcome,
@@ -864,6 +865,8 @@ async function signIn(control) {
   signInFailed = answer?.ok !== true;
   if (!signInFailed) account = answer.available === true ? answer : null;
   if (account?.signedIn === true) void loadPersonas();
+  // History that couldn't be read for want of a sign-in is asked again too.
+  if (account?.signedIn === true && pre.history === null) void loadHistory();
   // Only a sign-in that worked, to an account with Pro, says so ("Sign in again" runs while `account` still says signed in).
   if (!signInFailed && account?.signedIn === true && account.pro !== false) connect();
   render();
