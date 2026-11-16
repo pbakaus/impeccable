@@ -857,20 +857,23 @@ describe('walk worker', () => {
     });
   }
 
-  // A script `seal` could not take off may still be on the tab. Each row: how many times Chrome refuses to take it off.
-  for (const [refusals, going] of [
+  // A script `seal` could not take off may still be on the tab. Each row: how many times Chrome refuses to take it off,
+  // and what it says.
+  for (const [refusals, said, going] of [
     // Catches: one failed removal ending the walk, where asking again took it off.
-    [1, true],
+    [1, 'Internal error', true],
     // Catches: the walk going on with a script of the server's possibly still on (a failed removal swallowed).
-    [3, false],
+    [3, 'Internal error', false],
+    // Catches: a script Chrome no longer has (its debugger gone and back) keeping the walk paused for good.
+    [Infinity, 'Script not found', true],
   ]) {
-    it(`goes on after a sign-in only once the server’s scripts are off: ${refusals} refused (REN-2052)`, async () => {
+    it(`goes on after a sign-in only once the server’s scripts are off: ${refusals} refused, “${said}” (REN-2052)`, async () => {
       const { ops, command, current } = await walked();
       page.seen = {};
       fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `stuck-${(navigations += 1)}`, url: `http://localhost:3000/stuck-${navigations}` } });
       const { identifier } = (await ops.evaluateOnNewDocument({ fn: `() => ${navigations}`, args: [] })).value;
       let refused = 0;
-      answers['Page.removeScriptToEvaluateOnNewDocument'] = (p) => { if (p.identifier === identifier && (refused += 1) <= refusals) throw new Error('Internal error'); return {}; };
+      answers['Page.removeScriptToEvaluateOnNewDocument'] = (p) => { if (p.identifier === identifier && (refused += 1) <= refusals) throw new Error(JSON.stringify({ code: -32000, message: said })); return {}; };
       try {
         page.seen = { password: true };
         const shot = ops.screenshot({ format: 'png' });
@@ -891,6 +894,69 @@ describe('walk worker', () => {
       }
     });
   }
+
+  // The server's scripts go back on after a sign-in whatever goes wrong on the way, each exactly once, and never
+  // before `window.name` is cleared. Each row: the trouble, set after Continue, and whether the first op after is refused.
+  for (const [row, trouble, refused] of [
+    // Catches: an unreadable page leaving the scripts off, every later page-start script refused as Paused.
+    ['the page cannot be read', () => { page.seen = null; }, false],
+    // Catches: scripts put back before a failed one added a second time, the first copies never taken off.
+    ['an add fails partway', (last) => { const add = answers['Page.addScriptToEvaluateOnNewDocument']; answers['Page.addScriptToEvaluateOnNewDocument'] = (p) => { if (p.source === last) { answers['Page.addScriptToEvaluateOnNewDocument'] = add; throw new Error('Internal error'); } return add(p); }; }, true],
+    // Catches: the scripts put back with a copy left in `window.name` for them to read.
+    ['window.name cannot be cleared', () => { const was = answers['Runtime.evaluate']; answers['Runtime.evaluate'] = (p) => { if (p.contextId !== undefined) return was(p); answers['Runtime.evaluate'] = was; throw new Error('Cannot find context with specified id'); }; }, true],
+  ]) {
+    it(`puts the server’s scripts back once after a sign-in when ${row} (REN-2052)`, async () => {
+      const { ops, command, dispatch, walk } = await walked();
+      const kept = { ...answers };
+      page.seen = {};
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `rough-${(navigations += 1)}`, url: `http://localhost:3000/rough-${navigations}` } });
+      for (const n of [1, 2]) await ops.evaluateOnNewDocument({ fn: `() => 'rough${navigations}-${n}'`, args: [] });
+      const { source: last } = args[sent.lastIndexOf('Page.addScriptToEvaluateOnNewDocument')];
+      const at = sent.length;
+      try {
+        assert.ok(dispatch({ type: 'pause', why: 'sign-in' }));
+        assert.equal(await command('resume'), true);
+        trouble(last);
+        const first = await ops.url().then(() => 'ok', (err) => err.name);
+        assert.equal(first === 'ok', !refused, `first op: ${first}`);
+        if (refused) assert.ok(walk.newDocument.some((script) => !script.identifier), 'not all back on yet');
+        page.seen = {};
+        await ops.url();
+        // Asked for: the failed add of the last one asked again, every other once.
+        const asked = walk.newDocument.map(({ source }) => args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument' && p.source === source).length);
+        assert.deepEqual(asked, walk.newDocument.map(({ source }) => (row === 'an add fails partway' && source === last ? 2 : 1)), 'each back on, once');
+        assert.ok(walk.newDocument.every((script) => script.identifier), 'all on');
+      } finally {
+        Object.assign(answers, kept);
+        page.seen = {};
+        moveOff();
+      }
+    });
+  }
+
+  // Catches: a page-start script run in the sign-in page a redirect landed on while they were being run.
+  it('runs the server’s scripts once in a page that started without them only while the tab is still on it (REN-2052)', async () => {
+    const { ops, command, dispatch } = await walked();
+    const { world, done } = inWindow();
+    try {
+      page.seen = {};
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `hop-${(navigations += 1)}`, url: `http://localhost:3000/hop-${navigations}` } });
+      await ops.evaluateOnNewDocument({ fn: '() => { window.a = (window.a ?? 0) + 1; window.hop(); }', args: [] });
+      await ops.evaluateOnNewDocument({ fn: '() => { window.b = (window.b ?? 0) + 1; }', args: [] });
+      world.hop = () => {};
+      assert.ok(dispatch({ type: 'pause', why: 'sign-in' }));
+      // The person signs in on a page of its own, which started with the scripts off.
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `signed-${navigations}`, url: `http://localhost:3000/hop-${navigations}/home` } });
+      assert.equal(await command('resume'), true);
+      // The first script sends the tab on (a redirect to a sign-in) while the walk runs them.
+      world.hop = () => fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `redirect-${navigations}`, url: 'http://localhost:3000/signin' } });
+      await ops.url();
+      assert.deepEqual([world.a, world.b], [1, undefined]);
+    } finally {
+      done();
+      moveOff();
+    }
+  });
 
   // Catches: the server's scripts put back on a sign-in page the walk reached right after Continue.
   it('keeps the server’s scripts off while a sign-in shows after Continue, and puts them back once (REN-2052)', async () => {
