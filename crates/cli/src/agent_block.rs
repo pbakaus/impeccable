@@ -109,13 +109,16 @@ fn remove(text: &str, start: &str, end: &str) -> Result<Option<String>> {
         return Ok(None);
     };
     let mut after = &text[b..];
+    // A block that ends the file with no line break was appended to a file that had
+    // none: the whole separator before it goes, so that file gets its bytes back too.
+    let unbroken = after.is_empty();
     after = after.strip_prefix("\r\n").or_else(|| after.strip_prefix('\n')).unwrap_or(after);
     // One blank line before the block goes with it, wherever it stands, as with the
     // agents engine's own block: the two may end up in either order in the same file.
     let mut before = &text[..a];
     for sep in ["\r\n\r\n", "\n\n"] {
         if before.ends_with(sep) {
-            before = &before[..before.len() - sep.len() / 2];
+            before = &before[..before.len() - if unbroken { sep.len() } else { sep.len() / 2 }];
             break;
         }
     }
@@ -154,14 +157,18 @@ pub(crate) fn with_switches(text: &str, on: &[&str]) -> Result<String> {
     if let Some((a, b)) = span(&out, START, END)? {
         return Ok(format!("{}{block}{}", &out[..a], &out[b..]));
     }
+    // A file without a final line break keeps having none, after the block.
+    let unbroken = !out.is_empty() && !out.ends_with('\n');
     if !out.is_empty() {
-        if !out.ends_with('\n') {
+        if unbroken {
             out.push_str(nl);
         }
         out.push_str(nl);
     }
     out.push_str(&block);
-    out.push_str(nl);
+    if !unbroken {
+        out.push_str(nl);
+    }
     Ok(out)
 }
 
@@ -514,13 +521,12 @@ mod tests {
 
     #[test]
     fn appending_then_removing_gives_back_the_same_bytes() {
-        for original in ["", "mine\n", "mine", "a\n\nb\n", "a\r\nb\r\n"] {
+        // Catches (REN-2056): a file without a final line break gaining one after a connect and disconnect.
+        for original in ["", "mine\n", "mine", "a\n\nb\n", "a\r\nb\r\n", "a\r\nb", "a\n\nb"] {
             let with = with_switches(original, &["taste"]).unwrap();
             assert_eq!(with.matches(START).count(), 1, "{original:?}");
             assert_eq!(with_switches(&with, &["taste"]).unwrap(), with, "idempotent for {original:?}");
-            let back = with_switches(&with, &[]).unwrap();
-            let expected = if original == "mine" { "mine\n" } else { original };
-            assert_eq!(back, expected, "{original:?}");
+            assert_eq!(with_switches(&with, &[]).unwrap(), original, "{original:?}");
         }
     }
 
