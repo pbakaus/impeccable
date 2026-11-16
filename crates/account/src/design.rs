@@ -518,7 +518,7 @@ mod notice_regressions {
         after_scan(&mut io, &scan, true);
         assert!(cap.stderr.borrow().is_empty());
         after_scan(&mut io, &scan, false);
-        assert!(String::from_utf8_lossy(&cap.stderr.borrow()).contains("Uploaded your DESIGN.md"));
+        assert!(String::from_utf8_lossy(&cap.stderr.borrow()).contains("Saved your DESIGN.md"));
         let first = cap.stderr.borrow().clone();
         after_scan(&mut io, &scan, false);
         assert_eq!(*cap.stderr.borrow(), first);

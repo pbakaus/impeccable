@@ -251,7 +251,7 @@ Examples:
      - listening & matched: `\n${name} dev server detected on localhost:${port}.\nFor more accurate results, scan the running site:\n  npx impeccable detect http://localhost:${port}\n\n`
      - listening & !matched: `\n${name} project detected (${basename(configPath)}).\nPort ${port} is in use by another service. Start the ${name} dev server and scan via URL for best results.\n\n`
      - not listening: `\n${name} project detected (${basename(configPath)}).\nStart the dev server and scan via URL for best results:\n  npx impeccable detect http://localhost:${port}\n\n`
-     Then `files = walkDir(resolved, config.extensions).filter(f => !shouldIgnoreDetectionFile(f, cwd, config))`. The walk collects built-in scannable extensions plus any `detector.extensions` from cwd config (empty under `--no-config`). If `files.length > 50 && stdin.isTTY && !json && !quiet && !github && !sarif`: `stderr> \nFound ${n} files (${htmlCount} HTML) in ${target}.\nScanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\nTarget a specific subdirectory to narrow scope.\n` then readline prompt `Continue? [Y/n] ` on stderr; empty or `/^y(es)?$/i` continues; otherwise `stderr> Aborted.\n`, `exit 0`. Then `buildImportGraph(files)` → reverse map; each file scanned with its own options; findings from a file that is imported get `f.importedBy = [basename(importer), ...]` (Set iteration order). 
+     Then `files = walkDir(resolved, config.extensions).filter(f => !shouldIgnoreDetectionFile(f, cwd, config))`. The walk collects built-in scannable extensions plus any `detector.extensions` from cwd config (empty under `--no-config`). If `(files.length > 500 || htmlCount > 50) && stdin.isTTY && !json && !quiet && !github && !sarif`: `stderr> \nFound ${n} files (${htmlCount} HTML) in ${place}.` (`place` is `this folder` for a target of `.` or `./`, else the target)`\nScanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\nTarget a specific subdirectory to narrow scope.\n` then readline prompt `Continue? [Y/n] ` on stderr; empty or `/^y(es)?$/i` continues; otherwise `stderr> Aborted.\n`, `exit 0`. Then `buildImportGraph(files)` → reverse map; each file scanned with its own options; findings from a file that is imported get `f.importedBy = [basename(importer), ...]` (Set iteration order). 
    - **File**: skipped if `shouldIgnoreDetectionFile`; else `detectLocalFile`.
    - `detectLocalFile(fp, opts)`: a configured `detector.extensions` entry matching the file (longest suffix) picks the engine (`html` → `detectHtml(fp, opts)`, `text` → `detectText`); otherwise extension (lowercased) in `HTML_EXTENSIONS = {'.html','.htm'}` → `detectHtml(fp, opts)`; else `detectText(readFileSync(fp,'utf-8'), fp, opts)`. The design hook uses the same rule.
    - **Linked stylesheets (#1087)**: the static HTML engine reads every local `<link rel=stylesheet>` for the cascade, but a linked sheet that `detector.ignoreFiles` waives is left out of the page-level pattern scan, so a pattern found only in that sheet is no longer reported under the page at line 0. Element rules still apply its styles through the cascade, and sheets that are not waived join the pattern scan as before. The design hook waives linked sheets the same way, matching each one the way it matches the edited file.
@@ -2420,13 +2420,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `quiet` marked so), `Not connected yet: ...` (`off`, and `needs-pro`
   marked `(Pro)`), the agent place's `fix.line` when the service sets one
   (what a machine reported, such as an unfinished change), and
-  `Next: <label>[: <command or https url>]` from the service's `next`. The places print in the service's order under the names
+  `Next: <label>[: <command>]`, or `Next: <label>:` with the https url alone on the next line, from the service's `next`. The places print in the service's order under the names
   Your agent, Agent tools, Loop, Chrome extension and GitHub pull requests;
   an unknown kind prints as sent, and an `unavailable` place or an unknown
   state is left out. The CLI never computes a next step and never rewrites a
   label. Control characters in the service's strings are dropped, and a url
   that isn't https is not shown.
-- After a successful `impeccable login`, the same lines follow on stderr
+- After a successful `impeccable login`, the same lines follow on stderr after a blank line
   (stdout keeps only the sign-in link with `--no-browser`). A failed read
   prints nothing more and login still exits 0.
 
@@ -2485,8 +2485,10 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   agent found on this machine is not fully connected (`loop status` row not
   `connected` with MCP, hooks and instruction in place), login offers that
   step for the agents still waiting, named as `Claude Code`, `Codex` or
-  `Claude Code and Codex`. A person at a terminal is asked `Loop is installed.
-  Connect <agents> to it now? [Y/n]` (Enter means yes; no prints `Later:
+  `Claude Code and Codex`. A person at a terminal is asked, after a blank line, `Loop is installed.
+  Connect <agents> to it, so their questions reach you in Loop?` then `Enter
+  connects them[ to <account>]; n skips. [Y/n]` (`to <account>` names an
+  account other than production, as `Signed in to` does; no prints `Later:
   impeccable loop connect`); otherwise nothing is changed and login prints
   `Loop is installed. Connect <agents> to it: impeccable loop connect`. All of
   it goes to stderr, after the setup lines. A yes connects as `loop connect`
@@ -2940,8 +2942,8 @@ Exact stderr lines:
 
 - `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
 - `Git didn't answer in time, so nothing was scanned. Run impeccable detect here to add this repository to your account.` when `git rev-parse` gets no answer within 2 seconds.
-- `Scanning this repository for your account (Ctrl-C skips it)...`
-- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. See it on your Home: {home}` for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), and `... Find it under Repositories in your Impeccable account.` for any other.
+- `Scanning this repository for your account (Ctrl-C skips it)...`, after a blank line
+- `Added this repository to your account: {n findings} in {files} files.`, then `Sent its name, finding counts and foundations checks, never your code or file names.`, then `See it in Foundations:` and `{home}/-/foundations` alone on the next line for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), or `Find it under Foundations in your Impeccable account.` for any other.
 - `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`
 - `Couldn't scan this repository. Run impeccable detect here to add it to your account.`
 
@@ -2967,7 +2969,7 @@ Exact output strings:
 - `DESIGN.md sync: couldn't save the setting: {e}.`
 - `DESIGN.md sync: couldn't save the setting: another impeccable command is using it; try again.`
 - `Design health: couldn't save the setting: another impeccable command is using it; try again.`
-- `Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off`
+- `Saved your DESIGN.md to your account, and again whenever it changes.` then `To stop: impeccable health design off`
 
 `impeccable health design on` opts into uploading DESIGN.md file contents;
 `impeccable health design off` stops those uploads. The setting is `design`
@@ -3048,7 +3050,7 @@ Exact output strings:
 - `Critique sync: couldn't save the setting.`
 - `Critique history deleted; sync is off.`
 - `Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.`
-- `Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off`
+- `Saved this critique report to your account, and each one you save after it.` then `To stop: impeccable critiques off` (an audit report: `Saved this audit report ...`)
 
 `impeccable critiques [status|on|off|forget]` manages the local
 `IMPECCABLE_HOME/critiques.json` setting. The default is on
@@ -3166,6 +3168,44 @@ IMPECCABLE_NO_TASTE suppresses both the context block and scheduling when it
 is non-empty and neither 0 nor false (false is case-insensitive). With no
 cache, context's existing output remains unchanged.
 
+## `agents running` (REN-2124)
+
+`impeccable agents running [--json]` lists the agent sessions running on this
+machine, for Loop (which reads it on FSEvents under `<IMPECCABLE_HOME>/running/`
+and every 30 s). macOS and Linux; on Windows the list is empty for now.
+
+- **Connected:** each running `impeccable mcp` writes `<IMPECCABLE_HOME>/running/<pid>.json`
+  (folder 0700, file 0600) at `initialize` and removes it when it ends. The record
+  holds `pid` and `start` (its start time as `ps -o lstart` gives it, `LC_ALL=C`),
+  `parent` (`{pid, start}` of the harness process: the first ancestor that isn't
+  node, npm, npx, bun or a shell), `harness` (the agent's `clientInfo.name`),
+  `session` (the harness's session name from its `--name`/`-n` argument: the words
+  up to the next option, since `ps` splits a quoted name), `from`
+  (the session's own name, once a Needs-you call gives one), `cwd`, `repo`
+  (`{key, label}`: the health upload's repository key) and `since` (Unix seconds).
+- **Dead records:** a record whose `pid` is gone, or now has another start time, is a
+  crashed session. The reader removes it, so a killed session is gone at the next read.
+  When `ps` itself fails, nothing is removed and the list is empty.
+- **Seen, not connected:** a running `claude`, `codex`, `pi`, `cursor-agent`,
+  `antigravity`, `gemini` or `opencode` process (by program, or the script `node`
+  runs) that no record names as its parent, and whose own parent isn't one.
+- **`--json`** prints one array: `[{key, name, harness, repo, cwd, pid, parent, since, connected}]`.
+  `key` is `<pid>@<start>`. `name` is `from`, else `session`, else
+  `<repo label> · <harness>`, else the harness. Seen agents have `repo`, `cwd` and
+  `since` null and `parent` set to themselves.
+- **Text** prints one line per agent: `<name>  (<harness>, connected|seen, not connected)`,
+  or `No agents running.`
+- Any argument other than `--json` prints `Usage: impeccable agents running [--json]`
+  on stderr and exits 2.
+- **Calling it without npx (Loop):** run the cached engine directly:
+  `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable agents running --json`,
+  where `<version>` is the highest semver folder whose `impeccable` (`impeccable.exe`
+  on Windows) has an `impeccable.verified` stamp. The launcher writes that stamp
+  (`<sha256> <size>`) after checking the binary against the release manifest, so a
+  stamp whose size differs from the file's, or that is older than the binary, is not
+  verified. Engines from before this verb answer with a non-zero exit and no JSON
+  array: read that as "this engine has no presence list yet".
+
 ## `mcp` (REN-2053)
 
 `impeccable mcp` is the one Impeccable MCP server a coding agent runs, over
@@ -3261,5 +3301,6 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   was already in place. Failures are named and never fail install or update.
   Nothing is written on Windows.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
-  write, personas, Taste, journeys) only when the service's metadata says
-  `impeccable_cli_mcp: true`, and only those it lists.
+  write, personas, Taste, journeys, `artifacts:write`) only when the service's
+  metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in
+  made before the service listed a scope signs in again on the next `login`.

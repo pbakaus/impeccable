@@ -118,7 +118,11 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "walkthrough" => crate::walkthrough::run(rest, io),
         // The one MCP server an agent runs, over stdio (REN-2053). Never schedules a report: it serves for the agent's whole session.
         "mcp" => impeccable_mcp::run(rest, io),
-        "agents" => impeccable_agents::run(rest, io),
+        // `running` lists the agent sessions running now (REN-2124), beside the engine's own protocol verbs.
+        "agents" => match rest.split_first() {
+            Some((sub, more)) if sub == "running" => impeccable_mcp::presence::run(more, io),
+            _ => impeccable_agents::run(rest, io),
+        },
         "install" => {
             let code = impeccable_skills::run(args, io);
             // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
@@ -320,7 +324,7 @@ pub(crate) fn scan_after_login(
     if health::first_scan_done(&io.env, &root) {
         return "already";
     }
-    io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
+    io.err("\nScanning this repository for your account (Ctrl-C skips it)...\n");
     let _ = io.stderr.flush();
     let started = std::time::SystemTime::now();
     let mut report = None;
@@ -360,12 +364,12 @@ pub(crate) fn scan_after_login(
     if recorded {
         // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
-            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            Some(url) => format!("See it in Foundations:\n{url}/-/foundations"),
             None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
         let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
         io.err(&format!(
-            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}.\nSent {sent} and foundations checks, never your code or file names.\n{find}\n"
         ));
     } else {
         io.err(&format!(

@@ -41,9 +41,9 @@ pub struct Metadata {
     pub mcp: Vec<&'static str>,
 }
 
-/// What `impeccable mcp` proxies: Needs you, personas, Taste and journeys.
+/// What `impeccable mcp` proxies: Needs you, personas, Taste, journeys and artifacts (REN-2123).
 /// Never answering or signing keys, which stay with Impeccable Loop.
-pub const MCP_SCOPES: [&str; 7] = [
+pub const MCP_SCOPES: [&str; 8] = [
     "needs-you:read",
     "needs-you:write",
     "personas:read",
@@ -51,6 +51,7 @@ pub const MCP_SCOPES: [&str; 7] = [
     "taste:read",
     "taste:write",
     "journeys:start",
+    "artifacts:write",
 ];
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must

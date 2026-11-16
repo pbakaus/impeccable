@@ -256,10 +256,11 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             synced.health = true;
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
-                io.err(&format!(
-                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                    account.display_host()
-                ));
+                // In the person's words, not a feature's name: what was kept, where, and how to stop.
+                // A sign-in other than production's names its account (as the Loop question does); Home only where one is hosted.
+                let whose = if account.issuer == crate::config::DEFAULT_ACCOUNT_URL { "your account".to_string() } else { format!("your {} account", account.display_name()) };
+                let trend = if account.home_url().is_some() { "so Home shows this repository's trend" } else { "so you can follow this repository's trend" };
+                io.err(&format!("Saved this scan's counts to {whose}, {trend}. Never your code or file names.\nTo stop: impeccable health off\n"));
                 let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
@@ -608,6 +609,12 @@ impl Repo {
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
     git_with_timeout(dir, args, GIT_DEADLINE)
+}
+
+/// The repository at `root` as the service keys it (SHA-256 of its normalized origin, as every upload sends) and
+/// its label: what an agent's presence record names its repository by (REN-2124).
+pub fn repo_key(root: &str, env: &std::collections::HashMap<String, String>) -> Option<(String, Option<String>)> {
+    critique_repo(root, env)
 }
 
 /// Critiques use the same repo identity, including for native projects and subdirectories.

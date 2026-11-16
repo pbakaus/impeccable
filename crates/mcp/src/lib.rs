@@ -14,6 +14,7 @@
 //! URL is ever written to either.
 pub mod browser;
 pub mod host_setup;
+pub mod presence;
 
 use impeccable_account::{config::Account, http::ApiError, session::{Session, SessionError}};
 use impeccable_common::Io;
@@ -63,7 +64,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut upstream = service(io.env.clone(), browser, Box::new(open_browser));
     let socket = browser::socket_path(&io.env);
     let stdin = std::io::stdin();
-    serve_with(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream, socket.as_deref());
+    let here = (io.env.clone(), io.cwd.clone());
+    serve_session(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream, socket.as_deref(), Some((&here.0, &here.1)));
     0
 }
 
@@ -94,7 +96,21 @@ pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upst
 
 /// `serve`, with the browser relay's socket: its tools are listed while the relay is up and free, and called over it.
 pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream, socket: Option<&std::path::Path>) {
+    serve_session(input, out, err, upstream, socket, None);
+}
+
+/// `serve_with`, and with `here` (the environment and working folder) this session's presence record (REN-2124):
+/// written at `initialize`, named by the first Needs-you call that names itself, removed when the session ends.
+pub fn serve_session(
+    input: impl BufRead,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    upstream: &mut dyn Upstream,
+    socket: Option<&std::path::Path>,
+    here: Option<(&std::collections::HashMap<String, String>, &std::path::Path)>,
+) {
     let mut agent: Option<String> = None;
+    let mut presence: Option<presence::Presence> = None;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
     // Which relay socket was there at the last tools/list (its device, inode and change time, so a relay
@@ -113,6 +129,13 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
         };
         if request.get("method").and_then(Value::as_str) == Some("initialize") {
             agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
+            if let (Some((env, cwd)), None) = (here, &presence) {
+                presence = presence::Presence::start(env, agent.as_deref().unwrap_or("agent"), cwd);
+            }
+        }
+        // The name the session gives itself, before a missing one is filled with the harness's.
+        if let (Some(p), Some(from)) = (presence.as_mut(), named_by(&request)) {
+            p.named(&from);
         }
         asked_as(&mut request, agent.as_deref());
         if listed_with.is_some_and(|was| was != relay_there()) {
@@ -152,6 +175,16 @@ fn agent_label(name: &str) -> String {
 
 /// Every agent on this machine shares the CLI's one sign-in, so a Needs-you call that doesn't name its session is
 /// named for the agent that made it (its `clientInfo.name`): Claude Code and Codex keep their own questions.
+/// The `from` a Needs-you call names itself with, if any.
+fn named_by(request: &Value) -> Option<String> {
+    if request.get("method").and_then(Value::as_str) != Some("tools/call")
+        || !request.pointer("/params/name").and_then(Value::as_str).is_some_and(|n| n.starts_with("needs_you."))
+    {
+        return None;
+    }
+    request.pointer("/params/arguments/from").and_then(Value::as_str).filter(|f| !f.trim().is_empty()).map(str::to_string)
+}
+
 fn asked_as(request: &mut Value, agent: Option<&str>) {
     let Some(agent) = agent.filter(|a| !a.trim().is_empty()) else { return };
     if request.get("method").and_then(Value::as_str) != Some("tools/call") {

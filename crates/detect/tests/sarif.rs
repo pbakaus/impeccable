@@ -472,12 +472,12 @@ fn run_tty(dir: &Path, args: &[&str]) -> (i32, String, String) {
 fn sarif_skips_the_large_scan_prompt() {
     let dir = temp("many");
     std::fs::create_dir_all(&dir).unwrap();
-    for i in 0..51 {
+    for i in 0..501 {
         std::fs::write(dir.join(format!("f{i}.css")), "body { margin: 0; }\n").unwrap();
     }
     let (code, _out, err) = run_tty(&dir, &["--no-config", "--sarif", "."]);
     assert_eq!(code, 0, "{err}");
-    assert!(!err.contains("Found 51 files"), "{err}");
+    assert!(!err.contains("Found 501 files"), "{err}");
     assert!(!err.contains("Continue?"), "{err}");
     std::fs::remove_dir_all(&dir).unwrap();
 }

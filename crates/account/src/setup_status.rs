@@ -58,14 +58,13 @@ fn place_name(kind: &str) -> String {
 /// One step as the service wrote it: its label, then what to run or open.
 fn step_line(step: &Value) -> Option<String> {
     let label = step["label"].as_str().map(clean).filter(|l| !l.is_empty())?;
-    let action = step["command"]
-        .as_str()
-        .or_else(|| step["url"].as_str().filter(|u| u.starts_with("https://")))
-        .map(clean)
-        .filter(|a| !a.is_empty());
-    Some(match action {
-        Some(a) => format!("{label}: {a}"),
-        None => label.to_string(),
+    let command = step["command"].as_str().map(clean).filter(|a| !a.is_empty());
+    let url = step["url"].as_str().filter(|u| u.starts_with("https://")).map(clean).filter(|a| !a.is_empty());
+    // A command reads inline; a link goes on a line of its own, where a wrap can't split it inside the sentence.
+    Some(match (command, url) {
+        (Some(c), _) => format!("{label}: {c}"),
+        (None, Some(u)) => format!("{label}:\n{u}"),
+        (None, None) => label.to_string(),
     })
 }
 
@@ -144,7 +143,8 @@ pub fn print(io: &mut Io, v: &Value) {
     if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
         NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
     }
-    io.err(&text);
+    // Set apart from the sign-in lines above it.
+    io.err(&format!("\n{text}"));
 }
 
 /// Whether the answer's plan includes Loop: Pro, Team and Enterprise do, Free doesn't.
@@ -244,7 +244,8 @@ mod tests {
             lines(&example()),
             "Connected: Your agent, Loop (quiet), telepathy.\n\
              Not connected yet: Agent tools, Chrome extension (Pro).\n\
-             Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"
+             Next: Add to GitHub:\n\
+             https://github.com/apps/impeccable-critique/installations/new\n"
         );
     }
 
@@ -289,7 +290,7 @@ mod tests {
     fn a_server_string_never_carries_a_terminal_escape() {
         let mut v = example();
         v["next"]["label"] = "Add\u{1b}[31m to\nGitHub".into();
-        assert!(lines(&v).ends_with("Next: Add[31m toGitHub: https://github.com/apps/impeccable-critique/installations/new\n"));
+        assert!(lines(&v).ends_with("Next: Add[31m toGitHub:\nhttps://github.com/apps/impeccable-critique/installations/new\n"));
     }
 
     #[test]
