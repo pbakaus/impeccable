@@ -3169,19 +3169,21 @@ cache, context's existing output remains unchanged.
 ## `agents running` (REN-2124)
 
 `impeccable agents running [--json]` lists the agent sessions running on this
-machine, for Loop (which reads it on FSEvents under `<IMPECCABLE_HOME>/agents/`
+machine, for Loop (which reads it on FSEvents under `<IMPECCABLE_HOME>/running/`
 and every 30 s). macOS and Linux; on Windows the list is empty for now.
 
-- **Connected:** each running `impeccable mcp` writes `<IMPECCABLE_HOME>/agents/<pid>.json`
+- **Connected:** each running `impeccable mcp` writes `<IMPECCABLE_HOME>/running/<pid>.json`
   (folder 0700, file 0600) at `initialize` and removes it when it ends. The record
   holds `pid` and `start` (its start time as `ps -o lstart` gives it, `LC_ALL=C`),
   `parent` (`{pid, start}` of the harness process: the first ancestor that isn't
   node, npm, npx, bun or a shell), `harness` (the agent's `clientInfo.name`),
-  `session` (the harness's session name from its `--name`/`-n` argument), `from`
+  `session` (the harness's session name from its `--name`/`-n` argument: the words
+  up to the next option, since `ps` splits a quoted name), `from`
   (the session's own name, once a Needs-you call gives one), `cwd`, `repo`
   (`{key, label}`: the health upload's repository key) and `since` (Unix seconds).
 - **Dead records:** a record whose `pid` is gone, or now has another start time, is a
   crashed session. The reader removes it, so a killed session is gone at the next read.
+  When `ps` itself fails, nothing is removed and the list is empty.
 - **Seen, not connected:** a running `claude`, `codex`, `pi`, `cursor-agent`,
   `antigravity`, `gemini` or `opencode` process (by program, or the script `node`
   runs) that no record names as its parent, and whose own parent isn't one.
@@ -3191,6 +3193,8 @@ and every 30 s). macOS and Linux; on Windows the list is empty for now.
   `since` null and `parent` set to themselves.
 - **Text** prints one line per agent: `<name>  (<harness>, connected|seen, not connected)`,
   or `No agents running.`
+- Any argument other than `--json` prints `Usage: impeccable agents running [--json]`
+  on stderr and exits 2.
 - **Calling it without npx (Loop):** run the cached engine directly:
   `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable agents running --json`,
   where `<version>` is the highest semver folder whose `impeccable` (`impeccable.exe`
