@@ -540,6 +540,7 @@ dependencies = [
  "impeccable-hook",
  "impeccable-html",
  "impeccable-live",
+ "impeccable-mcp",
  "impeccable-skills",
  "libc",
  "regex",
@@ -761,6 +762,20 @@ dependencies = [
  "sha1",
  "sha2",
  "ureq",
+]
+
+[[package]]
+name = "impeccable-mcp"
+version = "0.1.25"
+dependencies = [
+ "base64",
+ "impeccable-account",
+ "impeccable-common",
+ "ring",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "url",
 ]
 
 [[package]]

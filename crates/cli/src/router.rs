@@ -100,6 +100,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "switches" => crate::agent_block::run(rest, io),
         "switches-refresh" => crate::switch_sync::run_refresh(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
+        // The one MCP server an agent runs, over stdio (REN-2053). Never schedules a report: it serves for the agent's whole session.
+        "mcp" => impeccable_mcp::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "install" => {
             let code = impeccable_skills::run(args, io);
@@ -413,6 +415,7 @@ const KNOWN_VERBS: &[&str] = &[
     "switches",
     "switches-refresh",
     "walkthrough",
+    "mcp",
     "skills",
     "help",
     "install",

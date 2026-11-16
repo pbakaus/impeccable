@@ -34,6 +34,8 @@ pub struct Knobs {
     pub critiques_denied: bool,
     /// `scopes_supported` lists `worlds:read`.
     pub worlds: bool,
+    /// The service's CLI sign-in also serves /mcp (`impeccable_cli_mcp`), listing the MCP scopes.
+    pub cli_mcp: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -332,8 +334,14 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         if k.worlds { scopes.push("worlds:read"); }
+                        if k.cli_mcp {
+                            for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start"] {
+                                if !scopes.contains(&s) { scopes.push(s); }
+                            }
+                        }
                         scopes
                     }),
+                    "impeccable_cli_mcp": knobs.lock().unwrap().cli_mcp,
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -349,9 +357,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiques:write" => k.critiques,
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
-                        "taste:read" => k.taste,
+                        "taste:read" => k.taste || k.cli_mcp,
                         "design:write" => k.design,
                         "worlds:read" => k.worlds,
+                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" => k.cli_mcp,
                         _ => false,
                     })
                 };

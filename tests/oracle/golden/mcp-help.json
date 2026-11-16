@@ -1,0 +1,7 @@
+{
+  "stdout": "impeccable mcp: the Impeccable MCP server, over stdio, for a coding agent.\nAgents start it themselves; `impeccable install` adds it.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

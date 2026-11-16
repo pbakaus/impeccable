@@ -114,6 +114,32 @@ fn login_skips_when_the_sign_in_holds_every_scope_the_service_offers() {
 }
 
 #[test]
+fn login_asks_again_once_the_service_offers_the_mcp_scopes() {
+    // Catches (#1515 review): a sign-in from before the service served /mcp to the CLI that `login` calls current, so
+    // `impeccable mcp` never gets the scopes; the MCP scopes asked for while not offered; and Taste asked for twice.
+    let fake = Fake::start();
+    fake.knobs.lock().unwrap().taste = true;
+    let env = fake.env("cli-login-mcp");
+    let sign_in = || {
+        let mut child = impeccable(&env, &["login", "--no-browser"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        let mut url = String::new();
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+        assert!(url.starts_with("http"), "a link: {url:?}");
+        browser(url.trim());
+        assert!(child.wait().unwrap().success());
+    };
+    sign_in();
+    assert!(!fake.record.lock().unwrap().scopes.last().unwrap().contains("needs-you"));
+    fake.knobs.lock().unwrap().cli_mcp = true;
+    sign_in();
+    let asked = fake.record.lock().unwrap().scopes.last().unwrap().clone();
+    assert!(asked.split(' ').any(|s| s == "needs-you:write"), "{asked}");
+    assert_eq!(asked.split(' ').filter(|s| *s == "taste:read").count(), 1, "{asked}");
+    let out = impeccable(&env, &["login", "--no-browser"]).output().unwrap();
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Already signed in"), "{}", String::from_utf8_lossy(&out.stderr));
+}
+
+#[test]
 fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     // Catches: whoami failing or going quiet when the public plan catalog is off (404), and the catalog's items not reaching the person.
     let fake = Fake::start();
