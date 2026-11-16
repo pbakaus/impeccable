@@ -2505,8 +2505,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   its line is `Cursor (this repository's .cursor/rules/impeccable.mdc): ...`: an
   always-applied rule (`alwaysApply: true` front matter) holding the block, named in the
   repository's `info/exclude` so git never shows or commits it, removed when no switch is
-  on, and never written when that path is tracked (then it is the team's). The switch
-  sync writes the same files. `impeccable switches
+  on, and never written when that path is tracked (then it is the team's), when `.cursor`,
+  `.cursor/rules` or the rule is a symlink, when a rule of that name without this header
+  is already there, or when git wouldn't ignore it (a repository `.gitignore` re-including
+  it). Being per repository, it is never read as an edit: the sync only brings it to the
+  page's set. The switch sync writes the same files. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.

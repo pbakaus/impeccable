@@ -389,8 +389,12 @@ pub(crate) fn cursor_personal_file(io: &impeccable_common::Io) -> Option<PathBuf
         return None;
     }
     let root = PathBuf::from(git(&io.cwd, &["rev-parse", "--show-toplevel"])?);
+    // A symlinked `.cursor`, `rules` or rule could lead into a folder the team shares.
+    let linked = [".cursor", ".cursor/rules", CURSOR_RULE]
+        .iter()
+        .any(|p| fs::symlink_metadata(root.join(p)).is_ok_and(|m| m.file_type().is_symlink()));
     let tracked = git(&root, &["ls-files", "--error-unmatch", CURSOR_RULE]).is_some();
-    (!tracked).then(|| root.join(CURSOR_RULE))
+    (!linked && !tracked).then(|| root.join(CURSOR_RULE))
 }
 
 /// Put exactly the switches `on` in Cursor's personal rule, with its header; the file
@@ -400,6 +404,10 @@ pub(crate) fn write_cursor(path: &Path, on: &[&str]) -> Result<bool> {
         let before = read(path)?;
         if before.is_none() && on.is_empty() {
             return Ok(false);
+        }
+        // A rule there that isn't ours (no header of ours) is left as it is.
+        if before.as_ref().is_some_and(|b| !b.starts_with(CURSOR_HEAD)) {
+            return Err("a Cursor rule of that name is already there".into());
         }
         let start = before.clone().unwrap_or_else(|| CURSOR_HEAD.to_string());
         let after = with_switches(&start, on)?;
@@ -414,6 +422,12 @@ pub(crate) fn write_cursor(path: &Path, on: &[&str]) -> Result<bool> {
             return Ok(false);
         }
         exclude(path)?;
+        // The repository's own .gitignore can override a local exclusion (`!*.mdc`): then
+        // the rule could be committed, so it isn't written.
+        let root = path.ancestors().nth(3).ok_or("no repository folder")?;
+        if git(root, &["check-ignore", "-q", "--no-index", CURSOR_RULE]).is_none() {
+            return Err("git wouldn't ignore it here".into());
+        }
         write(path, after.as_bytes())?;
         Ok(true)
     })
@@ -426,13 +440,23 @@ fn exclude(path: &Path) -> Result<()> {
     let common = if Path::new(&common).is_absolute() { PathBuf::from(common) } else { root.join(common) };
     let file = common.join("info").join("exclude");
     let line = format!("/{CURSOR_RULE}");
-    let text = fs::read_to_string(&file).unwrap_or_default();
-    if text.lines().any(|l| l.trim() == line) {
+    // Its bytes are kept as they are: only a missing file reads as empty.
+    let bytes = match fs::read(&file) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.to_string()),
+    };
+    if bytes.split(|b| *b == b'\n').any(|l| l.trim_ascii() == line.as_bytes()) {
         return Ok(());
     }
     fs::create_dir_all(file.parent().ok_or("no info folder")?).map_err(|e| e.to_string())?;
-    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-    fs::write(&file, format!("{text}{sep}{line}\n")).map_err(|e| e.to_string())
+    let mut out = bytes;
+    if !out.is_empty() && !out.ends_with(b"\n") {
+        out.push(b'\n');
+    }
+    out.extend_from_slice(line.as_bytes());
+    out.push(b'\n');
+    fs::write(&file, out).map_err(|e| e.to_string())
 }
 
 /// One line per installed agent: its user-level rule file and the switches on in it.

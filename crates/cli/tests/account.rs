@@ -628,6 +628,10 @@ fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a
     BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
     browser(url.trim());
     assert!(child.wait().unwrap().success());
+    // A pattern git reads as bytes, not UTF-8: it must survive the sync's own line.
+    let exclude = project.join(".git/info/exclude");
+    std::fs::create_dir_all(exclude.parent().unwrap()).unwrap();
+    std::fs::write(&exclude, b"caf\xe9\n").unwrap();
     std::fs::create_dir_all(home.join(".cursor")).unwrap();
     let rule = project.join(".cursor/rules/impeccable.mdc");
     let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
@@ -637,12 +641,32 @@ fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a
     assert!(t.starts_with("---\ndescription: Impeccable, your personal switches (kept out of git)\nalwaysApply: true\n---\n"), "{t}");
     assert!(t.contains("<!-- impeccable start -->\nImpeccable Taste"), "{t}");
     assert_eq!(git(&["status", "--porcelain"]), "", "git leaves it alone");
+    let kept = std::fs::read(&exclude).unwrap();
+    assert!(kept.starts_with(b"caf\xe9\n") && kept.ends_with(b"/.cursor/rules/impeccable.mdc\n"), "{kept:?}");
     let out = impeccable(&env, &["switches"]).current_dir(&project).output().unwrap();
     assert!(String::from_utf8_lossy(&out.stdout).replace('\\', "/").contains("Cursor (this repository's .cursor/rules/impeccable.mdc): taste"), "{}", String::from_utf8_lossy(&out.stdout));
+    // An edit in the repository's copy is never sent: the page's set wins there.
+    let sent = fake.hits("/cli/v1/agents/me");
+    std::fs::write(&rule, t.replace("<!-- impeccable end -->", "Keep UI at WCAG 2.2 AA: contrast, visible focus, keyboard use, labelled controls.\n<!-- impeccable end -->")).unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), sent);
+    assert!(!std::fs::read_to_string(&rule).unwrap().contains("WCAG"));
     // All off: the rule goes.
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":2,"team":null,"me":[]}"#);
     refresh();
     assert!(!rule.exists());
+    // A rule of that name that isn't ours, or a repository whose .gitignore would let it
+    // be committed, is left alone.
+    std::fs::create_dir_all(rule.parent().unwrap()).unwrap();
+    std::fs::write(&rule, "---\nalwaysApply: false\n---\nMine.\n").unwrap();
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":4,"team":null,"me":["taste"]}"#);
+    refresh();
+    assert_eq!(std::fs::read_to_string(&rule).unwrap(), "---\nalwaysApply: false\n---\nMine.\n");
+    std::fs::remove_file(&rule).unwrap();
+    std::fs::write(project.join(".gitignore"), "!*.mdc\n").unwrap();
+    refresh();
+    assert!(!rule.exists(), "not written where git wouldn't ignore it");
+    std::fs::remove_file(project.join(".gitignore")).unwrap();
     // A rule the team committed is theirs: never written.
     std::fs::create_dir_all(rule.parent().unwrap()).unwrap();
     std::fs::write(&rule, "Team rule.\n").unwrap();
@@ -650,4 +674,15 @@ fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":null,"me":["taste"]}"#);
     refresh();
     assert_eq!(std::fs::read_to_string(&rule).unwrap(), "Team rule.\n");
+    // A symlinked rules folder may lead into the team's: never written through.
+    #[cfg(unix)]
+    {
+        git(&["rm", "-q", "--cached", ".cursor/rules/impeccable.mdc"]);
+        std::fs::remove_dir_all(project.join(".cursor/rules")).unwrap();
+        let shared = home.join("shared-rules");
+        std::fs::create_dir_all(&shared).unwrap();
+        std::os::unix::fs::symlink(&shared, project.join(".cursor/rules")).unwrap();
+        refresh();
+        assert!(!shared.join("impeccable.mdc").exists());
+    }
 }

@@ -152,6 +152,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     let mut sets = Vec::new();
     for f in &files {
         // Only a missing file reads as no switches; one that can't be read stops here.
+        // Cursor's rule is per repository while the set is per person, so an old copy in a
+        // repository last visited long ago must never read as an edit: it is only ever
+        // brought up to the page.
+        if f.ends_with(".cursor/rules/impeccable.mdc") {
+            sets.push(None);
+            continue;
+        }
         match agent_block::block_in(f) {
             Ok(Some(ids)) => sets.push(Some(ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
             Ok(None) if known.contains(&f.display().to_string()) => sets.push(Some(vec![])),
@@ -191,6 +198,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         }
         Step::Nothing => remote.me.clone().or(base.clone()),
     };
+    // Cursor's rule in this repository always ends at the page's set, whatever the step.
+    if let (Some(page), Some(cursor)) = (remote.me.as_ref(), agent_block::cursor_personal_file(io)) {
+        if link.still_current() {
+            let refs: Vec<&str> = page.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
+            let _ = agent_block::write_cursor(&cursor, &refs);
+        }
+    }
     let mut next = json!({ "issuer": account.issuer, "fetchedAt": impeccable_account::session::now() });
     if let Some(set) = synced {
         next["base"] = json!(sorted(set));
