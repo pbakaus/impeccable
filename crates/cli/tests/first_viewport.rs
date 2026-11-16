@@ -258,6 +258,13 @@ fn a_link_that_cancels_fails_and_late_or_busy_pages_still_answer() {
     );
     let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
     assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
+    // ...including by a listener the click itself adds.
+    page_with(
+        &dir,
+        "<a class=\"buy\" href=\"shop.html\" onclick=\"window.navigation && navigation.addEventListener('navigate', (e) => e.preventDefault())\">Buy</a>",
+    );
+    let text = String::from_utf8_lossy(&run(&dir, &args).stdout).to_string();
+    assert!(text.contains("FAIL  primary action .buy: nothing happens when it is clicked"), "{text}");
     // The app toggles a class on body all the time; the button's dialog
     // under body still counts.
     page_with(
