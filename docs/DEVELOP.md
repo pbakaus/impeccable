@@ -98,6 +98,8 @@ The folder you load is the permissive development build (`extension/shared/build
 - After the person presses Continue at a sign-in, an empty password field at that same address no longer pauses the journey.
 - Code the server put in a page before a sign-in pause stays in that page.
 - Password fields in a frame on another origin or in a closed shadow root are not seen, so a screenshot can include them (typing into them is still refused).
+- A filled card field blocks typing only: screenshots and page scripts go on.
+- A one-time-code box without `autocomplete="one-time-code"` is not seen as one.
 
 ## Build System Details
 
