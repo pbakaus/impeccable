@@ -572,6 +572,26 @@ for (const [site, kept] of [['https://tidy.example', true], ['http://127.0.0.1:5
   });
 }
 
+// "Use a persona from your app" is there only once an app of the person's has personas of its own: not while the apps
+// come, not with no apps, not with apps that have none (the six defaults are not theirs).
+for (const [what, apps, cast, shown] of [
+  ['no apps', [], [], false],
+  ['apps with no personas', [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }, { workspace: 'acme', repo: 'tidy', app: 'admin', name: 'Admin' }], [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], false],
+  ['an app with personas', [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }], [{ name: 'Mira', role: '', slug: 'mira', app: { workspace: 'acme', repo: 'tidy', app: 'web' } }], true],
+]) {
+  test(`Make a persona offers an app's personas ${shown ? 'for' : 'not for'} ${what}`, async () => {
+    const hold = {};
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], apps: { ok: true, apps }, cast, hold });
+    let answer;
+    hold.apps = new Promise((resolve) => { answer = resolve; });
+    await h.press('make-persona');
+    assert.equal(h.acts().includes('from-app'), false, 'not while the apps come');
+    answer();
+    for (let n = 0; n < 5; n += 1) await tick();
+    assert.deepEqual([h.acts().includes('from-app'), h.sent.filter((m) => m.account === 'personas' && m.app).length], [shown, apps.length]);
+  });
+}
+
 // The waveform reads the mic beside the speech recognition: its stream and frame loop end on Stop and on Send.
 test('the side panel’s mic opens a stream for the waveform while listening, and ends it on Stop and on Send', async () => {
   const mic = { opened: 0, stopped: 0, frames: 0, cancelled: 0, closed: 0 };

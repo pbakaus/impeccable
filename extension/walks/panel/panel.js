@@ -341,10 +341,19 @@ function goHome(list) {
 /** Confirm: the persona made goes first in the grid, picked. */
 const confirmMade = () => goHome([pre.made, ...(pre.personas ?? []).filter((each) => !(each.mine && each.slug === pre.made.slug))]);
 
-/** The person's apps, asked each time Make a persona opens. */
+/**
+ * The person's apps, asked each time Make a persona opens: none unless one of them has personas of its own, asked app by
+ * app (without faces) until one has. Set once, so "Use a persona from your app" never shows and goes.
+ */
 async function loadApps() {
   const answer = await chrome.runtime.sendMessage({ account: 'apps' }).catch(() => null);
-  pre.apps = answer?.ok ? answer.apps : null;
+  const apps = answer?.ok ? answer.apps : null;
+  let cast = false;
+  for (const one of apps ?? []) {
+    cast = Boolean(castOf(await chrome.runtime.sendMessage({ account: 'personas', app: appRef(one), faceless: [] }).catch(() => null))?.length);
+    if (cast) break;
+  }
+  pre.apps = apps && (cast ? apps : []);
   if (screen() === 'make') render();
 }
 
@@ -999,6 +1008,7 @@ async function signOut() {
   const answer = await chrome.runtime.sendMessage({ account: 'sign-out' }).catch(() => null);
   account = answer?.ok === true && answer.available === true ? answer : { ...account, signedIn: false };
   pre.personas = undefined;
+  pre.apps = undefined;
   pre.menu = false;
   pre.connected = false;
   render();
