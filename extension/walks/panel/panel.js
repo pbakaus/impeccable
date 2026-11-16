@@ -294,8 +294,11 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
     const answer = await chrome.runtime.sendMessage({ account: 'personas', url: siteOf(hereUrl), faceless: facelessSlugs() }).catch(() => null);
     if (run !== faceRun) return;
     // A list that didn't come leaves the letters as they are: the next wait asks again.
-    const faces = new Map((answer?.ok ? answer.personas : []).filter((each) => each.mine && each.face).map((each) => [each.slug, each.face]));
-    const dressed = (each) => (each?.mine && !each.face && faces.has(each.slug) ? { ...each, face: faces.get(each.slug) } : each);
+    const mine = (answer?.ok ? answer.personas : []).filter((each) => each.mine);
+    const faces = new Map(mine.filter((each) => each.face).map((each) => [each.slug, each.face]));
+    // The create answers the name and role only: the full profile comes with the list, so each of theirs takes its card from it.
+    const cards = new Map(mine.map((each) => [each.slug, { name: each.name, role: each.role, ...(each.about ? { about: each.about } : {}) }]));
+    const dressed = (each) => (!each?.mine || !cards.has(each.slug) ? each : { ...each, ...cards.get(each.slug), ...(!each.face && faces.has(each.slug) ? { face: faces.get(each.slug) } : {}) });
     if (pre.made) pre.made = dressed(pre.made);
     if (pre.personas) pre.personas = pre.personas.map(dressed);
     if (pre.yours) pre.yours = pre.yours.map(dressed);
@@ -305,6 +308,11 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
       const size = Number(/width:(\d+)px/.exec(node.getAttribute('style'))?.[1]);
       node.setAttribute('style', face({ face: faces.get(slug) }, size, node.getAttribute('data-mood')).getAttribute('style'));
       node.replaceChildren();
+    }
+    for (const hero of app.querySelectorAll('.hero[data-slug]')) {
+      const card = cards.get(hero.getAttribute('data-slug'));
+      if (!card) continue;
+      for (const [cls, text] of [['name', card.name], ['about', card.about || card.role]]) { const node = hero.querySelector(`.${cls}`); if (node && node.textContent !== text) node.textContent = text; }
     }
     waitForFaces(round + 1, run);
   }, FACE_WAITS[round]);
@@ -517,7 +525,7 @@ function home() {
   return [
     top(hereUrl, { tools: true }),
     el('div', { class: 'middle' },
-      el('div', { class: 'hero' }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
+      el('div', { class: 'hero', 'data-slug': person.mine ? person.slug : undefined }, face(person, 112), el('span', { class: 'name', text: person.name }), el('p', { class: 'about', text: person.about || person.role })),
       cast()),
     el('div', { class: 'box' },
       pre.note ? el('p', { class: 'err', role: 'alert', text: pre.note }) : null,
