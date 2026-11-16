@@ -925,7 +925,7 @@ fn review_vue_object_writing_events_use_ordinary_preview() {
 fn inline_selection_fixture() -> Fixture {
     let source = SOURCE.replace(
         MARKUP,
-        "  <section class=\"card\">\n    <p>Hi <span class=\"x\">a</span></p>\n  </section>",
+        "  <section class=\"card\">\n    <p> <span class=\"x\">a</span> </p>\n  </section>",
     );
     let fixture = Fixture::new(&source, &variant("scoped"));
     fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
@@ -1035,6 +1035,9 @@ fn vue_inline_selection_can_generate_tune_and_accept_without_lost_edits() {
         let wrapped = fixture.source();
         let marker = "<!-- Variants: insert below this line -->";
         assert!(wrapped.contains(marker), "{wrapped}");
+        let (_, missing) = fixture.accept("1");
+        assert_eq!(missing["handled"], false, "{missing}");
+        assert_eq!(fixture.source(), wrapped, "missing variant changed source");
         fs::write(fixture.0.join("StatusCard.vue"), wrapped.replace(marker,
             &format!("{marker}\n<div data-impeccable-variant=\"1\"><span class=\"x chosen\" style=\"padding: calc(var(--p-space, 8) * 1px)\">edited</span></div>"))).unwrap();
         let (code, accepted) = fixture.accept("1");
@@ -1045,9 +1048,9 @@ fn vue_inline_selection_can_generate_tune_and_accept_without_lost_edits() {
         assert!(source.contains("chosen"), "{source}");
         assert!(source.contains("edited"), "{source}");
         assert!(source.contains("23"), "Tune value lost: {source}");
-        assert!(source.contains("<p>Hi"), "{source}");
+        assert!(source.contains("<p>"), "{source}");
         assert!(source.contains("</p>"), "{source}");
-        assert!(!source.contains("data-impeccable-"), "{source}");
+        assert!(!source.contains("data-impeccable-variants="), "{source}");
         assert_eq!(
             source.split("<template>").next(),
             original.split("<template>").next()
@@ -1072,6 +1075,62 @@ fn vue_inline_selection_fallback_does_not_require_a_compiler() {
     );
     assert_eq!(result["sourceWritten"], false, "{result}");
     assert_eq!(fixture.source(), original);
+    assert!(!fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34")
+        .exists());
+}
+
+#[test]
+fn vue_inline_text_boundary_refusal_preserves_source_on_current_next() {
+    let fixture = inline_selection_fixture();
+    let original = fixture
+        .source()
+        .replace("<p> <span", "<p>Hi <span")
+        .replace("</span> </p>", "</span></p>");
+    fs::write(fixture.0.join("StatusCard.vue"), &original).unwrap();
+    let (code, result) = wrap_inline_selection(&fixture, true);
+    assert_eq!(code, 1, "{result}");
+    assert!(
+        result["stderr"].as_str().unwrap().contains("shared_line"),
+        "{result}"
+    );
+    assert_eq!(fixture.source(), original);
+    assert!(!fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34")
+        .exists());
+}
+
+#[test]
+fn svelte_inline_component_guard_remains_unchanged() {
+    let fixture = inline_selection_fixture();
+    let source = "<p> <span class=\"x\">a</span> </p>\n";
+    fs::write(fixture.0.join("Card.svelte"), source).unwrap();
+    let (mut io, cap) = Io::captured("", fixture.0.clone(), HashMap::new());
+    let code = impeccable_live::live_wrap::run(
+        &[
+            "--id",
+            "ab12cd34",
+            "--count",
+            "1",
+            "--file",
+            "Card.svelte",
+            "--classes",
+            "x",
+            "--tag",
+            "span",
+        ]
+        .map(str::to_owned),
+        &mut io,
+    );
+    assert_eq!(code, 1);
+    let error = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+    assert!(error.contains("element_inline"), "{error}");
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("Card.svelte")).unwrap(),
+        source
+    );
     assert!(!fixture
         .0
         .join("node_modules/.impeccable-live/ab12cd34")
