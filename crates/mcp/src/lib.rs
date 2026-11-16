@@ -65,18 +65,44 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 
 /// Answer each JSON-RPC line from `input` on `out`.
 pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream) {
+    let mut agent: Option<String> = None;
     for line in input.lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(request) = serde_json::from_str::<Value>(&line) else {
+        let Ok(mut request) = serde_json::from_str::<Value>(&line) else {
             frame(out, &json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "Invalid JSON" } }));
             continue;
         };
+        if request.get("method").and_then(Value::as_str) == Some("initialize") {
+            agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
+        }
+        asked_as(&mut request, agent.as_deref());
         if let Some(reply) = answer(&request, out, err, upstream) {
             frame(out, &reply);
         }
+    }
+}
+
+/// An agent's name in a form the service always accepts as a session label: plain ASCII letters, digits and
+/// `-_.@/+ `, at most 40 characters; empty when nothing is left (then no `from` is added).
+fn agent_label(name: &str) -> String {
+    let kept: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || " -_.@/+".contains(*c)).take(40).collect();
+    kept.trim().to_string()
+}
+
+/// Every agent on this machine shares the CLI's one sign-in, so a Needs-you call that doesn't name its session is
+/// named for the agent that made it (its `clientInfo.name`): Claude Code and Codex keep their own questions.
+fn asked_as(request: &mut Value, agent: Option<&str>) {
+    let Some(agent) = agent.filter(|a| !a.trim().is_empty()) else { return };
+    if request.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return;
+    }
+    let needs_you = request.pointer("/params/name").and_then(Value::as_str).is_some_and(|n| n.starts_with("needs_you."));
+    let Some(args) = request.pointer_mut("/params/arguments").and_then(Value::as_object_mut) else { return };
+    if needs_you && !args.contains_key("from") {
+        args.insert("from".into(), json!(agent));
     }
 }
 
