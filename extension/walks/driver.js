@@ -3,6 +3,7 @@
 // guard.js says where the tab may be and what it may start.
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
+import { helpers } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
 
@@ -621,9 +622,9 @@ export const passwordIn = async () => (await look())?.filled === true;
  */
 const READER = 'impeccable-walk-read';
 /**
- * The one read that needs the page's own world: the consent rules the server loads into each document
- * (the server's consent store, `loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and
- * `markConsentSeen` read it.
+ * The one read that needs the page's own world, from an older server that sends code: the consent rules it loads into
+ * each document (`loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and `markConsentSeen`
+ * read it. A server that names helpers loads no consent rules.
  */
 const PAGE_WORLD = /__impeccableConsent/;
 
@@ -1138,6 +1139,19 @@ async function idle(idleTime, timeout) {
   }
 }
 
+/**
+ * What a server's `evaluate` runs: one of this extension's page helpers by name, called with its arguments. Code from
+ * the server only on a walk whose server named no helpers (an older one): its function's source, or an expression.
+ */
+function serverExpression({ helper, fn, args, undef }) {
+  if (helper !== undefined) {
+    if (!Object.hasOwn(helpers, helper)) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)}`);
+    return expression({ fn: String(helpers[helper]), args: Array.isArray(args) ? args : [], undef });
+  }
+  if (walk?.named) throw fail('NotAllowed', 'a journey runs only the page helpers this extension carries');
+  return expression({ fn, args, undef });
+}
+
 /** A function's source called with its arguments, or an expression as it is. */
 function expression({ fn, args, undef }) {
   if (!Array.isArray(args)) return fn;
@@ -1269,7 +1283,7 @@ async function press(name) {
  * `open` for a walk of the person's own tab: the debugger goes on the tab the account worker named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
-async function adopt(name, allow, free) {
+async function adopt(name, allow, free, named) {
   const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
@@ -1296,7 +1310,7 @@ async function adopt(name, allow, free) {
     still();
     // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
     const writable = [...new Set([site, ...allowedFor(allow)])];
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, named: named === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1325,9 +1339,11 @@ async function adopt(name, allow, free) {
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
   // `free`: its writes are not held; an older server never says it, so its walks are held as ever.
-  async open({ url, name, allow, free }) {
+  // `helpers`: the server names this extension's own page helpers (`page-helpers.js`) and sends no code; an older
+  // server never says it, and sends a function's source as ever.
+  async open({ url, name, allow, free, helpers: named }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow, free);
+    if (adopted) return adopt(name, allow, free, named);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -1351,7 +1367,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, named: named === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1447,12 +1463,13 @@ export const ops = {
 
   // In the server's own world (`READER`), made once a document, so what one read leaves (a listener) the next can find.
   async evaluate(req) {
-    const source = expression(req);
     const tab = walk;
     if (!tab) throw fail('OutingClosed', 'no tab is open');
+    const source = serverExpression(req);
     const run = async () => {
       let world = {};
-      if (!PAGE_WORLD.test(source)) {
+      // No page helper needs the page's own world.
+      if (req.helper !== undefined || !PAGE_WORLD.test(source)) {
         if (tab.reader?.loader !== tab.loader) {
           const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
           tab.reader = { loader: tab.loader, context: executionContextId };
@@ -1478,7 +1495,7 @@ export const ops = {
 
   // In the page's own world, as the server's own browser runs them (its system face, its consent rules).
   async evaluateOnNewDocument(req) {
-    const source = expression(req);
+    const source = serverExpression(req);
     const tab = walk;
     const seals = tab.seals;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });

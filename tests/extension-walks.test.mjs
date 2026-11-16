@@ -51,7 +51,7 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
-    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers']"],
     ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
@@ -1019,6 +1019,55 @@ describe('walk worker', () => {
     };
     assert.deepEqual(await worldsOf('() => document.title'), [worlds['impeccable-walk-read']], 'neither the page’s world nor the walk’s lookout');
     assert.deepEqual(await worldsOf('function readConsentState() { return globalThis.__impeccableConsent; }'), [undefined], 'the page’s own world');
+  });
+
+  // The store bars running code a server sent: a server that names helpers gets only this extension's own run, and no code.
+  it('on a walk whose server names helpers, runs each of its own page helpers by name in the reads’ world, and refuses code', async () => {
+    const { ops, walk } = await walked();
+    const { helpers } = await import('../extension/walks/page-helpers.js');
+    page.seen = {};
+    const href = 'http://localhost:3000/list';
+    const world = vm.createContext({ location: { href }, scrollTo(x, y) { world.scrolled = [x, y]; }, document: { documentElement: { lang: 'de' }, body: null, activeElement: null, querySelectorAll: (sel) => (sel === 'a[href]' ? [{ href: `${href}#1` }, { href: '' }] : []) } });
+    world.globalThis = world;
+    const was = answers['Runtime.evaluate'];
+    const ran = [];
+    answers['Runtime.evaluate'] = (params) => {
+      if (params.contextId === worlds['impeccable-walk-lookout']) return was(params);
+      ran.push(params);
+      new vm.Script(params.expression);
+      // By value, as Chrome hands it back.
+      try { const value = vm.runInContext(params.expression, world); return { result: value === undefined ? {} : { value: JSON.parse(JSON.stringify(value)) } }; } catch { return { result: {} }; }
+    };
+    walk.named = true;
+    try {
+      for (const [helper, args, value] of [
+        ['pageAddress', [], href],
+        ['currentUrlOf', [], href],
+        ['documentLang', [], 'de'],
+        ['pageLinks', [], [`${href}#1`]],
+        ['relativeStylesMissedInPage', [], false],
+        ['focusedText', [], null],
+        ['scrollPageTo', [40], undefined],
+      ]) assert.deepEqual((await ops.evaluate({ helper, args })).value, value, helper);
+      assert.deepEqual(world.scrolled, [0, 40]);
+      // Every helper is called by its own name, with what the server gave: each one a script Chrome can run.
+      for (const helper of Object.keys(helpers)) await ops.evaluate({ helper, args: [null] });
+      assert.equal(ran.length, 7 + Object.keys(helpers).length);
+      assert.ok(ran.every((p) => p.contextId === worlds['impeccable-walk-read']), 'never the page’s own world');
+      for (const req of [{ fn: '() => 1', args: [] }, { fn: 'document.title' }, { fn: 'function readConsentState() { return 1; }', args: [] }]) {
+        await assert.rejects(ops.evaluate(req), { name: 'NotAllowed' });
+        await assert.rejects(ops.evaluateOnNewDocument(req), { name: 'NotAllowed' });
+      }
+      for (const helper of ['nope', 'constructor', '__proto__', 'toString']) await assert.rejects(ops.evaluate({ helper, args: [] }), { name: 'NotSupported' });
+      assert.equal(ran.length, 7 + Object.keys(helpers).length, 'nothing refused reached the page');
+      const at = sent.length;
+      await ops.evaluateOnNewDocument({ helper: 'browserLanguage', args: ['de'] });
+      const added = args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument');
+      assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`]);
+    } finally {
+      walk.named = false;
+      answers['Runtime.evaluate'] = was;
+    }
   });
 
   // Catches: a script run while the password is in its field, or refused where the server waits out a pause.
