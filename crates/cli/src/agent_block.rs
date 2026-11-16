@@ -206,6 +206,22 @@ pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
 }
 
+/// Put exactly the switches `on` in `path` (lines it doesn't know stay), creating the
+/// file only when one is on. `Ok(false)` when nothing changed.
+pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {
+    let before = read(path)?;
+    if before.is_none() && on.is_empty() {
+        return Ok(false);
+    }
+    let before = before.unwrap_or_default();
+    let after = with_switches(&before, on)?;
+    if after == before {
+        return Ok(false);
+    }
+    write(path, after.as_bytes())?;
+    Ok(true)
+}
+
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {

@@ -329,3 +329,56 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
     assert!(key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit()), "{key}");
     assert!(keys.iter().all(|k| k.as_str() == key), "{seen:?}");
 }
+
+#[test]
+fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_back() {
+    // Catches (REN-2056): the page's personal switches never reaching the agent's rule
+    // file, a first sync wiping the lines a machine already had, or a line turned on
+    // here being undone by the next sync instead of sent to the page.
+    let fake = Fake::start();
+    let mut env = fake.env("switch-sync");
+    env.insert("IMPECCABLE_NO_UPDATE_CHECK".into(), "1".into());
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let project = home.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let git = |args: &[&str]| assert!(Command::new("git").args(args).current_dir(&project).output().unwrap().status.success());
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "https://github.com/acme/site.git"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    let claude_md = home.join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(claude_md.parent().unwrap()).unwrap();
+    std::fs::write(&claude_md, "# mine\n").unwrap();
+    let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
+    let on = || {
+        let out = impeccable(&env, &["switches"]).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).lines().find(|l| l.starts_with("Claude Code")).unwrap_or_default().to_string()
+    };
+    let agents = |me: &str| fake.route("GET", "/cli/v1/agents", 200, vec![], format!(r#"{{"rev":1,"team":null,"me":{me}}}"#));
+    fake.route("POST", "/cli/v1/agents/me", 200, vec![], r#"{"outcome":"set","rev":2,"team":null,"me":[]}"#);
+
+    // Nothing set anywhere: nothing written, nothing sent.
+    agents("null");
+    refresh();
+    assert_eq!(std::fs::read_to_string(&claude_md).unwrap(), "# mine\n");
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 0);
+    // The page sets taste and a11y: they reach the file.
+    agents(r#"["taste","a11y"]"#);
+    refresh();
+    assert!(on().ends_with(": taste, a11y"), "{}", on());
+    assert!(std::fs::read_to_string(&claude_md).unwrap().starts_with("# mine\n\n<!-- impeccable start -->\n"));
+    // A line turned on here (as loop connect does) is sent, not undone.
+    let t = std::fs::read_to_string(&claude_md).unwrap();
+    let loop_line = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+    std::fs::write(&claude_md, t.replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"))).unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 1);
+    assert!(on().ends_with(": taste, loop, a11y"), "{}", on());
+    // The page turns everything off: the block goes, the person's bytes stay.
+    agents("[]");
+    refresh();
+    assert_eq!(std::fs::read_to_string(&claude_md).unwrap(), "# mine\n");
+}

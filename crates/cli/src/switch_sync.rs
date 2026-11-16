@@ -1,0 +1,176 @@
+//! The switch sync (REN-2056): personal switches set on the repo settings page reach
+//! this machine's user-level rule files, and a switch changed here (`loop connect`)
+//! reaches the page. It runs detached from `context`, never on its path, at most once
+//! a minute. Three-way: the set last synced is the base; a set the page changed wins
+//! and is written, else a set changed in a file is sent; a person the page has no set
+//! for is seeded from the files.
+use crate::agent_block;
+use impeccable_account::config::Account;
+use impeccable_common::Io;
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
+
+const VERB: &str = "switches-refresh";
+const EVERY_SECS: u64 = 60;
+
+fn cache_path(account: &Account) -> PathBuf {
+    account.home.join("switches.json")
+}
+
+fn read_cache(account: &Account) -> Option<Value> {
+    let v: Value = serde_json::from_slice(&std::fs::read(cache_path(account)).ok()?).ok()?;
+    (v["issuer"] == account.issuer).then_some(v)
+}
+
+/// File-only gate for `context`: signed in, not CI, not switched off, not fetched in
+/// the last minute.
+pub fn schedule(io: &Io) {
+    let off = |k: &str| io.env.get(k).is_some_and(|v| !v.is_empty());
+    if off("CI") || off("IMPECCABLE_NO_SWITCH_SYNC") || !impeccable_account::sign_in_recorded(io) {
+        return;
+    }
+    let Ok(account) = Account::from_env(&io.env) else { return };
+    let now = impeccable_account::session::now();
+    let fresh = read_cache(&account)
+        .and_then(|v| v["fetchedAt"].as_u64())
+        .is_some_and(|t| t <= now && now - t < EVERY_SECS);
+    if !fresh {
+        crate::setup_report::spawn_refresh(io, VERB);
+    }
+}
+
+/// The user-level rule files of the agents installed here: Claude Code's `CLAUDE.md`
+/// and Codex's `AGENTS.md` (its override when there is one), each only when that
+/// agent's config folder exists.
+pub(crate) fn rule_files(io: &Io) -> Vec<PathBuf> {
+    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
+    let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude"));
+    let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
+    let mut out = Vec::new();
+    if claude.is_dir() {
+        out.push(claude.join("CLAUDE.md"));
+    }
+    if codex.is_dir() {
+        let over = codex.join("AGENTS.override.md");
+        out.push(if over.exists() { over } else { codex.join("AGENTS.md") });
+    }
+    out
+}
+
+/// What the worker does, decided from the page's set, the base and each file's set.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Step {
+    /// The page has no set yet: send the files' (when any is on).
+    Seed(Vec<String>),
+    /// The page changed: write its set into every file.
+    Write(Vec<String>),
+    /// A file changed: send its set.
+    Push(Vec<String>),
+    Nothing,
+}
+
+fn sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v.dedup();
+    v
+}
+
+pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[Vec<String>]) -> Step {
+    let base = base.map(|b| sorted(b.to_vec()));
+    let Some(page) = page.map(|p| sorted(p.to_vec())) else {
+        let union = sorted(files.iter().flatten().cloned().collect());
+        return if union.is_empty() { Step::Nothing } else { Step::Seed(union) };
+    };
+    if base.as_ref() != Some(&page) {
+        return if files.iter().all(|f| sorted(f.clone()) == page) { Step::Nothing } else { Step::Write(page) };
+    }
+    match files.iter().map(|f| sorted(f.clone())).find(|f| *f != page) {
+        Some(changed) => Step::Push(changed),
+        None => Step::Nothing,
+    }
+}
+
+/// The repository's key, the one health uploads use: SHA-256 of its normalized
+/// `origin`, so the service learns no repository name it can't already see.
+fn repo(cwd: &Path) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let out = std::process::Command::new("git")
+        .args(["config", "--get", "remote.origin.url"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    let url = impeccable_account::health::normalize_remote(String::from_utf8_lossy(&out.stdout).trim())?;
+    Some(Sha256::digest(url.as_bytes()).iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Hidden detached worker: silent and best effort.
+pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
+    if !args.is_empty() {
+        return 0;
+    }
+    let Ok(account) = Account::from_env(&io.env) else { return 0 };
+    let Some(repo) = repo(&io.cwd) else { return 0 };
+    let Some(remote) = impeccable_account::switches::fetch(io, &repo) else { return 0 };
+    let cache = read_cache(&account);
+    let base: Option<Vec<String>> = cache
+        .as_ref()
+        .and_then(|c| c["base"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()));
+    let files = rule_files(io);
+    let mut sets = Vec::new();
+    for f in &files {
+        let text = std::fs::read_to_string(f).unwrap_or_default();
+        match agent_block::switches(&text) {
+            Ok(ids) => sets.push(ids.into_iter().map(str::to_string).collect::<Vec<_>>()),
+            // A file with broken markers is left alone, and so is the sync.
+            Err(_) => return 0,
+        }
+    }
+    let catalog: Vec<&str> = agent_block::CATALOG.iter().map(|(id, _, _)| *id).collect();
+    let synced = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
+        Step::Seed(on) => {
+            let refs: Vec<&str> = on.iter().map(String::as_str).collect();
+            impeccable_account::switches::push(io, &catalog, &refs, true).map(|_| on)
+        }
+        Step::Push(on) => {
+            let refs: Vec<&str> = on.iter().map(String::as_str).collect();
+            impeccable_account::switches::push(io, &catalog, &refs, false).map(|_| on)
+        }
+        Step::Write(on) => {
+            let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
+            files.iter().all(|f| agent_block::write_switches(f, &refs).is_ok()).then_some(on)
+        }
+        Step::Nothing => remote.me.clone().or(base),
+    };
+    let mut next = json!({ "issuer": account.issuer, "fetchedAt": impeccable_account::session::now() });
+    if let Some(set) = synced {
+        next["base"] = json!(sorted(set));
+    }
+    let _ = impeccable_account::store::write_private(&cache_path(&account), next.to_string().as_bytes());
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn v(ids: &[&str]) -> Vec<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_page_wins_a_file_change_is_sent_and_an_unset_page_is_seeded() {
+        // Catches (REN-2056): a sync that wipes a machine's Loop and taste lines the first
+        // time it runs, or undoes the page's change with a stale file, or the reverse.
+        assert_eq!(decide(None, None, &[v(&["taste", "loop"]), v(&[])]), Step::Seed(v(&["loop", "taste"])));
+        assert_eq!(decide(None, None, &[v(&[])]), Step::Nothing);
+        let base = v(&["loop"]);
+        assert_eq!(decide(Some(&v(&["loop", "a11y"])), Some(&base), &[v(&["loop"])]), Step::Write(v(&["a11y", "loop"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop", "taste"])]), Step::Push(v(&["loop", "taste"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop"]), v(&["loop"])]), Step::Nothing);
+        // A first sync on a machine whose files already match the page writes nothing.
+        assert_eq!(decide(Some(&base), None, &[v(&["loop"])]), Step::Nothing);
+        // Both changed: the page wins.
+        assert_eq!(decide(Some(&v(&["wide"])), Some(&base), &[v(&["taste"])]), Step::Write(v(&["wide"])));
+    }
+}

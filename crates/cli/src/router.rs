@@ -39,6 +39,9 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     ) {
         crate::setup_report::schedule(io);
         crate::setup_report::schedule_taste(io);
+        if verb == "context" {
+            crate::switch_sync::schedule(io);
+        }
     }
     match verb {
         "--help" | "-h" => {
@@ -95,6 +98,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "skills" => impeccable_skills::run(rest, io),
         "loop" => crate::loop_install::run(rest, io),
         "switches" => crate::agent_block::run(rest, io),
+        "switches-refresh" => crate::switch_sync::run_refresh(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "install" => {
@@ -407,6 +411,7 @@ const KNOWN_VERBS: &[&str] = &[
     "agents",
     "loop",
     "switches",
+    "switches-refresh",
     "walkthrough",
     "skills",
     "help",

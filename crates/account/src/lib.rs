@@ -23,6 +23,7 @@ pub mod setup;
 pub mod setup_status;
 mod stale_grant;
 pub mod store;
+pub mod switches;
 pub mod taste;
 mod upload_notice;
 pub mod world;
