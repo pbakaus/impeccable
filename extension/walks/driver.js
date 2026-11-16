@@ -294,6 +294,25 @@ const FILM_SHOT_MS = 150;
 /** The least time between two pictures asked for when one fails at once. */
 const FILM_RETRY_MS = 45;
 let filmed = 0;
+
+/**
+ * A film's picture and the walk's pointer never overlap. Measured (Chrome for Testing on a 2x Mac display, the tab at
+ * the engine's 1280x800, scale 1): a mouse event Chrome takes while `Page.captureScreenshot` runs lands at twice its
+ * coordinates, so a click on a link at (1150, 32) reached the page at (2300, 64), on nothing (HR Pilot's login links,
+ * which never navigated). The film takes no picture while the pointer acts, and the pointer waits out the one being
+ * taken, no longer than a picture may take (`FILM_SHOT_MS`): one Chrome never answers is not one it is taking.
+ */
+let capturing = null;
+let pointing = 0;
+async function pointer(work) {
+  pointing += 1;
+  try {
+    if (capturing) await Promise.race([capturing, sleep(FILM_SHOT_MS)]);
+    return await work();
+  } finally {
+    pointing -= 1;
+  }
+}
 /** Set while the person has taken the tab over (control.js): the film takes nothing of what they do. */
 let theirs = false;
 export function personHas(on) { theirs = on; }
@@ -322,9 +341,13 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         const seen = await look();
         if (signInShows(tab, seen)) { spotted(); continue; }
         if (!seen || hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
+        // Not while the pointer acts (`pointer`).
+        if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
-        asked.catch(() => undefined);
+        const taking = asked.then(() => undefined, () => undefined);
+        capturing = taking;
+        void taking.then(() => { if (capturing === taking) capturing = null; });
         const shot = await Promise.race([asked, sleep(FILM_SHOT_MS).then(() => null)]);
         if (!shot) continue;
         const frame = await smaller(await seenAs(shot.data, 'jpeg', 80), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
@@ -1098,26 +1121,29 @@ export const ops = {
     return { value: { data: await seenAs(data, format, quality) } };
   },
 
+  // Never while a film's picture is being taken (`pointer`).
   async mouse({ action, x, y }) {
-    const m = walk.mouse;
     const at = fences;
-    if (action === 'move' || action === 'click') {
-      m.x = x;
-      m.y = y;
-      await cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: m.down ? 'left' : 'none', buttons: m.down ? 1 : 0 });
-    }
-    if (action === 'down' || action === 'click') {
-      overtaken(at);
-      m.down = true;
-      walk.lastInputAt = Date.now();
-      await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x: m.x, y: m.y, button: 'left', buttons: 1, clickCount: 1 });
-    }
-    if (action === 'up' || action === 'click') {
-      // A button pressed is let go of whatever came meanwhile: a pause never leaves it held down.
-      m.down = false;
-      await cmd('Input.dispatchMouseEvent', { type: 'mouseReleased', x: m.x, y: m.y, button: 'left', buttons: 0, clickCount: 1 });
-    }
-    return {};
+    return pointer(async () => {
+      const m = walk.mouse;
+      if (action === 'move' || action === 'click') {
+        m.x = x;
+        m.y = y;
+        await cmd('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: m.down ? 'left' : 'none', buttons: m.down ? 1 : 0 });
+      }
+      if (action === 'down' || action === 'click') {
+        overtaken(at);
+        m.down = true;
+        walk.lastInputAt = Date.now();
+        await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x: m.x, y: m.y, button: 'left', buttons: 1, clickCount: 1 });
+      }
+      if (action === 'up' || action === 'click') {
+        // A button pressed is let go of whatever came meanwhile: a pause never leaves it held down.
+        m.down = false;
+        await cmd('Input.dispatchMouseEvent', { type: 'mouseReleased', x: m.x, y: m.y, button: 'left', buttons: 0, clickCount: 1 });
+      }
+      return {};
+    });
   },
 
   // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.

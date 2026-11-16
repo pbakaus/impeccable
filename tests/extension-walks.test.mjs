@@ -526,6 +526,33 @@ describe('walk worker', () => {
 
   after(async () => { if (opened) await (await opened).ops.close(); });
 
+  // Chrome (a 2x display, the tab at the engine's size) lands a mouse event it takes while a picture is being taken at
+  // twice its coordinates: HR Pilot's login links were clicked on nothing while the step was filmed.
+  it('never moves or clicks the pointer while a film’s picture is being taken, nor takes one while the pointer acts', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const was = answers['Page.captureScreenshot'];
+    let answer;
+    answers['Page.captureScreenshot'] = () => new Promise((resolve) => { answer = () => resolve({ data: btoa('frame') }); });
+    try {
+      await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
+      for (let turn = 0; turn < 50 && !answer; turn++) await settle(5);
+      const at = sent.length;
+      const clicking = ops.mouse({ action: 'click', x: 5, y: 5 });
+      await settle(20);
+      assert.equal(since(at, 'Input.dispatchMouseEvent'), 0, 'not while the picture is being taken');
+      answer();
+      await clicking;
+      const pointer = sent.slice(at).flatMap((m, i) => (m === 'Input.dispatchMouseEvent' ? [i] : []));
+      assert.equal(pointer.length, 3);
+      assert.equal(sent.slice(at + pointer[0], at + pointer[2]).filter((m) => m === 'Page.captureScreenshot').length, 0, 'no picture while it acts');
+    } finally {
+      answers['Page.captureScreenshot'] = was;
+      answer?.();
+      await ops.cdp({ method: 'Page.stopScreencast' });
+    }
+  });
+
   it('takes and tells nothing of the page while paused, and films again once it goes on', async () => {
     const { ops, command, current } = await walked();
     assert.equal(current().tab, 11, 'the view knows the walked tab, where the panel shows its result');
