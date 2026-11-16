@@ -403,6 +403,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
+      if (answer?.status === 429) return { ok: false, why: 'too-many' };
       const handoff = answer && answer.status >= 200 && answer.status < 300 ? answer.json?.handoff : null;
       if (!handoff || typeof handoff !== 'object') return { ok: false, why: answer?.json?.error === 'bad-plan' ? 'plan' : 'failed' };
       // The walk's page, where its results are: beside the block, which takes no key it does not know.

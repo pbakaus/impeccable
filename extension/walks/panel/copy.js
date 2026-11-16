@@ -101,7 +101,7 @@ export const COPY = {
     scope: 'Sign in again to start journeys.',
     'not-pro': 'This account doesn’t have Impeccable Pro.',
     plan: 'That plan ran out. Send the task again.',
-    'too-many': 'That’s a lot of plans this hour. Try again later.',
+    'too-many': 'That’s a lot of journeys for now. Try again later.',
     'no-plan': 'Couldn’t make a plan. Try again.',
     failed: 'Couldn’t do that. Try again.',
   },

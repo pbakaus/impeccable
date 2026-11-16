@@ -412,6 +412,7 @@ describe('account worker', () => {
     ['says walks are not there yet when the door answers 404', () => json(404, {}), { ok: false, why: 'unavailable' }],
     ['asks to sign in again for a grant made before walks', () => json(403, { error: 'insufficient_scope' }), { ok: false, why: 'scope' }],
     ['says the account has no Pro when the server refuses it', () => json(403, { error: 'not-pro' }), { ok: false, why: 'not-pro' }],
+    ['says too many when the server caps the person’s journeys', () => json(429, { error: 'too-many' }), { ok: false, why: 'too-many' }],
     ['hands nothing over for a socket off the server’s pair', () => json(201, { handoff: { ...HANDOFF, socket: 'wss://example.com/api/outings/o9/socket' } }), { ok: false, why: 'failed' }],
   ]) {
     it(`walks the person’s tab: ${label}`, async () => {
