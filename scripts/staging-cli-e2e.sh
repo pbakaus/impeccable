@@ -76,6 +76,14 @@ R2="$H/first-repo"; mkdir -p "$R2"
 printf '%s\n' '<!doctype html><html><head><title>first</title></head><body><h1>First</h1><p style="color:#9ca3af;background:#6d28d9">Grey on purple</p></body></html>' > "$R2/index.html"
 git -C "$R2" init -q
 git -C "$R2" add -A && git -C "$R2" -c user.email=e2e@example.invalid -c user.name=e2e commit -qm init
+# A person installs before they sign in, so this run does too: the sign-in then reports this
+# machine's setup, and Home's "Agent connected" line has a machine from this run to show.
+(cd "$R2" && exec "$BIN" install --yes --providers=claude --scope=project) < /dev/null > "$H/install.out" 2>&1; rc=$?
+check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.claude/skills/impeccable/SKILL.md" ]'
+# init's sign-in line reads context's account line, so the agent spends no call on whoami.
+acct() { (cd "$R2" && IMPECCABLE_NO_UPDATE_CHECK=1 exec "$BIN" context) < /dev/null 2>/dev/null | grep '^ACCOUNT:'; }
+check "context: says a fresh install is not signed in" '[ "$(acct)" = "ACCOUNT: not signed in" ]'
+[ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
 url=""
@@ -91,11 +99,12 @@ for _ in $(seq 1 3100); do kill -0 "$login_pid" 2>/dev/null || break; sleep 0.2;
 if kill -0 "$login_pid" 2>/dev/null; then fail "login: the CLI finished signing in" "still running 620 s after the approval"; finish; fi
 wait "$login_pid"; rc=$?; login_pid=""
 check "login: the CLI finished signing in" '[ $rc = 0 ]'
+check "context: says the install is signed in" '[ "$(acct)" = "ACCOUNT: signed in" ]'
 if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
   info "setup: the Home link check runs against staging's issuer only"
 elif [ $health = 1 ]; then
   check "setup: the sign-in's first scan names Foundations" 'grep -qF "See it in Foundations: $HOME_URL/-/foundations" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
-  check "setup: a repository with no remote goes up without a name" 'grep -q "Sent finding counts and foundations checks" "$H/login.err"'
+  check "setup: a repository with no remote goes up under its folder's name" 'grep -q "Sent its name, finding counts and foundations checks" "$H/login.err"'
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
 

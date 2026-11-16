@@ -165,6 +165,41 @@ CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - Accepted until 2026-10-15 (#1028): `cli-version`.
 
+## Recorded 2026-09-10: sampled contrast on image-backed text (#560)
+
+The static engine now reads the pixels of a local `url()` background behind
+text instead of skipping the contrast check (docs/CLI-CONTRACT.md, "Sampled
+contrast"). The JS never had this path, so the new fixture
+`sampled-image-contrast.html` (with `sampled-images/`) has no JS golden; its
+cases were recorded from the engine, and the directory sweeps below moved
+only by that fixture's `low-contrast` findings, verified entry by entry. The
+fixture grew with the review of #806 (2026-10-05) and now carries twelve.
+Since the merge of #1200 (2026-10-27) its five copies of the white-on-light
+pair report once, with `(and 4 more)`, so the case counts eight findings.
+
+- `detect-fixture-json-sampled-image-contrast-html`, `detect-fixture-text-sampled-image-contrast-html`, `detect-fixture-json-sampled-images`, `detect-fixture-text-sampled-images`: new cases.
+- `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-no-advisory-json`, `detect-no-advisory-text`: the directory sweep picks up the new fixture. Re-recorded after each merge of main (last on 2026-10-18): main's entries plus the fixture's twelve findings and the one below. The text sweeps' regex-only note (`detect-regex-only-note`, #919) counts one more file than main's sweep does (58 to 59 as of main's `border-accent-blank-lines.css`): the fixture's `sampled-images/site.css`. `detect-scope-layout-text` carries the same note and moves with it.
+- `detect-fixture-json-surface-resolution-contrast-html`, `detect-fixture-text-surface-resolution-contrast-html`: 13 to 14. That fixture's `#flag-frosted-tagline` sits on a data-URI backdrop under a 95% fill, which its header called URL-engine only; the static engine now reads it by sampling, `sampled (coarse) 3.1:1 (need 4.5:1) — text #818898 on data:image/png`. A true positive gained, not a new false one: the browser pass flags the same text.
+
+## Recorded 2026-10-18: the edit hook never decodes an image (#560, maintainer review 2)
+
+The sampled-contrast path gained a persistent sample cache and a mode: `detect`
+decodes and writes the cache, every static scan the hook runs reads the cache
+alone and never opens an image file. One new case pins the user-visible
+contract, recorded from the binary and reviewed by hand:
+
+- `hook-edit-html-image-cache` (new): white copy on an uncached light photo.
+  Step 1, `hook`: "No deterministic design-quality issues found", nothing
+  sampled. Step 2, `detect`: the sampled `low-contrast` finding, which writes
+  the cache entry under the case's isolated home. Step 3, `hook`: the
+  `low-contrast` finding, taken from that entry without opening the image.
+
+Sampling the full decode at 36 box-averaged cell centers, in place of a 640px
+thumbnail, moved no golden: the fixture's images are flat or near-flat, and the
+photos' ratios round to the same decimals. Every other golden is unchanged.
+
+Re-recorded after the merge of #1202 (2026-11-02), which keys a cached finding on its rule and snippet plus its occurrence among identical findings: the cache entry reads `low-contrast:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample#1` where it read `low-contrast:0:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample`. The three steps' stdout, stderr and exit codes are byte-identical.
+
 ## Recorded 2026-09-12: the URL scan reads the page after the reveal sweep
 
 `crates/browser` now runs the reveal sweep before it captures the page, and
@@ -7331,6 +7366,18 @@ Revised 2026-10-26 after review (round 14 branch B): `low-contrast-borrowed-grou
 
 Merged origin/main with round 14 branch F (one report per colour pair), 2026-10-26: the four faint ghost words in `low-contrast-borrowed-grounds.html` shared one composited colour pair at opacity 0.06, so main's pair dedupe folded them into one report. Each now has its own ink at opacity 0.2 (still a ghost by opacity), as the fixture's rule of one colour per case asks. `detect-fixture-json-low-contrast-borrowed-grounds-html` and `detect-fixture-text-low-contrast-borrowed-grounds-html` re-recorded from the merged binary and reviewed by hand: the same 16 findings, the four ghost words at their new colours.
 
+## Recorded 2026-10-26: live boot resolves PRODUCT.md and DESIGN.md through the shared context resolver
+
+In `live-boot-monorepo-no-git-from-root`, live's walk ends at `<WS>/website`
+because the fixture has no Git root. The walk finds neither context document,
+so live uses the shared resolver to find `PRODUCT.md` and `DESIGN.md` in `<WS>`.
+Boot now writes both paths to `website/.impeccable/live/roots.json` and reaches
+`config_missing`. The previous golden stopped at `context_missing`. The
+re-recorded golden captures this change. See [#1022](https://github.com/pbakaus/impeccable/issues/1022).
+
+The new `live-boot-context-dir-override` case covers the same fallback with
+`IMPECCABLE_CONTEXT_DIR`.
+
 ## Recorded 2026-10-28: hook cache keys name the finding, not its line (#1202)
 
 The design hook remembered a finding as `rule:line[:value]`, so a line inserted above it made it fresh again. It now keys a finding on its rule and value (or snippet) plus its occurrence among identical findings, top to bottom (`docs/CLI-CONTRACT.md`, `findingCacheKeys`), and the per-edit pass keeps the deferred keys a Stop pass already reported. The 27 `hook-*` cases whose workspace snapshot holds `.impeccable/hook.cache.json` were re-recorded from the binary and reviewed by hand: only the `findings` arrays inside that cache file changed (`side-tab:2` is now `side-tab:border-left: 4px solid #6366f1#1`). Stdout, audit lines and exit codes are byte-identical; the pending ack prints the same labels as before.
@@ -7409,6 +7456,10 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 
 - `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.
 - On worlds/settled-world-roll the code-present and no-code `SEEDED_WORLD` variants both name the replacement door, a redesign whose direction roll passes `--replace-world`, after the explicit-request override; the three seeded-world goldens were re-recorded with it.
+
+## Recorded 2026-11-12: detect --sarif writes a SARIF 2.1.0 log
+
+`impeccable detect --sarif` prints one SARIF 2.1.0 log on stdout (`docs/CLI-CONTRACT.md`). `tool.driver` is impeccable at the engine version, `https://impeccable.style`, and one rule per antipattern that produced a result (catalog id, name, short description, help text, category). Each finding is a result: `warning` for a primary finding, `note` for an advisory, `error` when the rule's severity is error. Paths are relative to `GITHUB_WORKSPACE` when set, else cwd, with `uriBaseId` `%SRCROOT%`; `startLine` is omitted when the finding has no line. `partialFingerprints.primaryLocationLineHash` is left unset because `github/codeql-action/upload-sarif` fills it. A clean scan still writes the log with `results: []`, so code scanning can close alerts. `--json` with it is `Error: --sarif cannot be used with --json` and exit 1. `--github` and `--list-rules` are the same kind of conflict. `--help` still wins. Exit codes match a normal scan. `detect-help` gains the flag, an Output streams line, and one example. New cases: `detect-sarif` (a rounded side-tab card; the real finding has no line, so the result has no `region`), `detect-sarif-clean` (a CSS file with no findings, empty `results`), `detect-sarif-json` (the conflict). Recorded from the binary and reviewed by hand; no golden other than `detect-help` moved. `detect-sarif` and `detect-sarif-clean` mask `driver.version` to `<ENGINE>` (the log's own `"version": "2.1.0"` stays pinned) so a crate version bump does not move them. Each log also carries `runs[0].invocations`: one entry with `executionSuccessful` (`true` for both cases here; `false` with an error `toolExecutionNotifications` entry when a target could not be scanned, covered by the crate tests), so a partial log is not read as a clean scan. Re-recorded `detect-sarif` and `detect-sarif-clean` from the binary for that field and checked by hand; nothing else in them moved.
 
 ## Recorded 2026-11-14: two cases from main take the `detect --changed` detector line
 

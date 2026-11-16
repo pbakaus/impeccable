@@ -39,6 +39,9 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     ) {
         crate::setup_report::schedule(io);
         crate::setup_report::schedule_taste(io);
+        if verb == "context" {
+            crate::switch_sync::schedule(io);
+        }
     }
     match verb {
         "--help" | "-h" => {
@@ -94,7 +97,11 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
         "skills" => impeccable_skills::run(rest, io),
         "loop" => crate::loop_install::run(rest, io),
+        "switches" => crate::agent_block::run(rest, io),
+        "switches-refresh" => crate::switch_sync::run_refresh(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
+        // The one MCP server an agent runs, over stdio (REN-2053). Never schedules a report: it serves for the agent's whole session.
+        "mcp" => impeccable_mcp::run(rest, io),
         "agents" => impeccable_agents::run(rest, io),
         "install" => {
             let code = impeccable_skills::run(args, io);
@@ -106,7 +113,15 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         }
         "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
         // skill scripts
-        "context" => impeccable_hook::run_context(rest, io),
+        "context" => {
+            let code = impeccable_hook::run_context(rest, io);
+            // init's sign-in line reads this, so a signed-out first run costs the agent no
+            // extra call. The stored state only: a context run never meets a Keychain prompt.
+            if code == 0 && !rest.iter().any(|a| a == "-h" || a == "--help") {
+                io.out(if impeccable_account::sign_in_recorded(io) { "ACCOUNT: signed in\n" } else { "ACCOUNT: not signed in\n" });
+            }
+            code
+        }
         "pin" => impeccable_context::run_pin(rest, io),
         "detect-csp" => impeccable_context::run_detect_csp(rest, io),
         "palette" => impeccable_context::run_palette(rest, io),
@@ -138,6 +153,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             Some(&mut crate::component_capture::NativeComponentCapturer),
         ),
         // comp-fidelity verbs (crates/comp-verbs over crates/comp)
+        "first-viewport" => crate::first_viewport::run(rest, io),
         "comp-spec" => impeccable_comp_verbs::run_comp_spec(rest, io),
         "comp-diff" => impeccable_comp_verbs::run_comp_diff(rest, io),
         "font-match" => {
@@ -396,7 +412,10 @@ const KNOWN_VERBS: &[&str] = &[
     "pro-refresh",
     "agents",
     "loop",
+    "switches",
+    "switches-refresh",
     "walkthrough",
+    "mcp",
     "skills",
     "help",
     "install",
@@ -419,6 +438,7 @@ const KNOWN_VERBS: &[&str] = &[
     "generate-image",
     "serve-question",
     "component-review",
+    "first-viewport",
     "comp-spec",
     "comp-diff",
     "font-match",

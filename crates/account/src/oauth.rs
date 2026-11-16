@@ -35,7 +35,23 @@ pub struct Metadata {
     pub critiques: bool,
     /// `worlds:read`, for `impeccable world` (`crate::world`).
     pub worlds: bool,
+    /// The MCP scopes this sign-in also asks for, so `impeccable mcp` serves an
+    /// agent's MCP tools under it: empty unless the service says its CLI sign-in
+    /// serves `/mcp` (`impeccable_cli_mcp`), and then only those it lists.
+    pub mcp: Vec<&'static str>,
 }
+
+/// What `impeccable mcp` proxies: Needs you, personas, Taste and journeys.
+/// Never answering or signing keys, which stay with Impeccable Loop.
+pub const MCP_SCOPES: [&str; 7] = [
+    "needs-you:read",
+    "needs-you:write",
+    "personas:read",
+    "personas:write",
+    "taste:read",
+    "taste:write",
+    "journeys:start",
+];
 
 /// The issuer's RFC 8414 metadata, held to this account: the document must
 /// name the same issuer, offer S256 and the `iss` response parameter, and
@@ -97,6 +113,15 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == WORLDS_SCOPE)),
+            mcp: if doc.get("impeccable_cli_mcp") == Some(&serde_json::Value::Bool(true)) {
+                let listed = doc.get("scopes_supported").and_then(|v| v.as_array());
+                MCP_SCOPES
+                    .into_iter()
+                    .filter(|m| listed.is_some_and(|a| a.iter().any(|s| s == m)))
+                    .collect()
+            } else {
+                Vec::new()
+            },
         }),
         _ => Err("the account service's sign-in settings are incomplete".into()),
     }
@@ -131,6 +156,12 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.worlds, WORLDS_SCOPE),
     ] {
         if offered {
+            scopes.push(' ');
+            scopes.push_str(scope);
+        }
+    }
+    for scope in &meta.mcp {
+        if !scopes.split(' ').any(|s| s == *scope) {
             scopes.push(' ');
             scopes.push_str(scope);
         }
@@ -485,6 +516,31 @@ pub fn revoke(client: &Client, endpoint: &str, refresh_token: &str) -> Result<()
 mod scope_tests {
     use super::*;
 
+    // Catches the MCP scopes asked for when the service did not offer them, or
+    // one asked for twice beside the CLI's own (Taste is both).
+    #[test]
+    fn mcp_scopes_join_once_and_only_when_offered() {
+        let meta = |taste: bool, mcp: Vec<&'static str>| Metadata {
+            authorization_endpoint: String::new(),
+            token_endpoint: String::new(),
+            revocation_endpoint: None,
+            health: false,
+            setup: false,
+            foundations: false,
+            design: false,
+            critiques: false,
+            taste,
+            worlds: false,
+            mcp,
+        };
+        let asked = |m: &Metadata| scopes(m).split(' ').map(str::to_string).collect::<Vec<_>>();
+        let none = asked(&meta(true, Vec::new()));
+        let served = asked(&meta(true, vec!["needs-you:write", "taste:read"]));
+        assert!(!none.iter().any(|s| s.starts_with("needs-you")));
+        assert_eq!(served.iter().filter(|s| *s == "taste:read").count(), 1);
+        assert!(served.contains(&"needs-you:write".to_string()));
+    }
+
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
         for mask in 0..128 {
@@ -499,6 +555,7 @@ mod scope_tests {
                 critiques: mask & 16 != 0,
                 taste: mask & 32 != 0,
                 worlds: mask & 64 != 0,
+                mcp: Vec::new(),
             };
             let requested = scopes(&meta);
             let requested: Vec<_> = requested.split_whitespace().collect();
