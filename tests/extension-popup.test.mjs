@@ -424,7 +424,9 @@ test('the side panel’s steps list keeps its rows as a step comes, and the curr
     [before.length + 1, true, ['7']]);
 });
 
-test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async () => {
+test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async (t) => {
+  // Alex, their own, has no face yet: the panel's waits for it run on these timers.
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const plan = { id: 'p-1', risky: true, steps: [{ text: 'Add a to-do', risky: false }, { text: 'Delete it', risky: true }] };
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: 'Studio manager', slug: 'mira', face: 'https://impeccable.reviews/m.jpg' }, { name: 'Alex', role: '', mine: true, slug: 'alex', sees: 'colour-blind' }, { name: 'Maya', role: '', slug: 'default:maya', default: true, device: 'mobile' }], plan: { ok: true, plan }, tab: 7 });
   assert.equal(h.body.dataset.screen, 'home');
@@ -459,7 +461,8 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
 
 // + opens Make a persona: a description makes one, and Use them picks it; a refusal says why and keeps the words.
 for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
-  test(`the side panel makes a persona from a description: ${label}`, async () => {
+  test(`the side panel makes a persona from a description: ${label}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
     // A list that came back empty is one that didn't load: never an empty home.
     const empty = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [] });
     assert.deepEqual(empty.acts().filter((act) => act === 'retry' || act === 'make-persona'), ['retry']);
@@ -486,6 +489,43 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     }
   });
 }
+
+// Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
+test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const photo = 'data:image/jpeg;base64,/9j/AAAA';
+  const maya = { name: 'Maya', role: '', slug: 'default:maya', default: true };
+  const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
+  const asks = (h) => h.sent.filter((m) => m.account === 'personas').length;
+  const faces = (h, slug) => h.app.querySelectorAll('span.face').filter((node) => node.attributes['data-face'] === slug).map((node) => [String(node.attributes.style).includes(`url("${photo}")`), node.children.length]);
+
+  const personas = [maya];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas, create: { ok: true, persona: { name: 'Nora', role: '', slug: 'nora', mine: true } } });
+  await h.press('make-persona');
+  h.app.querySelector('textarea').value = 'A night-shift nurse checking HR forms on break.';
+  await h.press('make');
+  const made = asks(h);
+  assert.deepEqual(faces(h, 'nora'), [[false, 1]], 'Confirm shows the letter while the photo is drawn');
+  await wait(3000);
+  assert.deepEqual([asks(h), faces(h, 'nora')], [made + 1, [[false, 1]]], 'a list without the face is asked for again');
+  personas[1] = { ...personas[1], face: photo };
+  await wait(6000);
+  const confirm = h.app.querySelector('[data-act="confirm"]');
+  assert.deepEqual([asks(h), faces(h, 'nora'), h.app.querySelector('[data-act="confirm"]')], [made + 2, [[true, 0]], confirm], 'the photo is swapped in, nothing redrawn');
+  await h.press('confirm');
+  assert.deepEqual([faces(h, 'nora'), String(h.app.querySelector('[data-act="pick-0"]').children[0].attributes.style).includes(photo)], [[], true], 'the home’s hero and tile wear the photo');
+  await wait(60_000);
+  assert.equal(asks(h), made + 2, 'every own persona has a face: no more asks');
+
+  // An own persona whose photo never comes: four asks, then none; and none once the panel leaves the home.
+  for (const [label, leave, expected] of [['stays home', null, 4], ['opens History', 'history', 0]]) {
+    const home = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Rosa', role: '', slug: 'rosa', mine: true }, maya] });
+    const loaded = asks(home);
+    if (leave) await home.press(leave);
+    for (const ms of [3000, 6000, 12000, 20000, 60_000]) await wait(ms);
+    assert.equal(asks(home) - loaded, expected, label);
+  }
+});
 
 // Six personas or fewer (+ the seventh tile): four to a row, larger. More: five to a row.
 for (const [people, rows] of [[3, [4]], [4, [3, 2]], [5, [3, 3]], [6, [4, 3]], [7, [5, 3]]]) {

@@ -126,7 +126,8 @@ function face(person, size, mood = 'neutral', cls = '') {
   const cx = ((i % 3) + 0.5) / 3;
   const cy = (Math.floor(i / 3) + (loose ? 0.45 : 0.4)) / 2;
   const picture = person?.face ? `--face:url("${person.face.replace(/["\\]/g, '')}");--face-cx:${cx.toFixed(4)};--face-cy:${cy.toFixed(4)};--face-zoom:${(loose ? 3 : 2 / 0.55).toFixed(3)};` : '';
-  return el('span', { class: `face ${cls}`.trim(), 'aria-hidden': true, 'data-mood': mood, style: `width:${size}px;height:${size}px;${picture}` },
+  // `data-face`: one of the person's own still waiting for its photo (`waitForFaces`), which swaps it in here.
+  return el('span', { class: `face ${cls}`.trim(), 'aria-hidden': true, 'data-mood': mood, 'data-face': person?.mine && !person.face ? person.slug : undefined, style: `width:${size}px;height:${size}px;${picture}` },
     person?.face ? null : el('span', { class: 'face-letter', text: (person?.name?.trim()[0] ?? '').toUpperCase() }));
 }
 
@@ -245,6 +246,45 @@ async function loadPersonas() {
   const at = was ? pre.personas?.findIndex((person) => person.slug === was.slug) ?? -1 : -1;
   if (at >= 0) pre.pick = at; else choose(0);
   if (!isLive(view)) render();
+  if (!facesWaited && !faceWait) waitForFaces();
+}
+
+/**
+ * A persona of the person's own gets its photo drawn on the server after it is made (about 4–25 s): until then it shows
+ * its letter. While one has no face and the home or Make a persona shows, the list is asked again after each of these
+ * waits, and each face that has come is swapped in where its letter is, nothing else redrawn.
+ */
+const FACE_WAITS = [3000, 6000, 12000, 20000];
+/** The waits under way (its timer, kept while its ask is out), and which run it is: a fresh start ends the one before. */
+let faceWait = null;
+let faceRun = 0;
+/** Set when the waits ran out, so a list asked for again later does not start them over; a persona made does. */
+let facesWaited = false;
+const ownFaceless = () => [pre.made, ...(pre.personas ?? [])].some((each) => each?.mine && !each.face);
+const facesShow = () => screen() === 'home' || screen() === 'make';
+function waitForFaces(round = 0, run = (faceRun += 1)) {
+  if (run !== faceRun) return;
+  clearTimeout(faceWait);
+  faceWait = null;
+  if (stubbed || !ownFaceless() || !facesShow()) return;
+  if (round >= FACE_WAITS.length) { facesWaited = true; return; }
+  faceWait = setTimeout(async () => {
+    if (!ownFaceless() || !facesShow()) { faceWait = null; return; }
+    const answer = await chrome.runtime.sendMessage({ account: 'personas', url: siteOf(hereUrl) }).catch(() => null);
+    if (run !== faceRun) return;
+    const faces = new Map((answer?.ok ? answer.personas : []).filter((each) => each.mine && each.face).map((each) => [each.slug, each.face]));
+    const dressed = (each) => (each?.mine && !each.face && faces.has(each.slug) ? { ...each, face: faces.get(each.slug) } : each);
+    if (pre.made) pre.made = dressed(pre.made);
+    if (pre.personas) pre.personas = pre.personas.map(dressed);
+    for (const node of app.querySelectorAll('[data-face]')) {
+      const slug = node.getAttribute('data-face');
+      if (!faces.has(slug)) continue;
+      const size = Number(/width:(\d+)px/.exec(node.getAttribute('style'))?.[1]);
+      node.setAttribute('style', face({ face: faces.get(slug) }, size, node.getAttribute('data-mood')).getAttribute('style'));
+      node.replaceChildren();
+    }
+    waitForFaces(round + 1, run);
+  }, FACE_WAITS[round]);
 }
 
 /** Why a persona wasn't made, in one line: anything the person can't fix here is "try again later". */
@@ -267,6 +307,8 @@ async function make(box) {
   pre.describe = '';
   pre.made = answer.persona ?? null;
   render();
+  facesWaited = false;
+  waitForFaces();
 }
 
 /** Home again; with `list` (the persona just made first, or an app's), the grid shows it, its first picked. */
