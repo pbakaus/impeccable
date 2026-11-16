@@ -23,3 +23,11 @@ The browser extension ships two fonts under `extension/fonts/`, each with its li
 **Original work:** https://github.com/googlefonts/alumni
 **Original license:** SIL Open Font License 1.1 (`alumnisans-OFL.txt`)
 **Copyright:** 2015 The Alumni Sans Project Authors
+
+## Consent rules in the browser extension
+
+The browser extension's journeys answer cookie and consent banners with DuckDuckGo's autoconsent: its engine and rule set, unmodified, ship in `extension/walks/consent-rules.js` behind a small bridge of our own.
+
+**Original work:** https://github.com/duckduckgo/autoconsent
+**Original license:** Mozilla Public License 2.0
+**Copyright:** DuckDuckGo, Inc.

@@ -924,4 +924,22 @@ function installSystemFace(base64, families, descriptors, key) {
   yieldToPage();
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace });
+function readConsentState() {
+  const g = globalThis, s = g.__impeccableConsent;
+  if (!s || typeof s !== "object")
+    return null;
+  return { ...s, age: typeof s.since === "number" && g.performance ? g.performance.now() - s.since : 0 };
+}
+
+function consentSeen() {
+  return globalThis.__impeccableConsentSeen === !0;
+}
+
+function markConsentSeen() {
+  globalThis.__impeccableConsentSeen = !0;
+}
+
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen });
+
+/** The helpers that read what the consent rules leave in the page's own world: run there. */
+export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);

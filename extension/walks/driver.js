@@ -3,7 +3,8 @@
 // guard.js says where the tab may be and what it may start.
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
-import { helpers } from './page-helpers.js';
+import { consentRules } from './consent-rules.js';
+import { helpers, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
 
@@ -624,7 +625,7 @@ const READER = 'impeccable-walk-read';
 /**
  * The one read that needs the page's own world, from an older server that sends code: the consent rules it loads into
  * each document (`loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and `markConsentSeen`
- * read it. A server that names helpers loads no consent rules.
+ * read it. A server that names helpers names those too, and `pageWorld` says where they run.
  */
 const PAGE_WORLD = /__impeccableConsent/;
 
@@ -1140,10 +1141,12 @@ async function idle(idleTime, timeout) {
 }
 
 /**
- * What a server's `evaluate` runs: one of this extension's page helpers by name, called with its arguments. Code from
- * the server only on a walk whose server named no helpers (an older one): its function's source, or an expression.
+ * What a server's `evaluate` runs: one of this extension's page helpers by name, called with its arguments, or the
+ * consent rules it carries (`loadConsent`, whose address argument is never loaded). Code from the server only on a
+ * walk whose server named no helpers (an older one): its function's source, or an expression.
  */
 function serverExpression({ helper, fn, args, undef }) {
+  if (helper === 'loadConsent') return consentRules;
   if (helper !== undefined) {
     if (!Object.hasOwn(helpers, helper)) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)}`);
     return expression({ fn: String(helpers[helper]), args: Array.isArray(args) ? args : [], undef });
@@ -1468,8 +1471,8 @@ export const ops = {
     const source = serverExpression(req);
     const run = async () => {
       let world = {};
-      // No page helper needs the page's own world.
-      if (req.helper !== undefined || !PAGE_WORLD.test(source)) {
+      // A helper names its world; an older server's code is matched for the consent rules' mark.
+      if (req.helper !== undefined ? !pageWorld.includes(req.helper) : !PAGE_WORLD.test(source)) {
         if (tab.reader?.loader !== tab.loader) {
           const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
           tab.reader = { loader: tab.loader, context: executionContextId };
