@@ -78,3 +78,32 @@ fn answers_at_once_when_the_browser_does_not_open() {
     assert_eq!(again["result"]["content"][0]["text"], NO_BROWSER);
     assert!(started.elapsed() < Duration::from_secs(20));
 }
+
+/// Records what reaches the service.
+struct Seen(Vec<Value>);
+impl impeccable_mcp::Upstream for Seen {
+    fn call(&mut self, request: &Value) -> Result<Value, impeccable_mcp::Failure> {
+        self.0.push(request.clone());
+        Ok(json!({ "jsonrpc": "2.0", "id": request["id"], "result": {} }))
+    }
+    fn sign_in(&mut self) -> Result<(), String> { Ok(()) }
+}
+
+// Catches Claude Code and Codex, sharing the CLI's one sign-in, reading and replacing each other's Needs-you
+// questions: a call that names no session is named for the agent that made it, and a named one is left alone.
+#[test]
+fn names_needs_you_calls_for_the_agent_that_made_them() {
+    let lines = [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "codex-mcp-client" } } }),
+        json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "needs_you.post", "arguments": { "title": "t" } } }),
+        json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": "needs_you.answer", "arguments": { "from": "tab 2" } } }),
+        json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "taste.get", "arguments": {} } }),
+    ];
+    let input: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    let mut seen = Seen(Vec::new());
+    serve(input.as_bytes(), &mut Vec::new(), &mut Vec::new(), &mut seen);
+    let args = |i: usize| seen.0[i]["params"]["arguments"].clone();
+    assert_eq!(args(1)["from"], "codex-mcp-client");
+    assert_eq!(args(2)["from"], "tab 2");
+    assert!(args(3).get("from").is_none());
+}

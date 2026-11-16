@@ -3192,6 +3192,10 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
 - **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, or Linux without
   `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
   line ``Sign in again: run `impeccable login` ``.
+- **Each agent its own asker.** Every agent on the machine shares the CLI's
+  one sign-in, so a `needs_you.*` call whose arguments carry no `from` is sent
+  with `from` set to the `clientInfo.name` the agent gave at `initialize`
+  (first 40 characters). A call that names its own `from` is left as it is.
 - **Stateless.** Each request is its own POST to `/mcp`; no `Mcp-Session-Id`
   is carried, and the service keeps no MCP session.
 - **What counts as a sign-in failure:** no stored sign-in (or one only a
