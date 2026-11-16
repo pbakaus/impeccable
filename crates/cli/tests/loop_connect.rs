@@ -791,8 +791,14 @@ fn codex_waits_for_an_answer_at_the_end_of_a_turn_only_with_a_loop_that_can_hold
             assert!(h.get("async").is_none(), "it must block: {h}");
         }
         // Claude keeps its own background Stop wake, untouched.
-        let claude = fs::read_to_string(b.home().join(".claude/settings.json")).unwrap();
-        assert!(claude.contains("\"asyncRewake\": true"), "{claude}");
+        let claude: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap()).unwrap();
+        let stops: Vec<&serde_json::Value> = claude["hooks"]["Stop"]
+            .as_array()
+            .map(|a| a.iter().map(|g| &g["hooks"][0]).collect())
+            .unwrap_or_default();
+        assert_eq!(stops.len(), 1, "{claude}");
+        assert_eq!((&stops[0]["async"], &stops[0]["asyncRewake"], &stops[0]["timeout"]), (&serde_json::json!(true), &serde_json::json!(true), &serde_json::json!(86400)), "{claude}");
     }
 }
 
