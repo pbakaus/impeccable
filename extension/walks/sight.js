@@ -63,21 +63,24 @@ function label(ctx, text, right) {
 export const SIGHTS = ['normal', ...Object.keys(LOOKS)];
 const CARD = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
 
-/** A picture (base64, `format`) as the persona sees it, as base64 again; as it came for one who sees normally. */
-export async function seenAs(data, format = 'png', quality) {
+/**
+ * A picture (base64, `format`) as the persona sees it, as base64 again, drawn at `size` if given; as it came for one
+ * who sees normally.
+ */
+export async function seenAs(data, format = 'png', quality, size = null) {
   const { handoff } = await chrome.storage.session.get('handoff').catch(() => ({}));
   const sight = handoff?.sees ?? CARD[handoff?.persona?.sees];
   const look = Object.hasOwn(LOOKS, sight) ? LOOKS[sight] : null;
   if (!look) return data;
   const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0))], { type: `image/${format}` }));
-  const { width, height } = picture;
+  const { width, height } = size ?? picture;
   const canvas = new OffscreenCanvas(width, height);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   // Drawn plain under the blur, so the blur's edges do not fade to nothing.
-  ctx.drawImage(picture, 0, 0);
+  ctx.drawImage(picture, 0, 0, width, height);
   if (look.blur) {
     ctx.filter = `blur(${look.blur}px)`;
-    ctx.drawImage(picture, 0, 0);
+    ctx.drawImage(picture, 0, 0, width, height);
     ctx.filter = 'none';
   }
   picture.close();

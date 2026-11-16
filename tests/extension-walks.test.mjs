@@ -1090,6 +1090,40 @@ describe('walk worker', () => {
     }
   });
 
+  // Chrome lays a tab out again for each picture of it at a density other than the screen's, and around a clip: on a 2x
+  // screen the page flashed on every film frame and still, and a press meanwhile went to twice its coordinates.
+  it('lays the engine’s size out at the screen’s density, and cuts a clip from the whole viewport at the size asked for', async () => {
+    const { ops } = await walked();
+    const driver = await import('../extension/walks/driver.js');
+    const kept = { shot: answers['Page.captureScreenshot'], bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas, metrics: answers['Page.getLayoutMetrics'] };
+    answers['Page.captureScreenshot'] = () => ({ data: 'eA==' });
+    const drawn = [];
+    globalThis.createImageBitmap = async () => ({ width: 2560, height: 1600, close() {} });
+    globalThis.OffscreenCanvas = class {
+      constructor(width, height) { this.size = [width, height]; }
+      getContext() { return { drawImage: (_picture, ...at) => drawn.push([...this.size, ...at]) }; }
+      async convertToBlob() { return new Blob(['x']); }
+    };
+    // Scrolled 400 down, the viewport 1280x800 in CSS pixels and twice that in the picture.
+    answers['Page.getLayoutMetrics'] = () => ({ cssVisualViewport: { pageX: 0, pageY: 400, clientWidth: 1280, clientHeight: 800, scale: 1 }, visualViewport: { clientWidth: 2560, clientHeight: 1600 } });
+    const at = sent.length;
+    try {
+      await ops.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+      await ops.screenshot({ format: 'png' });
+      await ops.screenshot({ format: 'png', clip: { x: 320, y: 600, width: 640, height: 200 } });
+      const asked = (method) => args.slice(at).filter((_, i) => sent[at + i] === method);
+      assert.deepEqual(asked('Emulation.setDeviceMetricsOverride'), [{ width: 1280, height: 800, deviceScaleFactor: 0, mobile: false }]);
+      assert.deepEqual(asked('Page.captureScreenshot').map((params) => 'clip' in params), [false, false], 'no clip reaches Chrome');
+      // Whole, drawn at 1280x800; the clip, a quarter in and 200 below the viewport's top, drawn at 640x200.
+      assert.deepEqual(drawn, [[1280, 800, 0, 0, 1280, 800], [640, 200, 640, 400, 1280, 400, 0, 0, 640, 200]]);
+    } finally {
+      Object.assign(answers, { 'Page.captureScreenshot': kept.shot, 'Page.getLayoutMetrics': kept.metrics });
+      Object.assign(globalThis, { createImageBitmap: kept.bitmap, OffscreenCanvas: kept.canvas });
+      delete driver.walk.viewport;
+      delete driver.walk.metrics;
+    }
+  });
+
   it('keeps a sign-in pause the person takes over hushed, and goes on when they hand back', async () => {
     const { command, current } = await walked();
     page.seen = { password: true };

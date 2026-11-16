@@ -396,7 +396,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         void taking.then(() => { if (capturing === taking) capturing = null; });
         const shot = await Promise.race([asked, sleep(FILM_SHOT_MS).then(() => null)]);
         if (!shot) continue;
-        const frame = await smaller(await seenAs(shot.data, 'jpeg', 80), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
+        // Seen as its still is: at the still's size (`stillSize`), then made smaller.
+        const frame = await smaller(await seenAs(shot.data, 'jpeg', 80, stillSize(tab)), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
         // Taken as the walk was paused or taken over: never sent.
         if (blind(tab)) continue;
@@ -418,11 +419,27 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   })();
 }
 
-/** A picture (base64) drawn at `width` by `height`, as base64 again. */
-async function smaller(data, width, height, format, quality) {
+/**
+ * The size a still of `tab` is drawn at, and its pixels a CSS pixel: a tab laid out at the screen's density (`sizeTo`,
+ * `setViewport`) is drawn back down to the density asked for. None for the person's own tab, taken as Chrome gives it.
+ */
+function stillSize(tab) {
+  const view = tab.sized ? { ...DEVICES[tab.sized], scale: 1 } : tab.viewport;
+  return view ? { width: Math.round(view.width * view.scale), height: Math.round(view.height * view.scale), scale: view.scale } : null;
+}
+
+/**
+ * A picture (base64) drawn at `width` by `height`, as base64 again: the whole of it, or the part `from` (fractions of
+ * it). With `keep`, one already that size (and in `format`) comes back as it came.
+ */
+async function smaller(data, width, height, format, quality, { from, keep } = {}) {
   const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0))], { type: 'image/jpeg' }));
   const canvas = new OffscreenCanvas(width, height);
-  canvas.getContext('2d').drawImage(picture, 0, 0, width, height);
+  const { width: w, height: h } = picture;
+  // Already that size: as it came, not drawn and made again.
+  if (keep && !from && w === width && h === height) { picture.close(); return data; }
+  if (from) canvas.getContext('2d').drawImage(picture, from.x * w, from.y * h, from.width * w, from.height * h, 0, 0, width, height);
+  else canvas.getContext('2d').drawImage(picture, 0, 0, width, height);
   picture.close();
   const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: `image/${format}`, quality: quality / 100 })).arrayBuffer());
   let text = '';
@@ -1384,18 +1401,33 @@ export const ops = {
   async setViewport({ width, height, deviceScaleFactor, mobile }) {
     // The person's own tab keeps its size, or the width picked in the panel (`sizeTo`).
     if (walk.adopted) return {};
-    await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile });
-    walk.viewport = { width, height };
-    walk.metrics = { width, height, deviceScaleFactor, mobile };
+    // At the screen's own density, as a phone or tablet is (`DEVICES`); its pictures are drawn at the density asked for.
+    const metrics = { width, height, deviceScaleFactor: 0, mobile };
+    await cmd('Emulation.setDeviceMetricsOverride', metrics);
+    walk.viewport = { width, height, scale: deviceScaleFactor || 1 };
+    walk.metrics = metrics;
     return {};
   },
 
   // Page.captureScreenshot alone: no Page.bringToFront, so the person's own tab stays in front.
+  //
+  // Never with Chrome's own `clip`: Chrome lays the tab out again around a clip for the moment of the picture, which
+  // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
+  // beyond the viewport is blank, as Chrome's own clip of it is.
   async screenshot({ format, quality, clip }) {
-    const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: false });
-    // A phone or tablet tab is at the screen's density (`DEVICES`): its picture is drawn at its CSS size.
-    const size = walk.sized && (clip ?? DEVICES[walk.sized]);
-    const shot = size ? await smaller(data, Math.round(size.width), Math.round(size.height), format, quality ?? 100) : data;
+    const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false });
+    const size = stillSize(walk);
+    if (!clip && !size) return { value: { data: await seenAs(data, format, quality) } };
+    let shot;
+    if (clip) {
+      const { cssVisualViewport: css, visualViewport: device } = await cmd('Page.getLayoutMetrics');
+      // Pixels a CSS pixel: the density asked for on an emulated tab, the screen's on the person's own.
+      const scale = size ? size.scale : device.clientWidth / (css.clientWidth * (css.scale || 1));
+      const from = { x: (clip.x - css.pageX) / css.clientWidth, y: (clip.y - css.pageY) / css.clientHeight, width: clip.width / css.clientWidth, height: clip.height / css.clientHeight };
+      shot = await smaller(data, Math.round(clip.width * scale), Math.round(clip.height * scale), format, quality ?? 100, { from });
+    } else {
+      shot = await smaller(data, size.width, size.height, format, quality ?? 100, { keep: true });
+    }
     return { value: { data: await seenAs(shot, format, quality) } };
   },
 
