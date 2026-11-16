@@ -471,7 +471,7 @@ function maker() {
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
-        el('div', { class: 'tabs' }, devices(), needs()),
+        el('div', { class: 'tabs' }, devices(), ...needs()),
         el('div', { class: 'field' }, box, voice ? listening(create) : el('div', { class: 'row' },
           Speech && !pre.making ? micButton() : null,
           el('span', { class: 'grow' }),
@@ -494,17 +494,17 @@ function devices() {
 function needs() {
   const chosen = pre.disability;
   const label = `${COPY.make.disability}: ${COPY.make.disabilities[chosen][0]}`;
-  return el('div', { class: 'widths sights' },
+  return [el('div', { class: 'widths sights' },
     el('button', { class: 'needs-btn', type: 'button', 'data-act': 'needs', 'aria-haspopup': 'dialog', 'aria-expanded': pre.needs ? 'true' : 'false', 'aria-pressed': chosen !== 'none' ? 'true' : 'false', 'aria-label': label, 'data-tip': label, disabled: pre.making,
       onclick: () => { if (pre.needs) closeNeeds(); else { pre.needs = true; render(); app.querySelector(`[data-act="need-${chosen}"]`)?.focus(); } } },
-    icon(NEEDS[chosen]), chosen === 'none' ? el('span', { class: 'needs-word', text: COPY.make.none }) : null, icon('down')),
+    icon(NEEDS[chosen]), chosen === 'none' ? el('span', { class: 'needs-word', text: COPY.make.none }) : null, icon('down'))),
     ...(pre.needs ? [el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeNeeds() }),
       el('div', { class: 'acct needs-menu', role: 'dialog', 'aria-label': COPY.make.disability },
         el('p', { class: 'needs-h', text: COPY.make.needs }),
         Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', { class: 'need-row', type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false',
           // The one chosen, picked again, goes back to none.
           onclick: () => { pre.disability = key === chosen ? 'none' : key; closeNeeds(); } },
-        icon(NEEDS[key]), el('span', { class: 'need-t' }, el('b', { text: name }), line ? el('small', { text: line }) : null), key === chosen ? icon('check') : null)))] : []));
+        icon(NEEDS[key]), el('span', { class: 'need-t' }, el('b', { text: name }), line ? el('small', { text: line }) : null), key === chosen ? icon('check') : null)))] : [])];
 }
 /** Closes the Disability list; focus goes back to its tab. */
 function closeNeeds() { pre.needs = false; render(); app.querySelector('[data-act="needs"]')?.focus(); }

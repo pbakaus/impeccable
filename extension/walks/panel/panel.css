@@ -359,6 +359,8 @@ b { font-weight: 500; }
 .needs-btn .ic:last-child { width: 14px; height: 14px; }
 .needs-btn[aria-expanded="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .needs-word { margin-right: 2px; }
+.tabs:has(.needs-menu) { position: relative; }
+.tabs .need-row::after { content: none; }
 .needs-menu { top: auto; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 40px); gap: 0; padding: 6px; }
 .needs-h { padding: 6px 8px 8px; font-size: 13px; color: var(--muted); }
 .need-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px; border-radius: 8px; color: var(--ink); text-align: left; }
