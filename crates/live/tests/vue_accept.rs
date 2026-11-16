@@ -921,3 +921,159 @@ fn review_vue_object_writing_events_use_ordinary_preview() {
         "direct callback call must remain acceptable: {result}"
     );
 }
+
+fn inline_selection_fixture() -> Fixture {
+    let source = SOURCE.replace(
+        MARKUP,
+        "  <section class=\"card\">\n    <p>Hi <span class=\"x\">a</span></p>\n  </section>",
+    );
+    let fixture = Fixture::new(&source, &variant("scoped"));
+    fs::remove_dir_all(fixture.0.join("node_modules/.impeccable-live/ab12cd34")).unwrap();
+    fixture
+}
+
+fn wrap_inline_selection(fixture: &Fixture, deferred: bool) -> (i32, Value) {
+    let env = HashMap::from([("IMPECCABLE_LIVE_VUE_COMPONENT".into(), "1".into())]);
+    let (mut io, cap) = Io::captured("", fixture.0.clone(), env);
+    let mut args = vec![
+        "--id",
+        "ab12cd34",
+        "--count",
+        "1",
+        "--file",
+        "StatusCard.vue",
+        "--classes",
+        "x",
+        "--tag",
+        "span",
+    ];
+    if deferred {
+        args.push("--defer-source-write");
+    }
+    let code = impeccable_live::live_wrap::run(
+        &args.into_iter().map(str::to_owned).collect::<Vec<_>>(),
+        &mut io,
+    );
+    let output = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+    let error = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+    (
+        code,
+        serde_json::from_str(&output)
+            .unwrap_or_else(|_| json!({"stdout": output, "stderr": error})),
+    )
+}
+
+#[test]
+fn vue_inline_selection_can_generate_tune_and_accept_without_lost_edits() {
+    if !compiler_configured() {
+        return;
+    }
+    for deferred in [false, true] {
+        let fixture = inline_selection_fixture();
+        let original = fixture.source();
+        let (code, result) = wrap_inline_selection(&fixture, deferred);
+        assert_eq!(code, 0, "{result}");
+        if result["previewMode"] == "vue-component" {
+            // Baseline: generation and Tune compile, but isolation's synthetic
+            // line numbers no longer identify the untouched original source.
+            let file = fixture
+                .0
+                .join("node_modules/.impeccable-live/ab12cd34/v1.vue");
+            let generated = fs::read_to_string(&file)
+                .unwrap()
+                .replace("class=\"x\"", "class=\"x chosen\"");
+            let generated = generated.replace(
+                "</style>",
+                ".chosen { padding: calc(var(--p-space, 8) * 1px); }\n</style>",
+            );
+            fs::write(file, generated).unwrap();
+            let compiled = impeccable_live::svelte_component::compile_check_variants(
+                "ab12cd34",
+                fixture.0.to_str().unwrap(),
+            );
+            assert_eq!(compiled["ok"], true, "generation/Tune: {compiled}");
+            let (_, accepted) = fixture.accept("1");
+            assert_eq!(
+                fixture.source(),
+                original,
+                "failed accept must preserve source"
+            );
+            assert_ne!(
+                accepted["mode"], "error",
+                "generation/Tune compiled but Accept failed: {accepted}"
+            );
+        }
+        assert_eq!(
+            result["previewFallback"]["from"], "vue-component",
+            "{result}"
+        );
+        assert_eq!(
+            result["previewFallback"]["error"], "unsupported_vue_component_preview",
+            "{result}"
+        );
+        assert!(result.get("previewMode").is_none(), "{result}");
+        assert!(result.get("componentDir").is_none(), "{result}");
+        assert!(!fixture
+            .0
+            .join("node_modules/.impeccable-live/ab12cd34")
+            .exists());
+        if deferred {
+            assert_eq!(fixture.source(), original);
+            let start = result["replaceStartLine"].as_u64().unwrap() as usize - 1;
+            let end = result["replaceEndLine"].as_u64().unwrap() as usize;
+            let mut lines: Vec<_> = original.split('\n').map(str::to_owned).collect();
+            lines.splice(
+                start..end,
+                result["wrapperBlock"]
+                    .as_str()
+                    .unwrap()
+                    .split('\n')
+                    .map(str::to_owned),
+            );
+            fs::write(fixture.0.join("StatusCard.vue"), lines.join("\n")).unwrap();
+        }
+        let wrapped = fixture.source();
+        let marker = "<!-- Variants: insert below this line -->";
+        assert!(wrapped.contains(marker), "{wrapped}");
+        fs::write(fixture.0.join("StatusCard.vue"), wrapped.replace(marker,
+            &format!("{marker}\n<div data-impeccable-variant=\"1\"><span class=\"x chosen\" style=\"padding: calc(var(--p-space, 8) * 1px)\">edited</span></div>"))).unwrap();
+        let (code, accepted) = fixture.accept("1");
+        assert_eq!(code, 0, "{accepted}");
+        assert_eq!(accepted["handled"], true, "{accepted}");
+        assert_ne!(accepted["mode"], "error", "{accepted}");
+        let source = fixture.source();
+        assert!(source.contains("chosen"), "{source}");
+        assert!(source.contains("edited"), "{source}");
+        assert!(source.contains("23"), "Tune value lost: {source}");
+        assert!(source.contains("<p>Hi"), "{source}");
+        assert!(source.contains("</p>"), "{source}");
+        assert!(!source.contains("data-impeccable-"), "{source}");
+        assert_eq!(
+            source.split("<template>").next(),
+            original.split("<template>").next()
+        );
+        assert_eq!(
+            source.split("<style scoped>").nth(1),
+            original.split("<style scoped>").nth(1)
+        );
+    }
+}
+
+#[test]
+fn vue_inline_selection_fallback_does_not_require_a_compiler() {
+    let fixture = inline_selection_fixture();
+    fs::remove_dir_all(fixture.0.join("node_modules")).unwrap();
+    let original = fixture.source();
+    let (code, result) = wrap_inline_selection(&fixture, true);
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(
+        result["previewFallback"]["from"], "vue-component",
+        "{result}"
+    );
+    assert_eq!(result["sourceWritten"], false, "{result}");
+    assert_eq!(fixture.source(), original);
+    assert!(!fixture
+        .0
+        .join("node_modules/.impeccable-live/ab12cd34")
+        .exists());
+}
