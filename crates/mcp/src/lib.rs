@@ -206,13 +206,25 @@ impl Upstream for Service {
             // Another agent's sign-in is open: wait for it, then try with what it stored.
             return Ok(());
         };
-        let mut opened = false;
-        let open = &mut self.open;
-        let signed = impeccable_account::login(&self.env, &mut |url: &str| opened = open(url), SIGN_IN_WAIT);
-        match signed {
-            Ok(_) => Ok(()),
-            Err(_) if !opened => Err(NO_BROWSER.into()),
-            Err(_) => Err(NOT_APPROVED.into()),
+        // The sign-in waits on its own thread for the browser's callback; a browser that did not open answers at
+        // once (its listener ends with its own deadline), never after the five minutes.
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<bool>();
+        let env = self.env.clone();
+        let (url_tx, url_rx) = std::sync::mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            let signed = impeccable_account::login(&env, &mut |url: &str| { let _ = url_tx.send(url.to_string()); }, SIGN_IN_WAIT);
+            let _ = done_tx.send(signed.is_ok());
+        });
+        // The URL is opened here, on this thread, where `open` lives; nothing else ever sees it.
+        let Ok(url) = url_rx.recv_timeout(Duration::from_secs(30)) else {
+            return Err(NOT_APPROVED.into());
+        };
+        if !(self.open)(&url) {
+            return Err(NO_BROWSER.into());
+        }
+        match done_rx.recv_timeout(SIGN_IN_WAIT + Duration::from_secs(5)) {
+            Ok(true) => Ok(()),
+            _ => Err(NOT_APPROVED.into()),
         }
     }
 }
@@ -266,7 +278,8 @@ impl SignInLock {
                         .and_then(|t| SystemTime::now().duration_since(t).ok())
                         .is_some_and(|age| age > SIGN_IN_WAIT + Duration::from_secs(30));
                     if stale {
-                        let _ = std::fs::remove_file(&path);
+                        // A stale lock that can't be removed (another user's, say) ends the wait; it is never retried.
+                        std::fs::remove_file(&path).map_err(|e| format!("Could not start the sign-in: {e}"))?;
                         continue;
                     }
                     if started.elapsed() > SIGN_IN_WAIT {

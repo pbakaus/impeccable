@@ -58,3 +58,18 @@ fn opens_the_browser_only_for_a_missing_scope() {
         assert_eq!(fake.hits("/oauth/token") > before, signs_in, "{code}");
     }
 }
+
+// Catches a browser that fails to open (DISPLAY set, no working opener) holding the agent's call for five minutes.
+#[test]
+fn answers_at_once_when_the_browser_does_not_open() {
+    let fake = Fake::start();
+    let env = fake.env("mcp-no-opener");
+    let mut up = service(env.clone(), true, Box::new(|_: &str| false));
+    let call = json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "taste.get", "arguments": {} } });
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let started = std::time::Instant::now();
+    serve(call.to_string().as_bytes(), &mut out, &mut err, &mut up);
+    let said: Value = serde_json::from_str(String::from_utf8(out).unwrap().lines().last().unwrap()).unwrap();
+    assert_eq!(said["result"]["content"][0]["text"], NO_BROWSER);
+    assert!(started.elapsed() < Duration::from_secs(20));
+}
