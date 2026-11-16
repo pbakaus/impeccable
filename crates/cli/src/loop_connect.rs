@@ -300,7 +300,10 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
                         .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
             });
         // Present only where the agent reads it: under an override, the override must carry it.
-        let instruction = agent_block::present(&rule_file(harness, &agent.root), "loop");
+        // The Impeccable block's loop line, or an older CLI's engine block holding the same
+        // line until the next connect folds it in.
+        let instruction = agent_block::present(&rule_file(harness, &agent.root), "loop")
+            || fs::read_to_string(rule_file(harness, &agent.root)).is_ok_and(|t| t.contains(agent_block::LOOP));
         // The wake record is shared per agent; it speaks for this folder only when it names it.
         let root = agent.root.display().to_string();
         let connected = read_record(&support, harness).is_some_and(|r| {
@@ -475,6 +478,12 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     if let Err(e) = note_target(support, agent) {
         return Err(with_mcp(e));
     }
+    // A rule file whose markers are broken would refuse the loop line after the engine had
+    // already taken an older CLI's block out: refuse before anything changes instead.
+    let block_file = rule_file(agent.harness, &agent.root);
+    if let Err(e) = agent_block::writable(&block_file) {
+        return Err(with_mcp(format!("couldn't add the Loop line to {}: {e}", block_file.display())));
+    }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
     // An installation whose state can't be read is never treated as absent: a failure
@@ -572,22 +581,33 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
         .unwrap_or_default();
     let (taste_ok, mut created) = remove_taste(&home, &support, &every, &mut out);
     failed |= !taste_ok;
-    // The "ask through Loop" line goes with the hooks.
+    // The "ask through Loop" line goes with the hooks: from every file connect may have
+    // written it to (Codex's AGENTS.md and its override both, since the override can come
+    // or go after a connect). An installation whose line couldn't come out keeps its
+    // hooks and journal, so the next disconnect visits it again.
+    let mut kept: Vec<(String, PathBuf)> = Vec::new();
     for spec in &every {
-        let file = rule_file(&spec.harness, &spec.root);
-        match agent_block::set(&file, "loop", false) {
-            Ok(_) => {
-                if new_files.contains(&json!(file.display().to_string())) && !created.contains(&file) {
-                    created.push(file);
+        let files = if spec.harness == "codex" {
+            vec![spec.root.join("AGENTS.override.md"), spec.root.join("AGENTS.md")]
+        } else {
+            vec![rule_file(&spec.harness, &spec.root)]
+        };
+        for file in files {
+            match agent_block::set(&file, "loop", false) {
+                Ok(_) => {
+                    if new_files.contains(&json!(file.display().to_string())) && !created.contains(&file) {
+                        created.push(file);
+                    }
                 }
-            }
-            Err(e) => {
-                failed = true;
-                out.push_str(&format!(
-                    "{}: the Loop line in {} was left in place: {e}\n",
-                    label(&spec.harness),
-                    tilde(&home, &file)
-                ));
+                Err(e) => {
+                    failed = true;
+                    kept.push((spec.harness.clone(), spec.root.clone()));
+                    out.push_str(&format!(
+                        "{}: the Loop line in {} was left in place, and so were its hooks: {e}\n",
+                        label(&spec.harness),
+                        tilde(&home, &file)
+                    ));
+                }
             }
         }
     }
@@ -618,7 +638,11 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
             path.display()
         ));
     }
-    let specs = found.committed;
+    let specs: Vec<Spec> = found
+        .committed
+        .into_iter()
+        .filter(|s| !kept.iter().any(|(h, r)| *h == s.harness && *r == s.root))
+        .collect();
     // A rolled-back first connect has no journal left, but may have added the MCP
     // server and Loop's record: stop the waking and say how to remove the server.
     for spec in rolled_back {

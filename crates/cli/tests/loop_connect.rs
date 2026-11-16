@@ -1082,6 +1082,13 @@ fn codex_gets_the_loop_line_in_the_override_file_it_reads() {
     assert!(text(&status).contains("Codex: connected."), "{}", text(&status));
     assert!(b.run(&["loop", "disconnect"]).status.success());
     assert_eq!(read(&over), "Local rules.\n");
+    // An override that appears after the connect: the line in AGENTS.md still goes.
+    fs::remove_file(&over).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION));
+    fs::write(&over, "Local rules.\n").unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(!read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION), "{}", read(&b.home().join(".codex/AGENTS.md")));
 }
 
 #[test]
@@ -1105,6 +1112,19 @@ fn a_loop_instruction_an_older_cli_wrote_moves_into_the_one_block() {
     let out = b.run(&["agents", "apply", "--spec", spec.to_str().unwrap()]);
     assert!(out.status.success(), "{}", text(&out));
     assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    // Until the reconnect, that installation still counts as connected.
+    let status = b.run(&["loop", "status", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    let row = v["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "claude").unwrap().clone();
+    assert_eq!(row["instruction"], true, "{v}");
+    // A rule file whose markers are broken refuses the reconnect before anything changes,
+    // so the working instruction stays.
+    let working = read(&claude_md);
+    fs::write(&claude_md, format!("{working}{START}\n")).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    fs::write(&claude_md, &working).unwrap();
 
     let out = b.run(&["loop", "connect", "--agent", "claude"]);
     assert!(out.status.success(), "{}", text(&out));
@@ -1323,6 +1343,8 @@ fn a_block_that_could_not_be_removed_is_tried_again_next_disconnect() {
     assert!(out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
     assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+    // The Loop line was kept with its hooks the first time, so this disconnect took it out.
+    assert!(!read(&claude_md).contains(INSTRUCTION), "{}", read(&claude_md));
 }
 
 #[test]
