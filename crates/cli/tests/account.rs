@@ -543,4 +543,17 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "nothing more sent");
     assert!(std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap().contains("Impeccable Taste"));
+    // A sync under another CLAUDE_CONFIG_DIR profile keeps the first profile remembered,
+    // so removing its last switch later is still sent.
+    let mut other = env.clone();
+    let profile_b = home.join("claude-b");
+    std::fs::create_dir_all(&profile_b).unwrap();
+    other.insert("CLAUDE_CONFIG_DIR".into(), profile_b.to_string_lossy().into_owned());
+    assert!(impeccable(&other, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
+    let a = home.join(".claude/CLAUDE.md");
+    let t = std::fs::read_to_string(&a).unwrap();
+    let (s0, e0) = (t.find("<!-- impeccable start -->").unwrap(), t.find("<!-- impeccable end -->").unwrap() + "<!-- impeccable end -->".len());
+    std::fs::write(&a, format!("{}{}", t[..s0].trim_end_matches('\n'), &t[e0..])).unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 2, "profile A's removal was sent");
 }
