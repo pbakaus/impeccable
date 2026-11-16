@@ -28,35 +28,55 @@ pub(crate) fn parse(body: &Value) -> Option<Remote> {
     Some(Remote { rev: body["rev"].as_u64()?, team: ids(body.get("team")?)?, me: ids(body.get("me")?)? })
 }
 
-fn session(io: &Io) -> Option<(Account, Session)> {
-    let account = Account::from_env(&io.env).ok()?;
-    let session = Session::load_for_upload(&account, std::time::Duration::from_secs(2))?;
-    Some((account, session))
+/// One sign-in, carried through a whole refresh: the read, any push, and the check
+/// before each write, so a sign-in to another account or a sign-out in between stops
+/// the refresh instead of crossing accounts.
+pub struct Link {
+    account: Account,
+    session: Session,
+    login: u64,
 }
 
-/// `GET /cli/v1/agents?repo=<key>`, the repository key health uploads use; `None` on
-/// any failure.
-pub fn fetch(io: &Io, repo: &str) -> Option<Remote> {
-    let (account, mut session) = session(io)?;
-    let query: String = url::form_urlencoded::Serializer::new(String::new()).append_pair("repo", repo).finish();
-    let url = format!("{}/cli/v1/agents?{query}", account.issuer);
-    let body = session.call(|c, token| c.get_json(&url, Some(token))).ok()?;
-    parse(&body)
-}
-
-/// `POST /cli/v1/agents/me` with every catalog id on or off; `first` seeds a person
-/// the service has no set for yet. The new rev, or `None` on any failure.
-pub fn push(io: &Io, catalog: &[&str], on: &[&str], first: bool) -> Option<u64> {
-    let (account, mut session) = session(io)?;
-    let switches: serde_json::Map<String, Value> =
-        catalog.iter().map(|id| (id.to_string(), json!(on.contains(id)))).collect();
-    let mut body = json!({ "switches": switches });
-    if first {
-        body["first"] = json!(true);
+impl Link {
+    pub fn open(io: &Io) -> Option<Link> {
+        let account = Account::from_env(&io.env).ok()?;
+        let session = Session::load_for_upload(&account, std::time::Duration::from_secs(2))?;
+        let login = session.state.login;
+        Some(Link { account, session, login })
     }
-    let url = format!("{}/cli/v1/agents/me", account.issuer);
-    let answer = session.call(|c, token| c.post_json(&url, token, body.clone())).ok()?;
-    answer["rev"].as_u64()
+
+    /// Whether this machine is still signed in with the sign-in the refresh began with.
+    pub fn still_current(&self) -> bool {
+        crate::store::Store::new(&self.account)
+            .state()
+            .is_some_and(|s| s.signed_in && s.login == self.login)
+    }
+
+    /// `GET /cli/v1/agents?repo=<key>`, the repository key health uploads use; `None` on
+    /// any failure.
+    pub fn fetch(&mut self, repo: &str) -> Option<Remote> {
+        let query: String = url::form_urlencoded::Serializer::new(String::new()).append_pair("repo", repo).finish();
+        let url = format!("{}/cli/v1/agents?{query}", self.account.issuer);
+        let body = self.session.call(|c, token| c.get_json(&url, Some(token))).ok()?;
+        parse(&body)
+    }
+
+    /// `POST /cli/v1/agents/me` with every catalog id on or off; `first` seeds a person
+    /// the service has no set for yet. The new rev, or `None` on any failure.
+    pub fn push(&mut self, catalog: &[&str], on: &[&str], first: bool) -> Option<u64> {
+        if !self.still_current() {
+            return None;
+        }
+        let switches: serde_json::Map<String, Value> =
+            catalog.iter().map(|id| (id.to_string(), json!(on.contains(id)))).collect();
+        let mut body = json!({ "switches": switches });
+        if first {
+            body["first"] = json!(true);
+        }
+        let url = format!("{}/cli/v1/agents/me", self.account.issuer);
+        let answer = self.session.call(|c, token| c.post_json(&url, token, body.clone())).ok()?;
+        answer["rev"].as_u64()
+    }
 }
 
 #[cfg(test)]

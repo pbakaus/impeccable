@@ -768,6 +768,40 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
     }
 }
 
+#[test]
+fn codex_waits_for_an_answer_at_the_end_of_a_turn_only_with_a_loop_that_can_hold() {
+    // Catches (REN-2057): Codex has no background wake, so a blocking Stop hook holds the
+    // turn for Loop's answer; wired for an older helper, it would stall every turn's end.
+    for (version, wanted) in [("0.1.3", false), ("0.1.4", true)] {
+        let b = Box::new(&format!("stop-hold-{version}"));
+        b.install_loop_version(version);
+        let out = b.run(&["loop", "connect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let codex: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".codex/hooks.json")).unwrap()).unwrap();
+        let stop = codex["hooks"]["Stop"].as_array().cloned().unwrap_or_default();
+        let held: Vec<&serde_json::Value> = stop
+            .iter()
+            .map(|g| &g["hooks"][0])
+            .filter(|h| h["command"].as_str().is_some_and(|c| c.ends_with(" codex lifecycle")))
+            .collect();
+        assert_eq!(held.len(), usize::from(wanted), "{version}: {codex}");
+        if let Some(h) = held.first() {
+            assert_eq!(h["timeout"], 3600, "{h}");
+            assert!(h.get("async").is_none(), "it must block: {h}");
+        }
+        // Claude keeps its own background Stop wake, untouched.
+        let claude: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap()).unwrap();
+        let stops: Vec<&serde_json::Value> = claude["hooks"]["Stop"]
+            .as_array()
+            .map(|a| a.iter().map(|g| &g["hooks"][0]).collect())
+            .unwrap_or_default();
+        assert_eq!(stops.len(), 1, "{claude}");
+        assert_eq!((&stops[0]["async"], &stops[0]["asyncRewake"], &stops[0]["timeout"]), (&serde_json::json!(true), &serde_json::json!(true), &serde_json::json!(86400)), "{claude}");
+    }
+}
+
 /// Every Loop hook command connect wrote, Claude's and Codex's.
 fn loop_commands(b: &Box) -> Vec<String> {
     [".claude/settings.json", ".codex/hooks.json"]
@@ -1082,6 +1116,13 @@ fn codex_gets_the_loop_line_in_the_override_file_it_reads() {
     assert!(text(&status).contains("Codex: connected."), "{}", text(&status));
     assert!(b.run(&["loop", "disconnect"]).status.success());
     assert_eq!(read(&over), "Local rules.\n");
+    // An override that appears after the connect: the line in AGENTS.md still goes.
+    fs::remove_file(&over).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION));
+    fs::write(&over, "Local rules.\n").unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(!read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION), "{}", read(&b.home().join(".codex/AGENTS.md")));
 }
 
 #[test]
@@ -1105,6 +1146,19 @@ fn a_loop_instruction_an_older_cli_wrote_moves_into_the_one_block() {
     let out = b.run(&["agents", "apply", "--spec", spec.to_str().unwrap()]);
     assert!(out.status.success(), "{}", text(&out));
     assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    // Until the reconnect, that installation still counts as connected.
+    let status = b.run(&["loop", "status", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    let row = v["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "claude").unwrap().clone();
+    assert_eq!(row["instruction"], true, "{v}");
+    // A rule file whose markers are broken refuses the reconnect before anything changes,
+    // so the working instruction stays.
+    let working = read(&claude_md);
+    fs::write(&claude_md, format!("{working}{START}\n")).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    fs::write(&claude_md, &working).unwrap();
 
     let out = b.run(&["loop", "connect", "--agent", "claude"]);
     assert!(out.status.success(), "{}", text(&out));
@@ -1323,6 +1377,8 @@ fn a_block_that_could_not_be_removed_is_tried_again_next_disconnect() {
     assert!(out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
     assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+    // The Loop line was kept with its hooks the first time, so this disconnect took it out.
+    assert!(!read(&claude_md).contains(INSTRUCTION), "{}", read(&claude_md));
 }
 
 #[test]

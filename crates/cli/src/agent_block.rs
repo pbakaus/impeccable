@@ -35,6 +35,22 @@ pub(crate) const CATALOG: [(&str, &str, &str); 9] = [
 
 type Result<T> = std::result::Result<T, String>;
 
+/// Earlier wording of a switch's line, still read as that switch and replaced by its
+/// current line on the next write, so a copy edit never strands an old line. When a
+/// line in CATALOG changes, its previous text goes here.
+const ALIASES: &[(&str, &str)] = &[];
+
+/// The switch a line stands for, by its current wording or an earlier one.
+fn switch_of(line: &str) -> Option<&'static str> {
+    CATALOG
+        .iter()
+        .find(|(_, _, l)| *l == line)
+        .map(|(id, _, _)| *id)
+        .or_else(|| ALIASES.iter().find(|(_, l)| *l == line).map(|(id, _)| *id))
+}
+
+
+
 /// Where a block sits in `text`: the start of its start marker to the end of its end
 /// marker. Markers that are duplicated, unbalanced, out of order or not on lines of
 /// their own are an error, and the file is then left as it is.
@@ -62,7 +78,7 @@ fn other_lines(text: &str) -> Result<Vec<String>> {
     Ok(text[a + START.len()..b - END.len()]
         .lines()
         .map(|l| l.trim_end_matches('\r'))
-        .filter(|l| !l.trim().is_empty() && !CATALOG.iter().any(|(_, _, line)| line == l))
+        .filter(|l| !l.trim().is_empty() && switch_of(l).is_none())
         .map(str::to_string)
         .collect())
 }
@@ -73,7 +89,11 @@ pub(crate) fn switches(text: &str) -> Result<Vec<&'static str>> {
     let mut on = Vec::new();
     if let Some((a, b)) = span(text, START, END)? {
         let body: Vec<&str> = text[a..b].lines().map(|l| l.trim_end_matches('\r')).collect();
-        on.extend(CATALOG.iter().filter(|(_, _, line)| body.contains(line)).map(|(id, _, _)| *id));
+        for (id, _, _) in CATALOG {
+            if body.iter().any(|l| switch_of(l) == Some(id)) {
+                on.push(id);
+            }
+        }
     }
     if span(text, OLD_TASTE.0, OLD_TASTE.1)?.is_some() && !on.contains(&"taste") {
         on.push("taste");
@@ -201,6 +221,12 @@ fn read(path: &Path) -> Result<Option<String>> {
     }
 }
 
+/// The switches on in `path`: none for a missing file, an error for one that can't be
+/// read or has broken markers.
+pub(crate) fn switches_in(path: &Path) -> Result<Vec<&'static str>> {
+    switches(&read(path)?.unwrap_or_default())
+}
+
 /// Whether switch `id` is on in `path`. An unreadable file reads as off.
 pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
@@ -209,6 +235,10 @@ pub(crate) fn present(path: &Path, id: &str) -> bool {
 /// Put exactly the switches `on` in `path` (lines it doesn't know stay), creating the
 /// file only when one is on. `Ok(false)` when nothing changed.
 pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {
+    locked(path, || write_switches_unlocked(path, on))
+}
+
+fn write_switches_unlocked(path: &Path, on: &[&str]) -> Result<bool> {
     let before = read(path)?;
     if before.is_none() && on.is_empty() {
         return Ok(false);
@@ -222,9 +252,53 @@ pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {
     Ok(true)
 }
 
+/// Run `f` holding the lock that serializes every read-modify-write of one rule file
+/// across processes (`loop connect` and the sync worker): a lock file beside the file
+/// itself, taken with `create_new`, treated as stale after 30 s.
+fn locked<T>(path: &Path, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    use std::time::{Duration, Instant};
+    let target = physical(path)?;
+    let parent = target.parent().ok_or("no parent folder")?;
+    let name = target.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
+    let lock = parent.join(format!(".{name}.impeccable-lock"));
+    let _ = fs::create_dir_all(parent);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match fs::OpenOptions::new().write(true).create_new(true).open(&lock) {
+            Ok(_) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stale = fs::metadata(&lock)
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().unwrap_or_default() > Duration::from_secs(30));
+                if stale {
+                    let _ = fs::remove_file(&lock);
+                    continue;
+                }
+                if Instant::now() > deadline {
+                    return Err("another Impeccable command is changing it".into());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let out = f();
+    let _ = fs::remove_file(&lock);
+    out
+}
+
+/// Whether `path` can take the block: readable text with no broken markers.
+pub(crate) fn writable(path: &Path) -> Result<()> {
+    switches(&read(path)?.unwrap_or_default()).map(|_| ())
+}
+
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
+    locked(path, || set_unlocked(path, id, on))
+}
+
+fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
     let Some(&(id, _, _)) = CATALOG.iter().find(|(i, _, _)| *i == id) else {
         return Err(format!("{id} isn't a switch"));
     };
@@ -354,6 +428,18 @@ mod tests {
         ] {
             assert!(with_switches(&text, &["loop"]).is_err(), "{text:?}");
         }
+    }
+
+    #[test]
+    fn an_alias_reads_as_its_switch() {
+        // Copy edits (review): an earlier wording must read as its switch, not as an
+        // unknown line kept beside the new one. Every alias names a catalog id.
+        for (id, line) in ALIASES {
+            assert!(CATALOG.iter().any(|(i, _, _)| i == id), "{id}");
+            assert_eq!(switch_of(line), Some(*id));
+        }
+        assert_eq!(switch_of(TASTE), Some("taste"));
+        assert_eq!(switch_of("A newer switch's line."), None);
     }
 
     #[test]

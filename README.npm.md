@@ -39,9 +39,15 @@ npx impeccable detect --json src/
 
 # GitHub Actions annotations
 npx impeccable detect --github src/
+
+# SARIF 2.1.0 for GitHub code scanning, GitLab, or Azure DevOps
+npx impeccable detect --sarif src/ > impeccable.sarif
+
 # Catalog of detector rules (no scan)
 npx impeccable detect --list-rules
 ```
+
+Upload that log with `github/codeql-action/upload-sarif` (`sarif_file: impeccable.sarif`, and `category: impeccable` so it sits beside CodeQL); the job needs `security-events: write`. Write it with `npx impeccable detect --sarif src/ > impeccable.sarif || test $? -eq 2` so findings (exit `2`) still upload while an unscannable target (exit `1`) fails the step; that log also says `executionSuccessful: false`. A clean scan still writes a log with an empty `results` array, which is what closes alerts that were fixed. `partialFingerprints.primaryLocationLineHash` is left unset; the upload action fills it.
 
 `npx impeccable skills <command>` is the legacy namespace and still works.
 
@@ -70,7 +76,7 @@ npx impeccable detect --list-rules
 - `1`: at least one requested target could not be scanned
 - `2`: scan completed with primary findings
 
-Operational failure takes precedence when a multi-target scan is partial. In JSON mode, stdout remains a findings array and diagnostics are written to stderr. With `--github`, stdout is one GitHub Actions annotation per finding; GitHub displays at most 10 annotations of each type per step and 50 per job, and the rest stay in the log.
+Operational failure takes precedence when a multi-target scan is partial. In JSON mode, stdout remains a findings array and diagnostics are written to stderr. With `--github`, stdout is one GitHub Actions annotation per finding; GitHub displays at most 10 annotations of each type per step and 50 per job, and the rest stay in the log. With `--sarif`, stdout is one SARIF 2.1.0 log, including a clean scan.
 
 ## Options
 
@@ -79,6 +85,7 @@ impeccable detect [options] [file-or-dir-or-url...]
 
   --json        Output findings as JSON
   --github      Write GitHub Actions annotations for each finding
+  --sarif       Write a SARIF 2.1.0 log for code scanning
   --list-rules  Print the detector rule catalog and exit
   --scope       Only report rules in a design domain (type, layout)
   --help        Show help

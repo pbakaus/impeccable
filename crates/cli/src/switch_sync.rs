@@ -104,14 +104,46 @@ fn repo(cwd: &Path) -> Option<String> {
     Some(Sha256::digest(url.as_bytes()).iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// Hidden detached worker: silent and best effort.
+/// One worker at a time: a lock file in the Impeccable home, stale after two minutes.
+/// `None` when another worker holds it.
+fn worker_lock(account: &Account) -> Option<impl Drop> {
+    struct Held(PathBuf);
+    impl Drop for Held {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let path = account.home.join("switches.lock");
+    let _ = std::fs::create_dir_all(&account.home);
+    for _ in 0..2 {
+        match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(_) => return Some(Held(path)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let stale = std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .is_ok_and(|t| t.elapsed().unwrap_or_default() > std::time::Duration::from_secs(120));
+                if !stale {
+                    return None;
+                }
+                let _ = std::fs::remove_file(&path);
+            }
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// Hidden detached worker: silent and best effort. Anything it can't read or check
+/// leaves the files, the page and the base as they were.
 pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     if !args.is_empty() {
         return 0;
     }
     let Ok(account) = Account::from_env(&io.env) else { return 0 };
+    let Some(_worker) = worker_lock(&account) else { return 0 };
     let Some(repo) = repo(&io.cwd) else { return 0 };
-    let Some(remote) = impeccable_account::switches::fetch(io, &repo) else { return 0 };
+    let Some(mut link) = impeccable_account::switches::Link::open(io) else { return 0 };
+    let Some(remote) = link.fetch(&repo) else { return 0 };
     let cache = read_cache(&account);
     let base: Option<Vec<String>> = cache
         .as_ref()
@@ -119,28 +151,37 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     let files = rule_files(io);
     let mut sets = Vec::new();
     for f in &files {
-        let text = std::fs::read_to_string(f).unwrap_or_default();
-        match agent_block::switches(&text) {
+        // Only a missing file reads as no switches; one that can't be read stops here.
+        match agent_block::switches_in(f) {
             Ok(ids) => sets.push(ids.into_iter().map(str::to_string).collect::<Vec<_>>()),
-            // A file with broken markers is left alone, and so is the sync.
             Err(_) => return 0,
         }
     }
     let catalog: Vec<&str> = agent_block::CATALOG.iter().map(|(id, _, _)| *id).collect();
-    let synced = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
-        Step::Seed(on) => {
-            let refs: Vec<&str> = on.iter().map(String::as_str).collect();
-            impeccable_account::switches::push(io, &catalog, &refs, true).map(|_| on)
+    // Every file gets the set the page now holds, so two files never disagree and push
+    // the page back and forth.
+    let write_all = |on: &[String], link: &impeccable_account::switches::Link| -> bool {
+        if !link.still_current() {
+            return false;
         }
-        Step::Push(on) => {
+        let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
+        files.iter().all(|f| agent_block::write_switches(f, &refs).is_ok())
+    };
+    let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
+        Step::Seed(on) | Step::Push(on) => {
+            let first = remote.me.is_none();
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
-            impeccable_account::switches::push(io, &catalog, &refs, false).map(|_| on)
+            match link.push(&catalog, &refs, first) {
+                Some(_) if write_all(&on, &link) => Some(on),
+                Some(_) => Some(on),
+                // Not sent: the base stays, so the next refresh still sees the change.
+                None => base.clone(),
+            }
         }
         Step::Write(on) => {
-            let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
-            files.iter().all(|f| agent_block::write_switches(f, &refs).is_ok()).then_some(on)
+            if write_all(&on, &link) { Some(on) } else { base.clone() }
         }
-        Step::Nothing => remote.me.clone().or(base),
+        Step::Nothing => remote.me.clone().or(base.clone()),
     };
     let mut next = json!({ "issuer": account.issuer, "fetchedAt": impeccable_account::session::now() });
     if let Some(set) = synced {
