@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impeccable</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body data-state="loading">
+  <main id="app"></main>
+  <!-- Scan, as the popup has it: the popup's own script drives these (popup/popup.js). The panel shows it on Scan. -->
+  <section id="panel-scan" class="scan" hidden>
+    <div class="count" id="count-display">
+      <span class="count-number" id="count-number">0</span>
+      <span class="count-rule" aria-hidden="true"></span>
+      <span class="count-label" id="count-label">anti-patterns</span>
+    </div>
+    <div class="pair">
+      <button class="btn btn-sec" id="btn-copy-all" type="button" disabled>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h9"/></svg>
+        <span id="copy-label">Copy all</span>
+      </button>
+      <button class="btn btn-sec" id="btn-toggle" type="button" disabled>
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span id="toggle-label">Hide outlines</span>
+      </button>
+    </div>
+    <button class="btn btn-gold full" id="btn-scan" type="button">Scan page</button>
+    <p class="err" id="scan-error" role="status" aria-live="polite"></p>
+  </section>
+  <script src="../../shared/findings-report.js"></script>
+  <script src="../../popup/popup.js"></script>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
