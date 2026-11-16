@@ -1792,6 +1792,7 @@ describe('walk worker', () => {
       chrome.debugger.sendCommand = async (target, method, params) => {
         if (method.startsWith('Emulation.') || method === 'Page.reload') log.push([method, params]);
         if (!end && method === 'Emulation.setTouchEmulationEnabled' && params.enabled) throw new Error('{"message":"no touch here"}');
+        if (method === 'Page.captureScreenshot') return { data: 'eA==' };
         return sendCommand(target, method, params);
       };
       chrome.debugger.detach = async () => { log.push(['detach']); };
@@ -1816,11 +1817,18 @@ describe('walk worker', () => {
           assert.deepEqual((await chrome.storage.session.get('sizedTab')).sizedTab, { tabId: 21, device });
           // The engine's own size for the walk does not undo the person's pick.
           await ops.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+          // Laid out at the screen's density, a still still comes back at the device's CSS size.
+          const kept = { bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+          let drawn;
+          globalThis.createImageBitmap = async () => ({ close() {} });
+          globalThis.OffscreenCanvas = class { constructor(w, h) { drawn = [w, h]; } getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
+          try { await ops.screenshot({ format: 'png' }); } finally { Object.assign(globalThis, { createImageBitmap: kept.bitmap, OffscreenCanvas: kept.canvas }); }
+          assert.deepEqual(drawn, [DEVICES[device].width, DEVICES[device].height]);
           await end(walk);
           await settle(5);
         }
         const { width, height } = DEVICES[device];
-        assert.deepEqual(log.find(([method]) => method === 'Emulation.setDeviceMetricsOverride')[1], { width, height, deviceScaleFactor: 1, mobile: true });
+        assert.deepEqual(log.find(([method]) => method === 'Emulation.setDeviceMetricsOverride')[1], { width, height, deviceScaleFactor: 0, mobile: true });
         if (end) assert.match(log.find(([method]) => method === 'Emulation.setUserAgentOverride')[1].userAgent, /Android/);
         assert.equal((await chrome.storage.session.get('sizedTab')).sizedTab, undefined);
         const tail = log.slice(label.startsWith('Cancel') ? -6 : -4).map(([method, params]) => (method === 'Emulation.setDeviceMetricsOverride' ? 'size' : ['attach', 'detach'].includes(method) ? method : `${method}:${JSON.stringify(params ?? {})}`));

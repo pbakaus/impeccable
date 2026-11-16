@@ -167,8 +167,13 @@ async function mayGo(url) {
 
 /**
  * The widths a walk of the person's own tab may run at, picked in the side panel (REN-1890): the server's own sizes for
- * them (its `mobile` and `tablet`). Desktop is not here: the tab keeps its own size. One device pixel a CSS pixel, as the engine's own browser has it; both take touch and name
+ * them (its `mobile` and `tablet`). Desktop is not here: the tab keeps its own size. Both take touch and name
  * themselves as Chrome on Android, a phone as a mobile one.
+ *
+ * At the screen's own pixel density, as a desktop walk is, not one device pixel a CSS pixel: Chrome takes every
+ * picture of a tab whose density differs from its screen's by laying it out again at that density for the moment,
+ * which on a 2x screen drew the page at a quarter of its size and back on every film frame (the flicker beside the
+ * page) and put a press made meanwhile at twice its coordinates. Its pictures are drawn back down to the CSS size.
  */
 export const DEVICES = { tablet: { width: 820, height: 1180, phone: false }, phone: { width: 390, height: 844, phone: true } };
 
@@ -190,7 +195,7 @@ async function sizeTo(device) {
   walk.sized = device;
   // Kept beyond this worker: one Chrome ends mid-journey leaves the tab to the next to give back (`giveBack`).
   await chrome.storage.session.set({ sizedTab: { tabId: walk.tabId, device } }).catch(() => undefined);
-  await cmd('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: 1, mobile: true });
+  await cmd('Emulation.setDeviceMetricsOverride', { width: size.width, height: size.height, deviceScaleFactor: 0, mobile: true });
   await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   await cmd('Emulation.setUserAgentOverride', agentOf(device));
 }
@@ -1388,7 +1393,10 @@ export const ops = {
   // Page.captureScreenshot alone: no Page.bringToFront, so the person's own tab stays in front.
   async screenshot({ format, quality, clip }) {
     const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), ...(clip ? { clip: { ...clip, scale: 1 } } : {}), captureBeyondViewport: false });
-    return { value: { data: await seenAs(data, format, quality) } };
+    // A phone or tablet tab is at the screen's density (`DEVICES`): its picture is drawn at its CSS size.
+    const size = walk.sized && (clip ?? DEVICES[walk.sized]);
+    const shot = size ? await smaller(data, Math.round(size.width), Math.round(size.height), format, quality ?? 100) : data;
+    return { value: { data: await seenAs(shot, format, quality) } };
   },
 
   // Never while a film's picture is being taken (`pointer`).
