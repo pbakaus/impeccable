@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, unhold, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -130,14 +130,24 @@ for (const [name, run] of Object.entries(ops)) {
       if (req?.open === true && current().state !== 'walking') throw fail('Paused', 'the journey is paused');
       return acting(req);
     }
-    const ask = askOf(name, req);
+    let ask = askOf(name, req);
     let agreed = ask === null;
+    // A free walk holds no write (REN-2086): a submit the server did not mark is asked here first, once the walk may act.
+    let checked = ask !== null || !ACTS.has(name);
     for (;;) {
       const at = fenced();
       if (!(await clear(name)) && at === fenced()) {
+        if (!checked) {
+          checked = true;
+          const control = await submitIn(name, req);
+          if (control) [ask, agreed] = [{ kind: 'send', what: `Submit "${control}"` }, false];
+          continue;
+        }
         if (!agreed) {
           // Another site the person let the walk go to is only looked at: no deed is asked for there.
           if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
+          // The server stops the deed's clock while the person decides: it did not arm this ask, so it is told.
+          if (!askOf(name, req)) say({ event: 'asking', kind: 'send' });
           const asked = writesNow();
           const said = await consent(ask);
           if (said === 'no') throw fail('Declined', 'the person said no');

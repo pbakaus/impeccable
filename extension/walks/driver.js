@@ -65,7 +65,8 @@ export const INPUT_WINDOW_MS = 5000;
 /** When the person last pressed or typed in the tab while it was paused at a sign-in. */
 let touched = -Infinity;
 const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && touched >= driver.since && at - touched <= INPUT_WINDOW_MS);
-const holding = (tab, at) => !tab.writesOpen && !persons(at);
+// A free walk (`open`'s `free`, REN-2086) holds no write: its server asks before a submit instead, and so does control.js.
+const holding = (tab, at) => !tab.free && !tab.writesOpen && !persons(at);
 /** Whether the walk's writes are held right now, for the network rules beside this hold (net-hold.js). */
 export const writesHeld = (at = Date.now()) => Boolean(walk) && holding(walk, at);
 /** Tells whoever follows the hold that it may have changed: resolves once they have caught up. */
@@ -650,6 +651,56 @@ async function inLookout(expression) {
   return null;
 }
 
+/**
+ * The control a click at `at` would press, or the focused one a key would (`at` null), when pressing it sends
+ * something (REN-2086): the server's own rule (persona-session.ts `confirmingControl`, as a journey reads it). Its words
+ * approve, save, delete, send, pay, add, buy, order, book or follow (a plain link's go somewhere), it is a switch or a
+ * toggle, Enter is in a text box, or it sends a form that does more than search. Runs in the walk's own world. Its name, or null.
+ */
+function submitsAt(at, enter) {
+  const control = 'a, button, [role="button"], [role="link"], [role="tab"], [role="slider"], [role="switch"], [role="checkbox"], [role="radio"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="treeitem"], input:not([type="hidden"]), select, textarea, summary, label, [onclick], [tabindex]:not([tabindex="-1"])';
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const changes = /\b(?:approve|reject|decline|deny|submit|save|delete|remove|send|pay|confirm|publish|archive|revoke|withdraw|transfer)\b|\bcancel [a-z]/;
+  const shops = /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe)\b/;
+  let el = at ? document.elementFromPoint(at.x, at.y) : document.activeElement;
+  while (el) {
+    const tag = el.tagName.toLowerCase();
+    const type = (el.getAttribute('type') ?? '').toLowerCase();
+    const own = norm(`${el.innerText || el.textContent || ''}`);
+    const said = [norm(el.getAttribute('aria-label') ?? ''), own.length <= 40 ? own : '', norm(el.getAttribute('title') ?? ''), tag === 'input' && /^(?:submit|button)$/.test(type) ? norm(el.value ?? '') : ''].filter((s) => s.length > 0);
+    const link = tag === 'a' && el.getAttribute('href') !== null && !el.getAttribute('role');
+    if (said.some((s) => changes.test(s) || (!link && shops.test(s)))) return said[0];
+    if (el.getAttribute('role') === 'switch' || el.getAttribute('aria-pressed') !== null) return said[0] ?? 'the switch';
+    const editable = el.getAttribute('contenteditable');
+    if (enter && (tag === 'textarea' || (editable !== null && editable !== 'false'))) return said[0] ?? 'the text box';
+    const form = el.closest('form');
+    if (form) {
+      const method = (el.getAttribute('formmethod') ?? form.getAttribute('method') ?? '').toLowerCase();
+      const reads = method === 'get' || method === 'dialog' || (!method && (form.getAttribute('role') === 'search' || !!form.querySelector('input[type="search"]')));
+      const sends = tag === 'button' ? type === '' || type === 'submit' : tag === 'input' && (type === 'submit' || type === 'image' || (enter && !/^(?:button|reset|checkbox|radio|file|range|color)$/.test(type)));
+      if (!reads && sends) return said[0] ?? 'the form’s submit button';
+    }
+    if (el.closest(control) === el) break;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/**
+ * What a free walk asks the person before (REN-2086): the control a click, Enter or Space, or a typed new line would
+ * press that sends something, unless the server marked it or has opened writes for a deed its plan approved. Its name, or null.
+ */
+export async function submitIn(name, req) {
+  const tab = walk;
+  if (!tab?.free || tab.writesOpen) return null;
+  const clicks = name === 'mouse' && (req.action === 'click' || req.action === 'down');
+  const keys = name === 'keyboard' && ((req.action === 'press' && ['Enter', ' ', 'Space'].includes(req.key)) || (req.action === 'type' && /[\r\n]/.test(String(req.text ?? ''))));
+  if (!clicks && !keys) return null;
+  const at = clicks ? (req.action === 'click' ? { x: Number(req.x), y: Number(req.y) } : { x: tab.mouse.x, y: tab.mouse.y }) : null;
+  const found = await inLookout(`(${submitsAt})(${JSON.stringify(at)}, ${keys && req.key !== ' ' && req.key !== 'Space'})`);
+  return typeof found?.value === 'string' && found.value ? found.value : null;
+}
+
 /*
  * A native list (a `<select>` showing one option) opens a menu of Chrome's own, drawn outside the page: no picture the
  * persona sees shows it, and on a Mac a click or an arrow key opens it rather than changing the choice (measured: a
@@ -788,10 +839,12 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
       const allowed = signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
-      const writable = [...tab.writable, ...signIn];
+      const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
+      // A free walk's page may write to any origin but our own pages (guard.js `verdict`), from its own site: never a form
+      // the top of the page sends off the site, nor anything on another site the person let it go to, where it only looks.
+      const writable = [...tab.writable, ...signIn, ...(tab.free && !top && !lookOnly() ? [webOrigin(params.request?.url)] : [])];
       // A sign-in page asked for: paused before the guard answers, whatever it answers; unless the person is the one
       // signing in.
-      const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
       if (!heldAtSignIn && top && isSignInPage(params.request?.url)) spotted();
       // Another site, on a walk of the person's own tab: held until the person says whether it may go there.
       // A form sent to it is never asked about; a question that fails leaves the move refused.
@@ -1176,7 +1229,7 @@ async function press(name) {
  * `open` for a walk of the person's own tab: the debugger goes on the tab main named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
-async function adopt(name, allow) {
+async function adopt(name, allow, free) {
   const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
@@ -1203,7 +1256,7 @@ async function adopt(name, allow) {
     still();
     // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
     const writable = [...new Set([site, ...allowedFor(allow)])];
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1231,9 +1284,10 @@ async function adopt(name, allow) {
 
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
-  async open({ url, name, allow }) {
+  // `free` (REN-2086): its writes are not held; an older server never says it, so its walks are held as ever.
+  async open({ url, name, allow, free }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow);
+    if (adopted) return adopt(name, allow, free);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -1257,7 +1311,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
