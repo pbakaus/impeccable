@@ -24,12 +24,35 @@ fn enabled(io: &Io) -> bool {
 }
 
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
-fn payload(snapshot: &SavedReport) -> Option<Value> {
+/// What a saved report is: a critique (ten heuristics out of 40) or an audit
+/// (five dimensions out of 20, none n/a, no heuristics). The cloud keeps
+/// both in the person's critique history and marks audits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Report {
+    Critique,
+    Audit,
+}
+
+impl Report {
+    fn noun(self) -> &'static str {
+        match self {
+            Report::Critique => "critique",
+            Report::Audit => "audit",
+        }
+    }
+}
+
+/// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
+fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
     let m = &snapshot.meta;
     let total = m.get("total_score")?.as_u64()?;
     let max = m.get("max_score")?.as_u64()?;
     // The storage parser reads a single N/A index as a number, a list as text.
-    let na: Vec<u64> = match m.get("na_heuristics")? {
+    if report == Report::Audit && (max != 20 || m.get("na_heuristics").is_some()) {
+        return None;
+    }
+    // The storage parser reads a single N/A index as a number, a list as text.
+    let na: Vec<u64> = match m.get("na_heuristics").unwrap_or(&Value::String(String::new())) {
         Value::Number(n) => vec![n.as_u64()?],
         Value::String(s) if s.is_empty() => vec![],
         Value::String(s) => s
@@ -42,7 +65,7 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
     if na.len() > 9
         || unique.len() != na.len()
         || na.iter().any(|n| !(1..=10).contains(n))
-        || max != 4 * (10 - na.len() as u64)
+        || (report == Report::Critique && max != 4 * (10 - na.len() as u64))
         || total > max
     {
         return None;
@@ -80,21 +103,26 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
         return None;
     }
     let created_at = format!("{}:{}:{}Z", &stamp[..13], &stamp[14..16], &stamp[17..19]);
-    Some(json!({
+    let mut out = json!({
         "version": 1, "critiqueId": id, "createdAt": created_at,
         "target": target, "score": { "total": total, "max": max }, "na": na,
         "heuristics": null, "counts": { "p0": p0, "p1": p1, "p2": count("p2_count"), "p3": count("p3_count") },
         "body": body
-    }))
+    });
+    // Only an audit names its kind: a critique's upload stays as every server so far reads it.
+    if report == Report::Audit {
+        out["kind"] = "audit".into();
+    }
+    Some(out)
 }
 
 /// One line on stdout, where the person's agent reads it, after a saved
 /// critique (journey 3): where it went, why it didn't, or once a day per
 /// project while signed out, how to keep its history. Nothing when sync is off,
 /// in CI, under an opt-out, or with `--json`/`--quiet`/`--github`.
-pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
+pub fn after_save(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) {
     // Quiet saves still upload; they only say nothing, and spend no once-only line.
-    if let Some(line) = upload(io, snapshot, quiet).filter(|_| !quiet) {
+    if let Some(line) = upload(io, snapshot, report, quiet).filter(|_| !quiet) {
         io.out(&line);
     }
 }
@@ -115,7 +143,7 @@ fn project_root(snapshot: &SavedReport) -> Option<&std::path::Path> {
 
 /// Signed out: at most once a day per project, so a run of critiques costs the
 /// customer's agent one line, not one per report.
-fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option<String> {
+fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: Report) -> Option<String> {
     use sha2::{Digest, Sha256};
     let project = root.map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
     let digest = Sha256::digest(project.as_bytes());
@@ -133,10 +161,10 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option
         _ => {}
     }
     let _ = std::fs::remove_file(marker(today.saturating_sub(1)));
-    Some("Keep this critique's history: npx impeccable login\n".into())
+    Some(format!("Keep this {}'s history: npx impeccable login\n", report.noun()))
 }
 
-fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
+fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> Option<String> {
     let started = Instant::now();
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
@@ -161,10 +189,10 @@ fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
         return if quiet {
             None
         } else {
-            signed_out_nudge(&account, root)
+            signed_out_nudge(&account, root, report)
         };
     };
-    let Some(mut body) = payload(snapshot) else {
+    let Some(mut body) = payload(snapshot, report) else {
         return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
     };
     if let Some(root) = root {
@@ -261,14 +289,18 @@ fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
-                && crate::upload_notice::first(&account, session.state.login, crate::upload_notice::Kind::Critique);
+                && crate::upload_notice::first(&account, session.state.login, if report == Report::Audit {
+                    crate::upload_notice::Kind::Audit
+                } else {
+                    crate::upload_notice::Kind::Critique
+                });
             let at = v["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://"));
             let mut line = match at {
                 Some(url) => format!("Saved to Impeccable: {url}"),
                 None => "Saved to Impeccable.".to_string(),
             };
             if first {
-                line.push_str(" Every critique you save uploads; to stop: impeccable critiques off");
+                line.push_str(&format!(" Every {} you save uploads; to stop: impeccable critiques off", report.noun()));
             }
             Some(line + "\n")
         }
