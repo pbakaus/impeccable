@@ -564,7 +564,7 @@ pub fn write_private_mode(path: &Path, bytes: &[u8], mode: u32) -> Result<(), St
 /// and a sign-in remembers its store, so setting it once for `login` is enough.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn keychain_error(action: &str, code: i32) -> String {
-    const FILE: &str = "To keep the sign-in in ~/.impeccable instead, run: IMPECCABLE_CREDENTIAL_STORE=file impeccable login";
+    const FILE: &str = "To keep the sign-in in ~/.impeccable instead, run: IMPECCABLE_CREDENTIAL_STORE=file npx impeccable login";
     // Sign-out advice must finish signing out, never sign back in.
     if action == "delete" {
         return match code {
@@ -590,7 +590,7 @@ pub(crate) fn keychain_error(action: &str, code: i32) -> String {
         ),
         // errSecUserCanceled
         -128 => format!(
-            "the keychain prompt was declined. Run impeccable login again and choose Allow. {FILE}"
+            "the keychain prompt was declined. Run npx impeccable login again and choose Allow. {FILE}"
         ),
         code => format!("keychain {action} failed ({code}). {FILE}"),
     }
@@ -781,7 +781,7 @@ mod keychain_error_tests {
             "macOS wouldn't let the CLI write its keychain here (no keychain in this session"
         ));
         assert_eq!(missing, keychain_error("write", -25307));
-        assert!(missing.ends_with("IMPECCABLE_CREDENTIAL_STORE=file impeccable login"));
+        assert!(missing.ends_with("IMPECCABLE_CREDENTIAL_STORE=file npx impeccable login"));
         assert!(keychain_error("read", -25308).starts_with("the macOS keychain is locked"));
         assert!(keychain_error("read", -25308).contains("or to keep the sign-in in ~/.impeccable"));
         assert!(keychain_error("write", -128).starts_with("the keychain prompt was declined"));

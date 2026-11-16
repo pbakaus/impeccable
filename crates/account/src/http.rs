@@ -101,8 +101,21 @@ impl Client {
     }
 
     pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<serde_json::Value, ApiError> {
+        self.get_json_with(url, bearer, &[])
+    }
+
+    /// [`Client::get_json`] with extra request headers.
+    pub fn get_json_with(
+        &self,
+        url: &str,
+        bearer: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
         let mut req = self.agent.get(url).set("accept", "application/json");
+        for (name, value) in headers {
+            req = req.set(name, value);
+        }
         if let Some(token) = bearer {
             req = req.set("authorization", &bearer_header(token)?);
         }

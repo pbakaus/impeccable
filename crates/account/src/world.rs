@@ -35,7 +35,7 @@ system, it writes nothing and tells you how to merge.
   --print   Print the seed as JSON instead of writing it (its DESIGN.md is in
             design_md), to merge into the design system you have.
 
-Needs an Impeccable account (impeccable login). Some worlds need Pro.
+Needs an Impeccable account (npx impeccable login). Some worlds need Pro.
 ";
 
 /// The seed's DESIGN.md carrying `world: "<id>"` in its frontmatter, the line
@@ -377,15 +377,15 @@ fn failure(id: &str, e: &SessionError) -> String {
     use crate::http::ApiError;
     match e {
         SessionError::NotSignedIn => {
-            "Using a world needs your Impeccable account. Run impeccable login, then try again.\n".into()
+            "Using a world needs your Impeccable account. Run npx impeccable login, then try again.\n".into()
         }
         SessionError::Expired | SessionError::Api(ApiError::Status { status: 401, .. }) => {
-            "Your sign-in expired. Run impeccable login, then try again.\n".into()
+            "Your sign-in expired. Run npx impeccable login, then try again.\n".into()
         }
         SessionError::Api(ApiError::Status { status: 403, code })
             if code.as_deref() == Some("insufficient_scope") =>
         {
-            "Using a world needs a fresh sign-in. Run impeccable login, then try again.\n".into()
+            "Using a world needs a fresh sign-in. Run npx impeccable login, then try again.\n".into()
         }
         SessionError::Api(ApiError::Status { status: 403, .. }) => {
             format!("The world {id} needs Pro. {}\n", crate::pro::PRICING)

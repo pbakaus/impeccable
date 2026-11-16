@@ -264,7 +264,7 @@ describe('POST /agent-target', { skip: ENGINE_BIN ? false : ENGINE_MISSING_MESSA
       assert.equal('token' in verdict, false);
     } finally {
       sse.close();
-      // Give the server's 8s SSE-drop exit timer no chance to fire between
+      // Give the server's SSE-drop exit timer no chance to fire between
       // tests: reconnecting tests open their own client immediately.
     }
   });

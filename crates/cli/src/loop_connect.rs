@@ -11,7 +11,7 @@
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
-use crate::loop_taste;
+use crate::agent_block;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -19,48 +19,90 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// The Impeccable MCP server. A constant of the build: never taken from a flag, the
-/// environment or a server response.
+/// The Impeccable MCP servers. Constants of the build: the account service the CLI
+/// signs in to (`IMPECCABLE_ACCOUNT_URL`) chooses between them, and nothing else can name
+/// one. An entry is written into the agent's own global configuration and outlives the
+/// variable, so an account URL that is neither service is refused, never followed and
+/// never replaced by production.
 const MCP_URL: &str = "https://api.impeccable.style/mcp";
+const STAGING_MCP_URL: &str = "https://api.staging.impeccable.style/mcp";
+/// The account services, as `impeccable_account::config::normalize_origin` spells them.
+const ACCOUNTS: [(&str, &str); 2] = [
+    (impeccable_account::config::DEFAULT_ACCOUNT_URL, MCP_URL),
+    ("https://api.staging.impeccable.style", STAGING_MCP_URL),
+];
+thread_local! {
+    /// The server this command's account service names, set by every `init_mcp_url`
+    /// (not once per process), so a later call with another account never reuses the
+    /// first's. Per thread, as each command runs its connect on one.
+    static MCP_FOR_ACCOUNT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
 /// A build with the `test-mcp-url` feature (staging end-to-end runs only, like
 /// `test-release-keys`) may point connect at another https MCP server through
-/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they always use
-/// the constant above and ignore the variable.
+/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they ignore the
+/// variable.
 #[cfg(feature = "test-mcp-url")]
-static MCP_OVERRIDE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+thread_local! {
+    static MCP_OVERRIDE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+}
 
 fn mcp_url() -> &'static str {
     #[cfg(feature = "test-mcp-url")]
     if let Some(url) = MCP_OVERRIDE.get() {
         return url;
     }
-    MCP_URL
+    MCP_FOR_ACCOUNT.get().unwrap_or(MCP_URL)
+}
+
+/// The MCP server of the account service `raw` names (`IMPECCABLE_ACCOUNT_URL`, unset
+/// for production), or why there is none.
+fn mcp_for_account(raw: Option<&str>) -> Result<&'static str> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(MCP_URL);
+    };
+    let origin = impeccable_account::config::normalize_origin(raw);
+    ACCOUNTS
+        .iter()
+        .find(|(account, _)| origin.as_deref() == Some(*account))
+        .map(|(_, mcp)| *mcp)
+        .ok_or_else(|| {
+            "IMPECCABLE_ACCOUNT_URL isn't the Impeccable account or its staging service, so no MCP server was added. Unset it to connect to Impeccable.".into()
+        })
 }
 
 /// In a `test-mcp-url` build, a set but unusable `IMPECCABLE_MCP_URL` is refused, never
 /// replaced by production: falling back would send a staging run's agents to production.
-fn init_mcp_url(_io: &Io) -> Result<()> {
+fn init_mcp_url(io: &Io) -> Result<()> {
     #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = _io.env("IMPECCABLE_MCP_URL") {
+    if let Some(url) = io.env("IMPECCABLE_MCP_URL") {
         let usable = url::Url::parse(url)
             .ok()
-            .filter(|u| u.scheme() == "https" && u.host_str().is_some() && u.as_str() == url);
+            .filter(|u| {
+                // A local stack serves plain http on this machine only, its MCP on `api.localhost`.
+                let loopback = impeccable_account::config::loopback_url(u);
+                (u.scheme() == "https" || (u.scheme() == "http" && loopback))
+                    && u.host_str().is_some()
+                    && u.as_str() == url
+            });
         if usable.is_none() || url.contains(char::is_whitespace) {
-            return Err("IMPECCABLE_MCP_URL must be a plain https URL.".into());
+            MCP_OVERRIDE.set(None);
+            return Err("IMPECCABLE_MCP_URL must be a plain https URL, or http on localhost.".into());
         }
-        let _ = MCP_OVERRIDE.set(url.to_string());
+        // Leaked once per call, in test builds only.
+        MCP_OVERRIDE.set(Some(Box::leak(url.to_string().into_boxed_str())));
+        return Ok(());
     }
-    Ok(())
+    #[cfg(feature = "test-mcp-url")]
+    MCP_OVERRIDE.set(None);
+    let url = mcp_for_account(io.env("IMPECCABLE_ACCOUNT_URL"));
+    MCP_FOR_ACCOUNT.set(url.as_ref().ok().copied());
+    url.map(|_| ())
 }
 const MCP_NAME: &str = "impeccable";
 /// Why an existing entry of that name isn't the one connect would write.
 const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
-/// The instruction connect keeps in the agent's own rule file (~/.claude/CLAUDE.md,
-/// ~/.codex/AGENTS.md) as an engine-managed block, so agents bring questions to Loop
-/// instead of waiting in a terminal. Disconnect removes the block with the hooks.
-const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
 const APP: &str = "Applications/Impeccable Loop.app";
 const HELPER: &str = "Contents/MacOS/loop-hook";
 /// Where Loop's helper keeps its state (the old name stays until Loop migrates it).
@@ -75,6 +117,9 @@ const LOCK_WAIT: Duration = Duration::from_secs(10);
 const ADD_WAIT: Duration = Duration::from_secs(300);
 
 type Result<T> = std::result::Result<T, String>;
+
+/// The first Loop whose helper holds a Codex turn open for an answer (REN-2057).
+const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 
 const AGENTS: [(&str, &str); 2] = [("claude", "Claude Code"), ("codex", "Codex")];
 
@@ -171,6 +216,8 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
     // Checked before any agent's configuration changes.
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
+    // Taken second, as --mcp-only takes it alone, so the two never add at once.
+    let _mcp_lock = mcp_lock(io)?;
     let mut out = String::new();
     let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
@@ -220,24 +267,14 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
 /// `loop status [--json]`: what Loop and each agent look like right now, read only.
 /// Nothing is written and no lock is taken; the agents' CLIs are never run.
 pub(crate) fn status(io: &Io) -> Result<Value> {
-    init_mcp_url(io)?;
+    // Reading never needs the account's server: on an origin connect would refuse, an
+    // entry is judged against production's, as disconnect does. Failing here would also
+    // silence login's Loop offer.
+    let _ = init_mcp_url(io);
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
-    let version = helper
-        .parent()
-        .and_then(Path::parent)
-        .and_then(|c| {
-            Command::new("/usr/bin/plutil")
-                .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
-                .arg(c.join("Info.plist"))
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .ok()
-        })
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let version = bundle_version(&helper);
     let support = SUPPORT
         .iter()
         .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
@@ -265,11 +302,11 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
                         .as_array()
                         .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
             });
-        let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
-        let shadow = root_override(harness, &agent.root);
         // Present only where the agent reads it: under an override, the override must carry it.
-        let instruction = fs::read_to_string(shadow.as_deref().unwrap_or(&rules))
-            .is_ok_and(|t| t.contains(INSTRUCTION));
+        // The Impeccable block's loop line, or an older CLI's engine block holding the same
+        // line until the next connect folds it in.
+        let instruction = agent_block::present(&rule_file(harness, &agent.root), "loop")
+            || fs::read_to_string(rule_file(harness, &agent.root)).is_ok_and(|t| t.contains(agent_block::LOOP));
         // The wake record is shared per agent; it speaks for this folder only when it names it.
         let root = agent.root.display().to_string();
         let connected = read_record(&support, harness).is_some_and(|r| {
@@ -282,18 +319,26 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
             "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
-            "instructionShadowed": shadow.is_some() && !instruction,
         }));
     }
     Ok(json!({
-        "loop": { "installed": loop_installed, "version": version },
+        "loop": { "installed": loop_installed, "version": version, "blocked": loop_installed && blocked(&helper) },
         "agents": agents,
     }))
+}
+
+/// Whether a `status` agent row is connected all the way: Loop's record names it, and its
+/// MCP server, hooks and instruction are all in place.
+pub(crate) fn agent_connected(a: &Value) -> bool {
+    a["connected"] == true && a["hooks"] == true && a["instruction"] == true && a["mcp"] == "registered"
 }
 
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
+        _ if v["loop"]["blocked"] == true => {
+            "Loop: macOS is blocking it. Run impeccable loop update to reinstall it.\n".to_string()
+        }
         Some(ver) if v["loop"]["installed"] == true => format!("Loop {ver}: installed.\n"),
         _ if v["loop"]["installed"] == true => "Loop: installed.\n".to_string(),
         _ => "Loop: not installed. Run impeccable loop install.\n".to_string(),
@@ -302,47 +347,23 @@ pub(crate) fn status_text(v: &Value) -> String {
         let label = a["label"].as_str().unwrap_or("Agent");
         if a["detected"] != true {
             out.push_str(&format!("{label}: not found.\n"));
-        } else if a["connected"] == true
-            && a["hooks"] == true
-            && a["instruction"] == true
-            && a["mcp"] == "registered"
-        {
+        } else if agent_connected(a) {
             out.push_str(&format!("{label}: connected.\n"));
         } else {
             out.push_str(&format!(
                 "{label}: not connected (MCP server {}, hooks {}, instruction {}). Run impeccable loop connect.\n",
                 a["mcp"].as_str().unwrap_or("absent"),
                 if a["hooks"] == true { "present" } else { "missing" },
-                if a["instruction"] == true {
-                    "present"
-                } else if a["instructionShadowed"] == true {
-                    "hidden by AGENTS.override.md"
-                } else {
-                    "missing"
-                },
+                if a["instruction"] == true { "present" } else { "missing" },
             ));
         }
     }
     out
 }
 
-/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
-/// working installation is never undone by a failed reconnect. The MCP server is never
-/// removed here: a failure says how to remove it.
-fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
-    if agent.harness == "codex" {
-        if let Some(other) = read_record(support, "codex")
-            .filter(|r| r["enabled"] == true)
-            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
-            .filter(|dir| *dir != agent.root)
-        {
-            return Err(format!(
-                "Codex is already connected for {}; run impeccable loop disconnect first.",
-                other.display()
-            ));
-        }
-    }
-    // 1. The MCP server: added only when the agent has none of that name.
+/// The MCP server, added only when the agent has none of that name. True when this call
+/// added it; an entry of that name that differs is left alone and is an error.
+fn ensure_mcp(agent: &Agent) -> Result<bool> {
     let mut added = false;
     match read_entry(agent) {
         Entry::Exact => {}
@@ -378,6 +399,75 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             }
         }
     }
+    Ok(added)
+}
+
+/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, for a
+/// person without the Loop app (any OS). No hooks, no taste block, no Loop records: each
+/// agent signs in to the server itself on first use.
+pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
+    let rows = (|| -> Result<(String, usize, usize, Vec<Value>)> {
+        if let Some(h) = only {
+            if !AGENTS.iter().any(|(a, _)| *a == h) {
+                return Err(format!("Unknown agent: {h}. Use claude or codex."));
+            }
+        }
+        init_mcp_url(io)?;
+        let home = home(io)?;
+        let _lock = mcp_lock(io)?;
+        let (mut out, mut rows, mut connected, mut failed) = (String::new(), Vec::new(), 0, 0);
+        for (harness, label) in AGENTS {
+            if only.is_some_and(|h| h != harness) {
+                continue;
+            }
+            let Some(agent) = agent(io, &home, harness) else {
+                out.push_str(&format!("{label}: not found, skipped.\n"));
+                rows.push(json!({ "agent": harness, "label": label, "result": "not_found" }));
+                continue;
+            };
+            match ensure_mcp(&agent) {
+                Ok(added) => {
+                    connected += 1;
+                    let what = if added { "MCP server added" } else { "MCP server already there" };
+                    out.push_str(&format!("{label}: {what}.\n  Sign in: {}\n", sign_in(harness)));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": sign_in(harness) }));
+                }
+                Err(e) => {
+                    failed += 1;
+                    out.push_str(&format!("{label}: not connected: {e}\n"));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "failed", "error": e }));
+                }
+            }
+        }
+        Ok((out, connected, failed, rows))
+    })();
+    match rows {
+        Err(e) => (Err(e.clone()), json!({ "ok": false, "error": e, "agents": [] }), false),
+        Ok((out, connected, failed, rows)) => {
+            let ok = failed == 0 && connected > 0;
+            (connect_report(out, only, connected, failed), json!({ "ok": ok, "agents": rows }), ok)
+        }
+    }
+}
+
+/// One agent. A failure after the hooks were newly installed undoes them; an earlier,
+/// working installation is never undone by a failed reconnect. The MCP server is never
+/// removed here: a failure says how to remove it.
+fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<String>> {
+    if agent.harness == "codex" {
+        if let Some(other) = read_record(support, "codex")
+            .filter(|r| r["enabled"] == true)
+            .and_then(|r| r["configDir"].as_str().map(PathBuf::from))
+            .filter(|dir| *dir != agent.root)
+        {
+            return Err(format!(
+                "Codex is already connected for {}; run impeccable loop disconnect first.",
+                other.display()
+            ));
+        }
+    }
+    // 1. The MCP server.
+    let added = ensure_mcp(agent)?;
     let with_mcp = |why: String| -> String {
         if added {
             format!(
@@ -390,6 +480,12 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     };
     if let Err(e) = note_target(support, agent) {
         return Err(with_mcp(e));
+    }
+    // A rule file whose markers are broken would refuse the loop line after the engine had
+    // already taken an older CLI's block out: refuse before anything changes instead.
+    let block_file = rule_file(agent.harness, &agent.root);
+    if let Err(e) = agent_block::writable(&block_file) {
+        return Err(with_mcp(format!("couldn't add the Loop line to {}: {e}", block_file.display())));
     }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
@@ -440,7 +536,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
         ));
     }
-    let mut manual: Vec<String> = status["manualActions"]
+    let manual: Vec<String> = status["manualActions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -449,9 +545,9 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
                 .collect()
         })
         .unwrap_or_default();
-    // The engine wrote the instruction, but Codex reads AGENTS.override.md in its place.
-    if status["effective"] == false {
-        manual.push(shadowed_advice(&agent.root));
+    // 4. The "ask through Loop" line, in the file the agent reads.
+    if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
+        return Err(rollback(format!("couldn't add the Loop line to its rule file: {e}")));
     }
     Ok(manual)
 }
@@ -463,18 +559,14 @@ fn root_override(harness: &str, root: &Path) -> Option<PathBuf> {
     (harness == "codex" && p.exists()).then_some(p)
 }
 
-fn shadowed_advice(root: &Path) -> String {
-    format!(
-        "add this line to {}, which Codex reads instead of AGENTS.md: {INSTRUCTION}",
-        root.join("AGENTS.override.md").display()
-    )
-}
 
 /// `loop disconnect`: every installation connect made (from the engine's journals, not
 /// today's environment), each on its own. Waking stops first; the hooks go; MCP servers
 /// stay, with the exact command to remove each.
 pub(crate) fn disconnect(io: &Io) -> Result<String> {
-    init_mcp_url(io)?;
+    // Disconnect adds no server, so an account URL connect would refuse never blocks it;
+    // the URL only decides whether a recorded entry still matches.
+    let _ = init_mcp_url(io);
     let home = home(io)?;
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
@@ -486,8 +578,42 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // The taste block goes before the engine's undo, so the engine finds each rule file
     // exactly as it wrote it and cleans up after itself (a file it created goes too).
     let every: Vec<&Spec> = found.pending.iter().chain(&found.committed).collect();
-    let (taste_ok, created) = remove_taste(&home, &support, &every, &mut out);
+    // The files a connect created, read before remove_taste prunes the list.
+    let new_files: Vec<Value> = read_json(&support.join(TARGETS))
+        .and_then(|n| n[TASTE_NEW_KEY].as_array().cloned())
+        .unwrap_or_default();
+    let (taste_ok, mut created) = remove_taste(&home, &support, &every, &mut out);
     failed |= !taste_ok;
+    // The "ask through Loop" line goes with the hooks: from every file connect may have
+    // written it to (Codex's AGENTS.md and its override both, since the override can come
+    // or go after a connect). An installation whose line couldn't come out keeps its
+    // hooks and journal, so the next disconnect visits it again.
+    let mut kept: Vec<(String, PathBuf)> = Vec::new();
+    for spec in &every {
+        let files = if spec.harness == "codex" {
+            vec![spec.root.join("AGENTS.override.md"), spec.root.join("AGENTS.md")]
+        } else {
+            vec![rule_file(&spec.harness, &spec.root)]
+        };
+        for file in files {
+            match agent_block::set(&file, "loop", false) {
+                Ok(_) => {
+                    if new_files.contains(&json!(file.display().to_string())) && !created.contains(&file) {
+                        created.push(file);
+                    }
+                }
+                Err(e) => {
+                    failed = true;
+                    kept.push((spec.harness.clone(), spec.root.clone()));
+                    out.push_str(&format!(
+                        "{}: the Loop line in {} was left in place, and so were its hooks: {e}\n",
+                        label(&spec.harness),
+                        tilde(&home, &file)
+                    ));
+                }
+            }
+        }
+    }
     let mut rolled_back = Vec::new();
     for spec in &found.pending {
         let label = label(&spec.harness);
@@ -515,7 +641,11 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
             path.display()
         ));
     }
-    let specs = found.committed;
+    let specs: Vec<Spec> = found
+        .committed
+        .into_iter()
+        .filter(|s| !kept.iter().any(|(h, r)| *h == s.harness && *r == s.root))
+        .collect();
     // A rolled-back first connect has no journal left, but may have added the MCP
     // server and Loop's record: stop the waking and say how to remove the server.
     for spec in rolled_back {
@@ -606,9 +736,9 @@ fn missing_loop(helper: &Path) -> String {
 }
 
 fn home(io: &Io) -> Result<PathBuf> {
-    io.env("HOME")
-        .filter(|h| !h.is_empty() && Path::new(h).is_absolute())
-        .map(PathBuf::from)
+    // The engine's one reading of home: USERPROFILE first on Windows, HOME elsewhere.
+    io.home()
+        .filter(|h| h.is_absolute())
         .ok_or_else(|| "HOME is not set to an absolute path.".into())
 }
 
@@ -705,11 +835,13 @@ fn resolve(io: &Io, harness: &str) -> Option<PathBuf> {
         let p = PathBuf::from(path);
         return runnable(&p).then_some(p);
     }
-    io.env("PATH")?
-        .split(':')
-        .map(Path::new)
+    // Windows finds a CLI by its extension (npm installs `claude.cmd`), and separates
+    // PATH entries with `;`, which split_paths knows.
+    let names: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
+    let path = io.env("PATH")?;
+    std::env::split_paths(path)
         .filter(|d| d.is_absolute())
-        .map(|d| d.join(harness))
+        .flat_map(|d| names.iter().map(move |ext| d.join(format!("{harness}{ext}"))))
         .find(|p| runnable(p))
 }
 
@@ -857,17 +989,10 @@ fn quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
-/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
-/// Whether the Loop that owns `helper` (…/Contents/MacOS/loop-hook) is 0.1.1 or later,
-/// read from its bundle's CFBundleShortVersionString. Unknown counts as no.
-fn supports_context(helper: &Path) -> bool {
-    let Some(plist) = helper
-        .parent()
-        .and_then(Path::parent)
-        .map(|c| c.join("Info.plist"))
-    else {
-        return false;
-    };
+/// The CFBundleShortVersionString of the Loop that owns `helper`
+/// (…/Contents/MacOS/loop-hook). None when it can't be read.
+fn bundle_version(helper: &Path) -> Option<String> {
+    let plist = helper.parent()?.parent()?.join("Info.plist");
     Command::new("/usr/bin/plutil")
         .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
         .arg(plist)
@@ -876,13 +1001,69 @@ fn supports_context(helper: &Path) -> bool {
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| semver::Version::parse(String::from_utf8_lossy(&o.stdout).trim()).ok())
-        .is_some_and(|v| v >= semver::Version::new(0, 1, 1))
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// The first Loop whose own reading of the hooks (its Settings and first-run panel)
+/// accepts the guarded command below. An older Loop would read guarded hooks as missing,
+/// so it keeps the plain command.
+const GUARDED_SINCE: semver::Version = semver::Version::new(0, 1, 3);
+
+/// A quarantine flags field (the xattr's first `;`-separated part, four hex digits) with
+/// 0x40, the person's approval, clear: macOS would refuse to run the helper.
+const UNAPPROVED: &str = "^[0-9a-fA-F]{2}[0-389abAB][0-9a-fA-F];";
+
+/// Whether macOS will refuse to run `helper`: it carries a quarantine flag the person never
+/// approved. Loop is signed but not notarized, so it runs only without one. Read with
+/// getxattr, no process; the same test as the guarded hook command's.
+pub(crate) fn blocked(helper: &Path) -> bool {
+    quarantine(helper).is_some_and(|q| {
+        let flags = q.split(';').next().unwrap_or_default();
+        flags.len() == 4 && u16::from_str_radix(flags, 16).is_ok_and(|f| f & 0x40 == 0)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn quarantine(path: &Path) -> Option<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut buf = [0u8; 256];
+    // SAFETY: both strings are NUL-terminated and buf is as long as the size passed.
+    let n = unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            c"com.apple.quarantine".as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            0,
+            0,
+        )
+    };
+    (n >= 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).into_owned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn quarantine(_: &Path) -> Option<String> {
+    None
+}
+
+/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let harness = agent.harness;
-    let command = |kind: &str| format!("{} {harness} {kind}", quote(helper));
+    // Unknown counts as old.
+    let version = bundle_version(helper).and_then(|v| semver::Version::parse(&v).ok());
+    let guarded = version.as_ref().is_some_and(|v| *v >= GUARDED_SINCE);
+    let helper_q = quote(helper);
+    // Guarded, a helper macOS would refuse is never run: running it shows the "damaged"
+    // dialog at every session start and tool call. The hook then exits 0 with no output
+    // and the session goes on; loop status says how to fix it.
+    let command = |kind: &str| {
+        if guarded {
+            format!("/usr/bin/xattr -p com.apple.quarantine {helper_q} 2>/dev/null | /usr/bin/grep -Eq '{UNAPPROVED}' || exec {helper_q} {harness} {kind}")
+        } else {
+            format!("{helper_q} {harness} {kind}")
+        }
+    };
     let hook = |event: &str, matcher: Option<&str>, kind: &str, timeout: u64, wake: bool| Hook {
         event: event.into(),
         matcher: matcher.map(Into::into),
@@ -908,8 +1089,16 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
     // Tells a new session that Loop will wake it, so it stops polling for answers.
     // Synchronous: it prints at most one line within its own 400 ms probe and always
     // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
-    if supports_context(helper) {
+    if version.as_ref().is_some_and(|v| *v >= semver::Version::new(0, 1, 1)) {
         hooks.push(hook("SessionStart", None, "context", 5, false));
+    }
+    // Codex has no background wake: at the end of a turn this holds, synchronously, until
+    // Loop has an answer for a card the session asked, then hands Codex a follow-up
+    // prompt (REN-2057). The helper exits at once when nothing is pending. Only a Loop
+    // whose helper knows the hold gets it; an older one would treat the event as plain
+    // lifecycle.
+    if harness == "codex" && version.as_ref().is_some_and(|v| *v >= STOP_HOLD) {
+        hooks.push(hook("Stop", None, "lifecycle", 3600, false));
     }
     Spec {
         version: 1,
@@ -928,7 +1117,9 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         } else {
             vec![]
         },
-        instruction: Some(INSTRUCTION.into()),
+        // The "ask through Loop" line lives in the one Impeccable block (agent_block),
+        // not in an engine-managed block of its own (REN-2056).
+        instruction: None,
     }
 }
 
@@ -981,7 +1172,21 @@ fn support_dir(home: &Path) -> Result<PathBuf> {
 /// One connect or disconnect at a time, across the engine, the agents' MCP entries and
 /// the helper's records.
 fn lock(support: &Path) -> Result<fs::File> {
-    let path = support.join(".connect.lock");
+    lock_at(&support.join(".connect.lock"))
+}
+
+/// One change to the agents' MCP servers at a time, with or without Loop: kept under
+/// the engine's own folder (IMPECCABLE_HOME, else ~/.impeccable) so `--mcp-only` makes
+/// no Loop folder on a machine without Loop.
+fn mcp_lock(io: &Io) -> Result<fs::File> {
+    let dir = impeccable_account::config::impeccable_home(&io.env)
+        .ok_or("HOME is not set to an absolute path.")?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    lock_at(&dir.join(".mcp-connect.lock"))
+}
+
+fn lock_at(path: &Path) -> Result<fs::File> {
+    let path = path.to_path_buf();
     if fs::symlink_metadata(&path).is_ok_and(|m| !m.is_file()) {
         return Err(format!(
             "{} isn't a plain file; refusing to write there.",
@@ -1168,10 +1373,12 @@ fn forget_missing_rule_file(support: &Path, file: &Path) {
     }
 }
 
-/// The agent's user-level rule file in this config folder, the one the engine's
-/// instruction block lives in.
+/// The agent's user-level rule file in this config folder, the one the Impeccable block
+/// lives in: Codex's AGENTS.override.md when there is one, since Codex then reads it
+/// instead of AGENTS.md.
 fn rule_file(harness: &str, root: &Path) -> PathBuf {
-    root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
+    root_override(harness, root)
+        .unwrap_or_else(|| root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" }))
 }
 
 fn tilde(home: &Path, path: &Path) -> String {
@@ -1212,7 +1419,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     let note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
     let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) =
-        targets.into_iter().partition(|f| loop_taste::present(f));
+        targets.into_iter().partition(|f| agent_block::present(f, "taste"));
     // Asked about: files with no answer yet, and with --taste every file without the block.
     let ask: Vec<PathBuf> = absent
         .into_iter()
@@ -1225,7 +1432,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
         Taste::Ask if io.stdin_is_tty && std::io::stdout().is_terminal() => {
             let files: Vec<String> = ask.iter().map(|f| tilde(&home, f)).collect();
             io.out(&format!(
-                "Let your agents use your Impeccable taste? This adds 3 lines to {}. [Y/n] ",
+                "Let your agents use your Impeccable taste? This adds a line to {}. [Y/n] ",
                 files.join(" and ")
             ));
             let _ = std::io::Write::flush(&mut io.stdout);
@@ -1257,7 +1464,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = taste_targets(io, &home, agents)
         .into_iter()
-        .partition(|f| loop_taste::present(f));
+        .partition(|f| agent_block::present(f, "taste"));
     let ask: Vec<PathBuf> = absent
         .into_iter()
         .filter(|f| asked.contains(f) && (choice == Taste::Yes || !answered(f)))
@@ -1272,7 +1479,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     for file in &present {
         let shown = tilde(&home, file);
         if choice == Taste::No {
-            match loop_taste::take_out(file) {
+            match agent_block::set(file, "taste", false) {
                 Ok(_) => {
                     record(file, "off");
                     out.push_str(&format!("Taste: removed from {shown}.\n"));
@@ -1286,7 +1493,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
             continue;
         }
         // Rewritten in place, so a block from an older wording is brought up to date.
-        match loop_taste::add(file) {
+        match agent_block::set(file, "taste", true) {
             Ok(changed) => {
                 record(file, "on");
                 if changed {
@@ -1302,16 +1509,10 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     for file in &ask {
         let shown = tilde(&home, file);
         match yes {
-            Some(true) => match loop_taste::add(file) {
+            Some(true) => match agent_block::set(file, "taste", true) {
                 Ok(_) => {
                     record(file, "on");
                     out.push_str(&format!("Taste: added to {shown}.\n"));
-                    if let Some(over) = file.parent().and_then(|root| root_override("codex", root)).filter(|_| file.ends_with("AGENTS.md")) {
-                        out.push_str(&format!(
-                            "  Codex reads {} instead; copy the taste lines there too.\n",
-                            tilde(&home, &over)
-                        ));
-                    }
                     rows.push(row(file, "added"));
                 }
                 Err(e) => {
@@ -1371,7 +1572,7 @@ fn remove_taste(
     let (mut created, mut kept, mut kept_new) = (Vec::new(), serde_json::Map::new(), Vec::new());
     for file in &files {
         let key = file.display().to_string();
-        match loop_taste::take_out(file) {
+        match agent_block::set(file, "taste", false) {
             Ok(taken) => {
                 if taken {
                     out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));
@@ -1448,7 +1649,7 @@ mod mcp_url_tests {
     use super::*;
 
     #[test]
-    fn a_shipped_build_always_uses_the_built_in_mcp_url() {
+    fn a_shipped_build_ignores_the_mcp_override() {
         // Catches: a variable redirecting a customer's agents to another MCP server.
         let mut env = std::collections::HashMap::new();
         env.insert("IMPECCABLE_MCP_URL".to_string(), "https://evil.example/mcp".to_string());
@@ -1458,6 +1659,43 @@ mod mcp_url_tests {
         assert_eq!(mcp_url(), "https://api.impeccable.style/mcp");
         #[cfg(feature = "test-mcp-url")]
         assert_eq!(mcp_url(), "https://evil.example/mcp");
+    }
+
+    #[test]
+    fn the_account_service_picks_its_own_mcp_server_and_nothing_else() {
+        // Catches: IMPECCABLE_ACCOUNT_URL writing another server into an agent's global
+        // config, or falling back to production for a run aimed elsewhere.
+        assert_eq!(mcp_for_account(None), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some(" ")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://api.impeccable.style/")), Ok("https://api.impeccable.style/mcp"));
+        assert_eq!(mcp_for_account(Some("https://API.staging.impeccable.style")), Ok("https://api.staging.impeccable.style/mcp"));
+        for other in ["https://evil.example", "https://api.impeccable.style.evil.test", "http://127.0.0.1:8787", "https://impeccable.style", "not a url"] {
+            assert!(mcp_for_account(Some(other)).is_err(), "{other}");
+        }
+    }
+
+    #[test]
+    fn each_call_takes_its_own_account_server() {
+        // Catches (#1464 review): the first call's server sticking for the process, so a
+        // later production call in it writes staging (or the reverse).
+        let io_for = |account: Option<&str>| {
+            let mut env = std::collections::HashMap::new();
+            if let Some(a) = account {
+                env.insert("IMPECCABLE_ACCOUNT_URL".to_string(), a.to_string());
+            }
+            Io::captured("", std::env::temp_dir(), env).0
+        };
+        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), STAGING_MCP_URL);
+        assert!(init_mcp_url(&io_for(None)).is_ok());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), MCP_URL);
+        // A refused account leaves no earlier server behind.
+        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
+        assert!(init_mcp_url(&io_for(Some("https://evil.example"))).is_err());
+        #[cfg(not(feature = "test-mcp-url"))]
+        assert_eq!(mcp_url(), MCP_URL);
     }
 
     #[test]
@@ -1472,6 +1710,20 @@ mod mcp_url_tests {
             assert!(init_mcp_url(&io).is_err(), "{bad:?}");
             #[cfg(not(feature = "test-mcp-url"))]
             assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
+        }
+        // A local stack's http server on this machine is usable in a test build, `api.localhost` included (j9).
+        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "http://api.localhost:8787/mcp", "https://staging.example/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), good.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_ok(), "{good:?}");
+        }
+        #[cfg(feature = "test-mcp-url")]
+        for bad in ["http://127.0.0.1.evil.test/mcp", "http://localhost.evil.test/mcp", "http://192.168.1.2/mcp"] {
+            let mut env = std::collections::HashMap::new();
+            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
+            let (io, _) = Io::captured("", std::env::temp_dir(), env);
+            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
         }
     }
 }

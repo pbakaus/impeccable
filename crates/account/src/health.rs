@@ -133,6 +133,8 @@ pub struct Synced {
     pub foundations: bool,
     /// The health counts landed, which records the repository too.
     pub health: bool,
+    /// The repository's name went with them; it has one only from a remote.
+    pub named: bool,
 }
 
 impl Synced {
@@ -180,6 +182,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
         return synced;
     };
+    synced.named = repo.label.is_some();
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
         return synced;
     };
@@ -365,13 +368,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             {
                 Some(format!("off because {reason}"))
             } else if !signed_in {
-                Some("off until you sign in with `impeccable login`".to_string())
+                Some("off until you sign in with `npx impeccable login`".to_string())
             } else {
                 None
             };
             match why_not {
                 None if crate::stale_grant::status(io, crate::oauth::HEALTH_SCOPE) => {
-                    io.out("Design health: on, but this sign-in can't save yet. Run impeccable login.\n")
+                    io.out("Design health: on, but this sign-in can't save yet. Run npx impeccable login.\n")
                 }
                 None => io.out(&format!(
                     "Design health: on. Each full `impeccable detect` of a git repo saves its counts to {}: findings by rule and opaque fingerprints, never code or file names.\n",
@@ -429,7 +432,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     1
                 }
                 Err(SessionError::NotSignedIn | SessionError::Expired) => {
-                    io.err("Sync is off. To delete what was saved, run `impeccable login` and then `impeccable health forget`.\n");
+                    io.err("Sync is off. To delete what was saved, run `npx impeccable login` and then `impeccable health forget`.\n");
                     1
                 }
                 Err(e) => {
@@ -578,8 +581,8 @@ impl Repo {
         if !same(&top, root) {
             return None;
         }
-        let remote = git(root, &["config", "--get", "remote.origin.url"])
-            .and_then(|r| normalize_remote(&r));
+        let configured = git(root, &["config", "--get", "remote.origin.url"]);
+        let remote = configured.as_deref().and_then(normalize_remote);
         let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
@@ -590,9 +593,7 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        // The repo's name from its remote, never the folder's: a folder name
-        // can say more than the person meant to share (Paul, REN-1553).
-        let label = remote.as_deref().and_then(repo_label);
+        let label = repo_name(&top, configured.is_some(), remote.as_deref());
         Some(Repo { key, stream, label })
     }
 }
@@ -610,14 +611,44 @@ pub(crate) fn critique_repo(
 ) -> Option<(String, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
-    let remote = git_with_timeout(root, &["config", "--get", "remote.origin.url"], short)
-        .and_then(|r| normalize_remote(&r));
-    let label = remote.as_deref().and_then(repo_label);
-    let identity = remote.or_else(|| local_repo_id(&top, env))?;
+    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
+    repo_identity(&top, remote, env)
+}
+
+/// The repo's name as the service shows it: from its remote; with none, its folder's
+/// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
+/// Only a repository with no remote at all: one whose remote can't be read as a
+/// host's URL (a local path) sends no name rather than its folder's.
+fn repo_name(top: &str, configured: bool, remote: Option<&str>) -> Option<String> {
+    match (remote, configured) {
+        (Some(remote), _) => repo_label(remote),
+        (None, true) => None,
+        (None, false) => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
+    }
+}
+
+/// The key and label from the remote read's outcome. A read that timed out is
+/// not a repo without a remote: falling back to the local id then would name a
+/// different project, so it sends no key.
+fn repo_identity(
+    top: &str,
+    remote: Result<Option<String>, ()>,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    let configured = remote.ok()?;
+    let remote = configured.as_deref().and_then(normalize_remote);
+    let label = repo_name(top, configured.is_some(), remote.as_deref());
+    let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
 
 fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    git_run(dir, args, timeout).ok().flatten()
+}
+
+/// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
+/// answered with a failure or nothing.
+fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
     let mut child = Command::new("git")
         .args(["-c", "core.fsmonitor=false", "-C", dir])
         .args(args)
@@ -625,7 +656,7 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
+        .map_err(|_| ())?;
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -636,14 +667,17 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(());
             }
         }
     };
     let mut out = String::new();
-    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
+    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
+        return Ok(None);
+    }
     let s = out.trim().to_string();
-    (status.success() && !s.is_empty()).then_some(s)
+    Ok((status.success() && !s.is_empty()).then_some(s))
 }
 
 /// A repo with no `origin` gets a random id, kept under `IMPECCABLE_HOME`
@@ -933,6 +967,26 @@ mod tests {
     }
 
     #[test]
+    fn a_github_clone_is_keyed_as_the_cloud_keys_its_repository() {
+        // Catches: the repository key drifting from the one the account service computes
+        // to show a person's local critiques on their team's repository (pristine
+        // src/app-rpc/views/local-critiques.ts `cliRepoKey`, pinned to the same hex).
+        // The key a clone gets is the one critique uploads send: `critique_repo` on a real repository.
+        let dir = std::env::temp_dir().join(format!("impeccable-health-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| assert!(Command::new("git").args(["-c", "core.fsmonitor=false", "-C"]).arg(&dir).args(args).output().unwrap().status.success());
+        git(&["init", "-q"]);
+        for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web"] {
+            git(&["config", "remote.origin.url", raw]);
+            // `critique_repo` gives git 150 ms a call; a loaded machine gets a few tries.
+            let key = (0..5).find_map(|_| critique_repo(&dir.to_string_lossy(), &std::collections::HashMap::new())).map(|(key, _)| key);
+            assert_eq!(key.as_deref(), Some("589c2f960e539d4adf1f5100f4b185bf4e5f972a8f9ee47b948ad732d788f7e6"), "{raw}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn the_body_keeps_to_the_services_rules() {
         // Catches: a body the service refuses (sums, advisory in fingerprints, a stray field) or one that carries a path or snippet.
         let s = scan(vec![
@@ -1063,7 +1117,7 @@ mod tests {
         // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
         assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
-        // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
+        // A remote names the repository by its own name, never its host or owner.
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
         assert_eq!(repo_label("https://gitlab.com/group/sub/tool").as_deref(), Some("tool"));
         assert_eq!(repo_label("https://github.com"), None);
@@ -1125,5 +1179,35 @@ mod taste_notice_tests {
         let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
         assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
         std::fs::remove_dir_all(account.home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod repo_identity_tests {
+    use super::*;
+
+    #[test]
+    fn a_timed_out_remote_sends_no_key_and_a_missing_one_keeps_the_local_id() {
+        // Catches: a slow `git config` read under load fell back to the local id, so one
+        // repo was reported as another project.
+        let home = std::env::temp_dir().join(format!("impeccable-repo-identity-{}", std::process::id()));
+        let top = home.join("repo");
+        std::fs::create_dir_all(&top).unwrap();
+        let env: std::collections::HashMap<String, String> =
+            [("IMPECCABLE_HOME".to_string(), home.join(".impeccable").display().to_string())].into();
+        let top = top.to_string_lossy().into_owned();
+        assert_eq!(repo_identity(&top, Err(()), &env), None);
+        let local = repo_identity(&top, Ok(None), &env).expect("local id");
+        // No remote: named after its folder (Paul, REN-2028).
+        assert_eq!(local.1.as_deref(), Some("repo"));
+        // A remote that is a local path is still a remote: no name, never the folder's.
+        for path in ["/srv/repos/site.git", "file:///srv/repos/site.git"] {
+            assert_eq!(repo_identity(&top, Ok(Some(path.into())), &env).expect("local id").1, None, "{path}");
+        }
+        assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
+        let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
+        assert_ne!(remote.0, local.0);
+        assert!(remote.1.is_some());
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

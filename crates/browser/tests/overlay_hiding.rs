@@ -110,6 +110,7 @@ const KEEP: ScanOptions = ScanOptions {
     keep_consent_banners: false,
     keep_overlays: true,
     unreported_rules: Vec::new(),
+    image_samples: impeccable_detect::engines::ImageSamples::Decode,
     ignored_linked_stylesheet: None,
 };
 

@@ -20,8 +20,10 @@ pub mod plans;
 pub mod pro;
 pub mod session;
 pub mod setup;
+pub mod setup_status;
 mod stale_grant;
 pub mod store;
+pub mod switches;
 pub mod taste;
 mod upload_notice;
 pub mod world;
@@ -173,15 +175,68 @@ fn unknown_args(args: &[String], allowed: &[&str], io: &mut Io, verb: &str) -> b
 /// `impeccable login [--no-browser]`. With `--no-browser` (or
 /// `IMPECCABLE_NO_BROWSER=1`) the authorization URL is the only line on
 /// stdout, so a script can open it itself.
+/// How a sign-in attempt ended, for callers that act on it (`install`'s sign-in offer).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoginOutcome {
+    /// A usable sign-in was already here; no browser was opened.
+    Already,
+    /// A fresh sign-in, to this account.
+    SignedIn(Account),
+    /// Declined, timed out, or the service refused it; the reason is on stderr.
+    Failed,
+}
+
 pub fn run_login(args: &[String], io: &mut Io) -> i32 {
     if has_flag(args, "--help") || has_flag(args, "-h") {
         io.out(LOGIN_USAGE);
         return 0;
     }
-    if unknown_args(args, &["--no-browser"], io, "login") {
+    if unknown_args(args, &["--no-browser", "--force"], io, "login") {
         return 1;
     }
-    let no_browser = has_flag(args, "--no-browser") || io.env_truthy("IMPECCABLE_NO_BROWSER");
+    let skip = if has_flag(args, "--force") { Skip::Never } else { Skip::UnlessStale };
+    match sign_in(io, has_flag(args, "--no-browser"), skip) {
+        LoginOutcome::Failed => 1,
+        LoginOutcome::Already => 0,
+        LoginOutcome::SignedIn(account) => {
+            setup_status::after_login(io, &account);
+            0
+        }
+    }
+}
+
+/// The sign-in `install` offers at its end. Only a fresh sign-in reaches here (the
+/// offer is made only when none is stored), and it prints what `login` prints.
+pub fn login_after_install(io: &mut Io) -> LoginOutcome {
+    sign_in(io, false, Skip::AnyUsable)
+}
+
+/// Whether a sign-in is stored here, read offline and silently: `install` asks this
+/// before it offers one.
+pub fn has_sign_in(io: &Io) -> bool {
+    Account::from_env(&io.env).ok().is_some_and(|account| Session::load(&account).is_ok())
+}
+
+/// Whether a sign-in is recorded, from the stored state alone: the credential isn't
+/// read, so an unattended run never meets a Keychain prompt.
+pub fn sign_in_recorded(io: &Io) -> bool {
+    Account::from_env(&io.env).ok().is_some_and(|account| {
+        store::Store::new(&account).try_state().ok().flatten().is_some_and(|s| s.signed_in)
+    })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Skip {
+    Never,
+    UnlessStale,
+    AnyUsable,
+}
+
+fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
+    if skip != Skip::Never && already_signed_in(io, skip == Skip::UnlessStale) {
+        return LoginOutcome::Already;
+    }
+    let no_browser = no_browser || io.env_truthy("IMPECCABLE_NO_BROWSER");
     let timeout = io
         .env("IMPECCABLE_LOGIN_TIMEOUT")
         .and_then(|s| s.parse::<u64>().ok())
@@ -217,19 +272,52 @@ pub fn run_login(args: &[String], io: &mut Io) -> i32 {
                 }
                 Err(_) => report_entitlement(io, &done.entitlement),
             }
-            0
+            LoginOutcome::SignedIn(done.account)
         }
         Err(e) => {
             io.err(&format!("Sign-in failed: {e}.\n"));
-            1
+            LoginOutcome::Failed
         }
+    }
+}
+
+/// `login` on a machine already signed in to this account: say so and stop, with no
+/// browser. False when there is no usable sign-in (none, expired, ended by the
+/// service, unreadable), so the browser sign-in goes ahead.
+fn already_signed_in(io: &mut Io, unless_stale: bool) -> bool {
+    already_signed_in_inner(io, unless_stale).is_some()
+}
+
+fn already_signed_in_inner(io: &mut Io, unless_stale: bool) -> Option<()> {
+    let account = Account::from_env(&io.env).ok()?;
+    let mut session = Session::load(&account).ok()?;
+    // A sign-in missing a scope the service now offers is the one the "needs a fresh
+    // sign-in" notices send here: that one signs in again.
+    if unless_stale && stale_grant::fresh_sign_in_adds(&account, &session.state) {
+        return None;
+    }
+    let login = session.state.login;
+    let name = account.display_name();
+    match session::entitlement(&mut session) {
+        Ok(e) => {
+            pro::settle(&account, login, e.pro);
+            io.err(&format!("Already signed in to {name}. To sign in again: npx impeccable login --force\n"));
+            report_entitlement(io, &Ok(e));
+            Some(())
+        }
+        // Offline or the service is down: the sign-in stored here still stands.
+        Err(SessionError::Api(e)) => {
+            io.err(&format!("Already signed in to {name}. Couldn't reach it to check the sign-in: {e}.\n"));
+            Some(())
+        }
+        Err(_) => None,
     }
 }
 
 fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
     match e {
         Ok(Entitlement { pro: true, .. }) => io.err("Pro rules: included.\n"),
-        Ok(_) => io.err("Pro rules: not included with this account.\n"),
+        Ok(_) => io.err("Plan: Free. Pro adds Detector Pro, dozens of extra rules. See impeccable.style/pricing\n"),
         Err(e) => io.err(&format!("Couldn't check Pro access: {e}.\n")),
     }
 }
@@ -342,11 +430,11 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
             0
         }
         Err(SessionError::NotSignedIn) => {
-            io.err("Not signed in. Run `impeccable login`.\n");
+            io.err("Not signed in. Run `npx impeccable login`.\n");
             1
         }
         Err(SessionError::Expired) => {
-            io.err("Your sign-in expired. Run `impeccable login`.\n");
+            io.err("Your sign-in expired. Run `npx impeccable login`.\n");
             1
         }
         Err(e) => {
@@ -359,12 +447,14 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
-const LOGIN_USAGE: &str = "Usage: impeccable login [--no-browser]
+const LOGIN_USAGE: &str = "Usage: impeccable login [--no-browser] [--force]
 
-Sign in to your Impeccable account in the browser.
+Sign in to your Impeccable account in the browser. Already signed in, it says so
+and opens nothing.
 
 Options:
   --no-browser   Print the sign-in link on stdout instead of opening a browser
+  --force        Sign in again even when already signed in
 ";
 
 /// Start the system browser on `url`. Never through a shell: the URL is an

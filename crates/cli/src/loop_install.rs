@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop connect --mcp-only [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -274,6 +274,9 @@ fn swap(staged: &Path, app: &Path, backup: &Path, update: bool) -> Result<()> {
 
 pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     use crate::loop_connect::Taste;
+    if args.iter().any(|a| a == "--mcp-only") {
+        return run_mcp_only(args, io);
+    }
     // `--taste` / `--no-taste` answer connect's taste question ahead of time.
     let (taste_yes, taste_no) = (
         args.iter().any(|a| a == "--taste"),
@@ -345,6 +348,45 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
+/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, on any
+/// OS and without the Loop app, so no platform check, no hooks and no taste offer.
+fn run_mcp_only(args: &[String], io: &mut Io) -> i32 {
+    let json = args.iter().any(|a| a == "--json");
+    let rest: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|a| *a != "--mcp-only" && *a != "--json")
+        .collect();
+    let only = match rest.as_slice() {
+        ["connect"] => None,
+        ["connect", "--agent", h] => Some(*h),
+        _ => {
+            let e = format!("--mcp-only goes with loop connect [--agent claude|codex] [--json], and nothing else.\n{USAGE}");
+            if json {
+                io.out(&format!("{}\n", serde_json::json!({ "ok": false, "error": e.trim_end() })));
+            } else {
+                io.err(&e);
+            }
+            return 1;
+        }
+    };
+    let (result, value, ok) = crate::loop_connect::connect_mcp(io, only);
+    if json {
+        io.out(&format!("{value}\n"));
+        return if ok { 0 } else { 1 };
+    }
+    match result {
+        Ok(message) => {
+            io.out(&message);
+            0
+        }
+        Err(e) => {
+            io.err(&format!("{e}\n"));
+            1
+        }
+    }
+}
+
 /// The step after a fresh install: connect the agents. `--connect` does it outright; a
 /// person at a terminal is asked once (Enter means yes); anything else (an agent, a
 /// script, a pipe) gets the one command to run next and nothing is changed.
@@ -393,6 +435,71 @@ fn connect_then_taste(
         io.out(&lines);
     }
     code
+}
+
+/// After a successful `impeccable login`: when Loop is on this Mac and an agent here is
+/// not connected to it yet, offer that step, so Loop never needs a door of its own. A
+/// person at a terminal is asked once (Enter means yes); anything else gets one sentence
+/// and nothing is changed. The sign-in already succeeded, so nothing here fails it.
+pub(crate) fn after_login(io: &mut Io) {
+    use std::io::IsTerminal;
+    if check_platform(std::env::consts::OS).is_err() {
+        return;
+    }
+    let Ok(status) = crate::loop_connect::status(io) else {
+        return;
+    };
+    if status["loop"]["installed"] != true {
+        return;
+    }
+    let waiting: Vec<&str> = status["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|a| a["detected"] == true && !crate::loop_connect::agent_connected(a))
+        .filter_map(|a| a["label"].as_str())
+        .collect();
+    if waiting.is_empty() {
+        return;
+    }
+    let names = waiting.join(" and ");
+    if !(io.stdin_is_tty && std::io::stdout().is_terminal()) {
+        // The service's Next line already said this command: once is enough.
+        if impeccable_account::setup_status::named_loop_connect() {
+            return;
+        }
+        io.err(&format!(
+            "Loop is installed. Connect {names} to it: impeccable loop connect\n"
+        ));
+        return;
+    }
+    io.err(&format!("Loop is installed. Connect {names} to it now? [Y/n] "));
+    let _ = std::io::Write::flush(&mut io.stderr);
+    let mut line = String::new();
+    let yes = std::io::stdin()
+        .read_line(&mut line)
+        .is_ok_and(|n| connect_answer(n, &line));
+    if !yes {
+        io.err("Later: impeccable loop connect\n");
+        return;
+    }
+    // As `loop connect` does: the agents this run connected are offered the taste block.
+    let (result, connected) = crate::loop_connect::connect_text(io, None);
+    match result {
+        Ok(message) => io.err(&message),
+        Err(e) => io.err(&format!(
+            "{e}\nYou're signed in. Run impeccable loop connect again once that is sorted.\n"
+        )),
+    }
+    if !connected.is_empty() {
+        // offer_taste asks on stdout; login keeps stdout for the sign-in link, so its
+        // question goes to stderr with the rest of login's words.
+        let err = std::mem::replace(&mut io.stderr, Box::new(std::io::sink()));
+        let out = std::mem::replace(&mut io.stdout, err);
+        let (lines, _) = crate::loop_connect::offer_taste(io, &connected, crate::loop_connect::Taste::Ask);
+        io.stderr = std::mem::replace(&mut io.stdout, out);
+        io.err(&lines);
+    }
 }
 
 fn connect_answer(bytes_read: usize, line: &str) -> bool {
@@ -460,6 +567,55 @@ fn with_taste(
     (value, ok)
 }
 
+/// Loop's app in ~/Applications, when it is installed.
+pub(crate) fn installed_app(io: &Io) -> Option<std::path::PathBuf> {
+    io.home().map(|home| home.join("Applications").join(APP)).filter(|app| app.exists())
+}
+
+/// `loop install` with Loop already there: nothing to do, so it succeeds, and opens the
+/// app as an install would (unless `--no-open`).
+/// Opens the installed app (unless `--no-open`). Called only under the install lock, so
+/// it never restarts a Loop an update is quitting or replacing. A launch that fails
+/// still leaves the install fine, so it is reported, not returned as an error.
+fn already_installed(app: &Path, no_open: bool) -> Result<String> {
+    let mut out = String::from("Loop is already installed. To get the newest: impeccable loop update.\n");
+    if !no_open {
+        let opened = Command::new("/usr/bin/open").arg(app).status();
+        if !opened.as_ref().is_ok_and(|s| s.success()) {
+            let why = match opened {
+                Ok(s) => format!("open exited with {s}"),
+                Err(e) => e.to_string(),
+            };
+            out.push_str(&format!(
+                "Couldn't open Loop ({why}). Open it from {}.\n",
+                app.display()
+            ));
+        }
+    }
+    Ok(out)
+}
+
+/// One Loop install or update at a time, on ~/Applications itself. flock is released
+/// automatically on process exit, including a crash.
+fn install_lock(apps: &Path) -> Result<fs::File> {
+    let lock = fs::File::open(apps).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        // A short wait: a lock released a moment ago can still be held by a process
+        // that is starting up and hasn't yet dropped the descriptors it inherited.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        // SAFETY: flock on a descriptor this function owns; released when the file drops.
+        while unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            if std::time::Instant::now() >= deadline {
+                return Err("Another Loop install or update is in progress.".into());
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    Ok(lock)
+}
+
 fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<String> {
     // Arguments first, so usage and its errors read the same on every OS (the oracle records them).
     if args.first().is_some_and(|s| s == "--help" || s == "-h") {
@@ -505,12 +661,11 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
     }
     check_platform(os)?;
-    if !update
-        && io
-            .home()
-            .is_some_and(|home| home.join("Applications").join(APP).exists())
-    {
-        return Err("Loop is already installed. Use impeccable loop update.".into());
+    if !update {
+        if let Some(app) = installed_app(io) {
+            let _lock = install_lock(app.parent().unwrap_or(&app))?;
+            return already_installed(&app, no_open);
+        }
     }
     let pins = parse_pins(manifest)?;
     let version = requested
@@ -524,16 +679,7 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     })?;
     let apps = io.home().ok_or("HOME is not set.")?.join("Applications");
     fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
-    // flock is released automatically on process exit, including a crash.
-    let lock = fs::File::open(&apps).map_err(|e| e.to_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::fd::AsRawFd;
-        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-            return Err("Another Loop install or update is in progress.".into());
-        }
-    }
-    let _lock = lock;
+    let _lock = install_lock(&apps)?;
     // Under the lock no other run is staging, so any stage folder left here is from a run that crashed.
     for entry in fs::read_dir(&apps).map_err(|e| e.to_string())?.flatten() {
         if entry
@@ -556,14 +702,17 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         }
     }
     if app.exists() && !update {
-        return Err("Loop is already installed. Use impeccable loop update.".into());
+        return already_installed(&app, no_open);
     }
     if !app.exists() && update {
         return Err("Loop is not installed. Use impeccable loop install.".into());
     }
+    // macOS refuses a quarantined Loop; a fresh copy of the same release carries no flag.
+    let helper = |app: &Path| app.join("Contents/MacOS/loop-hook");
+    let was_blocked = update && crate::loop_connect::blocked(&helper(&app));
     if update {
         let installed = plist(&app, "CFBundleShortVersionString")?;
-        if installed == version.to_string() {
+        if installed == version.to_string() && !was_blocked {
             return Ok(format!("Loop {version} is already current.\n"));
         }
         // Never replace a newer build (a local or later one) with an older pinned release.
@@ -609,6 +758,11 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
         quit_running(&app, QUIT_WAIT)?;
     }
     swap(&staged, &app, &backup, update)?;
+    if crate::loop_connect::blocked(&helper(&app)) {
+        return Err(format!(
+            "Loop {version} is installed, but macOS is still blocking it, so your agents won't wake."
+        ));
+    }
     if !no_open {
         let status = Command::new("/usr/bin/open")
             .arg(&app)
@@ -620,7 +774,13 @@ fn run_inner(args: &[String], io: &Io, manifest: &str, os: &str) -> Result<Strin
     }
     Ok(format!(
         "{} Loop {version} in {}.\n",
-        if update { "Updated" } else { "Installed" },
+        if was_blocked {
+            "Reinstalled"
+        } else if update {
+            "Updated"
+        } else {
+            "Installed"
+        },
         app.display()
     ))
 }

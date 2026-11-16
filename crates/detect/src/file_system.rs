@@ -58,10 +58,11 @@ pub fn has_scannable_extension_with(filename: &str, extra_exts: &[ExtensionEntry
 }
 
 // JS: GENERATED_PATH (case-insensitive). Build output, declaration files,
-// minified bundles and lockfiles: the hook and `detect --changed` skip them.
+// minified bundles, lockfiles and Impeccable's own throwaway files under
+// .impeccable/ (comps, snapshots): the hook and `detect --changed` skip them.
 re!(
     GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
+    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage|\.impeccable)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
 );
 
 pub fn is_generated_path(p: &str) -> bool {
@@ -188,13 +189,16 @@ pub fn build_import_graph_reporting(
 ) -> Vec<(String, Vec<String>)> {
     let mut graph = Vec::new();
     for file in files {
-        let content = match std::fs::read_to_string(file) {
+        let bytes = match std::fs::read(file) {
             Ok(c) => c,
             Err(e) => {
                 on_read_error(file, &e);
                 continue;
             }
         };
+        // Import discovery must not reject bytes the static HTML engine
+        // accepts. Actual filesystem errors still prevent the file's scan.
+        let content = String::from_utf8_lossy(&bytes);
         let dir = jsp::dirname(file);
         let mut imports: Vec<String> = Vec::new();
         for pattern in IMPORT_SPECIFIER_PATTERNS.iter() {

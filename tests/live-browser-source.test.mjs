@@ -1044,8 +1044,13 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice\(\)\) showToast\(/,
       'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /function takeContextNotice\(\) \{\s*if \(contextNoticeShown\) return false;\s*contextNoticeShown = true;\s*try \{\s*if \(localStorage\.getItem\(CONTEXT_NOTICE_KEY\)\) return false;\s*localStorage\.setItem\(CONTEXT_NOTICE_KEY, '1'\);/,
+      'the "No PRODUCT.md" notice shows once per browser, and once per page when storage is blocked',
     );
     assert.match(
       SOURCE,
@@ -1895,5 +1900,15 @@ describe('Pending dock after Rollback', () => {
     const click = runInNewContext(`${SOURCE.match(/async function onPendingRollbackClick\(\) \{[\s\S]*?\n  \}/)[0]}\nonPendingRollbackClick`, context);
     await click();
     assertNormalDock(context);
+  });
+});
+
+describe('Global bar labels', () => {
+  // Catches hover widening the centred bar again (clicks meant for Pick landed on
+  // Insert), and active labels left collapsed after a Steer request finishes.
+  it('never widens on hover and restores active labels when Steer unlocks', () => {
+    assert.doesNotMatch(SOURCE, /globalBarEl\?*\.\??matches\(':hover'\)|syncGlobalBarExpandedLabels\(true|applyGlobalBarLabelState\(true/);
+    const unlock = SOURCE.match(/function unlockSteerChat\(opts\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(unlock, /syncGlobalBarExpandedLabels\(\)/);
   });
 });
