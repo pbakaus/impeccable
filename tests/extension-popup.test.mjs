@@ -296,7 +296,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, journeys = { ok: false }, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -334,7 +334,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
     document, location: { search }, addEventListener() {},
     chrome: {
       // A persona made is in the list from then on, as the worker's is.
-      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
+      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url }]; }, onActivated: { addListener: (listener) => activated.push(listener) } },
@@ -385,8 +385,9 @@ test('the side panel shows a finished walk on its own tab alone, with one button
 // Catches a paused screen that never tells the person to take over when a passkey or phone sign-in was held.
 test('the side panel’s sign-in pause says how else to sign in only once a write was held, and not after Continue', async () => {
   const { reduce } = await import('../extension/walks/view.js');
-  const h = await sidePanel({ view: STUBS['paused-sign-in'], status: signedIn });
+  const h = await sidePanel({ view: STUBS['paused-sign-in'], status: signedIn, control: { resume: { ok: false, why: 'sign-in' } } });
   const hinted = () => [h.acts(), h.app.querySelectorAll('[data-hint="stop-and-restart"]').length];
+  const why = () => h.app.querySelectorAll('[data-refused]').map((node) => node.attributes['data-refused']);
   const resume = () => h.app.querySelector('[data-act="resume"]').textContent;
   const atSignIn = resume();
   await h.show(STUBS.paused);
@@ -396,9 +397,9 @@ test('the side panel’s sign-in pause says how else to sign in only once a writ
   // Continue refused (the worker answers no `ok`): the pause is drawn again as it stands, here with a write held.
   h.session.view = STUBS['paused-sign-in-held'];
   await h.press('resume');
-  assert.deepEqual([...hinted(), document.activeElement?.attributes['data-act']], [['resume', 'stop'], 1, 'resume'], 'one line, no new control, focus kept');
+  assert.deepEqual([...hinted(), why(), document.activeElement?.attributes['data-act']], [['resume', 'stop'], 1, ['sign-in'], 'resume'], 'why it was refused, no new control, focus kept (B23)');
   await h.show(reduce(STUBS['paused-sign-in-held'], { type: 'resume' }));
-  assert.deepEqual(hinted(), [['stop'], 0]);
+  assert.deepEqual([...hinted(), why()], [['stop'], 0, []], 'gone once the walk goes on');
 });
 
 // A walk started from the terminal or the walk page has no persona picked here: its face is the one the server sends.
