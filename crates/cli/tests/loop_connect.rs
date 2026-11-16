@@ -768,6 +768,109 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
     }
 }
 
+/// Every Loop hook command connect wrote, Claude's and Codex's.
+fn loop_commands(b: &Box) -> Vec<String> {
+    [".claude/settings.json", ".codex/hooks.json"]
+        .iter()
+        .flat_map(|f| {
+            let v: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(b.home().join(f)).unwrap()).unwrap();
+            v["hooks"]
+                .as_object()
+                .unwrap()
+                .values()
+                .flat_map(|groups| groups.as_array().unwrap().clone())
+                .filter_map(|g| g["hooks"][0]["command"].as_str().map(str::to_owned))
+                .filter(|c| c.contains("loop-hook"))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn quarantine(path: &Path, flags: &str) {
+    assert!(Command::new("/usr/bin/xattr")
+        .args(["-w", "com.apple.quarantine", &format!("{flags};00000000;;")])
+        .arg(path)
+        .status()
+        .unwrap()
+        .success());
+}
+
+#[test]
+fn hooks_never_run_a_loop_macos_blocks_and_status_says_so() {
+    // Catches (REN-1865): hooks running a quarantined Loop helper, so macOS showed its
+    // "damaged" dialog at every session start and tool call; the other way, hooks going
+    // quiet for a Loop the person approved (the flag stays, with 0x40 set); and status
+    // not saying Loop is blocked.
+    let b = Box::new("blocked");
+    b.install_loop_version("0.1.3");
+    let helper = b
+        .home()
+        .join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+    script(&helper, "#!/bin/sh\ntouch \"$0.ran\"\n");
+    let ran = helper.with_extension("ran");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let commands = loop_commands(&b);
+    assert!(
+        commands.iter().any(|c| c.contains("' claude "))
+            && commands.iter().any(|c| c.contains("' codex ")),
+        "{commands:?}"
+    );
+    for (flags, runs) in [(None, true), (Some("0081"), false), (Some("00c1"), true)] {
+        if let Some(flags) = flags {
+            quarantine(&helper, flags);
+        }
+        for command in &commands {
+            let _ = fs::remove_file(&ran);
+            let out = Command::new("/bin/sh")
+                .args(["-c", command])
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{flags:?} {command}: {}", text(&out));
+            assert_eq!(text(&out), "", "{flags:?} {command}");
+            assert_eq!(ran.exists(), runs, "{flags:?} {command}");
+        }
+        let out = b.run(&["loop", "status", "--json"]);
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(v["loop"]["blocked"], !runs, "{flags:?} {v}");
+    }
+}
+
+#[test]
+fn connect_over_an_older_loops_hooks_replaces_them() {
+    // Catches (REN-1865): a reconnect after Loop learned the guarded hooks adding them
+    // beside the old unguarded ones (the dialog stays) or leaving either behind on disconnect.
+    let b = Box::new("guard-upgrade");
+    b.install_loop_version("0.1.2");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let old = loop_commands(&b);
+    assert!(old.iter().all(|c| c.starts_with('\'')), "{old:?}");
+    b.install_loop_version("0.1.3");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let new = loop_commands(&b);
+    assert_eq!(new.len(), old.len(), "{new:?}");
+    assert!(
+        new.iter().all(|c| c.starts_with("/usr/bin/xattr ")),
+        "{new:?}"
+    );
+    let out = b.run(&["loop", "status", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        v["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|a| a["hooks"] == true),
+        "{v}"
+    );
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    for f in [".claude/settings.json", ".codex/hooks.json"] {
+        let after = fs::read_to_string(b.home().join(f)).unwrap_or_default();
+        assert!(!after.contains("loop-hook"), "{f}: {after}");
+    }
+}
+
 #[test]
 fn status_answers_on_an_account_connect_refuses() {
     // Catches: status failing outright on a local or unknown account service, which also
