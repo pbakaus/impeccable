@@ -553,6 +553,14 @@ export const PROVIDER_PLACEHOLDERS = {
     ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
     command_prefix: '/'
   },
+  'muse': {
+    // Muse reads ~/AGENTS.md for operating instructions and has no
+    // vendor-fixed assistant name in user-facing copy.
+    model: 'the model',
+    config_file: 'AGENTS.md',
+    ask_instruction: 'Ask the user directly to clarify what you cannot infer.',
+    command_prefix: '/'
+  },
   veto: {
     model: 'the selected model',
     config_file: '~/.veto/config.json',
@@ -608,6 +616,7 @@ export const PROVIDER_BLOCK_TAGS = new Set([
   'grok',
   'hermes',
   'kiro',
+  'muse',
   'opencode',
   'pi',
   'omp',
