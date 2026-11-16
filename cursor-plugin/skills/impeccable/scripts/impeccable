@@ -187,6 +187,30 @@ setup_help() {
   echo "Run this launcher ($0) with engine-probe in a terminal that has those permissions, then retry the original command." >&2
   echo "Alternatively, set IMPECCABLE_HOME to a writable cache location, or IMPECCABLE_BIN to a preinstalled engine binary." >&2
 }
+# Sweep stale staging files from crashed downloads. SIGKILL and a power
+# loss defeat the traps above, so every run removes foreign stale parts and
+# sha256 sidecars: ones older than STALE_AGE_SECONDS and not claimed by a
+# live process. The final binary and its .verified stamp are never touched.
+# A concurrent download's part is excluded by the live-PID test; a
+# just-finished-but-not-yet-moved part is younger than the cutoff.
+sweep_stale_parts() {
+  sweep_dir="$1"
+  sweep_now=$(date +%s)
+  [ -d "$sweep_dir" ] || return 0
+  for part in "$sweep_dir"/.impeccable.part.*; do
+    [ -e "$part" ] || continue
+    case "$part" in
+      *.sha256) sweep_owner=${part%.sha256}; sweep_owner=${sweep_owner##*.part.} ;;
+      *) sweep_owner=${part##*.part.} ;;
+    esac
+    case "$sweep_owner" in
+      ''|*[^0-9]*) continue ;;
+    esac
+    [ -d "/proc/$sweep_owner" ] && continue
+    sweep_age=$(( sweep_now - $(stat -f %m "$part" 2>/dev/null || stat -c %Y "$part" 2>/dev/null || echo "$sweep_now") ))
+    [ "$sweep_age" -ge 600 ] && rm -f "$part" 2>/dev/null
+  done
+}
 fetch_url() {
   http_status=""
   download_host=""
@@ -229,6 +253,7 @@ if [ -n "$probing" ]; then
 fi
 if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
   base="${IMPECCABLE_DOWNLOAD_BASE:-https://github.com/pbakaus/impeccable/releases/download}"
+  sweep_stale_parts "$cache_root/bin/$version"
   url="$base/engine-v$version/$asset"
   read_expected
   # Fail closed before any network traffic or cache write.

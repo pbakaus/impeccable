@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 rem Impeccable launcher (Windows). Runs bin\windows-<arch>\impeccable.exe next
 rem to this file, else a cached or freshly downloaded engine binary.
 rem
@@ -121,6 +121,18 @@ rem the version-pinned user cache, verify it, then run it. Never inside
 rem another launcher's probe: fail fast and quiet instead.
 if defined IMPECCABLE_LAUNCHER_PROBE exit /b 127
 if not defined version goto fail
+rem Reclaim stale staging directories from a run that was hard-killed
+rem (SIGKILL, power loss). The traps above cover HUP/INT/TERM; a kill -9
+rem leaves ".impeccable.part.<stamp>-<rand>" directories behind with an
+rem in-progress download in them. Remove the foreign ones: any whose name
+rem does not end with "-<this task's PID>". A concurrent downloader's
+rem directory is excluded by the PID match (its stamp is its own PID); a
+rem just-finished-but-not-yet-moved one is this task's own and still
+rem owned by the claim+move sequence below.
+for /d %%d in ("%IMPECCABLE_HOME%\bin\%version%\.impeccable.part.*") do (
+  set "d=%%~nxd"
+  if "!d:~-2!" neq "-%$" call :stale_rd "%%d"
+)
 call :read_expected
 if not defined expected if not defined expected_x64 goto no_checksum
 where curl.exe >nul 2>nul
@@ -341,6 +353,12 @@ echo impeccable: could not download engine %version%: GitHub's downloads are fai
 exit /b 127
 :download_generic
 echo impeccable: could not download engine %version% from %url%; check network access and the release URL. 1>&2
+
+:stale_rd
+rem Delete one foreign stale staging directory. %~1 is the full path.
+rem rd /s /q on a nonexistent directory is a no-op.
+rd /s /q "%~1" >nul 2>nul
+exit /b 0
 
 :setup_failed
 echo Engine %version% setup needs network access and write permission to "%IMPECCABLE_HOME%\bin\%version%". 1>&2
