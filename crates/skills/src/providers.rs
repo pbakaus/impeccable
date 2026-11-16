@@ -137,12 +137,13 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
         ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
+        // Claude Code reads user skills from its config dir, which CLAUDE_CONFIG_DIR moves (REN-2029).
+        ".claude" => env
+            .get("CLAUDE_CONFIG_DIR")
+            .filter(|v| !v.is_empty())
+            .map(|dir| jsp::join(&[&jsp::resolve(cwd, &[dir]), "skills"])),
         _ => None,
     }
-}
-
-fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -183,8 +184,10 @@ impl Sys {
             return vec![self.user_provider_skills_dir(root, provider)];
         }
         let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
-        if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
-            dirs.insert(0, self.user_provider_skills_dir(root, provider));
+        if scope != Some(Scope::Project) && self.is_home_dir(root) {
+            if let Some(user) = home_skills_dir_override(&self.env, &self.cwd, provider, root) {
+                dirs.insert(0, user);
+            }
         }
         dirs
     }
@@ -914,6 +917,29 @@ mod tests {
 
         let sys = with_env(&[]);
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".devin", Some(Scope::Project)), vec![jsp::join(&["/project", ".devin", "skills"])]);
+    }
+
+    #[test]
+    fn claude_user_skills_follow_claude_config_dir() {
+        // Catches (REN-2029): an older Impeccable in $CLAUDE_CONFIG_DIR/skills wins over a project
+        // install while install's warning and `update --user` only look in ~/.claude/skills.
+        let tmp = std::env::temp_dir().join(format!("impeccable-ccd-{}", std::process::id()));
+        let (home, config) = (tmp.join("home"), tmp.join("claude-b"));
+        let skill = config.join("skills").join("impeccable");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: impeccable\nversion: 4.8.2\n---\n").unwrap();
+        let (home, config) = (home.to_string_lossy().to_string(), config.to_string_lossy().to_string());
+        let mut env = Env::new();
+        env.insert("CLAUDE_CONFIG_DIR".into(), config.clone());
+        let sys = Sys { env, cwd: home.clone(), home: home.clone() };
+
+        assert_eq!(sys.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&config, "skills"]));
+        assert_eq!(sys.get_skills_version(&home, Some(Scope::User)).as_deref(), Some("4.8.2"));
+        // Unset, it stays ~/.claude/skills, listed once.
+        let plain = Sys { env: Env::new(), cwd: home.clone(), home: home.clone() };
+        assert_eq!(plain.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&home, ".claude", "skills"]));
+        assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", None), vec![jsp::join(&[&home, ".claude", "skills"])]);
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
