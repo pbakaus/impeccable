@@ -323,14 +323,20 @@ fn a_fixed_action_escapes_a_clipping_wrapper_unless_one_holds_it() {
     let wrapped = |wrapper_style: &str| {
         page_with(
             &dir,
-            &format!("<div style=\"width: 120px; height: 100vh; overflow: hidden; {wrapper_style}\">\
-             <a class=\"buy\" href=\"#buy\" style=\"position: fixed; right: 10px; top: 200px; width: 120px\">Buy seeds</a></div>"),
+            &format!("<div style=\"margin-left: 50px; width: 120px; height: 100vh; overflow: hidden; {wrapper_style}\">\
+             <a class=\"buy\" href=\"#buy\" style=\"position: fixed; left: 100px; top: 200px; width: 120px\">Buy seeds</a></div>"),
         );
         String::from_utf8_lossy(&run(&dir, &args).stdout).to_string()
     };
     let text = wrapped("");
     assert!(text.contains("ok    primary action .buy: wholly inside the first viewport"), "{text}");
-    // A transformed wrapper holds fixed boxes, so it does clip it.
-    let text = wrapped("transform: translateZ(0)");
-    assert!(text.contains("FAIL  primary action .buy: not wholly inside"), "{text}");
+    // A transformed wrapper holds fixed boxes, so it does clip it: the action's box stays
+    // inside the viewport but runs past the wrapper's right edge.
+    for held in ["transform: translateZ(0)", "translate: 0 0", "will-change: scale"] {
+        let text = wrapped(held);
+        assert!(text.contains("FAIL  primary action .buy: not wholly inside"), "{held}: {text}");
+    }
+    // Holding it without clipping changes nothing.
+    let text = wrapped("transform: translateZ(0); overflow: visible");
+    assert!(text.contains("ok    primary action .buy: wholly inside the first viewport"), "{text}");
 }

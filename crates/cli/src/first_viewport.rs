@@ -60,8 +60,9 @@ const MEASURE_JS: &str = r##"((selectors) => {
   const pageScroller = (a) => a.clientHeight >= innerHeight * 0.9;
   // An ancestor that gives fixed descendants their containing block.
   const holdsFixed = (cs) => cs.transform !== 'none' || cs.perspective !== 'none' || cs.filter !== 'none'
+    || ['translate', 'rotate', 'scale'].some((p) => (cs[p] || 'none') !== 'none')
     || (cs.backdropFilter || 'none') !== 'none' || /paint|layout|strict|content/.test(cs.contain)
-    || /transform|perspective|filter/.test(cs.willChange);
+    || /transform|translate|rotate|scale|perspective|filter/.test(cs.willChange);
   const shownBox = (el, forMedia = false) => {
     const b = el.getBoundingClientRect();
     let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
