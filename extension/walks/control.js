@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -25,6 +25,7 @@ let stopped = false;
 let plannedWalk = false;
 export function rearm() {
   stopped = false;
+  unnote();
   plannedWalk = false;
   // The last walk's results page and walker are not this one's.
   void chrome.storage.session.remove(['walkUrl', 'walker']).catch(() => undefined);
@@ -33,12 +34,13 @@ export function planned(on) { plannedWalk = on; }
 
 /**
  * Pauses the walk for a reason of its own (a sign-in). From walking, or from a person's pause or take-over: in every
- * case the walk is paused, and the other end told once. Synchronous to the pause: nothing is taken after it.
+ * case the walk is paused, and the other end told why each time that changes. Synchronous to the pause: nothing is
+ * taken after it.
  */
 function pauseFor(why) {
-  const was = current().state;
+  const was = current();
   if (!dispatch({ type: 'pause', why })) return false;
-  if (was !== 'paused') say({ event: 'paused' });
+  if (was.state !== 'paused' || was.held !== current().held) say({ event: 'paused', why: current().held });
   return true;
 }
 onSignIn(() => { pauseFor('sign-in'); });
@@ -213,8 +215,14 @@ export async function command(name) { return (await attempt(name)) === true; }
 /**
  * As `command`, resolving to true, or why Continue or Hand back was refused (for the side panel): `sign-in` still
  * shows, a `script` of the server's may still be on, the `tab` can't be got back, or it `closed`. Anything else: false.
+ * A refusal is told the other end too, once a walk.
  */
 async function attempt(name) {
+  const said = await tryTo(name);
+  if (typeof said === 'string') note('continue-refused', said);
+  return said;
+}
+async function tryTo(name) {
   if (name === 'yes' || name === 'no') {
     if (!answering) return false;
     settle(name);
@@ -282,7 +290,7 @@ hooks.said.push((message) => {
   if (message.event === 'blocked') dispatch({ type: 'blocked', what: message.what, url: message.url });
 });
 // A sign-in the person did without a press or key in the tab (a passkey, a phone, another site's frame): the panel says to stop and start again.
-hooks.withheld.push(() => { dispatch({ type: 'withheld' }); });
+hooks.withheld.push(() => { dispatch({ type: 'withheld' }); note('withheld'); });
 
 // Only the side panel controls a walk: not a content script, nor any other page of this extension.
 const PANEL = chrome.runtime.getURL('walks/panel/');
