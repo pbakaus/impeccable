@@ -651,24 +651,28 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
 fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
     let mut git = Command::new("git");
     git.args(["-c", "core.fsmonitor=false", "-C", dir]).args(args);
-    output_within(git, timeout)
+    output_within(git, timeout, false)
 }
 
 /// A command's trimmed stdout, given at most `timeout`: `Err` when it didn't
 /// answer in time (or couldn't start), `Ok(None)` on a failure or no output.
-fn output_within(mut command: Command, timeout: Duration) -> Result<Option<String>, ()> {
+/// With `drain`, stdout is read while it runs, for output that can pass the
+/// pipe's buffer (`ssh -G` on a large config); git's answers here never do.
+fn output_within(mut command: Command, timeout: Duration, drain: bool) -> Result<Option<String>, ()> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| ())?;
-    // Read while it runs, so output past the pipe's buffer can't stall it.
-    let mut stdout = child.stdout.take().ok_or(())?;
-    let reader = std::thread::spawn(move || {
+    let read = |mut stdout: std::process::ChildStdout| {
         let mut out = String::new();
         std::io::Read::read_to_string(&mut stdout, &mut out).ok().map(|_| out)
-    });
+    };
+    let reader = match drain {
+        true => child.stdout.take().map(|o| std::thread::spawn(move || read(o))),
+        false => None,
+    };
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -683,7 +687,11 @@ fn output_within(mut command: Command, timeout: Duration) -> Result<Option<Strin
             }
         }
     };
-    let Some(out) = reader.join().ok().flatten() else { return Ok(None) };
+    let out = match reader {
+        Some(reader) => reader.join().ok().flatten(),
+        None => child.stdout.take().and_then(read),
+    };
+    let Some(out) = out else { return Ok(None) };
     let s = out.trim().to_string();
     Ok((status.success() && !s.is_empty()).then_some(s))
 }
@@ -777,7 +785,7 @@ fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
         ssh.args(["-l", user]);
     }
     ssh.arg(alias);
-    let out = output_within(ssh, Duration::from_millis(500)).ok()??;
+    let out = output_within(ssh, Duration::from_millis(500), true).ok()??;
     let real = out.lines().find_map(|l| l.strip_prefix("hostname "))?.trim().to_lowercase();
     (!real.is_empty()).then_some(real)
 }
