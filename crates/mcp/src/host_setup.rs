@@ -37,6 +37,8 @@ if [ -z "$best" ]; then
   echo "Impeccable: no verified engine in $home/bin. Run npx impeccable install." >&2
   exit 1
 fi
+IMPECCABLE_HOME="$home"
+export IMPECCABLE_HOME
 exec "$best" "$@"
 "#
     )

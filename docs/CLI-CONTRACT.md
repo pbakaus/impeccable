@@ -3241,12 +3241,13 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
 - **Registering the host with Chrome** (macOS and Linux). After a successful
-  `install` or `update`, the CLI writes `<IMPECCABLE_HOME>/browser/host`
+  `install` or `update` (or `skills install` / `skills update`), and not for
+  `-h`/`--help` or when `CI` is set, the CLI writes `<IMPECCABLE_HOME>/browser/host`
   (0700, its folder 0700): a `sh` launcher with the home folder written in
   (Chrome starts hosts with a bare environment). Each time it runs it picks the
   highest `x.y.z` folder under `<home>/bin` whose `impeccable` is executable
   and has an `impeccable.verified` stamp whose size field matches the binary
-  and that isn't older than it, and execs it with its arguments. With none, it
+  and that isn't older than it, and execs it with its arguments and `IMPECCABLE_HOME` set to that home. With none, it
   prints `Impeccable: no verified engine in <home>/bin. Run npx impeccable
   install.` to stderr and exits 1. It names no version, so updates never
   rewrite it. Then, for each of Chrome, Chrome Beta, Chrome Canary (macOS),

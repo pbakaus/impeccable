@@ -23,7 +23,7 @@ fn engine(home: &Path, v: &str, stamp: &str) {
     let dir = home.join("bin").join(v);
     std::fs::create_dir_all(&dir).unwrap();
     let bin = dir.join("impeccable");
-    let body = format!("#!/bin/sh\necho \"{v} $*\"\n");
+    let body = format!("#!/bin/sh\necho \"{v} $* $IMPECCABLE_HOME\"\n");
     let verified = dir.join("impeccable.verified");
     let size = if stamp == "size" { body.len() + 1 } else { body.len() };
     if stamp == "older" {
@@ -89,6 +89,7 @@ fn the_launcher_runs_the_newest_verified_engine() {
     engine(&home, "1.12.0", "size");
     engine(&home, "1.13.0", "older");
     let out = run(&["chrome-extension://abc/", "two"]);
-    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "1.10.0 chrome-extension://abc/ two");
+    // The engine finds this home (its relay socket, its sign-in) though Chrome passes no environment.
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("1.10.0 chrome-extension://abc/ two {}", home.display()));
     let _ = std::fs::remove_dir_all(user);
 }
