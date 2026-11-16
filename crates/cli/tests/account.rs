@@ -604,3 +604,50 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 2, "profile A's removal was sent");
 }
+
+#[test]
+fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a_tracked_one() {
+    // Catches (REN-2056): Cursor, which has no user-level rules file, never getting the
+    // person's switches; or the fallback showing up in `git status`, or overwriting a
+    // rule the team committed.
+    let fake = Fake::start();
+    let mut env = fake.env("switch-cursor");
+    env.insert("IMPECCABLE_NO_UPDATE_CHECK".into(), "1".into());
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let project = home.join("site");
+    std::fs::create_dir_all(&project).unwrap();
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(&project).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).to_string()
+    };
+    git(&["init", "-q"]);
+    git(&["remote", "add", "origin", "https://github.com/acme/site.git"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    std::fs::create_dir_all(home.join(".cursor")).unwrap();
+    let rule = project.join(".cursor/rules/impeccable.mdc");
+    let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["taste"]}"#);
+    refresh();
+    let t = std::fs::read_to_string(&rule).unwrap();
+    assert!(t.starts_with("---\ndescription: Impeccable, your personal switches (kept out of git)\nalwaysApply: true\n---\n"), "{t}");
+    assert!(t.contains("<!-- impeccable start -->\nImpeccable Taste"), "{t}");
+    assert_eq!(git(&["status", "--porcelain"]), "", "git leaves it alone");
+    let out = impeccable(&env, &["switches"]).current_dir(&project).output().unwrap();
+    assert!(String::from_utf8_lossy(&out.stdout).replace('\\', "/").contains("Cursor (this repository's .cursor/rules/impeccable.mdc): taste"), "{}", String::from_utf8_lossy(&out.stdout));
+    // All off: the rule goes.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":2,"team":null,"me":[]}"#);
+    refresh();
+    assert!(!rule.exists());
+    // A rule the team committed is theirs: never written.
+    std::fs::create_dir_all(rule.parent().unwrap()).unwrap();
+    std::fs::write(&rule, "Team rule.\n").unwrap();
+    git(&["add", "-f", ".cursor/rules/impeccable.mdc"]);
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":null,"me":["taste"]}"#);
+    refresh();
+    assert_eq!(std::fs::read_to_string(&rule).unwrap(), "Team rule.\n");
+}

@@ -41,7 +41,9 @@ pub fn schedule(io: &Io) {
 
 /// Every agent's user-level rule file on this machine (`agent_block::user_rule_files`).
 pub(crate) fn rule_files(io: &Io) -> Vec<PathBuf> {
-    agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect()
+    let mut files: Vec<PathBuf> = agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect();
+    files.extend(agent_block::cursor_personal_file(io));
+    files
 }
 
 /// What the worker does, decided from the page's set, the base and each file's set.
@@ -165,7 +167,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
             return false;
         }
         let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
-        files.iter().all(|f| agent_block::write_switches(f, &refs).is_ok())
+        files.iter().all(|f| {
+            if f.ends_with(".cursor/rules/impeccable.mdc") {
+                agent_block::write_cursor(f, &refs).is_ok()
+            } else {
+                agent_block::write_switches(f, &refs).is_ok()
+            }
+        })
     };
     let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {

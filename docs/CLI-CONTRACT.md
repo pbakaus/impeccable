@@ -2500,7 +2500,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   GitHub Copilot (`copilot-instructions.md` in `$COPILOT_HOME`, else `~/.copilot`) and
   opencode (`~/.config/opencode/AGENTS.md`, only when it already exists, since creating
   it turns off opencode's fallback to `~/.claude/CLAUDE.md`). With none, it prints
-  `No agent's user-level rule file found.` The switch sync writes the same files. `impeccable switches
+  `No agent's user-level rule file found.` Cursor keeps its user rules in its settings,
+  so when it is installed (`~/.cursor`) and the working directory is in a git work tree,
+  its line is `Cursor (this repository's .cursor/rules/impeccable.mdc): ...`: an
+  always-applied rule (`alwaysApply: true` front matter) holding the block, named in the
+  repository's `info/exclude` so git never shows or commits it, removed when no switch is
+  on, and never written when that path is tracked (then it is the team's). The switch
+  sync writes the same files. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.
