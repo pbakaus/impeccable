@@ -768,6 +768,40 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
     }
 }
 
+#[test]
+fn codex_waits_for_an_answer_at_the_end_of_a_turn_only_with_a_loop_that_can_hold() {
+    // Catches (REN-2057): Codex has no background wake, so a blocking Stop hook holds the
+    // turn for Loop's answer; wired for an older helper, it would stall every turn's end.
+    for (version, wanted) in [("0.1.3", false), ("0.1.4", true)] {
+        let b = Box::new(&format!("stop-hold-{version}"));
+        b.install_loop_version(version);
+        let out = b.run(&["loop", "connect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let codex: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".codex/hooks.json")).unwrap()).unwrap();
+        let stop = codex["hooks"]["Stop"].as_array().cloned().unwrap_or_default();
+        let held: Vec<&serde_json::Value> = stop
+            .iter()
+            .map(|g| &g["hooks"][0])
+            .filter(|h| h["command"].as_str().is_some_and(|c| c.ends_with(" codex lifecycle")))
+            .collect();
+        assert_eq!(held.len(), usize::from(wanted), "{version}: {codex}");
+        if let Some(h) = held.first() {
+            assert_eq!(h["timeout"], 3600, "{h}");
+            assert!(h.get("async").is_none(), "it must block: {h}");
+        }
+        // Claude keeps its own background Stop wake, untouched.
+        let claude: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap()).unwrap();
+        let stops: Vec<&serde_json::Value> = claude["hooks"]["Stop"]
+            .as_array()
+            .map(|a| a.iter().map(|g| &g["hooks"][0]).collect())
+            .unwrap_or_default();
+        assert_eq!(stops.len(), 1, "{claude}");
+        assert_eq!((&stops[0]["async"], &stops[0]["asyncRewake"], &stops[0]["timeout"]), (&serde_json::json!(true), &serde_json::json!(true), &serde_json::json!(86400)), "{claude}");
+    }
+}
+
 /// Every Loop hook command connect wrote, Claude's and Codex's.
 fn loop_commands(b: &Box) -> Vec<String> {
     [".claude/settings.json", ".codex/hooks.json"]

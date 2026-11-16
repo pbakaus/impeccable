@@ -122,6 +122,9 @@ const ADD_WAIT: Duration = Duration::from_secs(300);
 
 type Result<T> = std::result::Result<T, String>;
 
+/// The first Loop whose helper holds a Codex turn open for an answer (REN-2057).
+const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
+
 const AGENTS: [(&str, &str); 2] = [("claude", "Claude Code"), ("codex", "Codex")];
 
 fn label(harness: &str) -> &'static str {
@@ -1059,8 +1062,16 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
     // Tells a new session that Loop will wake it, so it stops polling for answers.
     // Synchronous: it prints at most one line within its own 400 ms probe and always
     // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
-    if version.is_some_and(|v| v >= semver::Version::new(0, 1, 1)) {
+    if version.as_ref().is_some_and(|v| *v >= semver::Version::new(0, 1, 1)) {
         hooks.push(hook("SessionStart", None, "context", 5, false));
+    }
+    // Codex has no background wake: at the end of a turn this holds, synchronously, until
+    // Loop has an answer for a card the session asked, then hands Codex a follow-up
+    // prompt (REN-2057). The helper exits at once when nothing is pending. Only a Loop
+    // whose helper knows the hold gets it; an older one would treat the event as plain
+    // lifecycle.
+    if harness == "codex" && version.as_ref().is_some_and(|v| *v >= STOP_HOLD) {
+        hooks.push(hook("Stop", None, "lifecycle", 3600, false));
     }
     Spec {
         version: 1,
