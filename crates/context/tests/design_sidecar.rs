@@ -56,8 +56,10 @@ impl Fixture {
         let source = self.root.join("DESIGN.md");
         let sidecar = self.root.join(".impeccable/design.json");
         let before = fs::read(&sidecar).unwrap();
+        let source_bytes = fs::read(&source).ok();
         let findings = check_design_sidecar(
             Some(source.to_str().unwrap()),
+            source_bytes.as_deref(),
             &[sidecar.to_str().unwrap().into()],
             self.root.to_str().unwrap(),
         );
@@ -93,6 +95,29 @@ fn fingerprint(bytes: &[u8]) -> Value {
 }
 fn has(findings: &[Finding], id: &str) -> bool {
     findings.iter().any(|finding| finding.id == id)
+}
+
+#[test]
+fn boot_checks_the_loaded_design_snapshot_without_rereading() {
+    use impeccable_context::{context::load_context, staleness::{collect_boot_finding_groups, BootExtras}, target_args::TargetOptions};
+    for source in [ORIGINAL, b"# Design\r\n\xff\r\n".as_slice()] {
+        let fixture = Fixture::new(Some(fingerprint(source)));
+        fixture.source(source, 300);
+        let root = fixture.root.to_str().unwrap();
+        let ctx = load_context(root, &TargetOptions::default(), &Default::default());
+        let extras = BootExtras {
+            abs_design_path: Some(fixture.root.join("DESIGN.md").to_string_lossy().into_owned()),
+            sidecar_candidates: vec![fixture.root.join(".impeccable/design.json").to_string_lossy().into_owned()],
+            project_root_patterns: None,
+            target_candidates: vec![],
+        };
+        // A change after loading must not make the findings disagree with
+        // the document that this boot actually presents to the agent.
+        fixture.source(CHANGED, 300);
+        assert!(collect_boot_finding_groups(&ctx, root, &extras).design_sidecar.is_empty());
+        fs::remove_file(fixture.root.join("DESIGN.md")).unwrap();
+        assert!(collect_boot_finding_groups(&ctx, root, &extras).design_sidecar.is_empty());
+    }
 }
 
 #[test]
@@ -145,6 +170,7 @@ fn malformed_or_unknown_fingerprint_uses_boot_fallback_and_doctor_notice() {
             assert_eq!(has(&findings, "design-sidecar-stale"), seconds > 200);
             let doctor = impeccable_context::staleness::check_design_sidecar_for_doctor(
                 fixture.root.join("DESIGN.md").to_str(),
+                Some(ORIGINAL),
                 &[fixture.root.join(".impeccable/design.json").to_string_lossy().into_owned()],
                 fixture.root.to_str().unwrap(),
             );
@@ -309,6 +335,7 @@ fn doctor_reports_unverified_in_both_legacy_timestamp_orders() {
         fixture.source(ORIGINAL, seconds);
         let findings = impeccable_context::staleness::check_design_sidecar_for_doctor(
             fixture.root.join("DESIGN.md").to_str(),
+            Some(ORIGINAL),
             &[fixture.root.join(".impeccable/design.json").to_string_lossy().into_owned()],
             fixture.root.to_str().unwrap(),
         );

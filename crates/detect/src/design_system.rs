@@ -1129,11 +1129,13 @@ pub fn normalize_design_system(
 /// JS: design-system.mjs#loadDesignSystemForCwd
 pub fn load_design_system_for_cwd(cwd: &str) -> Option<DesignSystem> {
     let md = resolve_design_md_path(cwd)?;
-    let text = read_text(&md.path)?;
+    // Parse and fingerprint the same read. Lossy display decoding must not
+    // change the bytes used by the fingerprint contract.
+    let source_bytes = std::fs::read(&md.path).ok()?;
+    let text = crate::util::decode_utf8(&source_bytes);
     let frontmatter = parse_frontmatter(&text)?;
     let sidecar_path = resolve_design_sidecar_path(cwd, &md.context_dir);
     let sidecar = sidecar_path.as_deref().and_then(read_json);
-    let source_bytes = std::fs::read(&md.path).ok()?;
     // Fingerprints take precedence; legacy sidecars retain the timestamp check.
     let md_newer = impeccable_common::design_fingerprint::matches_source(
         sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")),
@@ -2321,6 +2323,35 @@ mod tests {
     }
 
     const DESIGN_MD: &str = "---\ntypography:\n  body:\n    fontFamily: \"Palatino, Georgia, serif\"\n---\n# Project A Design System\n";
+
+    #[cfg(unix)]
+    #[test]
+    fn loaded_design_survives_removal_before_sidecar_read_finishes() {
+        use std::io::Write;
+        let d = TempDir::new("single-read");
+        d.write("DESIGN.md", DESIGN_MD);
+        d.mkdir(".impeccable");
+        let sidecar = d.join(".impeccable/design.json");
+        assert!(std::process::Command::new("mkfifo").arg(&sidecar).status().unwrap().success());
+        let design = d.join("DESIGN.md");
+        // The pipe synchronizes removal after the initial DESIGN.md read,
+        // without timing sleeps or replacing the loader with a mock.
+        let (done, completed) = std::sync::mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            let mut pipe = std::fs::OpenOptions::new().write(true).open(sidecar).unwrap();
+            std::fs::remove_file(design).unwrap();
+            let stamp = impeccable_common::design_fingerprint::fingerprint(DESIGN_MD.as_bytes());
+            write!(pipe, "{}", serde_json::json!({"schemaVersion": 2, "designMdFingerprint": stamp})).unwrap();
+            done.send(()).unwrap();
+        });
+        let result = load_design_system_for_cwd(&d.path());
+        completed.recv_timeout(std::time::Duration::from_secs(5)).expect("loader must consume the sidecar");
+        writer.join().unwrap();
+        let ds = result.expect("a second read must not discard the loaded design system");
+        assert!(ds.has_fonts);
+        assert!(!ds.md_newer_than_json);
+        assert!(!is_allowed_font("Inter", Some(&ds)));
+    }
 
     fn ds_with(colors: serde_json::Value) -> DesignSystem {
         let fm: Map<String, Value> = serde_json::from_value(serde_json::json!({ "colors": colors })).unwrap();

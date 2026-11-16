@@ -92,7 +92,7 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider: &crate::provi
     findings.extend(boot.product);
     findings.extend(boot.native_platform);
     findings.extend(crate::staleness::check_design_sidecar_for_doctor(
-        abs_design_path.as_deref(), &sidecar_candidates, &project_root,
+        abs_design_path.as_deref(), ctx.design_bytes.as_deref(), &sidecar_candidates, &project_root,
     ));
     findings.extend(check_design_drift(abs_design_path.as_deref(), &project_root, 25));
     findings.extend(check_design_coverage(ctx.design.as_deref(), ctx.design_path.as_deref()));

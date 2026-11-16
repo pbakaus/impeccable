@@ -227,15 +227,15 @@ pub fn js_truthy(v: &Value) -> bool {
 }
 
 /// JS: checkDesignSidecar
-pub fn check_design_sidecar(design_path: Option<&str>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
-    check_design_sidecar_inner(design_path, sidecar_candidates, project_root, false)
+pub fn check_design_sidecar(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
+    check_design_sidecar_inner(design_path, design_source, sidecar_candidates, project_root, false)
 }
 
-pub fn check_design_sidecar_for_doctor(design_path: Option<&str>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
-    check_design_sidecar_inner(design_path, sidecar_candidates, project_root, true)
+pub fn check_design_sidecar_for_doctor(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
+    check_design_sidecar_inner(design_path, design_source, sidecar_candidates, project_root, true)
 }
 
-fn check_design_sidecar_inner(design_path: Option<&str>, sidecar_candidates: &[String], project_root: &str, report_unverified: bool) -> Vec<Finding> {
+fn check_design_sidecar_inner(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str, report_unverified: bool) -> Vec<Finding> {
     let mut out = Vec::new();
     let canonical = sidecar_candidates.first();
     let Some(present) = sidecar_candidates.iter().find(|c| exists(c)) else { return out };
@@ -275,9 +275,10 @@ fn check_design_sidecar_inner(design_path: Option<&str>, sidecar_candidates: &[S
         }
     }
     if let Some(dp) = design_path {
-        let source = std::fs::read(dp).ok();
-        let verified = source.as_deref().and_then(|bytes| {
-            crate::design_sidecar::matches_source(sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")), bytes)
+        // Boot already loaded DESIGN.md. Never reopen it here, and do no
+        // fingerprint work for legacy sidecars without a stamp.
+        let verified = sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")).and_then(|stamp| {
+            design_source.and_then(|bytes| crate::design_sidecar::matches_source(Some(stamp), bytes))
         });
         match verified {
             Some(true) => {},
@@ -514,7 +515,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
         } else {
             Vec::new()
         },
-        design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), &extras.sidecar_candidates, &project_root),
+        design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), ctx.design_bytes.as_deref(), &extras.sidecar_candidates, &project_root),
         config: check_config(&project_root, Some(&ctx.repo_root)),
         build_path: check_build_path_unset(&project_root, Some(&ctx.repo_root), ctx.product.as_deref()),
         surface_briefs: check_surface_briefs(&ctx.surface_brief_candidates, &project_root),
