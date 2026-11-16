@@ -354,8 +354,12 @@ async function loadApps() {
     if (cast) break;
   }
   pre.apps = apps && (cast ? apps : []);
-  if (screen() === 'make') render();
+  appsAsked = false;
+  if (screen() === 'make' || screen() === 'home') render();
 }
+let appsAsked = false;
+/** At the limit of their own, only an app's personas are left: the + stays open once one of their apps has some. */
+const ownFull = () => (pre.personas ?? []).filter((each) => each.mine).length >= ownMax;
 
 /** One app's personas, in the modal. */
 async function openApp(one) {
@@ -441,9 +445,11 @@ function maker() {
       made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false, modalSite: siteOf(hereUrl) }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
     el('div', { class: 'middle' }, hero),
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
-      el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
-        el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
-      pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null),
+            // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
+      ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
+        el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
+          el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
+        pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null]),
   ];
   // Open, the modal is all there is: what's behind it can't be reached.
   if (!pre.modal) return parts;
@@ -466,14 +472,16 @@ function grid(tiles, props, people) {
 }
 
 function cast() {
-  const full = (pre.personas ?? []).filter((each) => each.mine).length >= ownMax;
+  // Their apps are asked for once at the limit, as only an app's personas would open the + then.
+  if (ownFull() && pre.apps === undefined && !appsAsked && BUILD.account && !stubbed) { appsAsked = true; void loadApps(); }
+  const full = ownFull() && !pre.apps?.length;
   const people = pre.personas?.length ?? 0;
   return grid([
     ...(pre.personas ?? []).map((each, i) => el('button', {
       type: 'button', class: i === pre.pick ? 'sel' : '', title: each.name, 'aria-label': each.name, 'aria-pressed': i === pre.pick ? 'true' : 'false', 'data-act': `pick-${i}`,
       onclick: () => { choose(i); pre.note = ''; render(); },
     }, face(each, sized(people)), el('span', { class: 'cast-name', text: each.name }))),
-    // At the limit of their own, the + stays (focusable, saying why) and does nothing.
+    // At the limit of their own with no app's personas to pick, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
         el('span', { class: 'face' }, icon('plus'))),

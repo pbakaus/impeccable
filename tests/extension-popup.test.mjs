@@ -592,6 +592,23 @@ for (const [what, apps, cast, shown] of [
   });
 }
 
+// At the limit of their own, an app's personas are still there to pick: the + opens Make a persona with the app's
+// option and no way to make one; with no app that has personas, the + stays greyed.
+for (const [what, apps, cast, open] of [
+  ['an app with personas', [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }], [{ name: 'Mira', role: '', slug: 'mira', app: { workspace: 'acme', repo: 'tidy', app: 'web' } }], true],
+  ['no app with personas', [{ workspace: 'acme', repo: 'tidy', app: 'web', name: 'Tidy' }], [], false],
+]) {
+  test(`at the limit of their own, the + ${open ? 'opens' : 'stays greyed'} with ${what}`, async () => {
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: ['rosa', 'theo', 'june'].map((slug) => ({ name: slug, role: '', slug, mine: true })), apps: { ok: true, apps }, cast });
+    for (let n = 0; n < 5; n += 1) await tick();
+    assert.equal(h.app.querySelector('[data-act="make-persona"]').attributes['aria-disabled'], open ? undefined : 'true');
+    await h.press('make-persona');
+    for (let n = 0; n < 5; n += 1) await tick();
+    assert.deepEqual([h.body.dataset.screen, h.acts().includes('from-app'), h.acts().includes('make'), Boolean(h.app.querySelector('[data-state="full"]'))],
+      open ? ['make', true, false, true] : ['home', false, false, false]);
+  });
+}
+
 // The waveform reads the mic beside the speech recognition: its stream and frame loop end on Stop and on Send.
 test('the side panel’s mic opens a stream for the waveform while listening, and ends it on Stop and on Send', async () => {
   const mic = { opened: 0, stopped: 0, frames: 0, cancelled: 0, closed: 0 };
