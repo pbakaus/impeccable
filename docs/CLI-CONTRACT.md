@@ -3207,6 +3207,34 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   workspace refusal) is an error the agent reads, never a browser sign-in.
 - **Never written anywhere:** a token, an authorization code, the `state`
   value or the authorization URL.
+- **Browser tools** (macOS and Linux; none on Windows yet). While the
+  Impeccable extension's relay is up and no other agent is driving,
+  `tools/list` adds `browser_open`, `browser_act`, `browser_look` and
+  `browser_end`. A `tools/call` of one goes to the extension over the relay
+  and comes back as its MCP result. Another agent driving is the tool error
+  `Another agent is using the browser. Try again when it has finished.`, and an
+  extension that stopped answering is
+  `The Impeccable extension stopped answering. Open Chrome and try again.`
+  The check on `tools/list` is a connect and one probe, within about 100 ms.
+- **Native-messaging host.** Chrome starts `impeccable` with the extension's
+  origin as its first argument (`chrome-extension://bdkgmiklpdmaojlpflclinlofgjfpabf/`,
+  the store build). Only that origin starts the relay; any other first
+  argument is an ordinary verb. The relay speaks Chrome's frames on stdin and
+  stdout (a 4-byte native-endian length, then JSON; at most 1 MB to the
+  extension, 64 MiB from it) and listens on
+  `<IMPECCABLE_HOME>/browser/host.sock` (folder 0700, socket 0600; a file
+  left by a crashed relay is replaced, under `browser/host.lock`, held for the
+  relay's life, so only one relay runs per user). One agent drives at a time: a probe
+  claims nothing, the first call claims the browser, and when that agent's
+  connection ends the extension gets `{"type":"agent-gone"}` before any other
+  agent can claim. The relay numbers calls itself, so an answer reaches only
+  the agent that asked, and is dropped once that agent has gone. When the
+  account service can't list its tools, `tools/list` still answers with the
+  browser tools. The relay ends,
+  removing its socket, when the extension closes stdin. Frames to the
+  extension: `{"id","agent","tool","arguments"}`; answers:
+  `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
+  session are the extension's to decide.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
   write, personas, Taste, journeys) only when the service's metadata says
   `impeccable_cli_mcp: true`, and only those it lists.

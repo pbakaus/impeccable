@@ -23,6 +23,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         return 0;
     };
     let rest = &args[1..];
+    // Chrome starts the binary as the Impeccable extension's native-messaging host, its origin first (REN-2053).
+    if impeccable_mcp::browser::is_extension_origin(verb) {
+        return impeccable_mcp::native_host(args, io);
+    }
     // A small allowlist excludes every hook and internal verb. All I/O beyond
     // the cheap daily gate belongs to a detached process.
     if matches!(
@@ -392,6 +396,8 @@ pub fn is_scan(args: &[String], io: &Io) -> bool {
     }
     match args.first().map(String::as_str) {
         Some("detect" | "hook" | "hook-before-edit") => true,
+        // Chrome starting the extension's native host: never a path to scan, never through Pro dispatch.
+        Some(v) if impeccable_mcp::browser::is_extension_origin(v) => false,
         Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
             impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy())
         }

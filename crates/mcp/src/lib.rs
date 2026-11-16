@@ -12,6 +12,8 @@
 //!
 //! stdout carries MCP frames only; diagnostics go to stderr. No token, authorization code, `state` or authorization
 //! URL is ever written to either.
+pub mod browser;
+
 use impeccable_account::{config::Account, http::ApiError, session::{Session, SessionError}};
 use impeccable_common::Io;
 use serde_json::{json, Value};
@@ -58,14 +60,42 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     let browser = can_open_browser(&io.env);
     let mut upstream = service(io.env.clone(), browser, Box::new(open_browser));
+    let socket = browser::socket_path(&io.env);
     let stdin = std::io::stdin();
-    serve(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream);
+    serve_with(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream, socket.as_deref());
     0
+}
+
+/// Chrome starts the binary as the extension's native-messaging host with the extension's origin first: relay
+/// until the extension closes. Any other origin is refused (Chrome's own manifest also admits only ours).
+pub fn native_host(args: &[String], io: &mut Io) -> i32 {
+    if !args.first().is_some_and(|a| browser::is_extension_origin(a)) {
+        let _ = writeln!(io.stderr, "impeccable: not the Impeccable extension");
+        return 2;
+    }
+    let Some(socket) = browser::socket_path(&io.env) else {
+        let _ = writeln!(io.stderr, "impeccable: no home folder for the browser relay, or its path is too long");
+        return 1;
+    };
+    match browser::host(&socket, std::io::stdin(), std::io::stdout()) {
+        Ok(()) => 0,
+        Err(e) => {
+            let _ = writeln!(io.stderr, "impeccable: browser relay: {e}");
+            1
+        }
+    }
 }
 
 /// Answer each JSON-RPC line from `input` on `out`.
 pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream) {
+    serve_with(input, out, err, upstream, None);
+}
+
+/// `serve`, with the browser relay's socket: its tools are listed while the relay is up and free, and called over it.
+pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream, socket: Option<&std::path::Path>) {
     let mut agent: Option<String> = None;
+    // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
+    let mut link: Option<browser::Link> = None;
     for line in input.lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
@@ -79,7 +109,22 @@ pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upst
             agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
         }
         asked_as(&mut request, agent.as_deref());
-        if let Some(reply) = answer(&request, out, err, upstream) {
+        if let Some(socket) = socket {
+            if let Some(reply) = browsed(&request, socket, agent.as_deref().unwrap_or("Your agent"), &mut link) {
+                frame(out, &reply);
+                continue;
+            }
+        }
+        let listing = request.get("method").and_then(Value::as_str) == Some("tools/list");
+        if let Some(mut reply) = answer(&request, out, err, upstream) {
+            // The agent driving keeps its tools; any other lists them while the relay is up and free. Local tools
+            // don't wait on the account service: when its list fails, they're the list.
+            if listing && (link.is_some() || socket.is_some_and(browser::ready)) {
+                match reply.pointer_mut("/result/tools").and_then(Value::as_array_mut) {
+                    Some(list) => list.extend(browser::tools()),
+                    None => reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "tools": browser::tools() } }),
+                }
+            }
             frame(out, &reply);
         }
     }
@@ -104,6 +149,31 @@ fn asked_as(request: &mut Value, agent: Option<&str>) {
     if needs_you && !args.contains_key("from") {
         args.insert("from".into(), json!(agent));
     }
+}
+
+/// A browser tool's call, answered over the relay; None for anything else.
+fn browsed(request: &Value, socket: &std::path::Path, agent: &str, link: &mut Option<browser::Link>) -> Option<Value> {
+    if request.get("method").and_then(Value::as_str) != Some("tools/call") {
+        return None;
+    }
+    let name = request.pointer("/params/name").and_then(Value::as_str).filter(|n| browser::is_browser_tool(n))?;
+    let id = request.get("id").cloned().unwrap_or(Value::Null);
+    let args = request.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
+    if link.is_none() {
+        *link = browser::Link::connect(socket, agent);
+    }
+    let answer = match link.as_mut() {
+        None => Err(browser::GONE.to_string()),
+        Some(l) => l.call(name, &args),
+    };
+    Some(match answer {
+        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Err(line) => {
+            // Busy or gone, this agent doesn't hold the browser: its next call connects afresh.
+            *link = None;
+            said(&id, request, &line)
+        }
+    })
 }
 
 fn frame(out: &mut dyn Write, v: &Value) {
