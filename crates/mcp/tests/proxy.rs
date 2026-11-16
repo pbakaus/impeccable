@@ -108,7 +108,7 @@ fn names_needs_you_calls_for_the_agent_that_made_them() {
     assert!(args(3).get("from").is_none());
 
     // A name the service would refuse as a label is cut to what it accepts, and dropped when nothing is left.
-    for (name, from) in [("Claude\u{200B} Code\n✨", Some("Claude Code")), ("\u{2800}\u{200B}", None)] {
+    for (name, from) in [("Claude\u{200B} Code\n✨", Some("Claude Code")), ("\u{2800}\u{200B}", None), (&format!("{}é{}", "a".repeat(38), "bcd"), Some(&*format!("{}bc", "a".repeat(38))))] {
         let lines = [
             json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "clientInfo": { "name": name } } }),
             json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "needs_you.list", "arguments": {} } }),
