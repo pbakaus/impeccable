@@ -284,7 +284,10 @@ pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String], extra_
     // detector settings. A turn that only edited DESIGN.md or the config is a
     // new pass, not a copy of the last one.
     let inputs: Vec<String> = SCAN_INPUTS.iter().map(|rel| format!("{}/{rel}", root.trim_end_matches('/'))).collect();
-    for f in files.iter().copied().chain(inputs.iter().map(String::as_str)).chain(extra_inputs.iter().map(String::as_str)) {
+    // The stylesheets the touched files pull in: a later turn can change one
+    // through the shell, which the hook cache never sees.
+    let linked = linked_stylesheets(root, &files);
+    for f in files.iter().copied().chain(inputs.iter().map(String::as_str)).chain(extra_inputs.iter().map(String::as_str)).chain(linked.iter().map(String::as_str)) {
         h.update(f.as_bytes());
         h.update([0u8]);
         if let Ok(meta) = std::fs::metadata(f) {
@@ -296,6 +299,41 @@ pub fn stop_key(event: &Map<String, Value>, root: &str, files: &[String], extra_
         h.update([0u8]);
     }
     Some(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Local stylesheets the given files link or import (`<link href="x.css">`,
+/// `@import "x.css"`, `import "./x.css"`), resolved against each file's
+/// folder, or the project root for a leading `/`. Only files that exist, each
+/// once, sorted. Remote and query-only references are skipped.
+fn linked_stylesheets(root: &str, files: &[&str]) -> Vec<String> {
+    use once_cell::sync::Lazy;
+    use regex::Regex;
+    static CSS_REF: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(r#"(?i)(?:href\s*=\s*|@import\s+(?:url\(\s*)?|\bimport\s+|\bfrom\s+)["']([^"'?#\s]+\.(?:css|scss|sass|less))["'?#]"#).unwrap()
+    });
+    let mut out: Vec<String> = Vec::new();
+    for file in files {
+        let Ok(text) = std::fs::read_to_string(file) else { continue };
+        let dir = Path::new(file).parent().unwrap_or(Path::new(root));
+        for cap in CSS_REF.captures_iter(&text) {
+            let spec = &cap[1];
+            if spec.contains("://") || spec.starts_with("//") {
+                continue;
+            }
+            let path = match spec.strip_prefix('/') {
+                Some(rest) => Path::new(root).join(rest),
+                None => dir.join(spec),
+            };
+            if path.is_file() {
+                let path = path.to_string_lossy().into_owned();
+                if !out.contains(&path) {
+                    out.push(path);
+                }
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 /// Files under a project root that change what a deep pass reports without
@@ -322,5 +360,36 @@ pub fn claim_event(rt: &Runtime, event: &Map<String, Value>, project_cwd: &str, 
     match event_key(event, project_cwd, files) {
         Some(key) => claim_key(rt, &key),
         None => Claim::Scan,
+    }
+}
+
+#[cfg(test)]
+mod linked_stylesheet_tests {
+    use super::*;
+
+    #[test]
+    fn a_changed_linked_stylesheet_makes_a_new_stop_key() {
+        let root = std::env::temp_dir().join(format!("impeccable-claim-css-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("css")).unwrap();
+        let page = root.join("index.html");
+        std::fs::write(&page, "<link rel=\"stylesheet\" href=\"css/site.css\"><link href=\"https://cdn.example/x.css\"><style>@import '/base.css';</style>").unwrap();
+        std::fs::write(root.join("css/site.css"), "body{color:red}").unwrap();
+        std::fs::write(root.join("base.css"), "p{margin:0}").unwrap();
+        let root_s = root.to_string_lossy().into_owned();
+        let page_s = page.to_string_lossy().into_owned();
+        let mut linked = linked_stylesheets(&root_s, &[page_s.as_str()]);
+        linked.iter_mut().for_each(|p| *p = p.replace('\\', "/"));
+        assert_eq!(linked.len(), 2, "{linked:?}");
+        assert!(linked.iter().any(|p| p.ends_with("css/site.css")) && linked.iter().any(|p| p.ends_with("base.css")), "{linked:?}");
+
+        let mut event = Map::new();
+        event.insert("session_id".into(), Value::from("s1"));
+        let files = vec![page_s.clone()];
+        let before = stop_key(&event, &root_s, &files, &[]).unwrap();
+        assert_eq!(stop_key(&event, &root_s, &files, &[]).unwrap(), before, "a copy of the same Stop agrees");
+        std::fs::write(root.join("css/site.css"), "body{color:blue;background:#000}").unwrap();
+        let after = stop_key(&event, &root_s, &files, &[]).unwrap();
+        std::fs::remove_dir_all(&root).unwrap();
+        assert_ne!(after, before, "a stylesheet changed through the shell is a new pass");
     }
 }
