@@ -1261,6 +1261,70 @@ describe('walk worker', () => {
     }
   });
 
+  // REN-2086: on a free walk nothing holds a write, so a submit the server did not mark (a click, Enter or Space) is
+  // asked here first, and the server told so its clock stops; a search, a GET form and a plain link are not.
+  it('asks before a submit the server did not mark on a free walk, never before a search or a GET form', async () => {
+    const { ops, rearm, dispatch, command, current } = await walked();
+    page.seen = {};
+    const node = (tag, text, attrs = {}, parent = null, control = true) => {
+      const n = {
+        tagName: tag.toUpperCase(), innerText: text, textContent: text, parentElement: parent,
+        getAttribute: (a) => attrs[a] ?? null,
+        querySelector: (sel) => (sel === 'input[type="search"]' && attrs.searches ? {} : null),
+        closest: (sel) => { for (let e = n; e; e = e.parentElement) if (sel === 'form' ? e.tagName === 'FORM' : e.control) return e; return null; },
+        control: control && tag !== 'form',
+      };
+      return n;
+    };
+    const post = node('form', '', { method: 'post' });
+    const search = node('form', '', { role: 'search' });
+    const filter = node('form', '', { method: 'get' });
+    const at = { 1: node('button', 'Add to basket', { type: 'button' }), 2: node('button', 'Go', {}, search), 3: node('button', 'Filter', {}, filter), 4: node('a', 'Order history', { href: '/orders' }), 5: node('button', 'Place order', {}, post) };
+    const dom = vm.createContext({ document: { elementFromPoint: (x) => at[x] ?? null, activeElement: null } });
+    const was = answers['Runtime.evaluate'];
+    answers['Runtime.evaluate'] = (params) => (/submitsAt/.test(params.expression) ? { result: { value: vm.runInContext(params.expression, dom) } } : was(params));
+    const reopen = async (free) => {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira', ...(free ? { free } : {}) });
+      await settle(5);
+    };
+    const pressed = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchMouseEvent' || m === 'Input.dispatchKeyEvent').length;
+    /** Does the deed and answers any question it puts with `answer`: what was asked, and whether it was done. */
+    const tried = async (op, req, answer = 'no') => {
+      const from = sent.length;
+      const heard = told.length;
+      const deed = ops[op](req).then(() => true, (err) => err.name);
+      await settle(20);
+      const asked = current().ask;
+      if (asked) await command(answer);
+      return { asked: asked ? [asked.kind, asked.what.includes('"')] : null, told: told.slice(heard).filter((m) => m.event === 'asking').map((m) => m.kind), done: await deed, pressed: pressed(from) > 0 };
+    };
+    const NOT_ASKED = { asked: null, told: [], done: true, pressed: true };
+    try {
+      await reopen(true);
+      assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1 }), { asked: ['send', true], told: ['send'], done: 'Declined', pressed: false }, 'a basket add, No');
+      assert.deepEqual(await tried('mouse', { action: 'click', x: 5, y: 1 }, 'yes'), { asked: ['send', true], told: ['send'], done: true, pressed: true }, 'a form post, Yes');
+      // The Yes opened the deed's writes; the server closes them as it settles.
+      await ops.writes({ open: false });
+      for (const [label, op, req] of [['a search', 'mouse', { action: 'click', x: 2, y: 1 }], ['a GET form', 'mouse', { action: 'click', x: 3, y: 1 }], ['a plain link', 'mouse', { action: 'click', x: 4, y: 1 }]]) assert.deepEqual(await tried(op, req), NOT_ASKED, label);
+      dom.document.activeElement = node('input', '', { type: 'search', 'aria-label': 'Search' }, search);
+      assert.deepEqual(await tried('keyboard', { action: 'press', key: 'Enter' }), NOT_ASKED, 'Enter in a search');
+      dom.document.activeElement = node('input', '', { type: 'email', 'aria-label': 'Email' }, post);
+      assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Enter' })).asked, ['send', true], 'Enter in a form that posts');
+      assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1, ask: { kind: 'send', what: 'Add the lamp' } }, 'yes'), { asked: ['send', false], told: [], done: true, pressed: true }, 'the server’s own ask, unannounced');
+      await ops.writes({ open: false });
+      await ops.writes({ open: true });
+      assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1 }), NOT_ASKED, 'a deed the server opened writes for');
+      await reopen(undefined);
+      assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1 }), NOT_ASKED, 'an older server: held, never asked');
+    } finally {
+      answers['Runtime.evaluate'] = was;
+      await reopen(undefined);
+    }
+  });
+
   it('never queues an open: refused while paused, so a close before Continue leaves writes held', async () => {
     const { ops, command } = await walked();
     page.seen = {};
