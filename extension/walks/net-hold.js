@@ -19,10 +19,11 @@
 // while writes are closed, and live on once they open, so blocking opens would leave live pages and dev servers'
 // reloads dead without holding a socket a deed opened.
 //
-// The rules exist only while a walk drives with its writes closed: gone when writes open, the person takes over, a
-// sign-in pause has shown for a moment (driver.js `writesHeld`), and when the walk ends. Every rule of ours is removed
-// when this worker starts, and re-checked often while any is up, so none outlives its walk.
-import { hooks, walk, writesHeld } from './driver.js';
+// The rules follow the Fetch hold's own word (driver.js `writesHeld`), so the two never disagree: up while a walk drives
+// with its writes closed; down when writes open, the person takes over, for the moments after the person's own press or
+// key at a sign-in pause, and when the walk ends. Every rule of ours is removed when this worker starts, looked at again
+// with each request the tab asks for, and often while any is up, so none outlives its walk.
+import { hooks, note, walk, writesHeld } from './driver.js';
 
 const FRAMES = 20541;
 const ELSEWHERE = 20542;
@@ -70,10 +71,10 @@ async function apply() {
   } catch (err) {
     // Rules Chrome will not take still leave none of ours behind; the Fetch hold holds the tab as ever.
     console.warn('walk network rules not set', String(err?.message ?? err));
+    note('net-rules');
     await dnr.updateSessionRules({ removeRuleIds: OURS }).then(() => { shown = '[]'; }, () => undefined);
   }
-  // While any rule is up, looked at again and again: a sign-in pause lets the person's writes out once it has shown for
-  // a moment, with nothing to say so, and nothing that ends a walk is missed.
+  // While any rule is up, looked at again and again: nothing that ends a walk is missed.
   const up = shown !== '[]';
   if (up && !recheck) recheck = setInterval(sync, RECHECK_MS);
   if (!up && recheck) { clearInterval(recheck); recheck = null; }
@@ -91,12 +92,14 @@ hooks.opened.push(async (tab) => {
   // through too. Their tabs on the walk's site then cannot write either while the walk's writes are held.
   const list = () => Promise.resolve().then(() => chrome.tabs.query({}));
   const open = (await list().catch(() => null)) ?? (await list().catch(() => null));
-  if (!open) console.warn('walk network rules: the person’s tabs could not be listed', 'tabs');
+  if (!open) { console.warn('walk network rules: the person’s tabs could not be listed', 'tabs'); note('tab-query'); }
   theirs = (open ?? []).map((one) => one.id).filter((id) => Number.isInteger(id) && id !== tab.tabId);
   await sync();
 });
 hooks.closed.push(() => sync());
 hooks.held.push(() => sync());
+// The Fetch hold decides each request as it comes, on the same clock: the rules are brought in line as it does.
+hooks.event.push((method) => { if (method === 'Fetch.requestPaused') void sync(); });
 
 // A worker that starts has no walk: whatever rules a last one left go.
 void sync();

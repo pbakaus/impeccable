@@ -419,6 +419,7 @@ describe('walk worker', () => {
     Object.assign(ws, { readyState: 1, send: (text) => heard.push(JSON.parse(text)) });
     ws.onopen();
     assert.ok(heard[0].hello.can.includes('hold'));
+    assert.equal(heard[0].hello.version, MANIFEST.version);
   });
 
   it('points the toolbar icon at the walk panel while a walk is under way, and back at the popup after', async () => {
@@ -716,15 +717,32 @@ describe('walk worker', () => {
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
       if (sign === 'a move to a sign-in host') assert.equal(answeredWhile, 'paused', 'paused before the guard answered');
       else if (sign === 'a 401 asking for a password') {
+        const at = told.length;
         assert.equal(await command('resume'), false, 'Continue while it still shows');
+        assert.equal(await command('resume'), false);
         assert.equal(current().state, 'paused');
+        // Told the other end while paused, once however often it is pressed.
+        assert.deepEqual(told.slice(at).filter((m) => m.event === 'note'), [{ event: 'note', what: 'continue-refused', why: 'sign-in' }]);
       }
+      assert.equal(told.filter((m) => m.event === 'paused').at(-1).why, 'sign-in');
       page.seen = {};
       assert.equal(await command('resume'), true);
       await asked;
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
+
+  it('tells the other end again when the person’s pause becomes a sign-in pause', async () => {
+    const { command, current } = await walked();
+    page.seen = {};
+    const at = told.length;
+    assert.equal(await command('pause'), true);
+    fire('Fetch.requestPaused', { requestId: 'r-pause', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } });
+    await settle(20);
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.deepEqual(told.slice(at).filter((m) => m.event === 'paused').map((m) => m.why), [undefined, 'sign-in']);
+    assert.equal(await command('resume'), true);
+  });
 
   // A page the detector reads as a sign-in that is not one (a settings page signed in): Continue is the person's word,
   // and the walk goes on there. Another page with a password field pauses it again.
@@ -1597,8 +1615,14 @@ describe('walk worker', () => {
       assert.equal(await command('pause'), true);
       const looked = ops.evaluate({ fn: '() => "held"', args: [] }).then(() => 'done', (err) => err.name);
       await settle(5);
+      // What the tab sent meanwhile goes with the Stop: a write to its site held, one off its site refused.
+      const { walk } = await import('../extension/walks/driver.js');
+      const before = { held: walk.heldWrites ?? 0, refused: walk.refusedWrites ?? 0 };
+      await answeredAs('POST', `${SITE}/api/todos`);
+      await answeredAs('POST', 'https://elsewhere.example/api');
       assert.equal(await command('stop'), true);
       assert.deepEqual([await looked, reached], ['Stopped', []]);
+      assert.deepEqual(told.findLast((m) => m.event === 'stopped').writes, { held: before.held + 1, refused: before.refused + 1 });
     } finally {
       chrome.debugger.sendCommand = sendCommand;
       hooks.closing.splice(hooks.closing.indexOf(tidying), 1);

@@ -96,14 +96,29 @@ async function watchNetwork() {
   await cmd('Network.setBypassServiceWorker', { bypass: true });
 }
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
-// `answered`: a pause during a question settles it, and the other end waits on that answer.
-const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered']);
+// `answered`: a pause during a question settles it, and the other end waits on that answer. `note`: a code, never the page.
+const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered', 'note']);
 
 /** Tells the other end, and whoever in here listens. */
 export function say(message) {
   if (!hush || TOLD_WHILE_HUSHED.has(message.event)) through(hush && message.url !== undefined ? { ...message, url: '' } : message);
   for (const heard of hooks.said) heard(message);
 }
+
+/** What went wrong in here that the other end would not otherwise hear of: a code each, never a message, a host or an address. */
+const NOTES = ['net-rules', 'tab-query', 'continue-refused', 'withheld', 'download-kept'];
+/** Those told since the last hand-off ({@link unnote}): each once a walk, however often it is tried again. */
+const noted = new Set();
+export function note(what, why) {
+  const key = `${what}:${why ?? ''}`;
+  if (!NOTES.includes(what) || noted.has(key)) return;
+  noted.add(key);
+  say({ event: 'note', what, ...(why ? { why } : {}) });
+}
+export function unnote() { noted.clear(); }
+
+/** What the tab sent that the walk kept from going out: writes held (REN-2034), and writes refused off its site. */
+const writesOf = (tab) => ({ held: tab.heldWrites ?? 0, refused: tab.refusedWrites ?? 0 });
 
 /** The origins the hand-off allowed beyond this machine (guard.js `admit`). */
 let granted = [];
@@ -258,7 +273,7 @@ export async function endWalk(told, why, { tidy = false } = {}) {
   await unsize(tab);
   await unhook(tab);
   await chrome.debugger.detach({ tabId: tab.tabId }).catch(() => undefined);
-  say(told);
+  say({ ...told, writes: writesOf(tab) });
   await letGo(tab, why);
 }
 
@@ -853,6 +868,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
       }, holds).then((became) => {
+        if (became === 'refused' && !reads(params)) tab.refusedWrites = (tab.refusedWrites ?? 0) + 1;
         if (became === 'held') {
           tab.heldWrites = (tab.heldWrites ?? 0) + 1;
           if (atSignIn) for (const hook of hooks.withheld) hook();
@@ -882,7 +898,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       break;
     case 'Page.downloadWillBegin':
       say({ event: 'blocked', what: 'download', url: String(params.url).slice(0, 500) });
-      void refuseDownload(params.url);
+      void refuseDownload(params.url).then((refused) => { if (!refused) note('download-kept'); });
       break;
     case 'Page.windowOpen': {
       const seen = popups.announce(params.url);
@@ -944,7 +960,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 function gone(tab, reason) {
   if (walk !== tab) return;
   walk = null;
-  say({ event: 'detached', reason });
+  say({ event: 'detached', reason, writes: writesOf(tab) });
   void letGo(tab, reason);
   void unstick(tab, reason);
 }
@@ -1600,7 +1616,7 @@ export const ops = {
       await letGo(tab, 'closed');
       if (terminal !== null && !tab.adopted) await chrome.tabs.remove(tab.tabId).catch(() => undefined);
     }
-    return {};
+    return tab ? { writes: writesOf(tab) } : {};
   },
 };
 
