@@ -172,8 +172,14 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
     const background = (r) => busy.get(r.target)?.has(key(r));
     const href = location.href, y = scrollY;
     let changed = false, submitted = false, scrolled = false, navigating = false;
-    // Navigation counts when it starts, however slowly the next page answers.
-    const navStarted = () => { navigating = true; };
+    // Navigation counts when it starts, however slowly the next page answers, unless the
+    // page cancels it.
+    // The event is read once its dispatch is over, so a listener the click itself adds
+    // has run too.
+    const navStarted = (e) => {
+      if (!e) { navigating = true; return; }
+      setTimeout(() => { if (!e.defaultPrevented) navigating = true; }, 0);
+    };
     if (window.navigation) navigation.addEventListener('navigate', navStarted, { once: true });
     else addEventListener('beforeunload', navStarted, { once: true });
     const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r))) changed = true; });
