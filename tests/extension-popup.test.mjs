@@ -393,8 +393,10 @@ test('the side panel’s sign-in pause says how else to sign in only once a writ
   assert.notEqual(resume(), atSignIn, 'a sign-in pause names its Continue apart from a plain pause, the same command');
   await h.show(STUBS['paused-sign-in']);
   assert.deepEqual(hinted(), [['resume', 'stop'], 0], 'no write held');
-  await h.show(STUBS['paused-sign-in-held']);
-  assert.deepEqual(hinted(), [['resume', 'stop'], 1], 'one line, no new control');
+  // Continue refused (the worker answers no `ok`): the pause is drawn again as it stands, here with a write held.
+  h.session.view = STUBS['paused-sign-in-held'];
+  await h.press('resume');
+  assert.deepEqual([...hinted(), document.activeElement?.attributes['data-act']], [['resume', 'stop'], 1, 'resume'], 'one line, no new control, focus kept');
   await h.show(reduce(STUBS['paused-sign-in-held'], { type: 'resume' }));
   assert.deepEqual(hinted(), [['stop'], 0]);
 });

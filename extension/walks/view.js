@@ -10,7 +10,7 @@ export const LIVE = ['waiting', 'walking', 'paused', 'takeover'];
 /** The debugger is on the tab. */
 export const ON_TAB = ['walking', 'paused', 'takeover'];
 /** Why a walk failed, as the panel shows it. */
-export const FAILURES = ['tab-closed', 'connection', 'left-site', 'switched-off', 'stale-page'];
+export const FAILURES = ['tab-closed', 'connection', 'left-site', 'switched-off'];
 
 const STEPS_KEPT = 200;
 const NOTES_KEPT = 20;
@@ -135,7 +135,7 @@ function step(view, action) {
 /** What the debugger's leaving means for the walk: Chrome's Cancel is the person stopping it; a tab that is gone, a failure. */
 export function detachAction(reason) {
   if (reason === 'closed') return { type: 'closed' };
-  if (reason === 'left-site' || reason === 'stale-page') return { type: 'fail', reason };
+  if (reason === 'left-site') return { type: 'fail', reason: 'left-site' };
   if (reason === 'canceled_by_user') return { type: 'stop' };
   return { type: 'fail', reason: 'tab-closed' };
 }
