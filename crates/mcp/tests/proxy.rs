@@ -42,3 +42,19 @@ fn proxies_under_the_cli_sign_in_and_signs_in_again_once() {
     let said = talk(&env, false, &call);
     assert_eq!((said["result"]["content"][0]["text"].as_str(), said["result"]["isError"].as_bool()), (Some(NO_BROWSER), Some(true)));
 }
+
+// Catches a plan or workspace refusal (403 without `insufficient_scope`) sending the person to a browser sign-in on
+// every call, and a missing scope (403 `insufficient_scope`) not doing so.
+#[test]
+fn opens_the_browser_only_for_a_missing_scope() {
+    for (code, signs_in) in [("not-pro", false), ("insufficient_scope", true)] {
+        let fake = Fake::start();
+        let env = fake.env(&format!("mcp-403-{code}"));
+        login(&env, &mut |u: &str| browser(u), Duration::from_secs(10)).unwrap();
+        fake.route("POST", "/mcp", 403, vec![("content-type", "application/json".into())], json!({ "error": code }).to_string());
+        let before = fake.hits("/oauth/token");
+        let call = json!({ "jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": { "name": "personas_list", "arguments": {} } });
+        talk(&env, true, &call);
+        assert_eq!(fake.hits("/oauth/token") > before, signs_in, "{code}");
+    }
+}

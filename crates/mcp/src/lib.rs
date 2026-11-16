@@ -171,7 +171,8 @@ impl Upstream for Service {
     fn call(&mut self, request: &Value) -> Result<Value, Failure> {
         let account = Account::from_env(&self.env).map_err(Failure::Other)?;
         let url = format!("{}/mcp", account.issuer);
-        let mut session = match Session::load(&account) {
+        // Never a Keychain dialog from a process an agent started: a secret that needs one reads as signed out.
+        let mut session = match Session::load_quietly(&account) {
             Ok(s) => s,
             Err(SessionError::NotSignedIn | SessionError::Expired) => return Err(Failure::Auth),
             Err(e) => return Err(Failure::Other(e.to_string())),
@@ -179,7 +180,11 @@ impl Upstream for Service {
         match session.call(|client, token| client.post_json(&url, token, request.clone())) {
             Ok(reply) => Ok(reply),
             Err(SessionError::NotSignedIn | SessionError::Expired) => Err(Failure::Auth),
-            Err(SessionError::Api(ApiError::Status { status: 401 | 403, .. })) => Err(Failure::Auth),
+            // 401: the sign-in is gone. 403 only for a missing scope (the service says `insufficient_scope`): a plan
+            // or workspace refusal is the agent's to read, never a reason to open the browser again.
+            Err(SessionError::Api(ApiError::Status { status: 401, .. })) => Err(Failure::Auth),
+            Err(SessionError::Api(ApiError::Status { status: 403, code })) if code.as_deref() == Some("insufficient_scope") => Err(Failure::Auth),
+            Err(SessionError::Api(ApiError::Status { status: 403, .. })) => Err(Failure::Other("Impeccable refused that. Check your plan and workspace access.".into())),
             Err(SessionError::Api(ApiError::Network(_))) => Err(Failure::Other("Impeccable can’t be reached right now. Try again in a minute.".into())),
             Err(e) => Err(Failure::Other(e.to_string())),
         }
@@ -193,7 +198,8 @@ impl Upstream for Service {
         if !self.browser {
             return Err(NO_BROWSER.into());
         }
-        let Some(_held) = SignInLock::take(&self.env)? else {
+        let dir = Account::from_env(&self.env).map_err(|_| NO_BROWSER.to_string())?.dir();
+        let Some(_held) = SignInLock::take(&dir)? else {
             // Another agent's sign-in is open: wait for it, then try with what it stored.
             return Ok(());
         };
@@ -240,14 +246,16 @@ fn open_browser(url: &str) -> bool {
 struct SignInLock(PathBuf);
 
 impl SignInLock {
-    fn take(env: &HashMap<String, String>) -> Result<Option<SignInLock>, String> {
-        let dir = env.get("TMPDIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
-        let path = dir.join("impeccable-mcp-sign-in.lock");
+    fn take(dir: &std::path::Path) -> Result<Option<SignInLock>, String> {
+        let _ = std::fs::create_dir_all(dir);
+        let path = dir.join("mcp-sign-in.lock");
         let started = Instant::now();
         let mut waited = false;
         loop {
             match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(_) => return Ok(if waited { drop(SignInLock(path)); None } else { Some(SignInLock(path)) }),
+                // Only another sign-in holding it is waited for; anything else (no permission, no disk) ends now.
+                Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => return Err(format!("Could not start the sign-in: {e}")),
                 Err(_) => {
                     let stale = std::fs::metadata(&path)
                         .and_then(|m| m.modified())
