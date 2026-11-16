@@ -161,7 +161,7 @@ Notes:
 - Cursor and Gemini CLI may need Agent Skills enabled in settings. See the [Cursor](https://cursor.com/docs/context/skills) and [Gemini CLI](https://geminicli.com/docs/cli/skills/) skills docs.
 - Restart Trae after copying.
 - `impeccable install` and `update` manage a DeepSeek Harness global copy only when `DSH_HOME` is inside your home directory.
-- Muse is user-scope only: copy `workspace/custom-skills/impeccable` into `~/workspace/custom-skills/`. Muse has no documented hook system, so Muse installs ship the skill without the design hook or native subagents; the agent roles run inline from `reference/degraded/`.
+- Muse is user-scope only: copy `workspace/custom-skills/impeccable` into `~/workspace/custom-skills/`. Consumer Muse exposes no native lifecycle hooks or subagent files for installers to emit, so Muse installs ship the skill without the design hook or native subagents; the agent roles run inline from `reference/degraded/`. The layout's sources are community, not Meta; see the Muse note in `docs/HARNESSES.md`.
 
 </details>
 
