@@ -8,6 +8,15 @@ field; paste them as they are. Keep this file in step with the manifest
 > Draft: the lines about journeys (permissions, remote code, data usage) are not
 > final. The repository owner reviews store copy before any of it is pasted.
 
+This listing describes the store build (`dist/extension.zip`, staged by
+`bun run build:extension`). The unpacked development build (the `extension/`
+folder as committed) does more, and none of it ships to the store: it signs in
+to an Impeccable account (`identity`, `alarms`, `notifications`), starts
+journeys on the person's own tab from the side panel, checks in with the server
+every 30 seconds while signed in with Impeccable Pro, sends the side panel's
+current site, task and persona text to the server, offers talk to type through
+Chrome's speech recognition, and takes journeys from staging and this machine.
+
 ## Name
 Impeccable
 
@@ -66,7 +75,7 @@ FEATURES
 
 JOURNEYS
 
-Journeys are started from the Impeccable web app. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
+In this build, journeys are started from the Impeccable web app only. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
 
 The same 62 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
 
