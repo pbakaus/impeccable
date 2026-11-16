@@ -311,7 +311,7 @@ for (const [label, status, asks] of [
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, remove = { ok: true }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, personaIntroSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, remove = { ok: true }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -339,7 +339,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   const document = { body, activeElement: null, getElementById: (id) => id === 'panel-scan' ? [...body.nodes()].find((n) => n.attributes.id === 'panel-scan') ?? null : app, createElement: make, createElementNS: (_, tag) => make(tag) };
   const sent = [];
   const opened = [];
-  const local = { firstRunSeen, appForSite };
+  const local = { firstRunSeen, personaIntroSeen, appForSite };
   const session = { view, connected };
   const changed = [];
   const activated = [];
@@ -478,7 +478,7 @@ test('the side panel plans before it walks: Send asks for a plan, a risky one as
 });
 
 // + opens Make a persona: a description makes one, and Use them picks it; a refusal says why and keeps the words.
-for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
+for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true, device: 'mobile', sees: 'older-eyes' } }], ['refused', { ok: false, why: 'limit', max: 3 }]]) {
   test(`the side panel makes a persona from a description: ${label}`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout'] });
     // A list that came back empty is one that didn't load: never an empty home.
@@ -491,13 +491,20 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], create });
     await h.press('make-persona');
     assert.equal(h.body.dataset.screen, 'make');
+    // A phone, and one disability from the list: the one chosen, picked again, goes back to none.
+    const pick = async (key) => { await h.press('needs'); await h.press(`need-${key}`); };
+    await h.press('device-phone');
+    for (const key of ['low-vision', 'low-vision', 'blind', 'low-vision']) await pick(key);
     h.app.querySelector('textarea').value = '  A night-shift nurse who books shifts on her phone.  ';
     await h.press('make');
-    assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.' }]);
+    assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.', device: 'phone', disability: 'low-vision' }]);
     if (create.ok) {
       assert.deepEqual(h.acts().filter((act) => act !== 'make'), ['confirm'], 'Confirm is the only way on');
+      const traits = h.app.querySelector('.traits').attributes;
+      assert.deepEqual([traits['data-device'], traits['data-disability']], ['phone', 'low-vision'], 'the made persona shows what was picked');
       await h.press('confirm');
       assert.deepEqual([h.body.dataset.screen, h.app.querySelector('[data-act="pick-0"]').attributes['aria-pressed']], ['home', 'true'], 'first in the grid, picked');
+      assert.deepEqual(['size-phone', 'sees-older'].map((act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-pressed']), ['true', 'true'], 'Home starts on its screen and sight');
       h.app.querySelector('textarea').value = 'Book a shift.';
       await h.press('send');
       assert.deepEqual(h.sent.filter((m) => m.account === 'plan').map((m) => m.persona), [{ mine: 'rosa' }], 'the new persona is the one picked');
@@ -820,6 +827,21 @@ test('Scan opens again after going back: its box stays in the page between visit
     assert.equal(h.body.dataset.screen, 'home');
   }
 });
+
+// Catches the intro showing again after it was seen or skipped, or the box opening without it the first time.
+for (const [label, through] of [['seen to the end', ['intro-next', 'intro-next', 'intro-next', 'intro-next']], ['skipped', ['intro-next', 'skip-intro']]]) {
+  test(`Create a persona’s intro shows the first time only: ${label}`, async () => {
+    const personas = [{ name: 'Mira', role: '', slug: 'mira' }];
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: false, personas });
+    await h.press('make-persona');
+    const steps = [h.app.querySelector('.fr-mid').attributes['data-step']];
+    for (const act of through) { await h.press(act); steps.push(h.app.querySelector('.fr-mid')?.attributes['data-step']); }
+    assert.deepEqual([steps.slice(0, -1), h.body.dataset.screen, h.local.personaIntroSeen], [['0', '1', '2', '3'].slice(0, through.length), 'make', true]);
+    const next = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: h.local.personaIntroSeen, personas });
+    await next.press('make-persona');
+    assert.equal(next.body.dataset.screen, 'make');
+  });
+}
 
 test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, firstRunSeen: false, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });

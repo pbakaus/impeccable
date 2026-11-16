@@ -56,12 +56,36 @@ export const COPY = {
     sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
     sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
   },
+  /** The first time Create a persona opens: four screens, each a headline and its button, then the box. */
+  intro: {
+    skip: 'Skip',
+    screens: [
+      ['Imagine you’re the persona.', 'I’m imagining it'],
+      ['How do you use the web each day?', 'Next'],
+      ['What drives you mad in apps?', 'Next'],
+      ['And what makes you smile?', 'Tell us'],
+    ],
+  },
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
     name: 'Your persona',
     about: 'Who they are, in a line.',
-    describe: 'Tell us about your persona, and what to call them.',
+    describe: 'Who are you, and what do you love or hate in apps?',
     action: 'Create',
+    /** The persona's own device (`home.widths` names each), and one disability: the list's question, then each choice and its line. */
+    device: 'Device',
+    disability: 'Disability',
+    none: 'None',
+    needs: 'Anything that changes how you use apps?',
+    disabilities: {
+      none: ['No disability', ''],
+      'low-vision': ['Low vision', 'blurry, low contrast'],
+      blind: ['Blind', 'uses a screen reader'],
+      'colour-blind': ['Colour-blind', 'red and green look alike'],
+      motor: ['Unsteady hands', 'slow with a mouse'],
+      hearing: ['Hard of hearing', 'needs captions'],
+      cognitive: ['Focus and memory', 'needs things simple'],
+    },
     /** On the + once the person has as many of their own as the server allows. */
     full: (max) => `You can make up to ${max || 3} personas for now`,
     making: 'Making your persona…',
