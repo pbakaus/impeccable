@@ -61,6 +61,8 @@ async function apply() {
   const key = JSON.stringify(rules);
   if (key === shown) return;
   const dnr = chrome.declarativeNetRequest;
+  // A build without the permission has no rules to set: the Fetch hold holds the tab as ever, and the walk goes on.
+  if (!dnr) { shown = '[]'; return; }
   // Both ours, always, whether or not they are up: Chrome ignores an id it does not have.
   try {
     await dnr.updateSessionRules({ removeRuleIds: OURS, addRules: rules });
