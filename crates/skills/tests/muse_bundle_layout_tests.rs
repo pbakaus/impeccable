@@ -64,8 +64,9 @@ fn copy_installs_muse_from_the_custom_skills_bundle_dir() {
     bundle_with_muse_skill(&bundle, SKILL);
     let sys = sys_with(&home);
 
-    let written = copy_provider_skills(&sys, &bundle, &home, &["workspace"], Some(Scope::User)).unwrap();
-    assert_eq!(written.len(), 1);
+    let copied = copy_provider_skills(&sys, &bundle, &home, &["workspace"], Some(Scope::User)).unwrap();
+    assert_eq!(copied.written.len(), 1);
+    assert!(copied.preserved_links.is_empty());
     assert!(exists(&format!("{home}/workspace/custom-skills/impeccable/SKILL.md")));
     assert!(exists(&format!("{home}/workspace/custom-skills/impeccable/reference/polish.md")));
     assert!(!exists(&format!("{home}/workspace/skills")));
@@ -133,8 +134,8 @@ fn project_scope_still_lands_muse_in_the_global_dir() {
 
     // A mixed project-scope install writes Muse globally, never into
     // <project>/workspace/skills, which Muse does not read.
-    let written = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
-    assert_eq!(written.len(), 1);
+    let copied = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
+    assert_eq!(copied.written.len(), 1);
     assert!(exists(&format!("{home}/workspace/custom-skills/impeccable/SKILL.md")));
     assert!(!exists(&format!("{project}/workspace")));
 }
@@ -195,11 +196,78 @@ fn copy_preserves_a_linked_muse_install() {
     // A mixed project-scope install now discovers no Muse at project
     // scope, so the copy step runs for Muse too. It must not replace
     // the link with downloaded files.
-    let written = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
-    assert!(written.is_empty());
+    let copied = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
+    assert!(copied.written.is_empty());
+    // The preserved link is reported separately, so the install command
+    // can count Muse as satisfied instead of failing the whole run
+    // with "Nothing was installed" (Greptile review on PR #1505).
+    assert_eq!(copied.preserved_links, vec![format!("{home}/workspace/custom-skills/impeccable")]);
     let dest = format!("{home}/workspace/custom-skills/impeccable");
     let is_link = std::fs::symlink_metadata(&dest).map(|m| m.file_type().is_symlink()).unwrap_or(false);
     assert!(is_link, "expected the link at {dest} to survive the copy");
     let installed = std::fs::read_to_string(format!("{dest}/SKILL.md")).unwrap();
     assert!(installed.contains("checkout body"));
+}
+
+#[cfg(unix)]
+#[test]
+fn install_counts_a_linked_muse_install_as_satisfied() {
+    let root = temp_root("muse-install-linked");
+    let bundle = format!("{root}/bundle");
+    let checkout = format!("{root}/checkout");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    let tmp = format!("{root}/tmp");
+    for d in [&home, &project, &tmp] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(format!("{project}/.git")).unwrap();
+    // The bundle carries both providers. Claude is already copy-installed
+    // in the project with identical content, so the run takes the
+    // already-installed path with Muse as the only missing target.
+    write(&format!("{bundle}/.claude/skills/impeccable/SKILL.md"), SKILL);
+    bundle_with_muse_skill(&bundle, SKILL);
+    write(&format!("{project}/.claude/skills/impeccable/SKILL.md"), SKILL);
+    bundle_with_muse_skill(&checkout, "---\nname: impeccable\ndescription: design\n---\ncheckout body\n");
+
+    let mut env: HashMap<String, String> = HashMap::new();
+    env.insert("HOME".into(), home.clone());
+    env.insert("USERPROFILE".into(), home.clone());
+    env.insert("TMPDIR".into(), tmp.clone());
+    env.insert("IMPECCABLE_BUNDLE_PATH".into(), bundle.clone());
+
+    // `impeccable link --providers=muse`: the global skill dir becomes a
+    // symlink into the checkout.
+    let (mut io, _link_captured) = Io::captured("", std::path::PathBuf::from(&project), env.clone());
+    let code = impeccable_skills::run(
+        &["link".into(), "--providers=muse".into(), format!("--source={checkout}"), "-y".into()],
+        &mut io,
+    );
+    assert_eq!(code, 0, "link failed");
+    let dest = format!("{home}/workspace/custom-skills/impeccable");
+    let is_link = std::fs::symlink_metadata(&dest).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    assert!(is_link, "expected a symlink at {dest}");
+
+    // The repeat mixed install from the review. Project discovery cannot
+    // see the global Muse link, so Muse looks missing and the copy
+    // step runs for it; the preserved link must count as satisfied.
+    // Before the fix this printed "Nothing was installed" and exited 1
+    // before the hook steps ran.
+    let (mut io, captured) = Io::captured("", std::path::PathBuf::from(&project), env);
+    let code = impeccable_skills::run(
+        &["install".into(), "--providers=claude,muse".into(), "--scope=project".into(), "-y".into()],
+        &mut io,
+    );
+    let stdout = String::from_utf8_lossy(&captured.stdout.borrow()).into_owned();
+    let stderr = String::from_utf8_lossy(&captured.stderr.borrow()).into_owned();
+    assert_eq!(code, 0, "install failed.\nstdout:\n{stdout}\nstderr:\n{stderr}");
+    assert!(!stderr.contains("Nothing was installed"), "stderr:\n{stderr}");
+    assert!(stdout.contains("already in place"), "stdout:\n{stdout}");
+
+    // The link, its checkout content, and the project copy all survive.
+    let is_link = std::fs::symlink_metadata(&dest).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    assert!(is_link, "expected the link at {dest} to survive the install");
+    let installed = std::fs::read_to_string(format!("{dest}/SKILL.md")).unwrap();
+    assert!(installed.contains("checkout body"));
+    assert!(exists(&format!("{project}/.claude/skills/impeccable/SKILL.md")));
 }

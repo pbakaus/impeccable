@@ -770,18 +770,26 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
 
             let mut fresh_written = 0usize;
             if !update_check_skipped && !missing_selected_targets.is_empty() {
-                let written = bundle::copy_provider_skills(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt)?;
-                fresh_written = written.len();
-                if fresh_written == 0 {
+                let copied = bundle::copy_provider_skills(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt)?;
+                fresh_written = copied.written.len();
+                // A preserved linked install is satisfied, not a missing
+                // bundle variant: only an empty result on both sides means
+                // the bundle had nothing for these targets.
+                if copied.written.is_empty() && copied.preserved_links.is_empty() {
                     err(io, &format!("Nothing was installed: the bundle had no variants for {}.", missing_selected_targets.join(", ")));
                     return Err(EXIT_1.to_string());
                 }
-                out(io, &format!(
-                    "Installed impeccable into: {} ({})",
-                    missing_selected_targets.join(", "),
-                    if scope == Scope::User { "global" } else { "project" }
-                ));
-                install_engine_binaries(&sys, io, &written);
+                if !copied.written.is_empty() {
+                    out(io, &format!(
+                        "Installed impeccable into: {} ({})",
+                        missing_selected_targets.join(", "),
+                        if scope == Scope::User { "global" } else { "project" }
+                    ));
+                }
+                if !copied.preserved_links.is_empty() {
+                    out(io, "A linked install is already in place and was left unchanged.");
+                }
+                install_engine_binaries(&sys, io, &copied.written);
                 let agents = bundle::copy_provider_agents(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt)?;
                 bundle::report_provider_agents(&sys, io, &agents);
                 bundle::copy_provider_commands(&sys, &bdir, &install_root, &missing_selected_targets, scope_opt);
@@ -860,8 +868,8 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
 
     sys.migrate_unprefix_impeccable(&install_root, scope_opt);
 
-    let outcome: Result<(Vec<String>, Vec<bundle::AgentResult>, Vec<String>), String> = (|| {
-        let written = bundle::copy_provider_skills(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
+    let outcome: Result<(bundle::CopySkillsResult, Vec<bundle::AgentResult>, Vec<String>), String> = (|| {
+        let copied = bundle::copy_provider_skills(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
         let agents = bundle::copy_provider_agents(&sys, &bundle_dir, &install_root, &targets, scope_opt)?;
         bundle::copy_provider_commands(&sys, &bundle_dir, &install_root, &targets, scope_opt);
         let hooks = if want_hooks {
@@ -869,9 +877,9 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         } else {
             Vec::new()
         };
-        Ok((written, agents, hooks))
+        Ok((copied, agents, hooks))
     })();
-    let (written, agent_results, hook_targets) = match outcome {
+    let (copied, agent_results, hook_targets) = match outcome {
         Ok(v) => v,
         Err(e) => {
             util::rm_rf(&bundle_dir);
@@ -881,16 +889,23 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
     };
     util::rm_rf(&bundle_dir);
 
-    if written.is_empty() {
+    // Same rule as the already-installed branch: a preserved linked
+    // install is satisfied, not a missing bundle variant.
+    if copied.written.is_empty() && copied.preserved_links.is_empty() {
         err(io, &format!("Nothing was installed: the bundle had no variants for {}.", targets.join(", ")));
         return Err(Flow::Exit(1));
     }
-    out(io, &format!(
-        "Installed impeccable into: {} ({})",
-        targets.join(", "),
-        if scope == Scope::User { "global" } else { "project" }
-    ));
-    install_engine_binaries(&sys, io, &written);
+    if !copied.written.is_empty() {
+        out(io, &format!(
+            "Installed impeccable into: {} ({})",
+            targets.join(", "),
+            if scope == Scope::User { "global" } else { "project" }
+        ));
+    }
+    if !copied.preserved_links.is_empty() {
+        out(io, "A linked install is already in place and was left unchanged.");
+    }
+    install_engine_binaries(&sys, io, &copied.written);
     bundle::report_provider_agents(&sys, io, &agent_results);
     report_hook_targets(&sys, io, &hook_targets, if want_hooks { &targets } else { &[] });
     name_global_copy(&sys, io, &install_root, scope);

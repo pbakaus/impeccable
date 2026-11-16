@@ -728,10 +728,24 @@ fn bundle_skill_dirs(src_dir: &str) -> Vec<String> {
         .collect()
 }
 
+/// The outcome of `copy_provider_skills`, split so callers can tell a
+/// satisfied install from a missing bundle variant.
+pub struct CopySkillsResult {
+    /// Skill directories written this run.
+    pub written: Vec<String>,
+    /// Skill directories left in place because they already hold a linked
+    /// install: the skill is available and updates through its source
+    /// checkout, so these count as satisfied, never as "nothing
+    /// installed", and are never rewritten.
+    pub preserved_links: Vec<String>,
+}
+
 /// JS: copyProviderSkills(bundleDir, root, targets, {scope}). Returns the
-/// skill directories written (the JS returned only the count).
-pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[&str], scope: Option<Scope>) -> Result<Vec<String>, String> {
+/// skill directories written and the linked installs preserved (the JS
+/// returned only the count).
+pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[&str], scope: Option<Scope>) -> Result<CopySkillsResult, String> {
     let mut written = Vec::new();
+    let mut preserved_links = Vec::new();
     for provider in targets {
         let src_dir = jsp::join(&[bundle_dir, provider, skills_dir_name(provider)]);
         if !util::exists(&src_dir) {
@@ -759,7 +773,8 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
                 // destination, so a mixed install reaches this copy with
                 // the provider looking missing; linked installs are never
                 // overwritten (checkout changes are how they update), so
-                // leave the link in place.
+                // leave the link in place and report it as satisfied.
+                preserved_links.push(dest);
                 continue;
             }
             util::rm_rf(&dest);
@@ -782,7 +797,7 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
             }
         }
     }
-    Ok(written)
+    Ok(CopySkillsResult { written, preserved_links })
 }
 
 /// JS: skills.mjs#providerCommandsDir. Project installs land at
