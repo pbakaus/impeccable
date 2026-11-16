@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
+import zlib from 'node:zlib';
 
 import { readHandoff, readStartedHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
@@ -1505,15 +1506,15 @@ describe('walk worker', () => {
     });
   }
 
-  // The op says where, never what. Whatever else it carries, the page gets the picture shipped in walks/.
-  it('attaches only the bundled sample picture, whatever file, path or address the op names', async () => {
+  // The op says where, never what. Whatever else it carries, the page gets the plain picture the driver draws.
+  it('attaches only the plain picture drawn in code, whatever file, path or address the op names', async () => {
     const { ops } = await walked();
     page.seen = {};
     const fetched = [];
     const given = [];
     const { fetch } = globalThis;
     const { sendCommand } = chrome.debugger;
-    globalThis.fetch = async (url) => { fetched.push(String(url)); return new Response(readFileSync(path.join(ROOT, 'extension', String(url).replace('chrome-extension://ext/', '')))); };
+    globalThis.fetch = async (url) => { fetched.push(String(url)); throw new Error('no network'); };
     chrome.debugger.sendCommand = async (target, method, params) => {
       if (method !== 'Runtime.evaluate' || !params?.expression?.includes('elementFromPoint')) return sendCommand(target, method, params);
       given.push(params.expression);
@@ -1522,9 +1523,20 @@ describe('walk worker', () => {
     try {
       const named = { file: '/etc/passwd', path: '/Users/me/secret.png', url: 'https://evil.example/x.png', data: 'ZXZpbA==', name: 'evil.exe', type: 'text/html' };
       assert.deepEqual(await ops.upload({ x: 5, y: 6, ...named }), { value: 'picker' });
-      assert.deepEqual(fetched, ['chrome-extension://ext/walks/sample-photo.png']);
-      const sample = readFileSync(path.join(ROOT, 'extension/walks/sample-photo.png')).toString('base64');
-      assert.ok(given[0].endsWith(`)(5,6,"${sample}","sample-photo.png","image/png")`));
+      assert.deepEqual(fetched, []);
+      const [, data, name, type] = given[0].match(/\)\(5,6,"([^"]+)","([^"]+)","([^"]+)"\)$/);
+      assert.deepEqual([name, type], ['photo.png', 'image/png']);
+      // A PNG any decoder takes: its signature, a 192 by 192 header, and every chunk's checksum right.
+      const png = Buffer.from(data, 'base64');
+      assert.deepEqual([png.subarray(0, 8).toString('hex'), png.readUInt32BE(16), png.readUInt32BE(20)], ['89504e470d0a1a0a', 192, 192]);
+      const chunks = [];
+      for (let at = 8; at < png.length; at += 12 + png.readUInt32BE(at)) {
+        const length = png.readUInt32BE(at);
+        assert.equal(png.readUInt32BE(at + 8 + length), zlib.crc32(png.subarray(at + 4, at + 8 + length)));
+        chunks.push([png.toString('latin1', at + 4, at + 8), png.subarray(at + 8, at + 8 + length)]);
+      }
+      assert.deepEqual(chunks.map(([kind]) => kind), ['IHDR', 'IDAT', 'IEND']);
+      assert.equal(zlib.inflateSync(chunks[1][1]).length, 192 * (1 + 192 * 3));
       for (const value of Object.values(named)) assert.ok(!given[0].includes(value), `${value} never reaches the page`);
     } finally {
       globalThis.fetch = fetch;

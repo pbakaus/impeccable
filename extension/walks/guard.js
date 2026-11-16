@@ -33,8 +33,8 @@
 //     own press or key there (trusted, heard in the walk's world), so their own sign-in goes through and a page's
 //     timer does not (driver.js `holding`).
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
-//     opens; a native dialog is dismissed. The one file a walk ever gives a page is the drawn sample photo shipped
-//     beside this file (driver.js `upload`): the op says where, never which file.
+//     opens; a native dialog is dismissed. The one file a walk ever gives a page is a plain square drawn in code
+//     (driver.js `upload`): the op says where, never which file.
 // And it fails closed: a walked tab seen anywhere it should not be loses the debugger at once, which ends the walk.
 //
 // It knowingly does NOT defend

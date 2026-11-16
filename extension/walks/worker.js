@@ -10,7 +10,7 @@ const SUBPROTOCOL = 'impeccable-outing';
 const PART_CHARS = 256 * 1024;
 /**
  * What this extension can do beyond the protocol: walk the person's own tab, ask the person before a deed, go to
- * another site on their Yes, attach its sample photo, and hold every write the tab sends until the server opens them
+ * another site on their Yes, attach a plain picture, and hold every write the tab sends until the server opens them
  * (driver.js `holding`).
  */
 const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask'];

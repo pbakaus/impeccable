@@ -1144,15 +1144,39 @@ function expression({ fn, args, undef }) {
   return `(${fn}\n)(${args.map((arg, i) => (undef?.includes(i) ? 'undefined' : JSON.stringify(arg))).join(',')})`;
 }
 
-/** The one picture a walk ever attaches: a drawn face shipped in this folder. Nothing from the person's computer. */
-const SAMPLE = { file: 'walks/sample-photo.png', name: 'sample-photo.png', type: 'image/png' };
-let sampleData = null;
-async function samplePhoto() {
-  if (sampleData) return sampleData;
-  const bytes = new Uint8Array(await (await fetch(chrome.runtime.getURL(SAMPLE.file))).arrayBuffer());
+/** The one picture a walk ever attaches: a plain square, drawn here. Nothing from the person's computer, nothing fetched. */
+const PHOTO = { name: 'photo.png', type: 'image/png', side: 192, rgb: [0xb8, 0xc4, 0xd6] };
+let photoData = null;
+async function plainPhoto() {
+  if (photoData) return photoData;
+  const { side, rgb } = PHOTO;
+  const row = [0, ...Array.from({ length: side }, () => rgb).flat()];
+  const raw = new Uint8Array(row.length * side);
+  for (let y = 0; y < side; y++) raw.set(row, y * row.length);
+  const pixels = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+  const header = new Uint8Array(13);
+  new DataView(header.buffer).setUint32(0, side);
+  new DataView(header.buffer).setUint32(4, side);
+  header.set([8, 2, 0, 0, 0], 8); // 8-bit RGB
+  const bytes = [Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10), pngChunk('IHDR', header), pngChunk('IDAT', pixels), pngChunk('IEND', new Uint8Array())];
   let text = '';
-  for (const byte of bytes) text += String.fromCharCode(byte);
-  return (sampleData = btoa(text));
+  for (const part of bytes) for (const byte of part) text += String.fromCharCode(byte);
+  return (photoData = btoa(text));
+}
+
+function pngChunk(type, data) {
+  const out = new Uint8Array(12 + data.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, data.length);
+  for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(data, 8);
+  let crc = ~0;
+  for (const byte of out.subarray(4, 8 + data.length)) {
+    crc ^= byte;
+    for (let k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  view.setUint32(8 + data.length, ~crc >>> 0);
+  return out;
 }
 
 /**
@@ -1552,11 +1576,11 @@ export const ops = {
     return {};
   },
 
-  // Only where: the picture is always the one bundled here (SAMPLE), never a name, path or address from anyone.
+  // Only where: the picture is always the one drawn here (PHOTO), never a name, path or address from anyone.
   async upload({ x, y }) {
     const at = fences;
     if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
-    const data = await samplePhoto();
+    const data = await plainPhoto();
     overtaken(at);
     walk.lastInputAt = Date.now();
     // In a world of our own: the page sees the file and its events, never the code that made them.
@@ -1564,7 +1588,7 @@ export const ops = {
     // Looked at again after the wait, as a click looks before its press: a pause or another site meanwhile gives nothing.
     if (lookOnly()) throw fail('NotAllowed', 'on another site a journey only looks');
     overtaken(at);
-    const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression({ fn: String(attach), args: [Number(x), Number(y), data, SAMPLE.name, SAMPLE.type] }), contextId: executionContextId, returnByValue: true, userGesture: true });
+    const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression({ fn: String(attach), args: [Number(x), Number(y), data, PHOTO.name, PHOTO.type] }), contextId: executionContextId, returnByValue: true, userGesture: true });
     if (exceptionDetails || !result?.value) throw fail('NotFound', 'nothing there takes a file');
     return { value: result.value };
   },

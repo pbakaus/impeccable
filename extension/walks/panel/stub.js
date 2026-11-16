@@ -70,7 +70,7 @@ export const STUBS = {
   'paused-sign-in-held': run(walking, [{ type: 'pause', why: 'sign-in' }, { type: 'withheld' }]),
   takeover: run(walking, [{ type: 'takeover' }]),
   asking: run(walking, [{ type: 'ask', ask: { kind: 'delete', what: 'Delete the to-do “Buy oat milk and bread”' } }]),
-  'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a sample photo to the to-do’s picture field' } }]),
+  'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a photo to the to-do’s picture field' } }]),
   'asking-go': run(walking, [{ type: 'ask', ask: { kind: 'go', what: 'oat-milk-deals.example' } }]),
   done: run(walking, [finish([])]),
   'done-issues': run(walking, [finish(ISSUES)]),
