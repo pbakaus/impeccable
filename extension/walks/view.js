@@ -101,7 +101,7 @@ function step(view, action) {
       if (view.state !== 'walking' || view.ask || !ASKS.includes(action.ask?.kind)) return view;
       return { ...view, ask: { kind: action.ask.kind, what: text(action.ask.what, 200) } };
     case 'answer': return view.ask ? { ...view, ask: null } : view;
-    // Nobody answered a deed's question in time: the server ends the walk, and its socket closing is not a lost connection.
+    // Nobody answered a deed's question in time: the server ends the walk ('fail').
     case 'unanswered': return ON_TAB.includes(view.state) ? { ...view, unanswered: true } : view;
     // The tab sent a write the hold kept back while paused at a sign-in (a passkey, an approval on a phone, a sign-in
     // button in another site's frame): said once a pause, so a page that keeps sending changes nothing more.
@@ -129,7 +129,8 @@ function step(view, action) {
     }
     // The tab was let go with no word on how it went.
     case 'closed': return onTab ? { ...view, state: 'done' } : view;
-    case 'fail': return live && FAILURES.includes(action.reason) ? { ...view, state: 'failed', failure: { reason: action.reason, detail: text(action.detail, 200) } } : view;
+    // A walk whose question went unanswered ends there: the socket closing after it is no lost connection.
+    case 'fail': return live && FAILURES.includes(action.reason) ? { ...view, state: 'failed', failure: { reason: action.reason === 'connection' && view.unanswered ? 'unanswered' : action.reason, detail: text(action.detail, 200) } } : view;
     default: return view;
   }
 }

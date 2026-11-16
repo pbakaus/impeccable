@@ -124,7 +124,7 @@ export function unlinked({ opened = false, reason = '' } = {}) {
   if (reason === CLOSED.cancelled) { dispatch({ type: 'stop' }); void chrome.storage.session.remove('handoff'); return; }
   // Walks were switched off on the server: said once, waiting or on the tab, and nothing tries again.
   if (reason === CLOSED.switchedOff) { dispatch({ type: 'fail', reason: 'switched-off' }); void chrome.storage.session.remove('handoff'); return; }
-  if (ON_TAB.includes(state)) { dispatch({ type: 'fail', reason: current().unanswered ? 'unanswered' : 'connection' }); return; }
+  if (ON_TAB.includes(state)) { dispatch({ type: 'fail', reason: 'connection' }); return; }
   if (state !== 'waiting') return;
   // Another socket of this walk took this one's place: that one is the walk's now.
   if (reason === CLOSED.replaced) return;
