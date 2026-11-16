@@ -505,9 +505,23 @@ describe('walk worker', () => {
     'Page.navigate': () => ({ loaderId: 'l1' }),
     'Page.getLayoutMetrics': () => ({ cssLayoutViewport: { clientWidth: 100, clientHeight: 80 } }),
     'Page.captureScreenshot': () => new Promise((resolve) => setTimeout(() => resolve({ data: btoa(String(sent.length)) }), 5)),
-    'Page.createIsolatedWorld': () => ({ executionContextId: 9 }),
+    // One context a world: the walk's lookout is 9, any other world its own.
+    'Page.createIsolatedWorld': ({ worldName }) => ({ executionContextId: worlds[worldName] ??= 9 + Object.keys(worlds).length }),
     'Runtime.evaluate': () => ({ result: { value: page.seen } }),
+    // Chrome commits a new document on the same address, then loads it.
+    'Page.reload': () => {
+      const loaderId = `reload-${(reloads += 1)}`;
+      setTimeout(() => {
+        fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url: page.url() } });
+        fire('Page.lifecycleEvent', { frameId: 'main', name: 'load', loaderId });
+      }, 1);
+      return {};
+    },
+    'Page.addScriptToEvaluateOnNewDocument': () => ({ identifier: String((scripts += 1)) }),
   };
+  const worlds = {};
+  let reloads = 0;
+  let scripts = 0;
   const fireOn = (tabId, method, params) => { for (const listener of listeners['debugger-event']) listener({ tabId }, method, params); };
   const fire = (method, params) => fireOn(11, method, params);
   const since = (at, method) => sent.slice(at).filter((m) => m === method).length;
@@ -528,6 +542,7 @@ describe('walk worker', () => {
     globalThis.createImageBitmap = async () => ({ close() {} });
     globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob([String(sent.length)]); } };
     const driver = await import('../extension/walks/driver.js');
+    page.url = () => driver.walk?.url;
     const control = await import('../extension/walks/control.js');
     const { current, dispatch } = await import('../extension/walks/store.js');
     const { COPY } = await import('../extension/walks/panel/copy.js');
@@ -760,6 +775,61 @@ describe('walk worker', () => {
       await command('resume');
       fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l12', url: 'http://localhost:3000/' } });
     }
+  });
+
+  // Server code from before a sign-in never meets the person: its new-document scripts are off while they sign in, and
+  // a document from before the pause is loaded afresh, its scripts back on first, before the walk does anything there.
+  for (const [where, during, reloaded] of [['the same page', () => {}, 1], ['a page the person moved on to', () => fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'n2', url: 'http://localhost:3000/home' } }), 0]]) {
+    it(`takes the server’s page scripts off at a sign-in and puts them back before the next op on ${where} (REN-2052)`, async () => {
+      const { ops, command, current, walk } = await walked();
+      page.seen = {};
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `before-${reloaded}`, url: `http://localhost:3000/login-${reloaded}` } });
+      const { identifier } = (await ops.evaluateOnNewDocument({ fn: 'copyKeys' })).value;
+      const at = sent.length;
+      page.seen = { password: true };
+      const shot = ops.screenshot({ format: 'png' });
+      await settle(20);
+      assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+      const removed = sent.flatMap((m, i) => (i >= at && m === 'Page.removeScriptToEvaluateOnNewDocument' ? [args[i].identifier] : []));
+      assert.equal(removed.at(-1), identifier, 'off as the pause lands');
+      during();
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      await shot;
+      const after = sent.slice(at).filter((m, i, all) => ['Page.addScriptToEvaluateOnNewDocument', 'Page.reload', 'Page.captureScreenshot'].includes(m) && m !== all.slice(0, i).findLast((n) => ['Page.addScriptToEvaluateOnNewDocument', 'Page.reload', 'Page.captureScreenshot'].includes(n)));
+      assert.deepEqual(after, ['Page.addScriptToEvaluateOnNewDocument', ...Array(reloaded).fill('Page.reload'), 'Page.captureScreenshot'], 'back on, then a fresh page, then the picture');
+      assert.equal(args[sent.indexOf('Page.addScriptToEvaluateOnNewDocument', at)].source, 'copyKeys');
+      assert.notEqual(walk.loader, `before-${reloaded}`, 'not the document from before the pause');
+      const next = sent.length;
+      await ops.screenshot({ format: 'png' });
+      assert.equal(since(next, 'Page.reload') + since(next, 'Page.addScriptToEvaluateOnNewDocument'), 0, 'once');
+      // Off the page Continue was pressed on, for the tests after.
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `off-${reloaded}`, url: 'http://localhost:3000/' } });
+    });
+  }
+
+  it('runs the server’s page reads in a world of their own, and only the consent rules’ reads in the page’s (REN-2052)', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const at = sent.length;
+    await ops.evaluate({ fn: '() => document.title', args: [] });
+    await ops.evaluate({ fn: 'function readConsentState() { return globalThis.__impeccableConsent; }', args: [] });
+    const context = (text) => args.findLast((p, i) => i >= at && sent[i] === 'Runtime.evaluate' && p.expression.includes(text))?.contextId;
+    assert.ok(context('document.title') !== undefined && context('document.title') !== context('lookInPage'), 'neither the page’s world nor the walk’s lookout');
+    assert.equal(context('readConsentState'), undefined, 'the page’s own world');
+  });
+
+  it('refuses a script while a password is in a field, and pauses at the sign-in (REN-2052)', async () => {
+    const { ops, command, current } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
+    page.seen = { password: true, filled: true };
+    const at = sent.length;
+    await assert.rejects(ops.evaluate({ fn: 'readField', args: [] }), { name: 'Paused' });
+    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    assert.ok(!args.slice(at).some((p) => String(p?.expression).includes('readField')), 'never sent to the tab');
+    page.seen = {};
+    assert.equal(await command('resume'), true);
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled-off', url: 'http://localhost:3000/' } });
   });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it

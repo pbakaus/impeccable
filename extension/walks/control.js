@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, personHas, regain, say, signInNow, stopOpening, unhold, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, signInNow, stopOpening, unhold, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -54,8 +54,12 @@ async function clear(name) {
     if (stopped) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
+    // Never on a document from before a sign-in pause or a take-over (driver.js `seal`).
+    await fresh();
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
+    // A password in a field: a script is refused at once, never held to run after Continue.
+    if (signIn && name === 'evaluate' && (await passwordIn())) { pauseFor('sign-in'); throw fail('Paused', 'a journey runs no script while a password is in a field'); }
     if (!signIn || !pauseFor('sign-in')) return waited;
   }
 }
@@ -226,6 +230,8 @@ onView((view) => {
   // Before anything else hears of it: every op under way is overtaken from this moment.
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
+  // Where the person may sign in, nothing the server put in the page is: off before the tab is told anything more.
+  if (view.state === 'takeover' || (view.state === 'paused' && view.held === 'sign-in')) seal();
   // Taken over, or a question standing: the film takes nothing of it (the badge shows the question, badge.js `hidden`).
   personHas(view.state === 'takeover' || Boolean(view.ask));
   // Taken over, what the person sends is theirs, not held; paused at a sign-in, what follows their own press or key (driver.js `holding`).

@@ -464,6 +464,73 @@ export async function unhold() {
 /** The world the walk reads the page in for itself (signin.js), never the page's own. */
 const LOOKOUT = 'impeccable-walk-lookout';
 
+/*
+ * What the server put in the page never meets the person signing in (REN-2052). At a sign-in pause or a take-over its
+ * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them, and every
+ * document the walk had until then is marked. Before the walk's next op ({@link fresh}) the scripts go back on, and a
+ * marked document is loaded afresh: whatever the server's code left running in it (a listener copying keys, a copy in
+ * a variable) goes with it. What such code wrote to the site's storage stays: a reload keeps sessionStorage and the rest.
+ */
+export function seal() {
+  const tab = walk;
+  if (!tab) return;
+  tab.seals = (tab.seals ?? 0) + 1;
+  if (tab.withdrawn) return;
+  tab.withdrawn = true;
+  tab.tainted ??= new Set();
+  for (const loader of [tab.loader, ...(tab.documents ?? [])]) if (loader) tab.tainted.add(loader);
+  // Sent before anything else the tab is told: a sign-in page the guard is about to let load gets none of them.
+  for (const script of tab.newDocument ?? []) if (script.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.identifier }).catch(() => undefined);
+}
+
+/** Resolves once the walk may act on the page: its scripts back on, and not on a document from before a sign-in pause. */
+export function fresh() {
+  const tab = walk;
+  if (!tab || (!tab.withdrawn && !tab.tainted?.has(tab.loader))) return Promise.resolve();
+  return (tab.freshening ??= renew(tab).finally(() => { tab.freshening = null; }));
+}
+
+async function renew(tab) {
+  if (tab.withdrawn) {
+    const seals = tab.seals;
+    const added = [];
+    for (const script of tab.newDocument ?? []) added.push([script, (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier]);
+    // Paused again meanwhile: off again, at once.
+    if (tab.seals !== seals) {
+      for (const [, identifier] of added) if (identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => undefined);
+      throw fail('Paused', 'the journey was paused before this was done');
+    }
+    for (const [script, identifier] of added) script.identifier = identifier;
+    tab.withdrawn = false;
+  }
+  if (!tab.tainted?.has(tab.loader)) return;
+  const page = watch();
+  try {
+    await cmd('Page.reload');
+    await page.wait((e) => e.kind === 'lifecycle' && e.name === 'load' && !tab.tainted.has(e.loaderId), OPEN_MS, 'slow').catch(() => undefined);
+  } finally {
+    page.stop();
+  }
+  // Fails closed: nothing is read of a document from before the pause.
+  if (tab.tainted.has(tab.loader)) throw fail('NotAllowed', 'the page did not load again after the sign-in');
+}
+
+/** Whether a password-like field on the page holds a value (signin.js `lookInPage`): no script runs then. */
+export const passwordIn = async () => (await look())?.filled === true;
+
+/**
+ * The world the server's page reads run in: one of their own, not the page's, nor the walk's lookout (whose binding
+ * tells the person's input). Not a wall: code there shares the DOM, and can add a script element to the page's world
+ * wherever the page's CSP lets it.
+ */
+const READER = 'impeccable-walk-read';
+/**
+ * The one read that needs the page's own world: the consent rules the server loads into each document
+ * (pristine consent.ts `loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and
+ * `markConsentSeen` read it.
+ */
+const PAGE_WORLD = /__impeccableConsent/;
+
 /**
  * What the walk's own reading of the top document sees (signin.js `lookInPage`), or null when it could not be read
  * (the document is between pages). Its world is made once a document.
@@ -683,6 +750,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       if (params.frame.parentId) break;
       walk.mainFrame = params.frame.id;
       walk.loader = params.frame.loaderId;
+      (walk.documents ??= new Set()).add(params.frame.loaderId);
+      // A page kept whole from before a sign-in pause is that page, whatever Chrome calls it now (`seal`).
+      if (params.type === 'BackForwardCacheRestore' && walk.tainted?.size) walk.tainted.add(params.frame.loaderId);
       // What the page before was still loading went with it, and Chrome does not always say so: only what the new
       // document asked for is the network being busy.
       for (const [id, loader] of walk.inflight) if (loader !== params.frame.loaderId) walk.inflight.delete(id);
@@ -757,6 +827,7 @@ const REGAIN_MS = 500;
 async function lost(tab) {
   tab.lost = true;
   tab.lookout = null;
+  tab.reader = null;
   if (tab.regaining) return;
   tab.regaining = true;
   try {
@@ -809,7 +880,8 @@ async function rearm(tab) {
   tab.loader = frameTree.frame.loaderId;
   if (tab.sized) await sizeTo(tab.sized);
   if (tab.metrics) await cmd('Emulation.setDeviceMetricsOverride', tab.metrics);
-  for (const source of tab.newDocument ?? []) await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
+  // Not while a sign-in pause or a take-over has them off (`seal`): they go back on before the walk's next op.
+  if (!tab.withdrawn) for (const script of tab.newDocument ?? []) script.identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
   for (const hook of hooks.opened) await hook(tab, true);
   setUrl(frameTree.frame.url + (frameTree.frame.urlFragment ?? ''));
 }
@@ -1188,17 +1260,49 @@ export const ops = {
     return { value: walk.url };
   },
 
+  // In the server's own world (`READER`), made once a document, so what one read leaves (a listener) the next can find.
   async evaluate(req) {
-    const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression(req), returnByValue: true, awaitPromise: true, userGesture: true });
+    const source = expression(req);
+    const tab = walk;
+    if (!tab) throw fail('OutingClosed', 'no tab is open');
+    const run = async () => {
+      let world = {};
+      if (!PAGE_WORLD.test(source)) {
+        if (tab.reader?.loader !== tab.loader) {
+          const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
+          tab.reader = { loader: tab.loader, context: executionContextId };
+        }
+        world = { contextId: tab.reader.context };
+      }
+      return cmd('Runtime.evaluate', { expression: source, returnByValue: true, awaitPromise: true, userGesture: true, ...world });
+    };
+    let answer;
+    try {
+      answer = await run();
+    } catch (err) {
+      // Its world went with its document before the script started: made again, once. Never a script the page left
+      // mid-way ("Execution context was destroyed"): the server reads that as the page having moved on.
+      if (!tab.reader || !/Cannot find context/i.test(err.message)) throw err;
+      tab.reader = null;
+      answer = await run();
+    }
+    const { result, exceptionDetails } = answer;
     if (exceptionDetails) throw fail('Error', String(exceptionDetails.exception?.description ?? exceptionDetails.text).slice(0, 500));
     return result.unserializableValue ? { unserializable: result.unserializableValue } : { value: result.value };
   },
 
+  // In the page's own world, as the server's own browser runs them (its system face, its consent rules).
   async evaluateOnNewDocument(req) {
     const source = expression(req);
+    const tab = walk;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
-    // Kept for a debugger that has to come back (`rearm`).
-    (walk.newDocument ??= []).push(source);
+    // A sign-in pause that landed meanwhile has the tab without it (`seal`); the op is asked again after Continue.
+    if (tab.withdrawn) {
+      if (added?.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.identifier }).catch(() => undefined);
+      throw fail('Paused', 'the journey was paused before this was done');
+    }
+    // Kept to take off at a sign-in (`seal`), and for a debugger that has to come back (`rearm`).
+    (tab.newDocument ??= []).push({ source, identifier: added?.identifier });
     return { value: added };
   },
 
