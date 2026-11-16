@@ -1,0 +1,23 @@
+{
+  "impeccable": {
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ ! -f \"../.agent/skills/impeccable/scripts/impeccable\" ] || \"../.agent/skills/impeccable/scripts/impeccable\" hook",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "[ ! -f \"../.agent/skills/impeccable/scripts/impeccable\" ] || \"../.agent/skills/impeccable/scripts/impeccable\" hook",
+        "timeout": 30
+      }
+    ]
+  }
+}

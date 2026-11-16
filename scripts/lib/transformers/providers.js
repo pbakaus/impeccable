@@ -4,6 +4,8 @@
  * Each config specifies:
  * - provider: key into PROVIDER_PLACEHOLDERS (e.g. 'claude-code')
  * - configDir: dot-directory name (e.g. '.claude')
+ * - hooksManifestDir: optional dot-directory the hook manifest is written
+ *   under when the harness reads it from outside configDir (Antigravity)
  * - displayName: human-readable name for log output (e.g. 'Claude Code')
  * - providerTags: markdown block tags kept for this target (e.g. <codex>...</codex>)
  * - frontmatterFields: which optional fields to emit beyond name + description
@@ -203,6 +205,14 @@ export const PROVIDERS = {
     configDir: '.agent',
     displayName: 'Antigravity',
     frontmatterFields: ['license', 'compatibility', 'metadata', 'allowed-tools'],
+    emitHooks: 'antigravity',
+    // Antigravity discovers workspace hooks from `.agents/hooks.json` (or
+    // global `~/.gemini/config/hooks.json`), not from beside its skills in
+    // `.agent/`. `hooksManifestDir` names the folder the manifest is written
+    // under, in place of `configDir`, in every output: the provider dist,
+    // the universal bundle, and the root harness sync.
+    hooksManifestDir: '.agents',
+    hooksManifestRel: 'hooks.json',
   },
   hermes: {
     provider: 'hermes',

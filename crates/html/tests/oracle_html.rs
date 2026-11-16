@@ -133,6 +133,8 @@ fn html_fixture_goldens_match() {
         // with the real path and mask afterwards.
         let analyzers = run_text_content_analyzers;
         let opts = DetectHtmlOptions {
+            image_samples: Default::default(),
+            sample_cache_dir: None,
             inline_ignores_disabled: true,
             text_content_analyzers: Some(&analyzers),
             ..Default::default()
@@ -226,6 +228,8 @@ fn detect_config_workspace_no_config_matches() {
     let source = String::from_utf8_lossy(&std::fs::read(&page).unwrap()).into_owned();
     let analyzers = run_text_content_analyzers;
     let opts = DetectHtmlOptions {
+        image_samples: Default::default(),
+        sample_cache_dir: None,
         inline_ignores_disabled: true,
         text_content_analyzers: Some(&analyzers),
         ..Default::default()

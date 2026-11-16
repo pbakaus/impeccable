@@ -405,6 +405,7 @@ impl<'a> Ctx<'a> {
                     std::io::ErrorKind::PermissionDenied => {
                         format!("EACCES: permission denied, open '{file_path}'")
                     }
+                    std::io::ErrorKind::InvalidData => e.to_string(),
                     _ => format!("ENOENT: no such file or directory, open '{file_path}'"),
                 }));
             }
@@ -746,6 +747,7 @@ fn detect_cli(
         keep_consent_banners: has(&args, "--no-consent-hiding"),
         keep_overlays: has(&args, "--no-overlay-hiding"),
         unreported_rules: unreported_rules(&detection_config.ignore_rules, &scopes),
+        image_samples: crate::engines::ImageSamples::Decode,
         ignored_linked_stylesheet: Some({
             let (cwd, config) = (cwd.clone(), detection_config.clone());
             std::rc::Rc::new(move |path: &str| should_ignore_detection_file(path, &cwd, &config))

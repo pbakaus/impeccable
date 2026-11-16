@@ -23,7 +23,16 @@ fn impeccable(env: &std::collections::HashMap<String, String>, args: &[&str]) ->
 fn a_script_signs_in_checks_and_signs_out() {
     // Catches: the non-interactive sign-in path (the rehearsal's) printing the link anywhere but alone on stdout.
     let fake = Fake::start();
-    let env = fake.env("cli-login");
+    let mut env = fake.env("cli-login");
+    env.insert("IMPECCABLE_NO_UPDATE_CHECK".into(), "1".into());
+    // init's sign-in line reads `context`'s account line instead of a whoami call.
+    let project = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]).join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    let account_line = || {
+        let out = impeccable(&env, &["context"]).current_dir(&project).output().unwrap();
+        String::from_utf8_lossy(&out.stdout).lines().filter(|l| l.starts_with("ACCOUNT:")).collect::<Vec<_>>().join("|")
+    };
+    assert_eq!(account_line(), "ACCOUNT: not signed in");
     let mut child = impeccable(&env, &["login", "--no-browser"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -42,6 +51,7 @@ fn a_script_signs_in_checks_and_signs_out() {
         (v["signed_in"].as_bool(), v["pro"].as_bool()),
         (Some(true), Some(true))
     );
+    assert_eq!(account_line(), "ACCOUNT: signed in");
 
     assert!(impeccable(&env, &["logout"]).status().unwrap().success());
     let out = impeccable(&env, &["whoami", "--json"]).output().unwrap();

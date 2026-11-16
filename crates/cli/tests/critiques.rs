@@ -555,14 +555,15 @@ fn invalid_service_settings_never_prevent_local_optout() {
 }
 
 #[test]
-fn repo_labels_use_the_remote_name_and_are_omitted_when_unavailable() {
+fn repo_labels_use_the_remote_or_folder_name_and_are_omitted_when_invalid() {
     for (name, remote, expected) in [
         (
             "named",
             Some("git@GitHub.com:acme/remote-repo.git"),
             Some("remote-repo"),
         ),
-        ("local", None, None),
+        // No remote: the folder's name (Paul, REN-2028).
+        ("local", None, Some("<folder>")),
         ("invalid", Some("git@github.com:acme/bad\\name.git"), None),
     ] {
         let (fake, env) = setup(&format!("critique-label-{name}"));
@@ -589,6 +590,7 @@ fn repo_labels_use_the_remote_name_and_are_omitted_when_unavailable() {
         assert_eq!(record.critiques.len(), 1);
         let body = &record.critiques[0];
         assert!(body["repoKey"].as_str().is_some());
+        let expected = if expected == Some("<folder>") { root.file_name().and_then(|n| n.to_str()) } else { expected };
         assert_eq!(
             body.get("label").and_then(serde_json::Value::as_str),
             expected

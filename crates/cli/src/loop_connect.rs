@@ -275,20 +275,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
-    let version = helper
-        .parent()
-        .and_then(Path::parent)
-        .and_then(|c| {
-            Command::new("/usr/bin/plutil")
-                .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
-                .arg(c.join("Info.plist"))
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .ok()
-        })
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let version = bundle_version(&helper);
     let support = SUPPORT
         .iter()
         .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
@@ -337,7 +324,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         }));
     }
     Ok(json!({
-        "loop": { "installed": loop_installed, "version": version },
+        "loop": { "installed": loop_installed, "version": version, "blocked": loop_installed && blocked(&helper) },
         "agents": agents,
     }))
 }
@@ -351,6 +338,9 @@ pub(crate) fn agent_connected(a: &Value) -> bool {
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
+        _ if v["loop"]["blocked"] == true => {
+            "Loop: macOS is blocking it. Run impeccable loop update to reinstall it.\n".to_string()
+        }
         Some(ver) if v["loop"]["installed"] == true => format!("Loop {ver}: installed.\n"),
         _ if v["loop"]["installed"] == true => "Loop: installed.\n".to_string(),
         _ => "Loop: not installed. Run impeccable loop install.\n".to_string(),
@@ -969,17 +959,10 @@ fn quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
-/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
-/// Whether the Loop that owns `helper` (…/Contents/MacOS/loop-hook) is 0.1.1 or later,
-/// read from its bundle's CFBundleShortVersionString. Unknown counts as no.
-fn supports_context(helper: &Path) -> bool {
-    let Some(plist) = helper
-        .parent()
-        .and_then(Path::parent)
-        .map(|c| c.join("Info.plist"))
-    else {
-        return false;
-    };
+/// The CFBundleShortVersionString of the Loop that owns `helper`
+/// (…/Contents/MacOS/loop-hook). None when it can't be read.
+fn bundle_version(helper: &Path) -> Option<String> {
+    let plist = helper.parent()?.parent()?.join("Info.plist");
     Command::new("/usr/bin/plutil")
         .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
         .arg(plist)
@@ -988,13 +971,69 @@ fn supports_context(helper: &Path) -> bool {
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| semver::Version::parse(String::from_utf8_lossy(&o.stdout).trim()).ok())
-        .is_some_and(|v| v >= semver::Version::new(0, 1, 1))
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// The first Loop whose own reading of the hooks (its Settings and first-run panel)
+/// accepts the guarded command below. An older Loop would read guarded hooks as missing,
+/// so it keeps the plain command.
+const GUARDED_SINCE: semver::Version = semver::Version::new(0, 1, 3);
+
+/// A quarantine flags field (the xattr's first `;`-separated part, four hex digits) with
+/// 0x40, the person's approval, clear: macOS would refuse to run the helper.
+const UNAPPROVED: &str = "^[0-9a-fA-F]{2}[0-389abAB][0-9a-fA-F];";
+
+/// Whether macOS will refuse to run `helper`: it carries a quarantine flag the person never
+/// approved. Loop is signed but not notarized, so it runs only without one. Read with
+/// getxattr, no process; the same test as the guarded hook command's.
+pub(crate) fn blocked(helper: &Path) -> bool {
+    quarantine(helper).is_some_and(|q| {
+        let flags = q.split(';').next().unwrap_or_default();
+        flags.len() == 4 && u16::from_str_radix(flags, 16).is_ok_and(|f| f & 0x40 == 0)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn quarantine(path: &Path) -> Option<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut buf = [0u8; 256];
+    // SAFETY: both strings are NUL-terminated and buf is as long as the size passed.
+    let n = unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            c"com.apple.quarantine".as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            0,
+            0,
+        )
+    };
+    (n >= 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).into_owned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn quarantine(_: &Path) -> Option<String> {
+    None
+}
+
+/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let harness = agent.harness;
-    let command = |kind: &str| format!("{} {harness} {kind}", quote(helper));
+    // Unknown counts as old.
+    let version = bundle_version(helper).and_then(|v| semver::Version::parse(&v).ok());
+    let guarded = version.as_ref().is_some_and(|v| *v >= GUARDED_SINCE);
+    let helper_q = quote(helper);
+    // Guarded, a helper macOS would refuse is never run: running it shows the "damaged"
+    // dialog at every session start and tool call. The hook then exits 0 with no output
+    // and the session goes on; loop status says how to fix it.
+    let command = |kind: &str| {
+        if guarded {
+            format!("/usr/bin/xattr -p com.apple.quarantine {helper_q} 2>/dev/null | /usr/bin/grep -Eq '{UNAPPROVED}' || exec {helper_q} {harness} {kind}")
+        } else {
+            format!("{helper_q} {harness} {kind}")
+        }
+    };
     let hook = |event: &str, matcher: Option<&str>, kind: &str, timeout: u64, wake: bool| Hook {
         event: event.into(),
         matcher: matcher.map(Into::into),
@@ -1020,7 +1059,7 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
     // Tells a new session that Loop will wake it, so it stops polling for answers.
     // Synchronous: it prints at most one line within its own 400 ms probe and always
     // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
-    if supports_context(helper) {
+    if version.is_some_and(|v| v >= semver::Version::new(0, 1, 1)) {
         hooks.push(hook("SessionStart", None, "context", 5, false));
     }
     Spec {
