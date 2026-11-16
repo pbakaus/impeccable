@@ -709,7 +709,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
                     .iter()
                     .copied()
                     .filter(|p| {
-                        let manifest_root = if scope == Scope::User && *p == ".claude" { &install_root } else { &hook_root };
+                        let manifest_root = if scope == Scope::User && matches!(*p, ".claude" | ".agent") { &install_root } else { &hook_root };
                         !hook_installed_for_provider_at_scope(&sys, manifest_root, p, scope == Scope::User)
                     })
                     .collect()
@@ -783,6 +783,9 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
             // above, and the cleanup itself re-checks before pruning.
             if want_hooks && scope == Scope::User && hook_targets.contains(&".claude") {
                 hook_manifest::prune_duplicate_claude_hooks(&sys, &install_root, &hook_root)?;
+            }
+            if want_hooks && scope == Scope::User && hook_targets.contains(&".agent") {
+                hook_manifest::prune_dead_project_antigravity_hook(&sys, &install_root, &hook_root)?;
             }
             // The same for Codex, Cursor and Grok, whose global hook is in
             // home (#1190): a project an older global install wrote a
