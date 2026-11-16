@@ -360,7 +360,7 @@ b { font-weight: 500; }
 .needs-word { margin-right: 2px; }
 .tabs:has(.needs-menu) { position: relative; }
 .tabs .need-row::after { content: none; }
-.needs-menu { top: auto; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 40px); gap: 0; padding: 6px; }
+.needs-menu { top: auto; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 40px); max-height: calc(100vh - 260px); overflow-y: auto; gap: 0; padding: 6px; }
 .needs-h { padding: 6px 8px 8px; font-size: 13px; color: var(--muted); }
 .need-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px; border-radius: 8px; color: var(--ink); text-align: left; }
 .need-row:hover { background: var(--paper-deep); }
