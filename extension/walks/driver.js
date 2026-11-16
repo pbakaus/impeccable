@@ -355,6 +355,8 @@ async function pointer(work) {
 /** Set while the person has taken the tab over (control.js): the film takes nothing of what they do. */
 let theirs = false;
 export function personHas(on) { theirs = on; }
+/** Whether the film takes nothing now: paused, the person's, or after a sign-in until the server's scripts are back on (`seal`). */
+const blind = (tab) => hush || theirs || Boolean(tab.withdrawn && tab.secret);
 
 async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   await cut();
@@ -366,7 +368,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   film.done = (async () => {
     while (film.on && walk === tab) {
       // Paused, or in the person's hands: the film stands still, taking nothing, until the walk goes on (or the film is cut).
-      if (hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
+      if (blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
       const started = Date.now();
       try {
         let size = tab.viewport;
@@ -375,11 +377,11 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
           size = { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
         }
         const scale = Math.min(1, maxWidth > 0 ? maxWidth / size.width : 1, maxHeight > 0 ? maxHeight / size.height : 1);
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         // A sign-in on the page is a pause before it is a picture; a page that cannot be read is not filmed.
         const seen = await look();
         if (signInShows(tab, seen)) { spotted(); continue; }
-        if (!seen || hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
+        if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
         // Not while the pointer acts (`pointer`).
         if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
@@ -392,14 +394,14 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         const frame = await smaller(await seenAs(shot.data, 'jpeg', 80), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
         // Taken as the walk was paused or taken over: never sent.
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         // A page that has not changed is not sent again: a film held open (the walk paused mid-wait) would otherwise send the same picture until it ends.
         if (frame === film.last) continue;
         // Held until the last one sent is `FILM_GAP_MS` old: paced where it is sent, so a picture that took longer or
         // shorter to take does not close the gap. In short sleeps, so a film that is cut is not kept waiting on one.
         while (film.on && walk === tab && Date.now() - film.sentAt < FILM_GAP_MS) await sleep(Math.min(8, FILM_GAP_MS - (Date.now() - film.sentAt)));
         if (!film.on || walk !== tab) break;
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         film.last = frame;
         film.sentAt = Date.now();
         say({ event: 'cdp', method: 'Page.screencastFrame', params: { data: frame, sessionId: film.id, metadata: { deviceWidth: size.width, deviceHeight: size.height, pageScaleFactor: 1, offsetTop: 0, scrollOffsetX: 0, scrollOffsetY: 0, timestamp: Date.now() / 1000 } } });
@@ -466,53 +468,95 @@ const LOOKOUT = 'impeccable-walk-lookout';
 
 /*
  * What the server put in the page never meets the person signing in (REN-2052). At a sign-in pause or a take-over its
- * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them, and every
- * document the walk had until then is marked. Before the walk's next op ({@link fresh}) the scripts go back on, and a
- * marked document is loaded afresh: whatever the server's code left running in it (a listener copying keys, a copy in
- * a variable) goes with it. What such code wrote to the site's storage stays: a reload keeps sessionStorage and the rest.
+ * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them. Before
+ * the walk's next op ({@link fresh}):
+ *   1. A sign-in on the page keeps them off, so the page the person signs in on runs none of them.
+ *   2. `window.name` is cleared: it outlives a navigation on the same site.
+ *   3. The scripts go back on, and run once in a document that started without them.
+ * The page is never left or loaded again to clean it: that reuses one-time links, gets a posted form's result again,
+ * and adds a history entry. So code the server put in a document from before the pause (a listener copying keys)
+ * stays in it, as does what it wrote to the address or the site's storage. Only fixed page reads close that.
  */
-export function seal() {
+export function seal(kind = 'sign-in') {
   const tab = walk;
   if (!tab) return;
   tab.seals = (tab.seals ?? 0) + 1;
-  if (tab.withdrawn) return;
-  tab.withdrawn = true;
-  tab.tainted ??= new Set();
-  for (const loader of [tab.loader, ...(tab.documents ?? [])]) if (loader) tab.tainted.add(loader);
   // Sent before anything else the tab is told: a sign-in page the guard is about to let load gets none of them.
-  for (const script of tab.newDocument ?? []) if (script.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.identifier }).catch(() => undefined);
+  for (const script of tab.newDocument ?? []) {
+    if (script.identifier) takeOff(tab, script.identifier);
+    script.identifier = null;
+  }
+  tab.secret = kind === 'sign-in' || Boolean(tab.withdrawn && tab.secret);
+  tab.withdrawn = true;
 }
 
-/** Resolves once the walk may act on the page: its scripts back on, and not on a document from before a sign-in pause. */
+/** How many times a script is asked off the tab before the walk counts it as maybe still on. */
+const TAKE_OFF_TRIES = 2;
+
+/** Asks one of the server's scripts off the tab: until it is known to be, the walk does not go on (`sealed`). */
+function takeOff(tab, identifier, tries = TAKE_OFF_TRIES) {
+  (tab.unsealed ??= new Set()).add(identifier);
+  const going = (async () => {
+    for (let n = 0; n < tries && tab.unsealed.has(identifier); n++) {
+      try {
+        await cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+      } catch (err) {
+        // Not found: already off.
+        if (!/not found/i.test(err.message)) continue;
+      }
+      tab.unsealed.delete(identifier);
+    }
+  })();
+  tab.sealing = Promise.all([tab.sealing, going]);
+}
+
+/** Whether every script `seal` asked off the tab is off: each one not yet known to be is asked once more. */
+export async function sealed(tab = walk) {
+  if (!tab) return true;
+  await tab.sealing;
+  for (const identifier of [...(tab.unsealed ?? [])]) takeOff(tab, identifier, 1);
+  await tab.sealing;
+  return !tab.unsealed?.size;
+}
+
+/**
+ * Resolves once the walk may act on the page: its scripts back on (`seal`). It also resolves when the walk was paused
+ * again meanwhile, or the page shows a sign-in, with the scripts still off: the op waits for that pause as for any
+ * other (control.js `clear`).
+ */
 export function fresh() {
   const tab = walk;
-  if (!tab || (!tab.withdrawn && !tab.tainted?.has(tab.loader))) return Promise.resolve();
-  return (tab.freshening ??= renew(tab).finally(() => { tab.freshening = null; }));
+  if (!tab?.withdrawn) return Promise.resolve();
+  // One at a time, each looking afresh: one that started before another pause returns early.
+  const run = (tab.freshening ?? Promise.resolve()).then(() => renew(tab));
+  tab.freshening = run.catch(() => undefined);
+  return run;
 }
 
 async function renew(tab) {
-  if (tab.withdrawn) {
-    const seals = tab.seals;
-    const added = [];
-    for (const script of tab.newDocument ?? []) added.push([script, (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier]);
-    // Paused again meanwhile: off again, at once.
-    if (tab.seals !== seals) {
-      for (const [, identifier] of added) if (identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => undefined);
-      throw fail('Paused', 'the journey was paused before this was done');
+  if (walk !== tab || !tab.withdrawn) return;
+  const seals = tab.seals;
+  if ((await signInNow()) !== false || tab.seals !== seals) return;
+  await cmd('Runtime.evaluate', { expression: `window.name = ''` }).catch(() => undefined);
+  if (tab.seals !== seals || !(await scriptsOn(tab, seals))) return;
+  tab.withdrawn = false;
+  tab.secret = false;
+  // A document that started with them off gets them now: written to run more than once (pristine persona-session.ts).
+  if (tab.clean?.delete(tab.loader)) for (const script of tab.newDocument ?? []) await cmd('Runtime.evaluate', { expression: script.source }).catch(() => undefined);
+}
+
+/** Puts the server's new-document scripts back on the tab: false, with none of them on, if a seal came meanwhile. */
+async function scriptsOn(tab, seals) {
+  for (const script of tab.newDocument ?? []) {
+    const identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
+    // Sealed while this was on its way: `seal` took off the ones before it, this one goes now.
+    if (tab.seals !== seals || walk !== tab) {
+      if (identifier) takeOff(tab, identifier);
+      return false;
     }
-    for (const [script, identifier] of added) script.identifier = identifier;
-    tab.withdrawn = false;
+    script.identifier = identifier;
   }
-  if (!tab.tainted?.has(tab.loader)) return;
-  const page = watch();
-  try {
-    await cmd('Page.reload');
-    await page.wait((e) => e.kind === 'lifecycle' && e.name === 'load' && !tab.tainted.has(e.loaderId), OPEN_MS, 'slow').catch(() => undefined);
-  } finally {
-    page.stop();
-  }
-  // Fails closed: nothing is read of a document from before the pause.
-  if (tab.tainted.has(tab.loader)) throw fail('NotAllowed', 'the page did not load again after the sign-in');
+  return true;
 }
 
 /** Whether a password-like field on the page holds a value (signin.js `lookInPage`): no script runs then. */
@@ -676,6 +720,14 @@ function setUrl(url) {
   escaped(url);
 }
 
+/** A document the top frame now has: one that started while the server's scripts were off gets them once (`renew`). */
+function noteDocument(tab, { type, frame }) {
+  if (tab.documents?.has(frame.loaderId)) return;
+  (tab.documents ??= new Set()).add(frame.loaderId);
+  // Kept whole by Chrome from before: it ran them then.
+  if (tab.withdrawn && type !== 'BackForwardCacheRestore') (tab.clean ??= new Set()).add(frame.loaderId);
+}
+
 /** Fails closed: a walked tab seen off its site is no longer walked. The guard holds every request, so this is the net under it. */
 function escaped(url) {
   if (!walk || stillHome(url, walk.allowed) || (heldAtSignIn && isSignInPage(url))) return;
@@ -752,9 +804,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       if (params.frame.parentId) break;
       walk.mainFrame = params.frame.id;
       walk.loader = params.frame.loaderId;
-      (walk.documents ??= new Set()).add(params.frame.loaderId);
-      // A page kept whole from before a sign-in pause is that page, whatever Chrome calls it now (`seal`).
-      if (params.type === 'BackForwardCacheRestore' && walk.tainted?.size) walk.tainted.add(params.frame.loaderId);
+      noteDocument(walk, params);
       // What the page before was still loading went with it, and Chrome does not always say so: only what the new
       // document asked for is the network being busy.
       for (const [id, loader] of walk.inflight) if (loader !== params.frame.loaderId) walk.inflight.delete(id);
@@ -830,6 +880,9 @@ async function lost(tab) {
   tab.lost = true;
   tab.lookout = null;
   tab.reader = null;
+  // Gone with the debugger that added them, as are any `seal` asked off.
+  for (const script of tab.newDocument ?? []) script.identifier = null;
+  tab.unsealed = new Set();
   if (tab.regaining) return;
   tab.regaining = true;
   try {
@@ -883,7 +936,7 @@ async function rearm(tab) {
   if (tab.sized) await sizeTo(tab.sized);
   if (tab.metrics) await cmd('Emulation.setDeviceMetricsOverride', tab.metrics);
   // Not while a sign-in pause or a take-over has them off (`seal`): they go back on before the walk's next op.
-  if (!tab.withdrawn) for (const script of tab.newDocument ?? []) script.identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
+  if (!tab.withdrawn) await scriptsOn(tab, tab.seals);
   for (const hook of hooks.opened) await hook(tab, true);
   setUrl(frameTree.frame.url + (frameTree.frame.urlFragment ?? ''));
 }
@@ -1297,10 +1350,11 @@ export const ops = {
   async evaluateOnNewDocument(req) {
     const source = expression(req);
     const tab = walk;
+    const seals = tab.seals;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
     // A sign-in pause that landed meanwhile has the tab without it (`seal`); the op is asked again after Continue.
-    if (tab.withdrawn) {
-      if (added?.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.identifier }).catch(() => undefined);
+    if (tab.withdrawn || tab.seals !== seals) {
+      if (added?.identifier) takeOff(tab, added.identifier);
       throw fail('Paused', 'the journey was paused before this was done');
     }
     // Kept to take off at a sign-in (`seal`), and for a debugger that has to come back (`rearm`).

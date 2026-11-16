@@ -1038,7 +1038,15 @@ async function start() {
     const next = () => { if (feed.length === 0 || !isLive(view)) return; view = reduce(view, { type: 'step', step: feed.shift() }); render(); setTimeout(next, 1500); };
     if (feed.length > 0) setTimeout(next, 1500);
   } else {
-    act = (action) => { void chrome.runtime.sendMessage({ control: action }).catch(() => undefined); };
+    act = async (action) => {
+      const answer = await chrome.runtime.sendMessage({ control: action }).catch(() => null);
+      // Continue or hand-back refused (the sign-in still shows): the pause as it stands, drawn again, focus kept.
+      if (answer?.ok === true || (action !== 'resume' && action !== 'handback')) return;
+      const { view: now } = await chrome.storage.session.get('view').catch(() => ({}));
+      if (now?.v === 1) view = now;
+      render();
+      app.querySelector(`[data-act="${action}"]`)?.focus();
+    };
     chrome.storage.session.onChanged.addListener((changes) => {
       if (changes.walker || changes.walkUrl) void knowWalk().then(render);
       // Signed in from the popup while the panel is open.

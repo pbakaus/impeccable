@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, signInNow, stopOpening, unhold, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, unhold, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { detachAction, isLive } from './view.js';
 
@@ -54,12 +54,17 @@ async function clear(name) {
     if (stopped) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     if (state === 'paused' || current().ask) { waited = true; await new Promise((go) => { held.push(go); }); continue; }
-    // Never on a document from before a sign-in pause or a take-over (driver.js `seal`).
+    // Not before the server's scripts are back on after a sign-in pause or a take-over (driver.js `seal`). Paused again
+    // meanwhile, or its scripts still off at a sign-in: the op waits, as for any pause.
     await fresh();
+    if (current().state !== 'walking' || current().ask) continue;
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
-    // A password in a field: a script is refused at once, never held to run after Continue.
-    if (signIn && name === 'evaluate' && (await passwordIn())) { pauseFor('sign-in'); throw fail('Paused', 'a journey runs no script while a password is in a field'); }
+    // A password in a field: a script waits for the pause, and runs after Continue once no field is filled.
+    if (signIn && name === 'evaluate' && (await passwordIn())) {
+      if (!pauseFor('sign-in')) throw fail('Paused', 'a journey runs no script while a password is in a field');
+      continue;
+    }
     if (!signIn || !pauseFor('sign-in')) return waited;
   }
 }
@@ -210,6 +215,8 @@ export async function command(name) {
   // Going on is checked again: while the debugger cannot get back on the tab (another extension's frame is in it), or
   // a sign-in host or a 401 still shows, the walk stays paused.
   if (GOING_ON[name] === current().state && walk && !(await regain())) return false;
+  // Nor while a script of the server's may still be on the tab (driver.js `seal`): asked off once more on each press.
+  if (GOING_ON[name] === current().state && walk && !(await sealed())) return false;
   // Continue at a sign-in is the person's word that it is done: a password field still on this page pauses no more.
   if (GOING_ON[name] === current().state && current().held === 'sign-in') letPast();
   if (GOING_ON[name] === current().state && walk && (await signInNow())) { letPast(false); pauseFor('sign-in'); return false; }
@@ -231,7 +238,7 @@ onView((view) => {
   if (walking && view.state !== 'walking') fence();
   walking = view.state === 'walking';
   // Where the person may sign in, nothing the server put in the page is: off before the tab is told anything more.
-  if (view.state === 'takeover' || (view.state === 'paused' && view.held === 'sign-in')) seal();
+  if (view.state === 'takeover' || (view.state === 'paused' && view.held === 'sign-in')) seal(view.held === 'sign-in' ? 'sign-in' : 'takeover');
   // Taken over, or a question standing: the film takes nothing of it (the badge shows the question, badge.js `hidden`).
   personHas(view.state === 'takeover' || Boolean(view.ask));
   // Taken over, what the person sends is theirs, not held; paused at a sign-in, what follows their own press or key (driver.js `holding`).
