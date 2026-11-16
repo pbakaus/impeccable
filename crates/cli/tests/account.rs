@@ -339,6 +339,8 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
     assert!(status.status.success());
     let text = String::from_utf8_lossy(&status.stdout);
     assert!(text.contains("This project: pristine.\n"), "{text}");
+    // The Impeccable block in each installed agent's rule file, before the next step (REN-2056).
+    assert!(text.contains("Impeccable lines in your agents' rule files:\n"), "{text}");
     assert!(text.ends_with("Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"), "{text}");
 
     let json = impeccable(&env, &["status", "--json"]).current_dir(&repo).output().unwrap();
