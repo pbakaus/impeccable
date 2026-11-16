@@ -184,7 +184,10 @@ impl Upstream for Service {
             // or workspace refusal is the agent's to read, never a reason to open the browser again.
             Err(SessionError::Api(ApiError::Status { status: 401, .. })) => Err(Failure::Auth),
             Err(SessionError::Api(ApiError::Status { status: 403, code })) if code.as_deref() == Some("insufficient_scope") => Err(Failure::Auth),
-            Err(SessionError::Api(ApiError::Status { status: 403, .. })) => Err(Failure::Other("Impeccable refused that. Check your plan and workspace access.".into())),
+            Err(SessionError::Api(ApiError::Status { status: 403, code })) => Err(Failure::Other(match code {
+                Some(code) => format!("Impeccable refused that ({code}). Check your plan and workspace access."),
+                None => "Impeccable refused that. Check your plan and workspace access.".into(),
+            })),
             Err(SessionError::Api(ApiError::Network(_))) => Err(Failure::Other("Impeccable can’t be reached right now. Try again in a minute.".into())),
             Err(e) => Err(Failure::Other(e.to_string())),
         }
