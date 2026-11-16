@@ -191,6 +191,59 @@ pub struct Pending {
     state: String,
     verifier: String,
     requested_scopes: Vec<String>,
+    /// Your setup on the app's own origin (the authorization endpoint's), where a
+    /// finished sign-in sends the browser.
+    setup_url: Option<String>,
+}
+
+/// The browser's callback, held open until the sign-in is saved so the page it
+/// lands on can say how it went. Dropped unanswered, it says the sign-in didn't
+/// finish.
+pub struct Callback {
+    stream: Option<TcpStream>,
+    setup_url: Option<String>,
+}
+
+impl Callback {
+    /// The sign-in is saved: send the browser to Your setup, or say so where
+    /// the app's address is unknown.
+    pub fn signed_in(mut self) {
+        let Some(mut stream) = self.stream.take() else { return };
+        match &self.setup_url {
+            Some(url) => {
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 303 See Other\r\nlocation: {url}\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                );
+            }
+            None => page(&mut stream, PAGE_OK),
+        }
+    }
+}
+
+impl Drop for Callback {
+    fn drop(&mut self) {
+        if let Some(mut stream) = self.stream.take() {
+            page(&mut stream, PAGE_FAIL);
+        }
+    }
+}
+
+fn page(stream: &mut TcpStream, page: &str) {
+    let _ = write!(
+        stream,
+        "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
+        page.len()
+    );
+}
+
+/// `<origin of the authorization endpoint>/app/-/setup?signed-in=cli`.
+fn setup_url(authorization_endpoint: &str) -> Option<String> {
+    let url = url::Url::parse(authorization_endpoint).ok()?;
+    let origin = url.origin();
+    origin
+        .is_tuple()
+        .then(|| format!("{}/app/-/setup?signed-in=cli", origin.ascii_serialization()))
 }
 
 /// Bind the loopback listener and build the authorization URL.
@@ -221,6 +274,7 @@ pub fn start(account: &Account, meta: &Metadata) -> Result<Pending, String> {
             .split_whitespace()
             .map(str::to_string)
             .collect(),
+        setup_url: setup_url(&meta.authorization_endpoint),
     })
 }
 
@@ -264,7 +318,7 @@ impl Pending {
     /// carry this attempt's `state`, are answered and ignored: only an answer
     /// bound to this attempt can end it. Nothing about a request is logged:
     /// its query carries the code.
-    pub fn wait(&self, issuer: &str, timeout: Duration) -> Result<String, CallbackError> {
+    pub fn wait(&self, issuer: &str, timeout: Duration) -> Result<(String, Callback), CallbackError> {
         self.listener
             .set_nonblocking(true)
             .map_err(|_| CallbackError::Malformed)?;
@@ -305,7 +359,7 @@ impl Pending {
         mut stream: TcpStream,
         target: Option<String>,
         issuer: &str,
-    ) -> Option<Result<String, CallbackError>> {
+    ) -> Option<Result<(String, Callback), CallbackError>> {
         let _ = stream.set_nonblocking(false);
         let _ = stream.set_write_timeout(Some(REQUEST_HEAD_DEADLINE));
         let query = target.as_deref().and_then(|t| {
@@ -318,18 +372,20 @@ impl Pending {
             );
             return None;
         };
-        let result = self.judge(query, issuer);
-        let page = if matches!(result, Some(Ok(_))) {
-            PAGE_OK
-        } else {
-            PAGE_FAIL
-        };
-        let _ = write!(
-            stream,
-            "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncache-control: no-store\r\nreferrer-policy: no-referrer\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}",
-            page.len()
-        );
-        result
+        match self.judge(query, issuer) {
+            Some(Ok(code)) => Some(Ok((
+                code,
+                Callback { stream: Some(stream), setup_url: self.setup_url.clone() },
+            ))),
+            Some(Err(e)) => {
+                page(&mut stream, PAGE_FAIL);
+                Some(Err(e))
+            }
+            None => {
+                page(&mut stream, PAGE_FAIL);
+                None
+            }
+        }
     }
 
     /// `None` for a callback that is not bound to this attempt (no `state`,
@@ -515,6 +571,46 @@ pub fn revoke(client: &Client, endpoint: &str, refresh_token: &str) -> Result<()
 #[cfg(test)]
 mod scope_tests {
     use super::*;
+
+    // Catches (review): the landing page built from the issuer instead of the browser's
+    // origin. Production's issuer (api.impeccable.style) serves no app pages, so that
+    // mistake would send every sign-in to a 404.
+    // Catches (review): a callback dropped unanswered closing the browser's connection
+    // with nothing, or the success page, instead of saying the sign-in didn't finish.
+    #[test]
+    fn the_browser_hears_how_the_sign_in_went() {
+        use std::io::Read;
+        let answer = |signed_in: bool| {
+            let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+            let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            let (server, _) = listener.accept().unwrap();
+            let callback = Callback {
+                stream: Some(server),
+                setup_url: Some("https://impeccable.style/app/-/setup?signed-in=cli".into()),
+            };
+            if signed_in { callback.signed_in() } else { drop(callback) }
+            let mut got = String::new();
+            client.read_to_string(&mut got).unwrap();
+            got
+        };
+        let failed = answer(false);
+        assert!(failed.starts_with("HTTP/1.1 200 OK") && failed.ends_with(PAGE_FAIL), "{failed}");
+        let done = answer(true);
+        assert!(done.starts_with("HTTP/1.1 303 See Other\r\nlocation: https://impeccable.style/app/-/setup?signed-in=cli\r\n"), "{done}");
+    }
+
+    #[test]
+    fn the_setup_page_is_on_the_authorization_endpoints_origin_not_the_issuers() {
+        assert_eq!(
+            setup_url("https://impeccable.style/app/oauth/authorize").as_deref(),
+            Some("https://impeccable.style/app/-/setup?signed-in=cli")
+        );
+        assert_eq!(
+            setup_url("http://127.0.0.1:8788/app/oauth/authorize?x=1").as_deref(),
+            Some("http://127.0.0.1:8788/app/-/setup?signed-in=cli")
+        );
+        assert_eq!(setup_url("not a url"), None);
+    }
 
     // Catches the MCP scopes asked for when the service did not offer them, or
     // one asked for twice beside the CLI's own (Taste is both).
