@@ -482,7 +482,11 @@ pub(crate) fn after_login(io: &mut Io) {
         .unwrap_or_default();
     if let Some(mut steps) = impeccable_common::steps::Steps::new(io) {
         // Install's own choice: Enter takes the first option, as the plain question's Enter did.
-        let connect_hint = format!("their questions reach you in Loop{to}");
+        // The account after a separator: a sign-in other than production's says which, never as part of the sentence.
+        let connect_hint = match to.strip_prefix(" to ") {
+            Some(account) => format!("their questions reach you in Loop · {account}"),
+            None => "their questions reach you in Loop".to_string(),
+        };
         let options = [("Connect them", Some(connect_hint.as_str())), ("Not now", Some("later: impeccable loop connect"))];
         let pick = steps.choose(io, &format!("Connect {names} to Loop?"), &options, 0).unwrap_or(1);
         if pick != 0 {

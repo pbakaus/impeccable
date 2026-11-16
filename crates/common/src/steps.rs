@@ -35,8 +35,14 @@ impl Steps {
         io.err(&format!("{} {}\n\n", self.prompt.accent(&self.prompt.bold("impeccable")), self.prompt.dim(verb)));
     }
 
-    /// `◇ title`, then each detail dim and indented under it.
+    /// `◇ title`, then each detail dim and indented under it, set apart by a blank line as install's steps are.
     pub fn done(&self, io: &mut Io, title: &str, details: &[&str]) {
+        io.err("\n");
+        self.finished(io, title, details);
+    }
+
+    /// The finished step on the line a progress line drew on (no blank line of its own).
+    fn finished(&self, io: &mut Io, title: &str, details: &[&str]) {
         io.err(&format!("{} {}\n", self.prompt.accent("◇"), self.prompt.bold(title)));
         for d in details {
             io.err(&format!("  {}\n", self.prompt.dim(d)));
@@ -46,11 +52,13 @@ impl Steps {
     /// A link to open: its label under the step, then the address alone on a line of its own, never indented or
     /// framed, so a terminal that wraps it keeps it one piece to click or copy (a hyperlink where the terminal has them).
     pub fn link(&self, io: &mut Io, label: &str, url: &str) {
-        io.err(&format!("  {}\n\n\x1b]8;;{url}\x1b\\{}\x1b]8;;\x1b\\\n\n", self.prompt.dim(label), self.prompt.accent(url)));
+        // Dim: the step under way is what to watch; the link is there for when the browser didn't open.
+        io.err(&format!("  {}\n\n\x1b]8;;{url}\x1b\\{}\x1b]8;;\x1b\\\n", self.prompt.dim(label), self.prompt.dim(url)));
     }
 
     /// `◆ label` with a spinner, redrawn in place until the returned line is finished or dropped.
     pub fn progress(&self, io: &mut Io, label: &str) -> Progress {
+        io.err("\n");
         let _ = io.stderr.flush();
         let stop = Arc::new(AtomicBool::new(false));
         let text = format!("{} {}", self.prompt.accent("◆"), self.prompt.bold(label));
@@ -76,6 +84,7 @@ impl Steps {
     pub fn choose(&mut self, io: &mut Io, question: &str, options: &[(&str, Option<&str>)], initial: usize) -> R<usize> {
         let options: Vec<RadioOption> =
             options.iter().map(|(label, hint)| RadioOption { label: (*label).to_string(), hint: hint.map(str::to_string) }).collect();
+        io.err("\n");
         self.prompt.radio(io, question, &options, initial)
     }
 
@@ -160,7 +169,7 @@ impl Progress {
     /// Stop the spinner and draw the finished step in its place.
     pub fn done(mut self, steps: &Steps, io: &mut Io, title: &str, details: &[&str]) {
         self.halt();
-        steps.done(io, title, details);
+        steps.finished(io, title, details);
     }
 
     /// Stop the spinner and leave the line empty, for a caller that prints its own outcome.

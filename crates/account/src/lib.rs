@@ -258,7 +258,7 @@ fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
             }
             let label = if open_browser(url) { "Opening your browser. If it doesn't open, use this link:" } else { "Open this link to sign in:" };
             steps.link(io, label, url);
-            waiting = Some(steps.progress(io, "Waiting for you to sign in in the browser"));
+            waiting = Some(steps.progress(io, "Waiting for you in the browser"));
             return;
         }
         if no_browser {
@@ -276,19 +276,21 @@ fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
     };
     let result = login(&env, &mut open, timeout);
     if let Some(steps) = &steps {
-        if let Some(p) = waiting.take() {
-            p.clear();
-        }
+        // The waiting line turns into the outcome in place.
+        let finish = |io: &mut Io, waiting: Option<impeccable_common::steps::Progress>, title: &str| match waiting {
+            Some(p) => p.done(steps, io, title, &[]),
+            None => steps.done(io, title, &[]),
+        };
         return match result {
             Ok(done) => {
                 // The plan's lines under the step, as the plain path prints them.
                 let ((), plan) = steps.held(io, |io| report_after_sign_in(io, &done, &env));
-                steps.done(io, &format!("Signed in to {}", done.account.display_name()), &[]);
+                finish(io, waiting.take(), &format!("Signed in to {}", done.account.display_name()));
                 steps.details(io, &plan);
                 LoginOutcome::SignedIn(done.account)
             }
             Err(e) => {
-                steps.done(io, &format!("Sign-in failed: {e}"), &[]);
+                finish(io, waiting.take(), &format!("Sign-in failed: {e}"));
                 LoginOutcome::Failed
             }
         };
