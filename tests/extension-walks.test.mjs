@@ -66,17 +66,21 @@ describe('walk hand-off', () => {
     assert.equal(readHandoff(JSON.stringify(block({ persona: { name: 'Robert', role: '', sees: 'older-eyes' } })), PAGE).handoff.persona.sees, 'older-eyes');
   });
 
-  // The store build takes a walk from our production pages alone; the build loaded unpacked, from staging and this machine too.
-  for (const [label, page, socket] of [
-    ['production', PAGE, block().socket],
-    ['staging', 'https://app.staging.impeccable.style/app/acme/outings/o1', 'wss://staging.impeccable.reviews/api/outings/o1/socket'],
-    ['this machine', 'http://app.localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket'],
-    ['this machine without the app host', 'http://localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket'],
+  // The store build takes a walk from our production pages alone; the build loaded unpacked, from staging too, and
+  // from this machine only on the port of the local account server the person chose.
+  const LOCAL = 'http://api.localhost:8794';
+  for (const [label, page, socket, server, unpacked] of [
+    ['production', PAGE, block().socket, undefined, true],
+    ['staging', 'https://app.staging.impeccable.style/app/acme/outings/o1', 'wss://staging.impeccable.reviews/api/outings/o1/socket', undefined, true],
+    ['this machine', 'http://app.localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket', LOCAL, true],
+    ['this machine without the app host', 'http://localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket', LOCAL, true],
+    ['this machine on another port than the chosen server', 'http://localhost:9000/app/acme/outings/o1', 'ws://localhost:9000/api/outings/o1/socket', LOCAL, false],
+    ['this machine with no local server chosen', 'http://localhost:8794/app/acme/outings/o1', 'ws://localhost:8794/api/outings/o1/socket', undefined, false],
   ]) {
-    it(`takes a hand-off from ${label} in the build loaded unpacked${label === 'production' ? ' and the store build' : ', not the store build'}`, async () => {
+    it(`${unpacked ? 'takes' : 'refuses'} a hand-off from ${label} in the build loaded unpacked${label === 'production' ? ', and the store build takes it' : ', and the store build refuses it'}`, async () => {
       const store = await import(pathToFileURL(path.join(STORE(), 'walks/handoff.js')).href);
       const text = JSON.stringify(block({ socket }));
-      assert.deepEqual([readHandoff(text, page).ok, store.readHandoff(text, page).ok], [true, label === 'production']);
+      assert.deepEqual([readHandoff(text, page, server).ok, store.readHandoff(text, page, server).ok], [unpacked, label === 'production']);
     });
   }
 

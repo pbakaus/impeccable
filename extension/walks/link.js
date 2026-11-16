@@ -140,7 +140,9 @@ async function take(text, sender, sees) {
   await ready;
   // Chrome's own account of who sent it: the top frame of a tab on our outing page, through this extension's script.
   if (sender.id !== chrome.runtime.id || sender.frameId !== 0 || !sender.tab || !isOutingPage(sender.url ?? '')) return { ok: false, why: 'origin' };
-  const read = readHandoff(text, sender.url);
+  // On this machine, only the stack of the account server the person chose (handoff.js): never any other port.
+  const { accountServer } = await chrome.storage.local.get('accountServer').catch(() => ({}));
+  const read = readHandoff(text, sender.url, accountServer);
   if (!read.ok) return read;
   // How the persona's card says it sees the page: beside the block on the page (its `data-sees`), never in it, as
   // builds before the sight filter refuse a block that carries it. No panel picks on this path, so the card's holds.

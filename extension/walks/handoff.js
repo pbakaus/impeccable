@@ -97,13 +97,28 @@ function ownSocket(socket, page, outing) {
   try { return new URL(socket).href === new URL(`${origin}/api/outings/${outing}/socket`).href; } catch { return false; }
 }
 
+/** The local account server's address (account/flow.js), with its port as the first group. */
+const LOCAL_SERVER = /^http:\/\/api\.localhost(?::(\d{1,5}))?$/;
+
 /**
- * Reads a hand-off block's text as it came from `pageUrl`. `{ ok: true, handoff }`, or `{ ok: false, why }` with
- * `why` one of: `origin` (not our outing page), `malformed` (not the JSON object it must be), or the name of the
- * field that is missing or wrong.
+ * Whether a page on this machine is the local stack of the account server the person chose (`server`, the popup's
+ * setting): the same port, its site and app hosts being `localhost` and `app.localhost`. Any other port on this
+ * machine is some other program's and never hands a walk over; so does no port while another server is chosen.
  */
-export function readHandoff(text, pageUrl) {
-  if (!isOutingPage(pageUrl)) return no('origin');
+function onChosenStack(page, server) {
+  if (page.hostname !== 'localhost' && page.hostname !== 'app.localhost') return true;
+  const chosen = LOCAL_SERVER.exec(typeof server === 'string' ? server : '');
+  return chosen !== null && page.port === (chosen[1] ?? '');
+}
+
+/**
+ * Reads a hand-off block's text as it came from `pageUrl`, with `server` the account server the person chose.
+ * `{ ok: true, handoff }`, or `{ ok: false, why }` with `why` one of: `origin` (not our outing page, or one on this
+ * machine off the chosen server's port), `malformed` (not the JSON object it must be), or the name of the field that
+ * is missing or wrong.
+ */
+export function readHandoff(text, pageUrl, server) {
+  if (!isOutingPage(pageUrl) || !onChosenStack(new URL(pageUrl), server)) return no('origin');
   return readBlock(text, (socket, outing) => ownSocket(socket, new URL(pageUrl), outing), admit);
 }
 
