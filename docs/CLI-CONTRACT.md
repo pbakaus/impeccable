@@ -3130,3 +3130,35 @@ YOUR_TASTE: the person's own standing design preferences, read from their Impecc
 IMPECCABLE_NO_TASTE suppresses both the context block and scheduling when it
 is non-empty and neither 0 nor false (false is case-insensitive). With no
 cache, context's existing output remains unchanged.
+
+## `mcp` (REN-2053)
+
+`impeccable mcp` is the one Impeccable MCP server a coding agent runs, over
+stdio: one JSON-RPC message per line in, one per line out. It never writes
+anything but MCP frames to stdout; diagnostics go to stderr. `--help` prints
+its usage and exits 0; otherwise it serves until stdin closes and exits 0.
+
+- **Proxy.** Every request goes to the account service's `/mcp` under the
+  CLI's own stored sign-in (`impeccable_account` `Session`, which refreshes a
+  stale access token under the lifecycle lock). Replies pass through as the
+  service sent them. `initialize` names the server `Impeccable` at the
+  engine's version with `capabilities.tools`, and passes on the service's
+  `instructions` when it can be read; `ping` is answered locally;
+  notifications get no reply.
+- **Start never opens a browser.** Signed out or unreachable, `initialize`
+  answers locally with the client's protocol version.
+- **Sign-in again.** When a `tools/list` or `tools/call` meets a sign-in that
+  is gone or lacks a scope (no sign-in, refresh refused, 401 or 403), the call
+  is held: a `notifications/progress` with `Waiting for you to approve in the
+  browser` (only when the request carried a `progressToken`), the CLI's
+  loopback sign-in in the browser, then the call once more. One sign-in runs
+  per machine at a time; a second agent's call waits for it. Not approved
+  within five minutes: a tool error result (`isError: true`) saying so.
+- **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, or Linux without
+  `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
+  line ``Sign in again: run `impeccable login` ``.
+- **Never written anywhere:** a token, an authorization code, the `state`
+  value or the authorization URL.
+- **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
+  write, personas, Taste, journeys) only when the service's metadata says
+  `impeccable_cli_mcp: true`, and only those it lists.
