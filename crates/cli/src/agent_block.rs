@@ -369,16 +369,112 @@ pub(crate) fn user_rule_files(io: &impeccable_common::Io) -> Vec<(&'static str, 
     out
 }
 
+/// The always-applied Cursor rule that carries personal switches in a repository.
+const CURSOR_HEAD: &str = "---\ndescription: Impeccable, your personal switches (kept out of git)\nalwaysApply: true\n---\n";
+const CURSOR_RULE: &str = ".cursor/rules/impeccable.mdc";
+
+fn git(cwd: &Path, args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new("git").args(args).current_dir(cwd).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Cursor keeps its user rules in its settings, not a file, so its personal switches go
+/// into the repository the agent works in (REN-2056): `.cursor/rules/impeccable.mdc`, an
+/// always-applied rule kept out of git by `.git/info/exclude`, which is local and never
+/// committed. Only when Cursor is installed (`~/.cursor`), the working directory is in a
+/// git work tree, and that file isn't tracked (a tracked one is the team's).
+pub(crate) fn cursor_personal_file(io: &impeccable_common::Io) -> Option<PathBuf> {
+    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
+    if !home.join(".cursor").is_dir() {
+        return None;
+    }
+    let root = PathBuf::from(git(&io.cwd, &["rev-parse", "--show-toplevel"])?);
+    // A symlinked `.cursor`, `rules` or rule could lead into a folder the team shares.
+    let linked = [".cursor", ".cursor/rules", CURSOR_RULE]
+        .iter()
+        .any(|p| fs::symlink_metadata(root.join(p)).is_ok_and(|m| m.file_type().is_symlink()));
+    let tracked = git(&root, &["ls-files", "--error-unmatch", CURSOR_RULE]).is_some();
+    (!linked && !tracked).then(|| root.join(CURSOR_RULE))
+}
+
+/// Put exactly the switches `on` in Cursor's personal rule, with its header; the file
+/// goes when none is on, and git is told to leave it alone.
+pub(crate) fn write_cursor(path: &Path, on: &[&str]) -> Result<bool> {
+    locked(path, || {
+        let before = read(path)?;
+        if before.is_none() && on.is_empty() {
+            return Ok(false);
+        }
+        // A rule there that isn't ours (no header of ours) is left as it is.
+        if before.as_ref().is_some_and(|b| !b.starts_with(CURSOR_HEAD)) {
+            return Err("a Cursor rule of that name is already there".into());
+        }
+        let start = before.clone().unwrap_or_else(|| CURSOR_HEAD.to_string());
+        let after = with_switches(&start, on)?;
+        if after.trim_end() == CURSOR_HEAD.trim_end() {
+            if before.is_some() {
+                fs::remove_file(path).map_err(|e| e.to_string())?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        if Some(&after) == before.as_ref() {
+            return Ok(false);
+        }
+        exclude(path)?;
+        // The repository's own .gitignore can override a local exclusion (`!*.mdc`): then
+        // the rule could be committed, so it isn't written.
+        let root = path.ancestors().nth(3).ok_or("no repository folder")?;
+        if git(root, &["check-ignore", "-q", "--no-index", CURSOR_RULE]).is_none() {
+            return Err("git wouldn't ignore it here".into());
+        }
+        write(path, after.as_bytes())?;
+        Ok(true)
+    })
+}
+
+/// Name the rule in the repository's `info/exclude` (the shared one for worktrees).
+fn exclude(path: &Path) -> Result<()> {
+    let root = path.ancestors().nth(3).ok_or("no repository folder")?;
+    let common = git(root, &["rev-parse", "--git-common-dir"]).ok_or("not a git repository")?;
+    let common = if Path::new(&common).is_absolute() { PathBuf::from(common) } else { root.join(common) };
+    let file = common.join("info").join("exclude");
+    let line = format!("/{CURSOR_RULE}");
+    // Its bytes are kept as they are: only a missing file reads as empty.
+    let bytes = match fs::read(&file) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.to_string()),
+    };
+    if bytes.split(|b| *b == b'\n').any(|l| l.trim_ascii() == line.as_bytes()) {
+        return Ok(());
+    }
+    fs::create_dir_all(file.parent().ok_or("no info folder")?).map_err(|e| e.to_string())?;
+    let mut out = bytes;
+    if !out.is_empty() && !out.ends_with(b"\n") {
+        out.push(b'\n');
+    }
+    out.extend_from_slice(line.as_bytes());
+    out.push(b'\n');
+    fs::write(&file, out).map_err(|e| e.to_string())
+}
+
 /// One line per installed agent: its user-level rule file and the switches on in it.
 pub(crate) fn listing(io: &impeccable_common::Io) -> String {
     let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
-    let files = user_rule_files(io);
+    let mut files: Vec<(&str, PathBuf, Option<String>)> =
+        user_rule_files(io).into_iter().map(|(n, f)| (n, f, None)).collect();
+    if let Some(cursor) = cursor_personal_file(io) {
+        files.push(("Cursor", cursor, Some(format!("this repository's {CURSOR_RULE}"))));
+    }
     if files.is_empty() {
         return "No agent's user-level rule file found.\n".into();
     }
     let mut out = String::new();
-    for (name, file) in files {
-        let shown = file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()));
+    for (name, file, label) in files {
+        let shown = label.unwrap_or_else(|| {
+            file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()))
+        });
         out.push_str(&match switches_in(&file) {
             Ok(ids) if ids.is_empty() => format!("{name} ({shown}): none\n"),
             Ok(ids) => format!("{name} ({shown}): {}\n", ids.join(", ")),

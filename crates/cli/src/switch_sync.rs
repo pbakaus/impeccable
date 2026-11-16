@@ -41,7 +41,9 @@ pub fn schedule(io: &Io) {
 
 /// Every agent's user-level rule file on this machine (`agent_block::user_rule_files`).
 pub(crate) fn rule_files(io: &Io) -> Vec<PathBuf> {
-    agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect()
+    let mut files: Vec<PathBuf> = agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect();
+    files.extend(agent_block::cursor_personal_file(io));
+    files
 }
 
 /// What the worker does, decided from the page's set, the base and each file's set.
@@ -150,6 +152,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     let mut sets = Vec::new();
     for f in &files {
         // Only a missing file reads as no switches; one that can't be read stops here.
+        // Cursor's rule is per repository while the set is per person, so an old copy in a
+        // repository last visited long ago must never read as an edit: it is only ever
+        // brought up to the page.
+        if f.ends_with(".cursor/rules/impeccable.mdc") {
+            sets.push(None);
+            continue;
+        }
         match agent_block::block_in(f) {
             Ok(Some(ids)) => sets.push(Some(ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
             Ok(None) if known.contains(&f.display().to_string()) => sets.push(Some(vec![])),
@@ -165,13 +174,24 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
             return false;
         }
         let refs: Vec<&str> = on.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
-        files.iter().all(|f| agent_block::write_switches(f, &refs).is_ok())
+        // Cursor's rule is projected on its own below: a repository that can't take it
+        // never holds back the shared base.
+        files
+            .iter()
+            .filter(|f| !f.ends_with(".cursor/rules/impeccable.mdc"))
+            .all(|f| agent_block::write_switches(f, &refs).is_ok())
     };
+    // What this refresh sent and the service took, if anything: Cursor's rule follows it.
+    let mut pushed: Option<Vec<String>> = None;
     let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
             let first = remote.me.is_none();
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
-            match link.push(&catalog, &refs, first) {
+            let sent = link.push(&catalog, &refs, first);
+            if sent.is_some() {
+                pushed = Some(on.clone());
+            }
+            match sent {
                 Some(_) if write_all(&on, &link) => Some(on),
                 Some(_) => Some(on),
                 // Not sent: the base stays, so the next refresh still sees the change.
@@ -183,6 +203,17 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         }
         Step::Nothing => remote.me.clone().or(base.clone()),
     };
+    // Cursor's rule in this repository ends at the set this refresh settled on (what it
+    // just sent, or the page's), whatever the step; a repository that can't take it is
+    // skipped without touching the shared state.
+    // The retry base is never Cursor's target: a set just sent, else the page's.
+    let settled = pushed.or_else(|| remote.me.clone());
+    if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
+        if link.still_current() {
+            let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
+            let _ = agent_block::write_cursor(&cursor, &refs);
+        }
+    }
     let mut next = json!({ "issuer": account.issuer, "fetchedAt": impeccable_account::session::now() });
     if let Some(set) = synced {
         next["base"] = json!(sorted(set));
