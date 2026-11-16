@@ -182,6 +182,7 @@ export const COPY = {
     'tab-closed': 'The tab was closed.',
     connection: 'The connection dropped.',
     'switched-off': 'Journeys were switched off, so this one stopped.',
+    'stale-page': "The page wouldn't load again after the sign-in, so this journey stopped.",
     'left-site': (site) => `The page left ${hostOf(site) || 'the allowed address'}.`,
   },
 

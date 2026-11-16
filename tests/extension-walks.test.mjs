@@ -502,7 +502,15 @@ describe('walk worker', () => {
   const page = { seen: {} };
   const answers = {
     'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'about:blank' } } }),
-    'Page.navigate': () => ({ loaderId: 'l1' }),
+    // Chrome commits a new document at the address, then loads it.
+    'Page.navigate': ({ url }) => {
+      const loaderId = `nav-${(navigations += 1)}`;
+      setTimeout(() => {
+        fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url } });
+        fire('Page.lifecycleEvent', { frameId: 'main', name: 'load', loaderId });
+      }, 1);
+      return { loaderId };
+    },
     'Page.getLayoutMetrics': () => ({ cssLayoutViewport: { clientWidth: 100, clientHeight: 80 } }),
     'Page.captureScreenshot': () => new Promise((resolve) => setTimeout(() => resolve({ data: btoa(String(sent.length)) }), 5)),
     // One context a world: the walk's lookout is 9, any other world its own.
@@ -521,6 +529,7 @@ describe('walk worker', () => {
   };
   const worlds = {};
   let reloads = 0;
+  let navigations = 0;
   let scripts = 0;
   const fireOn = (tabId, method, params) => { for (const listener of listeners['debugger-event']) listener({ tabId }, method, params); };
   const fire = (method, params) => fireOn(11, method, params);
@@ -777,36 +786,112 @@ describe('walk worker', () => {
     }
   });
 
-  // Server code from before a sign-in never meets the person: its new-document scripts are off while they sign in, and
-  // a document from before the pause is loaded afresh, its scripts back on first, before the walk does anything there.
-  for (const [where, during, reloaded] of [['the same page', () => {}, 1], ['a page the person moved on to', () => fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'n2', url: 'http://localhost:3000/home' } }), 0]]) {
-    it(`takes the server’s page scripts off at a sign-in and puts them back before the next op on ${where} (REN-2052)`, async () => {
+  // Server code from before a pause never meets what the person typed (REN-2052). Each row: a page with a server script
+  // for new pages, a pause (a sign-in, or a take-over), what happens meanwhile, then Continue or hand-back and the next
+  // picture. `left`: that page is left for a fresh one, by a GET to where it was as the pause began, never a reload.
+  // After a secret, `window.name` is cleared before the script goes back on, and it runs once in a page that started
+  // without it.
+  const BEFOREUNLOAD = 'beforeunload';
+  for (const [row, how, during, left] of [
+    // Catches: a listener left in the page from before the pause still there after Continue.
+    ['a sign-in on the same page', 'sign-in', () => {}, true],
+    // Catches: a reload, which sends a posted form again and keeps a copy put in the address's fragment.
+    ['a sign-in on a page a form posted to, a copy put in its fragment', 'sign-in', (at) => fire('Page.navigatedWithinDocument', { frameId: 'main', url: `${at}#hunter2` }), true],
+    // Catches: a beforeunload dismissed, which cancels the fresh page and leaves the walk refused for good.
+    ['a sign-in on a page that asks before it unloads', 'sign-in', BEFOREUNLOAD, true],
+    // Catches: the page after the sign-in without its page-start scripts (consent rules, system face, locale).
+    ['a sign-in the person moved on from', 'sign-in', () => fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `home-${(navigations += 1)}`, url: 'http://localhost:3000/home' } }), false],
+    // Catches: every take-over losing the person's page and their work on it.
+    ['a take-over that met no password field', 'takeover', () => {}, false],
+    // Catches: a password typed in a take-over, on a page the server's code reached, still read after hand-back.
+    ['a take-over that met a password field', 'takeover', async () => { page.seen = { password: true }; fire('Runtime.bindingCalled', { name: '__impeccableWalkFelt', payload: 'keydown' }); await settle(5); page.seen = {}; }, true],
+  ]) {
+    it(`puts the server’s page scripts back only on a page code from before ${row} cannot reach (REN-2052)`, async () => {
       const { ops, command, current, walk } = await walked();
       page.seen = {};
-      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `before-${reloaded}`, url: `http://localhost:3000/login-${reloaded}` } });
-      const { identifier } = (await ops.evaluateOnNewDocument({ fn: 'copyKeys' })).value;
+      const before = `before-${(navigations += 1)}`;
+      const address = `http://localhost:3000/login-${navigations}`;
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: before, url: address } });
+      const fn = `copyKeys${navigations}`;
+      const { identifier } = (await ops.evaluateOnNewDocument({ fn })).value;
+      const navigate = answers['Page.navigate'];
+      if (during === BEFOREUNLOAD) {
+        // Chrome asks the page first, and goes only if the walk accepts.
+        answers['Page.navigate'] = (params) => {
+          answers['Page.handleJavaScriptDialog'] = ({ accept }) => { delete answers['Page.handleJavaScriptDialog']; if (accept) navigate(params); };
+          fire('Page.javascriptDialogOpening', { type: 'beforeunload', message: '' });
+          return { loaderId: 'asked' };
+        };
+      }
       const at = sent.length;
-      page.seen = { password: true };
-      const shot = ops.screenshot({ format: 'png' });
-      await settle(20);
-      assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
-      const removed = sent.flatMap((m, i) => (i >= at && m === 'Page.removeScriptToEvaluateOnNewDocument' ? [args[i].identifier] : []));
-      assert.equal(removed.at(-1), identifier, 'off as the pause lands');
-      during();
-      page.seen = {};
-      assert.equal(await command('resume'), true);
-      await shot;
-      const after = sent.slice(at).filter((m, i, all) => ['Page.addScriptToEvaluateOnNewDocument', 'Page.reload', 'Page.captureScreenshot'].includes(m) && m !== all.slice(0, i).findLast((n) => ['Page.addScriptToEvaluateOnNewDocument', 'Page.reload', 'Page.captureScreenshot'].includes(n)));
-      assert.deepEqual(after, ['Page.addScriptToEvaluateOnNewDocument', ...Array(reloaded).fill('Page.reload'), 'Page.captureScreenshot'], 'back on, then a fresh page, then the picture');
-      assert.equal(args[sent.indexOf('Page.addScriptToEvaluateOnNewDocument', at)].source, 'copyKeys');
-      assert.notEqual(walk.loader, `before-${reloaded}`, 'not the document from before the pause');
+      let shot;
+      try {
+        if (how === 'sign-in') {
+          page.seen = { password: true };
+          shot = ops.screenshot({ format: 'png' });
+          await settle(20);
+          assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+        } else assert.equal(await command('takeover'), true);
+        assert.ok(sent.slice(at).some((m, i) => m === 'Page.removeScriptToEvaluateOnNewDocument' && args[at + i].identifier === identifier), 'off as the pause lands');
+        if (typeof during === 'function') await during(address);
+        page.seen = {};
+        assert.equal(await command(how === 'sign-in' ? 'resume' : 'handback'), true);
+        await (shot ?? ops.screenshot({ format: 'png' }));
+      } finally {
+        answers['Page.navigate'] = navigate;
+      }
+      const steps = sent.slice(at).flatMap((m, i) => {
+        const p = args[at + i];
+        if (m === 'Page.navigate') return [`go ${p.url}`];
+        if (m === 'Page.reload') return ['reload'];
+        if (m === 'Page.addScriptToEvaluateOnNewDocument' && p.source === fn) return ['on'];
+        if (m === 'Runtime.evaluate' && p.expression === fn) return ['ran'];
+        if (m === 'Runtime.evaluate' && p.expression.includes('window.name')) return ['name cleared'];
+        if (m === 'Page.captureScreenshot') return ['picture'];
+        return [];
+      });
+      const secret = how === 'sign-in' || left;
+      const ran = how === 'sign-in' || left;
+      assert.deepEqual(steps, [...(left ? [`go ${address}`] : []), ...(secret ? ['name cleared'] : []), 'on', ...(ran ? ['ran'] : []), 'picture']);
+      if (left) assert.notEqual(walk.loader, before, 'a fresh page');
+      if (how === 'takeover' && !left) assert.equal(walk.loader, before, 'the same page, the person’s work on it kept');
+      if (during === BEFOREUNLOAD) assert.ok(args.slice(at).some((p, i) => sent[at + i] === 'Page.handleJavaScriptDialog' && p.accept === true), 'the walk’s own leaving accepted it');
+      assert.ok(!told.slice(-20).some((m) => String(m.url).includes('hunter2')), 'no address the page took after the pause is told');
       const next = sent.length;
       await ops.screenshot({ format: 'png' });
-      assert.equal(since(next, 'Page.reload') + since(next, 'Page.addScriptToEvaluateOnNewDocument'), 0, 'once');
-      // Off the page Continue was pressed on, for the tests after.
-      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `off-${reloaded}`, url: 'http://localhost:3000/' } });
+      assert.deepEqual([since(next, 'Page.navigate'), since(next, 'Page.addScriptToEvaluateOnNewDocument')], [0, 0], 'once');
     });
   }
+
+  // Catches: a site that keeps its sign-in in memory looping, sign-in after fresh page after sign-in.
+  it('signs in on the fresh page without leaving it again, the server’s scripts off until then (REN-2052)', async () => {
+    const { ops, command, current, walk } = await walked();
+    page.seen = {};
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: `before-${(navigations += 1)}`, url: 'http://localhost:3000/app' } });
+    const fn = `memory${navigations}`;
+    await ops.evaluateOnNewDocument({ fn });
+    const at = sent.length;
+    page.seen = { password: true };
+    const shot = ops.screenshot({ format: 'png' });
+    await settle(20);
+    // The fresh page asks again: its sign-in was in the memory the walk let go of.
+    const navigate = answers['Page.navigate'];
+    answers['Page.navigate'] = (params) => { page.seen = { password: true }; return navigate(params); };
+    try {
+      page.seen = {};
+      assert.equal(await command('resume'), true, 'Continue with the sign-in done in the page');
+      await settle(20);
+    } finally {
+      answers['Page.navigate'] = navigate;
+    }
+    assert.deepEqual([current().state, current().held, since(at, 'Page.navigate')], ['paused', 'sign-in', 1]);
+    const fresh = walk.loader;
+    page.seen = {};
+    assert.equal(await command('resume'), true);
+    await shot;
+    assert.deepEqual([since(at, 'Page.navigate'), walk.loader], [1, fresh], 'not left again');
+    assert.equal(args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument' && p.source === fn).length, 1, 'back on once it was signed in');
+  });
 
   it('runs the server’s page reads in a world of their own, and only the consent rules’ reads in the page’s (REN-2052)', async () => {
     const { ops } = await walked();
@@ -819,17 +904,43 @@ describe('walk worker', () => {
     assert.equal(context('readConsentState'), undefined, 'the page’s own world');
   });
 
-  it('refuses a script while a password is in a field, and pauses at the sign-in (REN-2052)', async () => {
+  // Catches: a script run on the page the password was typed in, or refused where the server waits out a pause.
+  it('holds a script while a password is in a field, and runs it after Continue on a fresh page (REN-2052)', async () => {
     const { ops, command, current } = await walked();
     fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
     page.seen = { password: true, filled: true };
     const at = sent.length;
-    await assert.rejects(ops.evaluate({ fn: 'readField', args: [] }), { name: 'Paused' });
+    const read = ops.evaluate({ fn: 'readField', args: [] });
+    await settle(20);
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
-    assert.ok(!args.slice(at).some((p) => String(p?.expression).includes('readField')), 'never sent to the tab');
+    assert.ok(!args.slice(at).some((p) => String(p?.expression).includes('readField')), 'not sent while it is filled');
     page.seen = {};
     assert.equal(await command('resume'), true);
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled-off', url: 'http://localhost:3000/' } });
+    await read;
+    const ran = args.findIndex((p, i) => i >= at && String(p?.expression).includes('readField'));
+    assert.ok(sent.indexOf('Page.navigate', at) >= 0 && sent.indexOf('Page.navigate', at) < ran, 'on a fresh page');
+  });
+
+  // Catches: a page that never loads again leaving every later op, `goto` included, to wait and be refused.
+  it('ends the walk, saying why, when the page from before a sign-in will not load again (REN-2052)', async () => {
+    const { ops, command, current } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'stuck', url: 'http://localhost:3000/stuck' } });
+    page.seen = { password: true };
+    const shot = ops.screenshot({ format: 'png' }).then(() => null, (err) => err.name);
+    await settle(20);
+    const navigate = answers['Page.navigate'];
+    answers['Page.navigate'] = () => ({ loaderId: 'stuck-again', errorText: 'net::ERR_ABORTED' });
+    try {
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      assert.equal(await shot, 'OutingClosed');
+    } finally {
+      answers['Page.navigate'] = navigate;
+    }
+    assert.deepEqual([current().state, current().failure?.reason], ['failed', 'stale-page']);
+    assert.equal(told.findLast((m) => m.event === 'stopped')?.reason, 'stale-page');
+    // The next test starts a walk of its own.
+    opened = undefined;
   });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it

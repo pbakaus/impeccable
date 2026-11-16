@@ -355,6 +355,8 @@ async function pointer(work) {
 /** Set while the person has taken the tab over (control.js): the film takes nothing of what they do. */
 let theirs = false;
 export function personHas(on) { theirs = on; }
+/** Whether the film takes nothing now: paused, the person's, or on a page a secret may have met since a pause (`seal`). */
+const blind = (tab) => hush || theirs || Boolean(tab.withdrawn && tab.secret) || Boolean(tab.tainted?.has(tab.loader));
 
 async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   await cut();
@@ -366,7 +368,7 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
   film.done = (async () => {
     while (film.on && walk === tab) {
       // Paused, or in the person's hands: the film stands still, taking nothing, until the walk goes on (or the film is cut).
-      if (hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
+      if (blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
       const started = Date.now();
       try {
         let size = tab.viewport;
@@ -375,11 +377,11 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
           size = { width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
         }
         const scale = Math.min(1, maxWidth > 0 ? maxWidth / size.width : 1, maxHeight > 0 ? maxHeight / size.height : 1);
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         // A sign-in on the page is a pause before it is a picture; a page that cannot be read is not filmed.
         const seen = await look();
         if (signInShows(tab, seen)) { spotted(); continue; }
-        if (!seen || hush || theirs) { await sleep(FILM_RETRY_MS); continue; }
+        if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
         // Not while the pointer acts (`pointer`).
         if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
@@ -392,14 +394,14 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         const frame = await smaller(await seenAs(shot.data, 'jpeg', 80), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
         // Taken as the walk was paused or taken over: never sent.
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         // A page that has not changed is not sent again: a film held open (the walk paused mid-wait) would otherwise send the same picture until it ends.
         if (frame === film.last) continue;
         // Held until the last one sent is `FILM_GAP_MS` old: paced where it is sent, so a picture that took longer or
         // shorter to take does not close the gap. In short sleeps, so a film that is cut is not kept waiting on one.
         while (film.on && walk === tab && Date.now() - film.sentAt < FILM_GAP_MS) await sleep(Math.min(8, FILM_GAP_MS - (Date.now() - film.sentAt)));
         if (!film.on || walk !== tab) break;
-        if (hush || theirs) continue;
+        if (blind(tab)) continue;
         film.last = frame;
         film.sentAt = Date.now();
         say({ event: 'cdp', method: 'Page.screencastFrame', params: { data: frame, sessionId: film.id, metadata: { deviceWidth: size.width, deviceHeight: size.height, pageScaleFactor: 1, offsetTop: 0, scrollOffsetX: 0, scrollOffsetY: 0, timestamp: Date.now() / 1000 } } });
@@ -458,7 +460,10 @@ export async function unhold() {
   // What the network was busy with went unheard while paused: only what it asks from now on counts.
   tab.inflight.clear();
   tab.quietSince = Date.now();
-  say({ event: 'url', url: tab.url });
+  // Not from a page the server's code reached, while its scripts are off (`seal`): that code may have put what was typed
+  // in the address.
+  if (unclean(tab)) tab.tellUrl = true;
+  else say({ event: 'url', url: tab.url });
 }
 
 /** The world the walk reads the page in for itself (signin.js), never the page's own. */
@@ -466,54 +471,134 @@ const LOOKOUT = 'impeccable-walk-lookout';
 
 /*
  * What the server put in the page never meets the person signing in (REN-2052). At a sign-in pause or a take-over its
- * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them, and every
- * document the walk had until then is marked. Before the walk's next op ({@link fresh}) the scripts go back on, and a
- * marked document is loaded afresh: whatever the server's code left running in it (a listener copying keys, a copy in
- * a variable) goes with it. What such code wrote to the site's storage stays: a reload keeps sessionStorage and the rest.
+ * scripts for new documents are taken off the tab ({@link seal}), so no page the person opens then runs them. Every
+ * document the server's code could have reached until then is suspect. Before the walk's next op ({@link fresh}):
+ *   1. A suspect document is marked when a secret may have met it: a sign-in pause, or a take-over in which a
+ *      password-like field showed on it. A plain take-over keeps its page, and the person's work on it.
+ *   2. A marked document is left with a GET to the address it had when the pause began (never `Page.reload`, which
+ *      keeps `history.state` and the address's fragment, and sends a posted form again), a `beforeunload` accepted.
+ *      Its worlds go with it: a listener left there, in the page's world or the server's own, is gone. A `goto` leaves
+ *      it by itself. A page that will not be left in {@link LEAVES} tries ends the walk.
+ *   3. A sign-in on the page now keeps the scripts off, so the page the person signs in on runs none of them, and is
+ *      not left again after it (no reload loop on a site that keeps its sign-in in memory).
+ *   4. After a secret, `window.name` is cleared: it outlives a navigation on the same site.
+ *   5. The scripts go back on, and run once in a document that started without them.
+ * What such code wrote to the site's storage (sessionStorage and the rest) stays.
  */
-export function seal() {
+export function seal(kind = 'sign-in') {
   const tab = walk;
   if (!tab) return;
   tab.seals = (tab.seals ?? 0) + 1;
-  if (tab.withdrawn) return;
-  tab.withdrawn = true;
-  tab.tainted ??= new Set();
-  for (const loader of [tab.loader, ...(tab.documents ?? [])]) if (loader) tab.tainted.add(loader);
   // Sent before anything else the tab is told: a sign-in page the guard is about to let load gets none of them.
-  for (const script of tab.newDocument ?? []) if (script.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.identifier }).catch(() => undefined);
+  for (const script of tab.newDocument ?? []) {
+    if (script.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: script.identifier }).catch(() => undefined);
+    script.identifier = null;
+  }
+  if (tab.withdrawn) { if (kind === 'sign-in') tab.secret = true; return; }
+  tab.withdrawn = true;
+  tab.secret = kind === 'sign-in';
+  tab.clean ??= new Set();
+  tab.suspect = new Set([tab.loader, ...(tab.documents ?? [])].filter((loader) => loader && !tab.clean.has(loader)));
+  // Where it was as the pause began, which the server already knows: not where code left in it may have moved it since.
+  (tab.addresses ??= new Map()).set(tab.loader, tab.url);
 }
 
-/** Resolves once the walk may act on the page: its scripts back on, and not on a document from before a sign-in pause. */
-export function fresh() {
+/** How many times a marked page is left before the walk ends instead. */
+const LEAVES = 2;
+
+/**
+ * Resolves once the walk may act on the page: its scripts back on, and not on a marked document (`seal`). It also
+ * resolves when the walk was paused again meanwhile, or the page shows a sign-in, with the scripts still off: the op
+ * waits for that pause as for any other (control.js `clear`). `name`: the op about to run.
+ */
+export function fresh(name) {
   const tab = walk;
   if (!tab || (!tab.withdrawn && !tab.tainted?.has(tab.loader))) return Promise.resolve();
-  return (tab.freshening ??= renew(tab).finally(() => { tab.freshening = null; }));
+  // One at a time, each looking afresh: a `goto`'s turn leaves a marked page as it is, the next op's does not.
+  const run = (tab.freshening ?? Promise.resolve()).then(() => renew(tab, name));
+  tab.freshening = run.catch(() => undefined);
+  return run;
 }
 
-async function renew(tab) {
-  if (tab.withdrawn) {
-    const seals = tab.seals;
-    const added = [];
-    for (const script of tab.newDocument ?? []) added.push([script, (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier]);
-    // Paused again meanwhile: off again, at once.
-    if (tab.seals !== seals) {
-      for (const [, identifier] of added) if (identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => undefined);
-      throw fail('Paused', 'the journey was paused before this was done');
-    }
-    for (const [script, identifier] of added) script.identifier = identifier;
-    tab.withdrawn = false;
+async function renew(tab, name) {
+  if (walk !== tab || (!tab.withdrawn && !tab.tainted?.has(tab.loader))) return;
+  const seals = tab.seals;
+  tab.tainted ??= new Set();
+  if (tab.suspect) {
+    if (!tab.secret && tab.suspect.has(tab.loader)) tab.secret = Boolean(secretIn(await look()));
+    if (tab.seals !== seals) return;
+    if (tab.secret) { for (const loader of tab.suspect) tab.tainted.add(loader); tab.scrub = true; }
+    tab.suspect = null;
   }
-  if (!tab.tainted?.has(tab.loader)) return;
-  const page = watch();
-  try {
-    await cmd('Page.reload');
-    await page.wait((e) => e.kind === 'lifecycle' && e.name === 'load' && !tab.tainted.has(e.loaderId), OPEN_MS, 'slow').catch(() => undefined);
-  } finally {
-    page.stop();
+  if (tab.tainted.has(tab.loader)) {
+    if (name === 'goto') return;
+    await leave(tab, seals);
+    if (walk !== tab || tab.seals !== seals) return;
   }
-  // Fails closed: nothing is read of a document from before the pause.
-  if (tab.tainted.has(tab.loader)) throw fail('NotAllowed', 'the page did not load again after the sign-in');
+  if (!tab.withdrawn || (await signInNow()) !== false || tab.seals !== seals) return;
+  if (tab.scrub) {
+    await cmd('Runtime.evaluate', { expression: `window.name = ''` }).catch(() => undefined);
+    tab.scrub = false;
+  }
+  if (!(await scriptsOn(tab, seals))) return;
+  tab.withdrawn = false;
+  // A document that started with them off gets them now: written to run more than once (pristine persona-session.ts).
+  if (tab.clean?.delete(tab.loader)) for (const script of tab.newDocument ?? []) await cmd('Runtime.evaluate', { expression: script.source }).catch(() => undefined);
+  if (tab.tellUrl) { tab.tellUrl = false; say({ event: 'url', url: tab.url }); }
 }
+
+/** Leaves the marked document the tab is on (`seal`), or ends the walk. */
+async function leave(tab, seals) {
+  const at = String(tab.addresses?.get(tab.loader) ?? tab.url);
+  for (let tries = 0; tries < LEAVES; tries++) {
+    const page = watch();
+    const committed = new Set();
+    tab.leaving = true;
+    try {
+      let sent = await within(cmd('Page.navigate', { url: at }), OPEN_MS, 'slow').catch(() => null);
+      // The same address with a fragment is the same document: then without it.
+      if (sent && !sent.loaderId && at.includes('#')) sent = await within(cmd('Page.navigate', { url: at.replace(/#.*$/, '') }), OPEN_MS, 'slow').catch(() => null);
+      if (sent?.loaderId && !sent.errorText) {
+        // Loaded, or sent on by script before it did (a sign-in page that sees a session and moves on).
+        await page.wait((e) => {
+          if (e.kind === 'navigated' && !tab.tainted.has(e.loaderId)) committed.add(e.loaderId);
+          return e.kind === 'lifecycle' && e.name === 'load' && committed.has(e.loaderId);
+        }, OPEN_MS, 'slow').catch(() => undefined);
+      }
+    } finally {
+      tab.leaving = false;
+      page.stop();
+    }
+    if (walk !== tab || tab.seals !== seals) return;
+    // A fresh page. Continue was pressed with the sign-in gone from the page (signed in there): one on the fresh page
+    // is that sign-in undone (kept in the memory the walk let go of), and pauses again. Pressed with it still there
+    // (the detector got the page wrong), the fresh page's own passes too.
+    if (!tab.tainted.has(tab.loader)) { if (!tab.pastShowing) letPast(false); return; }
+  }
+  // Fails closed, and says so: nothing is read of a document from before the pause, and no op waits on it for good.
+  await endWalk({ event: 'stopped', by: 'guard', reason: 'stale-page' }, 'stale-page');
+  throw fail('OutingClosed', 'the page would not load again after the sign-in, so the journey ended');
+}
+
+/** Puts the server's new-document scripts back on the tab: false, with none of them on, if a seal came meanwhile. */
+async function scriptsOn(tab, seals) {
+  for (const script of tab.newDocument ?? []) {
+    const identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
+    // Sealed while this was on its way: `seal` took off the ones before it, this one goes now.
+    if (tab.seals !== seals || walk !== tab) {
+      if (identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier }).catch(() => undefined);
+      return false;
+    }
+    script.identifier = identifier;
+  }
+  return true;
+}
+
+/** Whether the tab is on a document the server's code may have reached, its scripts off since (`seal`). */
+const unclean = (tab) => Boolean(tab.withdrawn && !tab.clean?.has(tab.loader));
+
+/** Whether what {@link lookInPage} saw is a password-like field, empty or filled. */
+const secretIn = (seen) => seen?.password === true || seen?.filled === true;
 
 /** Whether a password-like field on the page holds a value (signin.js `lookInPage`): no script runs then. */
 export const passwordIn = async () => (await look())?.filled === true;
@@ -605,7 +690,7 @@ function stepList(key, change) {
  * tab stays at this very address, query and fragment too, so a page routed by its hash is a new page (a page the
  * detector got wrong would pause it forever). A sign-in host and a 401 still do.
  */
-export function letPast(on = true) { if (walk) walk.past = on && walk.url ? walk.url : null; }
+export function letPast(on = true) { if (walk) { walk.past = on && walk.url ? walk.url : null; walk.pastShowing = false; } }
 
 /** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
 const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && (!tab.past || tab.past !== tab.url || seen.filled === true));
@@ -629,6 +714,8 @@ export async function signInNow() {
     if (walk.lost) return null;
     if (isSignInPage(walk.url)) return true;
     const seen = await look();
+    // Let past while it still shows (`leave`).
+    if (seen && walk.past === walk.url && signingIn(seen)) walk.pastShowing = true;
     if (seen) return signInShows(walk, seen);
     await sleep(READ_GAP_MS);
   }
@@ -671,9 +758,25 @@ function setUrl(url) {
   if (!walk || walk.url === url) return;
   walk.url = url;
   // Another page: a sign-in on it pauses again.
-  if (walk.past && walk.past !== url) walk.past = null;
-  say({ event: 'url', url });
+  if (walk.past && walk.past !== url) { walk.past = null; walk.pastShowing = false; }
+  // Told once the scripts are back on (`renew`), from a page code left from before the pause no longer has.
+  if (unclean(walk)) walk.tellUrl = true;
+  else say({ event: 'url', url });
   escaped(url);
+}
+
+/**
+ * A document the top frame now has (`seal`): one that started while the server's scripts were off is clean. A page
+ * Chrome kept whole is the document it was, known by its id; one it gives a new id is taken for marked, while any is.
+ */
+function noteDocument(tab, { type, frame }) {
+  const { loaderId } = frame;
+  const known = tab.documents?.has(loaderId);
+  (tab.documents ??= new Set()).add(loaderId);
+  (tab.addresses ??= new Map()).set(loaderId, frame.url + (frame.urlFragment ?? ''));
+  if (known) return;
+  if (type === 'BackForwardCacheRestore' && (tab.suspect?.size || tab.tainted?.size)) (tab.suspect ?? tab.tainted).add(loaderId);
+  else if (tab.withdrawn) (tab.clean ??= new Set()).add(loaderId);
 }
 
 /** Fails closed: a walked tab seen off its site is no longer walked. The guard holds every request, so this is the net under it. */
@@ -734,6 +837,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
         void heldMayChange();
         setTimeout(() => void heldMayChange(), INPUT_WINDOW_MS + 1);
       }
+      // Taken over on a page the server's code reached: a password-like field there marks it (`seal`).
+      if (params.name === FELT && driver.by === 'takeover' && walk.suspect?.has(walk.loader) && !walk.secret) {
+        const tab = walk;
+        void look().then((seen) => { if (secretIn(seen) && walk === tab) tab.secret = true; });
+      }
       break;
     case 'Page.fileChooserOpened':
       // Intercepted, so no picker opened; nothing answers it, so the page gets no file.
@@ -752,9 +860,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       if (params.frame.parentId) break;
       walk.mainFrame = params.frame.id;
       walk.loader = params.frame.loaderId;
-      (walk.documents ??= new Set()).add(params.frame.loaderId);
-      // A page kept whole from before a sign-in pause is that page, whatever Chrome calls it now (`seal`).
-      if (params.type === 'BackForwardCacheRestore' && walk.tainted?.size) walk.tainted.add(params.frame.loaderId);
+      noteDocument(walk, params);
       // What the page before was still loading went with it, and Chrome does not always say so: only what the new
       // document asked for is the network being busy.
       for (const [id, loader] of walk.inflight) if (loader !== params.frame.loaderId) walk.inflight.delete(id);
@@ -785,8 +891,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       if (walk.inflight.size === 0) walk.quietSince = Date.now();
       break;
     case 'Page.javascriptDialogOpening':
-      // A native dialog holds every later command on the tab until it is answered. Dismissed, never accepted.
-      chrome.debugger.sendCommand({ tabId: walk.tabId }, 'Page.handleJavaScriptDialog', { accept: false }).catch(() => undefined);
+      // A native dialog holds every later command on the tab until it is answered. Dismissed, never accepted; but a
+      // marked page's `beforeunload` while the walk leaves it (`leave`, `goto`): it is left anyway.
+      chrome.debugger.sendCommand({ tabId: walk.tabId }, 'Page.handleJavaScriptDialog', { accept: params.type === 'beforeunload' && walk.leaving === true }).catch(() => undefined);
       say({ event: 'dialog', type: params.type, message: String(params.message).slice(0, 200) });
       break;
   }
@@ -830,6 +937,8 @@ async function lost(tab) {
   tab.lost = true;
   tab.lookout = null;
   tab.reader = null;
+  // Gone with the debugger that added them.
+  for (const script of tab.newDocument ?? []) script.identifier = null;
   if (tab.regaining) return;
   tab.regaining = true;
   try {
@@ -883,7 +992,7 @@ async function rearm(tab) {
   if (tab.sized) await sizeTo(tab.sized);
   if (tab.metrics) await cmd('Emulation.setDeviceMetricsOverride', tab.metrics);
   // Not while a sign-in pause or a take-over has them off (`seal`): they go back on before the walk's next op.
-  if (!tab.withdrawn) for (const script of tab.newDocument ?? []) script.identifier = (await cmd('Page.addScriptToEvaluateOnNewDocument', { source: script.source }))?.identifier;
+  if (!tab.withdrawn) await scriptsOn(tab, tab.seals);
   for (const hook of hooks.opened) await hook(tab, true);
   setUrl(frameTree.frame.url + (frameTree.frame.urlFragment ?? ''));
 }
@@ -1205,6 +1314,8 @@ export const ops = {
     const want = waitUntil === 'domcontentloaded' ? 'DOMContentLoaded' : 'load';
     const started = Date.now();
     const page = watch();
+    // A marked page (`seal`) is left by this, its `beforeunload` accepted.
+    walk.leaving = Boolean(walk.tainted?.has(walk.loader));
     try {
       const sent = await within(cmd('Page.navigate', { url }), timeout, navigationTimeout(timeout));
       // The address was on the site and something it led to was not: refused by name, not as a load that failed.
@@ -1227,6 +1338,7 @@ export const ops = {
       if (waitUntil === 'networkidle0') await idle(500, Math.max(1, timeout - (Date.now() - started))).catch(() => { throw fail('TimeoutError', navigationTimeout(timeout)); });
       return { value: { status: walk.statuses.get(loaded) ?? walk.statuses.get(sent.loaderId) ?? null } };
     } finally {
+      if (walk) walk.leaving = false;
       page.stop();
     }
   },
@@ -1297,9 +1409,10 @@ export const ops = {
   async evaluateOnNewDocument(req) {
     const source = expression(req);
     const tab = walk;
+    const seals = tab.seals;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
     // A sign-in pause that landed meanwhile has the tab without it (`seal`); the op is asked again after Continue.
-    if (tab.withdrawn) {
+    if (tab.withdrawn || tab.seals !== seals) {
       if (added?.identifier) void cmd('Page.removeScriptToEvaluateOnNewDocument', { identifier: added.identifier }).catch(() => undefined);
       throw fail('Paused', 'the journey was paused before this was done');
     }
