@@ -1004,8 +1004,8 @@ describe('walk worker', () => {
 
   // REN-2054: what the Fetch hold cannot see (a form posted into a new tab, workers, a frame on another site) is blocked
   // by Chrome's rules while writes are held, and only then. The walked page's own requests stay the Fetch hold's.
-  it('blocks writes the page cannot be held from only while the walk drives with writes closed', async (t) => {
-    const { ops, command, rearm, dispatch, SIGN_IN_SETTLE_MS } = await walked();
+  it('blocks writes the page cannot be held from only while the walk drives with writes closed', async () => {
+    const { ops, command, rearm, dispatch } = await walked();
     page.seen = {};
     const { query } = chrome.tabs;
     // The person's own tab, open before the walk.
@@ -1036,19 +1036,13 @@ describe('walk worker', () => {
         ['paused', () => command('pause'), true],
         ['going on', () => command('resume'), true],
         ['taken over', () => command('takeover'), false],
-        ['handed back', async () => { t.mock.timers.enable({ apis: ['Date'], now: Date.now() }); await command('handback'); }, true],
-        // The person signs in once the pause has shown a moment. Nothing says so but the time, which the rules are
-        // looked at again for; here the server's close makes them look.
-        ['a sign-in shows', () => fire('Fetch.requestPaused', { requestId: 'n-signin', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'https://accounts.google.com/signin' } }), true],
-        ['the sign-in has shown', () => { t.mock.timers.tick(SIGN_IN_SETTLE_MS); return ops.writes({ open: false }); }, false],
-        ['going on', () => command('resume'), true],
+        ['handed back', () => command('handback'), true],
         ['ended', () => ops.close(), false],
       ]) {
         await act();
         assert.equal(await blocking(), blocked, step);
       }
     } finally {
-      t.mock.timers.reset();
       chrome.tabs.query = query;
       rearm();
       dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
@@ -1103,7 +1097,10 @@ describe('walk worker', () => {
     fire('Fetch.requestPaused', { requestId: 'w-with-it', resourceType: 'XHR', frameId: 'main', request: { method: 'POST', url: `${SITE}/api/todos` } });
     await settle(5);
     assert.deepEqual(args.slice(-2).map((a) => a.responseCode ?? a.errorReason), ['Aborted', 409], 'the move refused, the write held');
-    assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
+    // The write held during the pause tells the panel to say how else to sign in (a passkey, a phone): until Continue.
+    assert.deepEqual([current().state, current().held, current().withheld], ['paused', 'sign-in', true]);
+    // Chrome's network rules (REN-2054) say the same as the Fetch hold, row by row: up while it fails a write, down while it lets one go.
+    const ruled = () => chrome.declarativeNetRequest.rules.length > 0;
     for (const [label, act, answer] of [
       ['however long the pause shows', () => t.mock.timers.tick(INPUT_WINDOW_MS * 2), 'fail'],
       ['after a press the page dispatched', () => input('pointerdown', false), 'fail'],
@@ -1115,11 +1112,13 @@ describe('walk worker', () => {
     ]) {
       act();
       assert.deepEqual(await signIn(), [`Fetch.${answer}Request`], `the sign-in sent ${label}`);
+      assert.equal(ruled(), answer === 'fail', `the network rules ${label}`);
     }
     assert.deepEqual(await answeredAs('POST', 'https://example.com/collect'), ['Fetch.failRequest'], 'never another site');
     assert.equal(await command('resume'), true);
     input('pointerdown', true);
     assert.deepEqual(await signIn(), ['Fetch.failRequest'], 'walking again: the press is not the person’s word');
+    assert.equal(current().withheld, false, 'Continue ends the pause and what it held; a write held walking is not told');
   });
 
   it('takes no picture of a page it cannot read', async () => {

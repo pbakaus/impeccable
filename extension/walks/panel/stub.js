@@ -67,6 +67,7 @@ export const STUBS = {
   'walking-live': walkingLive,
   paused: run(walking, [{ type: 'pause' }]),
   'paused-sign-in': run(walking, [{ type: 'pause', why: 'sign-in' }]),
+  'paused-sign-in-held': run(walking, [{ type: 'pause', why: 'sign-in' }, { type: 'withheld' }]),
   takeover: run(walking, [{ type: 'takeover' }]),
   asking: run(walking, [{ type: 'ask', ask: { kind: 'delete', what: 'Delete the to-do “Buy oat milk and bread”' } }]),
   'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a sample photo to the to-do’s picture field' } }]),

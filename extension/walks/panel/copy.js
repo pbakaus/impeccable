@@ -129,6 +129,8 @@ export const COPY = {
    * is paused; no screenshots are taken while it is paused.
    */
   signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
+  /** At that sign-in, once the tab sent something the pause held back: a sign-in with no press or key in the tab (a passkey, a phone, another site's frame). */
+  signInHeld: 'Signing in another way? Take over the tab, then sign in.',
   /** Before a deed the server marked (delete, pay, send), or before another site, on a journey with no plan: nothing is done until Yes. */
   ask: {
     title: 'Are you sure?',

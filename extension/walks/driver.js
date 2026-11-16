@@ -28,9 +28,9 @@ export function speak(to) { through = to; }
  * What the rest of the extension hangs on a walk: `opened` runs once the debugger is on the tab and the guard is
  * armed, before the tab goes anywhere; `closing` while the debugger can still reach the tab; `closed` with why the
  * walk let go of it (`closed`, or Chrome's reason for a detach); `said` hears every event told; `event` every
- * debugger event of the walked tab.
+ * debugger event of the walked tab; `withheld` each write the Fetch hold kept back while paused at a sign-in.
  */
-export const hooks = { opened: [], closing: [], closed: [], said: [], event: [], held: [] };
+export const hooks = { opened: [], closing: [], closed: [], said: [], event: [], held: [], withheld: [] };
 
 /**
  * Set while the walk is paused, by the person or at a sign-in: no picture is taken and nothing of the page (its
@@ -695,6 +695,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       const tab = walk;
       // Decided as it arrives, before anything below can pause the walk: a write that came with the cause of a pause is not the person's.
       const holds = holding(tab, Date.now());
+      const atSignIn = driver.by === 'sign-in';
       // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
@@ -713,6 +714,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       }, holds).then((became) => {
         if (became === 'held') {
           tab.heldWrites = (tab.heldWrites ?? 0) + 1;
+          if (atSignIn) for (const hook of hooks.withheld) hook();
           // For whoever debugs a walk in this worker's console: what was held, never its path (a path can carry a token).
           let host = '?';
           try { host = new URL(params.request.url).host; } catch { /* no address to name */ }

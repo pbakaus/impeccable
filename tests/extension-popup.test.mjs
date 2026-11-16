@@ -382,6 +382,18 @@ test('the side panel shows a finished walk on its own tab alone, with one button
   assert.deepEqual([back.body.dataset.screen, back.opened], ['home', []], 'Back in the top row goes home and opens nothing');
 });
 
+// Catches a paused screen that never tells the person to take over when a passkey or phone sign-in was held.
+test('the side panel’s sign-in pause says how else to sign in only once a write was held, and not after Continue', async () => {
+  const { reduce } = await import('../extension/walks/view.js');
+  const h = await sidePanel({ view: STUBS['paused-sign-in'], status: signedIn });
+  const hinted = () => [h.acts(), h.app.querySelectorAll('[data-hint="take-over"]').length];
+  assert.deepEqual(hinted(), [['resume', 'stop'], 0], 'no write held');
+  await h.show(STUBS['paused-sign-in-held']);
+  assert.deepEqual(hinted(), [['resume', 'stop'], 1], 'one line, no new control');
+  await h.show(reduce(STUBS['paused-sign-in-held'], { type: 'resume' }));
+  assert.deepEqual(hinted(), [['stop'], 0]);
+});
+
 // A walk started from the terminal or the walk page has no persona picked here: its face is the one the server sends.
 test('the side panel wears the face the server sends for a walk started elsewhere, and the letter without one', async () => {
   const { reduce } = await import('../extension/walks/view.js');

@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null, withheld: false };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -46,10 +46,16 @@ const ASKS = ['delete', 'pay', 'send', 'go'];
 /** The faces a step may wear: the cells of a persona's face sheet. */
 export const MOODS = ['neutral', 'curious', 'confident', 'confused', 'frustrated', 'delighted'];
 
-/** A question stands only while the walk is walking: a pause, a take-over or an end takes it away unanswered. */
+const atSignIn = (view) => view.state === 'paused' && view.held === 'sign-in';
+
+/**
+ * A question stands only while the walk is walking: a pause, a take-over or an end takes it away unanswered. A write
+ * held at a sign-in pause (`withheld`) is told only while that pause lasts.
+ */
 export function reduce(view, action) {
   const next = step(view, action);
-  return next.ask && next.state !== 'walking' ? { ...next, ask: null } : next;
+  const asked = next.ask && next.state !== 'walking' ? { ...next, ask: null } : next;
+  return asked.withheld && !atSignIn(asked) ? { ...asked, withheld: false } : asked;
 }
 
 function step(view, action) {
@@ -95,6 +101,9 @@ function step(view, action) {
       if (view.state !== 'walking' || view.ask || !ASKS.includes(action.ask?.kind)) return view;
       return { ...view, ask: { kind: action.ask.kind, what: text(action.ask.what, 200) } };
     case 'answer': return view.ask ? { ...view, ask: null } : view;
+    // The tab sent a write the hold kept back while paused at a sign-in (a passkey, an approval on a phone, a sign-in
+    // button in another site's frame): said once a pause, so a page that keeps sending changes nothing more.
+    case 'withheld': return atSignIn(view) && !view.withheld ? { ...view, withheld: true } : view;
     case 'resume': return view.state === 'paused' ? { ...view, state: 'walking', held: null } : view;
     case 'takeover': return view.state === 'walking' || view.state === 'paused' ? { ...view, state: 'takeover' } : view;
     case 'handback': return view.state === 'takeover' ? { ...view, state: 'walking', held: null } : view;
