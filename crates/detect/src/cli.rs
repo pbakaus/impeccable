@@ -1251,6 +1251,9 @@ fn emit_sarif(ctx: &mut Ctx, findings: &[Finding], scopes: &[String], no_advisor
 /// offer the `detector.extensions` opt-in for them. JSX is not on the list:
 /// the parser reads nothing useful from it.
 const HTML_LIKE_TEMPLATE_EXTS: &[&str] = &[".astro", ".svelte", ".vue"];
+/// A scan large enough to ask before it starts: past this many files, or this many HTML files (each processed alone).
+const LARGE_SCAN_FILES: usize = 500;
+const LARGE_SCAN_HTML: usize = 50;
 
 /// The #884 note: which files only got the regex engine, what that misses,
 /// and the scan that would run every rule.
@@ -1441,12 +1444,15 @@ fn scan_targets(
                 .iter()
                 .filter(|f| uses_html_engine(f, &ctx.config.extensions))
                 .count();
-            if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
+            // Asked only when a scan will take a while: a few dozen files scan in seconds (Paul, 16 Nov: 52 files asked).
+            if (files.len() > LARGE_SCAN_FILES || html_count > LARGE_SCAN_HTML) && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
+                // "in ." read as "in .." before its full stop: the working folder is named in words.
+                let place = if target == "." || target == "./" { "this folder".to_string() } else { target.to_string() };
                 ctx.io.err(&format!(
                     "\nFound {} files ({} HTML) in {}.\nScanning may take a while{}.\nTarget a specific subdirectory to narrow scope.\n",
                     files.len(),
                     html_count,
-                    target,
+                    place,
                     if html_count > 10 { " (static HTML/CSS processes each HTML file individually)" } else { "" }
                 ));
                 if !confirm(ctx.io, "Continue?") {

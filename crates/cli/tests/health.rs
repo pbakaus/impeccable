@@ -197,7 +197,7 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "sync off");
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health"));
     // The first upload (above) said so once; a second never does.
-    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Design health: this scan's counts were saved"));
+    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Saved this scan's counts to your"));
     assert!(run(&env, &root, &["health", "on"]).status.success());
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 2);
@@ -297,7 +297,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     // Catches (review, Cursor): `detect --quiet` sending counts and using up the one notice that says so.
     let (fake, env) = signed_in("health-quiet");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(notice));
@@ -317,7 +317,7 @@ fn each_service_gives_its_own_notice() {
     // Catches (review, Greptile): a staging upload's notice hiding production's for the same sign-in count.
     let (staging, env) = signed_in("health-two-issuers");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     assert!(String::from_utf8_lossy(&run(&env, &root, &["detect", "."]).stderr).contains(notice));
     assert_eq!(staging.hits("/cli/v1/health/scans"), 1);
 
@@ -600,7 +600,7 @@ fn foundations_review_json_alias_preserves_the_health_notice() {
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health:"));
     let out = run(&env, &root, &["detect", "."]);
     assert!(String::from_utf8_lossy(&out.stderr)
-        .contains("Design health: this scan's counts were saved"));
+        .contains("Saved this scan's counts to your"));
 }
 
 #[test]
@@ -1115,7 +1115,7 @@ fn design_notice_is_once_after_success_and_again_after_sign_in() {
     let env = fake.env("design-notice");
     login(&env);
     let root = repo(&env, None);
-    let notice = "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n";
+    let notice = "Saved your DESIGN.md to your account, and again whenever it changes.\nTo stop: impeccable health design off\n";
     let hook = run(&env, &root, &["hook-before-edit"]);
     assert!(!String::from_utf8_lossy(&hook.stdout).contains(notice));
     assert!(!String::from_utf8_lossy(&hook.stderr).contains(notice));
@@ -1346,7 +1346,7 @@ fn the_sign_in_scan_leaves_design_md_to_detect() {
     assert_eq!(fake.hits("/cli/v1/design"), 0);
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/design"), 1);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("Uploaded your DESIGN.md"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Saved your DESIGN.md"));
 }
 
 #[test]

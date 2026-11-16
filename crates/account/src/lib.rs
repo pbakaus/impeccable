@@ -252,10 +252,11 @@ fn sign_in(io: &mut Io, no_browser: bool, skip: Skip) -> LoginOutcome {
             io.out(&format!("{url}\n"));
         } else if open_browser(url) {
             io.err(&format!(
-                "Opening your browser to sign in. If it doesn't open, visit:\n  {url}\n"
+                // The link alone on its line, so a terminal that wraps it never splits it inside a sentence.
+                "Opening your browser to sign in. If it doesn't open, visit this link:\n\n{url}\n\n"
             ));
         } else {
-            io.err(&format!("Open this link to sign in:\n  {url}\n"));
+            io.err(&format!("Open this link to sign in:\n\n{url}\n\n"));
         }
         let _ = io.stdout.flush();
         let _ = io.stderr.flush();

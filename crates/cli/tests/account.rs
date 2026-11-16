@@ -332,7 +332,8 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
     assert!(err.contains(
         "Connected: Your agent.\n\
          Not connected yet: Agent tools, Loop, Chrome extension (Pro), GitHub pull requests.\n\
-         Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"
+         Next: Add to GitHub:\n\
+         https://github.com/apps/impeccable-critique/installations/new\n"
     ), "{err}");
 
     // An installed agent with the taste switch on, for status to name.
@@ -351,7 +352,7 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
         listed.find("Connected:").unwrap(),
     );
     assert!(p < l && l < c, "{listed}");
-    assert!(text.ends_with("Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"), "{text}");
+    assert!(text.ends_with("Next: Add to GitHub:\nhttps://github.com/apps/impeccable-critique/installations/new\n"), "{text}");
 
     let json = impeccable(&env, &["status", "--json"]).current_dir(&repo).output().unwrap();
     let v: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();

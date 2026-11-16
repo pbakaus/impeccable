@@ -256,10 +256,8 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             synced.health = true;
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
-                io.err(&format!(
-                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                    account.display_host()
-                ));
+                // In the person's words, not a feature's name: what was kept, where, and how to stop.
+                io.err("Saved this scan's counts to your account, so Home shows this repository's trend. Never your code or file names.\nTo stop: impeccable health off\n");
                 let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
