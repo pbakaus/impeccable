@@ -522,6 +522,15 @@ fn personal_switches_reach_gemini_copilot_and_an_existing_opencode_file_and_crea
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":2,"team":null,"me":["taste","a11y"]}"#);
     refresh();
     assert!(read(&opencode).starts_with("Mine.\n\n<!-- impeccable start -->\n"), "{}", read(&opencode));
+    // The person deletes their opencode file and a sync runs; a fresh one made later
+    // without a block gets the set, and nothing is sent.
+    let sent = fake.hits("/cli/v1/agents/me");
+    std::fs::remove_file(&opencode).unwrap();
+    refresh();
+    std::fs::write(&opencode, "Fresh.\n").unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), sent, "nothing sent");
+    assert!(read(&opencode).starts_with("Fresh.\n\n<!-- impeccable start -->\n"), "{}", read(&opencode));
     let out = impeccable(&env, &["switches"]).output().unwrap();
     let listed = String::from_utf8_lossy(&out.stdout).replace('\\', "/");
     for name in ["Gemini CLI (~/.gemini/GEMINI.md): taste, a11y", "GitHub Copilot (~/.copilot/copilot-instructions.md): taste, a11y", "opencode (~/.config/opencode/AGENTS.md): taste, a11y"] {
