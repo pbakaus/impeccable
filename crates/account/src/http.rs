@@ -173,6 +173,14 @@ impl Client {
         json_body(req.send_json(body))
     }
 
+    /// PUT `body` to a signed address on the account service (its token is in the URL, so no bearer is sent), with
+    /// its exact length and type; the JSON answer. An artifact asset's upload (REN-2123).
+    pub fn put_bytes(&self, url: &str, content_type: &str, body: &[u8]) -> Result<serde_json::Value, ApiError> {
+        self.checked(url)?;
+        let req = self.agent.put(url).set("accept", "application/json").set("content-type", content_type);
+        json_body(req.send_bytes(body))
+    }
+
     /// GET returning the raw body (at most `max` bytes) and one named header.
     pub fn get_bytes(
         &self,
