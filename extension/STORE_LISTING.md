@@ -101,6 +101,7 @@ Detects and highlights UI anti-patterns (AI-generated design tells and general q
 - **tabGroups**: Puts the journey's tab in a named group of its own so the person can tell it apart from their own tabs.
 - **sidePanel**: Shows the journey as it happens, with Pause, Take over and Stop.
 - **downloads**: Cancels and removes any download the journey's tab starts; a journey never saves files.
+- **declarativeNetRequestWithHostAccess**: While a journey runs and has not been allowed to change anything, blocks requests that would change something (form posts and other writes) that the journey's own page cannot be held from: a tab it opens, a frame from another site inside it, and its site's background workers. The rules are removed as soon as writes are allowed, the person takes over, or the journey ends.
 
 ## Remote code
 The extension's own code, including the rule engine (WebAssembly), ships inside the package. During a journey, Impeccable's server may send short page scripts that run in the journey's tab only (for example to read what is on the page); nothing from the network runs in the extension itself.

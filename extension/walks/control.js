@@ -133,7 +133,7 @@ for (const [name, run] of Object.entries(ops)) {
           if (said !== 'yes' || at !== fenced()) throw overtaken();
           // The Yes opens the deed's writes (REN-2034) until the server closes them or the walk stops walking. Looked at
           // afresh before it is done: a sign-in that showed meanwhile still pauses it, and closes them.
-          letWrite(asked);
+          await letWrite(asked);
           agreed = true;
           continue;
         }

@@ -30,7 +30,7 @@ export function speak(to) { through = to; }
  * walk let go of it (`closed`, or Chrome's reason for a detach); `said` hears every event told; `event` every
  * debugger event of the walked tab.
  */
-export const hooks = { opened: [], closing: [], closed: [], said: [], event: [] };
+export const hooks = { opened: [], closing: [], closed: [], said: [], event: [], held: [] };
 
 /**
  * Set while the walk is paused, by the person or at a sign-in: no picture is taken and nothing of the page (its
@@ -60,20 +60,28 @@ export function fence() {
  * pause holds them as walking does.
  */
 let driver = { by: null, since: 0 };
-export function drivenBy(by) { if (by !== driver.by) driver = { by, since: Date.now() }; }
+export function drivenBy(by) { if (by !== driver.by) { driver = { by, since: Date.now() }; void heldMayChange(); } }
 /** How long a sign-in pause shows before what the tab sends is taken for the person's own: nobody signs in faster. */
 export const SIGN_IN_SETTLE_MS = 1500;
 const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && at - driver.since >= SIGN_IN_SETTLE_MS);
 const holding = (tab, at) => !tab.writesOpen && !persons(at);
+/** Whether the walk's writes are held right now, for the network rules beside this hold (net-hold.js). */
+export const writesHeld = (at = Date.now()) => Boolean(walk) && holding(walk, at);
+/** Tells whoever follows the hold that it may have changed: resolves once they have caught up. */
+const heldMayChange = () => Promise.all(hooks.held.map((hook) => Promise.resolve().then(hook).catch(() => undefined)));
 /** Counts each close: a Yes given after one opens nothing (a late Yes to a deed the server already gave up on). */
 let writesShut = 0;
 export const writesNow = () => writesShut;
 function shutWrites() {
   writesShut += 1;
   if (walk) walk.writesOpen = false;
+  void heldMayChange();
 }
 /** The person said Yes to a deed, asked when the closes stood at `asked`: its writes go out until the server closes them, or the walk stops walking. */
-export function letWrite(asked) { if (walk && asked === writesShut) walk.writesOpen = true; }
+export function letWrite(asked) {
+  if (walk && asked === writesShut) walk.writesOpen = true;
+  return heldMayChange();
+}
 
 /**
  * Network on, with the tab's service workers bypassed: a write a service worker would answer or send for the page
@@ -1265,6 +1273,8 @@ export const ops = {
     if (open !== true) shutWrites();
     else if (walk) walk.writesOpen = true;
     else throw fail('OutingClosed', 'no tab is open');
+    // Open only once nothing else holds them either: the deed comes next.
+    await heldMayChange();
     return {};
   },
 

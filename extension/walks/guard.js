@@ -40,12 +40,13 @@
 //   - against a popup's first moments. Chrome gives an extension no way to hold a new tab before it loads (the
 //     debugger's auto-attach does not reach a popup; measured on Chrome 156). A popup is closed as soon as it has an
 //     address or starts to load, and a second after it exists at the latest, so the address it was opened on can be
-//     requested, with that site's cookies, and its page can begin to run before the tab is gone. The persona never
-//     sees or touches it. How much gets out in a person's Chrome is not measured: the test browser holds new tabs.
+//     requested, with that site's cookies, and its page can begin to run before the tab is gone; while writes are
+//     closed, only to read (net-hold.js blocks a form posted into a new tab). The persona never sees or touches it. How much gets out in a person's Chrome is not measured: the test browser holds new tabs.
 //   - frames inside the page. An embedded frame may be on any origin, as on the open web; only the top-level
 //     document is held to the site. A frame Chrome runs in a process of its own (most frames on another site) is
-//     another debugger target, which the walk does not attach to: its requests, writes included, are not held. Nor
-//     are a service worker's, or what an open WebSocket sends.
+//     another debugger target, which the walk does not attach to: its reads are not held, nor its writes once writes
+//     are open (net-hold.js blocks them while closed, as it does a shared or service worker's). Nor is what a
+//     WebSocket sends.
 //   - a read that changes something: a GET is let through wherever it goes.
 //   - the instant a small download takes: the file can exist for a moment before it is removed.
 //

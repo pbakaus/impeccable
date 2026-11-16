@@ -373,8 +373,20 @@ describe('walk worker', () => {
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
+    // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
+    declarativeNetRequest: {
+      rules: [{ id: 20541 }, { id: 20542 }],
+      async getSessionRules() { return this.rules; },
+      async updateSessionRules({ removeRuleIds = [], addRules = [] }) { this.rules = [...this.rules.filter((rule) => !removeRuleIds.includes(rule.id)), ...addRules]; },
+    },
   };
   const loaded = import('../extension/walks/worker.js');
+
+  it('clears the network rules a walk left when the worker starts', async () => {
+    await loaded;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(chrome.declarativeNetRequest.rules, []);
+  });
 
   const handOver = (sender) => new Promise((resolve) => {
     for (const listener of listeners.message) listener({ handoff: JSON.stringify(block()) }, sender, resolve);
@@ -917,6 +929,60 @@ describe('walk worker', () => {
     at = sent.length;
     await answeredAs('POST', `${SITE}/todos`, 'Document');
     assert.equal(args[sent.indexOf('Fetch.failRequest', at)].errorReason, 'Aborted');
+  });
+
+  // REN-2054: what the Fetch hold cannot see (a form posted into a new tab, workers, a frame on another site) is blocked
+  // by Chrome's rules while writes are held, and only then. The walked page's own requests stay the Fetch hold's.
+  it('blocks writes the page cannot be held from only while the walk drives with writes closed', async (t) => {
+    const { ops, command, rearm, dispatch, SIGN_IN_SETTLE_MS } = await walked();
+    page.seen = {};
+    const { query } = chrome.tabs;
+    // The person's own tab, open before the walk.
+    chrome.tabs.query = async () => [{ id: 4 }, { id: 11 }];
+    const blocking = async () => {
+      await settle(5);
+      const rules = chrome.declarativeNetRequest.rules.map(({ condition }) => condition);
+      if (rules.length === 0) return false;
+      for (const rule of rules) {
+        assert.ok(rule.requestMethods.includes('post') && !['get', 'head', 'options'].some((read) => rule.requestMethods.includes(read)));
+        assert.ok(rule.resourceTypes.includes('main_frame'), 'a form posted into a new tab');
+      }
+      const frames = rules.find((rule) => rule.tabIds);
+      const elsewhere = rules.find((rule) => rule.excludedTabIds);
+      assert.deepEqual([frames.tabIds, frames.excludedInitiatorDomains], [[11], ['localhost']], 'in the walked tab, only what other sites send');
+      assert.deepEqual([elsewhere.excludedTabIds.sort(), elsewhere.initiatorDomains], [[11, 4].sort(), ['localhost']], 'the walk’s site anywhere else, workers too, not the person’s tabs');
+      return true;
+    };
+    try {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira' });
+      for (const [step, act, blocked] of [
+        ['walking', async () => {}, true],
+        ['writes opened', () => ops.writes({ open: true }), false],
+        ['writes closed', () => ops.writes({ open: false }), true],
+        ['paused', () => command('pause'), true],
+        ['going on', () => command('resume'), true],
+        ['taken over', () => command('takeover'), false],
+        ['handed back', async () => { t.mock.timers.enable({ apis: ['Date'], now: Date.now() }); await command('handback'); }, true],
+        // The person signs in once the pause has shown a moment. Nothing says so but the time, which the rules are
+        // looked at again for; here the server's close makes them look.
+        ['a sign-in shows', () => fire('Fetch.requestPaused', { requestId: 'n-signin', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'https://accounts.google.com/signin' } }), true],
+        ['the sign-in has shown', () => { t.mock.timers.tick(SIGN_IN_SETTLE_MS); return ops.writes({ open: false }); }, false],
+        ['going on', () => command('resume'), true],
+        ['ended', () => ops.close(), false],
+      ]) {
+        await act();
+        assert.equal(await blocking(), blocked, step);
+      }
+    } finally {
+      t.mock.timers.reset();
+      chrome.tabs.query = query;
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira' });
+    }
   });
 
   it('never queues an open: refused while paused, so a close before Continue leaves writes held', async () => {
@@ -1668,7 +1734,7 @@ describe('derived extension manifests', () => {
 // switches the extension off until the person accepts it: walks add the four of driving a tab, and nothing else. The
 // account (not in the store build) adds one more: the notice when an agent asks for a journey (REN-1909).
 describe('extension install warnings', () => {
-  const SILENT = ['activeTab', 'alarms', 'identity', 'offscreen', 'scripting', 'sidePanel', 'storage'];
+  const SILENT = ['activeTab', 'alarms', 'declarativeNetRequestWithHostAccess', 'identity', 'offscreen', 'scripting', 'sidePanel', 'storage'];
   /** As published in 1.4.0, the version people have installed. */
   const PUBLISHED = { permissions: ['activeTab', 'scripting', 'storage', 'webNavigation', 'offscreen'], host_permissions: ['<all_urls>'] };
   const warned = (manifest) => manifest.permissions.filter((permission) => !SILENT.includes(permission)).sort();

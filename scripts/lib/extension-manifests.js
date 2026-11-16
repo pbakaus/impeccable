@@ -13,7 +13,7 @@ const STORE_HOSTS = ['https://impeccable.reviews/', 'https://app.impeccable.styl
 /** The detector's worker: Chrome's module worker imports it, and Firefox loads it alone. */
 export const DETECTOR_WORKER = 'background/service-worker.js';
 /** What drives a tab: walks ask for these, and Firefox has none of them. */
-export const WALK_PERMISSIONS = ['debugger', 'tabs', 'tabGroups', 'sidePanel', 'downloads'];
+export const WALK_PERMISSIONS = ['debugger', 'tabs', 'tabGroups', 'sidePanel', 'downloads', 'declarativeNetRequestWithHostAccess'];
 
 const under = (folder, file) => file === folder || file.startsWith(`${folder}/`);
 const isWalkFile = (file) => under('walks', file);
