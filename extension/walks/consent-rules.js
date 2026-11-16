@@ -1,4 +1,4 @@
-/*! @duckduckgo/autoconsent 17.2.0, MPL-2.0, https://github.com/duckduckgo/autoconsent (unmodified below the bridge) */
+/*! @duckduckgo/autoconsent 17.2.0, MPL-2.0 (https://mozilla.org/MPL/2.0/), https://github.com/duckduckgo/autoconsent (unmodified below the bridge) */
 if (!globalThis.__impeccableConsent) {
 (function consentBridge(rules, config) {
   const w = globalThis;
@@ -13,15 +13,6 @@ if (!globalThis.__impeccableConsent) {
     switch (message.type) {
       case "init":
         return reply({ type: "initResp", config, rules });
-      case "eval": {
-        let result = !1;
-        try {
-          result = Boolean((0, eval)(String(message.code)));
-        } catch {
-          result = !1;
-        }
-        return reply({ type: "evalResp", id: message.id, result });
-      }
       case "cmpDetected":
         state.cmp = String(message.cmp ?? "").slice(0, 80) || null;
         return;

@@ -958,4 +958,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '71300b8c9cb54072';
+export const HASH = 'cfd1fbaf12ea4bef';
