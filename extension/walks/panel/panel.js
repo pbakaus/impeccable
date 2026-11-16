@@ -59,6 +59,9 @@ let ended = false;
 /** Talk to type (voice.js): the browser's speech recognition, none where it has none; and the listening under way. */
 const Speech = speechCtor();
 let voice = null;
+/** The screen whose box the listening fills, and each box's words in `pre` and how many it holds. */
+let voiceAt = null;
+const VOICE_BOXES = { home: ['task', 2000], make: ['describe', 1500] };
 /** While listening: the mic's level as bars (voice.js `meter`), newest last, and how to end the stream that reads it. */
 let metering = null;
 /** A press waiting on the microphone answer, so a second press does nothing. */
@@ -316,6 +319,7 @@ let ownMax = 3;
 /** Make a persona: the description becomes the person's own persona (the draft takes up to about half a minute), drawn in place. */
 async function make(box) {
   if (pre.making) return;
+  hush();
   pre.describe = (box.value ?? pre.describe).trim();
   if (!pre.describe) { box.focus(); return; }
   pre.making = true;
@@ -433,9 +437,10 @@ const blank = (cls = '') => el('span', { class: `face blank ${cls}`.trim(), 'ari
  */
 function maker() {
   const made = pre.made;
-  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: COPY.make.describe, 'aria-label': COPY.make.describe, disabled: pre.making, oninput: (event) => { pre.describe = event.target.value; } });
+  const box = el('textarea', { class: 'text', rows: 3, maxlength: 1500, placeholder: voice ? COPY.voice.listening : COPY.make.describe, 'aria-label': COPY.make.describe, disabled: pre.making, oninput: (event) => { pre.describe = event.target.value; voice?.retype(pre.describe); } });
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
+  const create = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } });
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }))
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
       : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
@@ -447,8 +452,10 @@ function maker() {
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
-        el('div', { class: 'field' }, box, el('div', { class: 'row' }, el('span', { class: 'grow' }),
-          el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } }))),
+        el('div', { class: 'field' }, box, voice ? listening(create) : el('div', { class: 'row' },
+          Speech && !pre.making ? micButton() : null,
+          el('span', { class: 'grow' }),
+          create)),
         pre.note ? el('p', { class: 'err below', role: 'alert', text: pre.note }) : null]),
   ];
   // Open, the modal is all there is: what's behind it can't be reached.
@@ -517,7 +524,7 @@ function home() {
       // Screen on the left and Sees on the right, as tabs on the box's top edge.
       el('div', { class: 'tabs' }, widths(), sights()),
       el('div', { class: 'field' }, box,
-        voice ? listening(send) : el('div', { class: 'row' },
+        voice ? listening(button('send', COPY.home.send, 'gold', send)) : el('div', { class: 'row' },
           Speech ? micButton() : null,
           el('span', { class: 'grow' }),
           button('send', COPY.home.send, 'gold', send))),
@@ -532,13 +539,13 @@ const STILL = Array.from({ length: BARS }, (_, i) => 0.12 + 0.3 * Math.sin((Math
 /** The mic: press to talk; while listening the same button, selected, stops it. */
 const micButton = () => el('button', { class: 'mic', type: 'button', 'data-act': 'mic', 'aria-pressed': voice ? 'true' : 'false', title: voice ? COPY.voice.stop : COPY.voice.talk, 'aria-label': voice ? COPY.voice.stop : COPY.voice.talk, onclick: () => { void talk(); } }, icon('mic'));
 
-/** While listening: the mic (selected), the waveform moving with the mic's level (flat dots when quiet), and Start. */
-function listening(send) {
+/** While listening: the mic (selected), the waveform moving with the mic's level (flat dots when quiet), and the box's own button (`go`). */
+function listening(go) {
   const levels = still() ? STILL : pre.levels ?? Array(BARS).fill(0);
   return el('div', { class: 'row voice-row' },
     micButton(),
     el('div', { class: 'wave', 'aria-hidden': true, 'data-still': still() ? 'yes' : undefined }, levels.map((level) => el('i', { style: `--l:${level.toFixed(3)}` }))),
-    button('send', COPY.home.send, 'gold', send));
+    go);
 }
 
 /** New levels from the mic: the bars change in place, so the box keeps its words and the caret. */
@@ -593,6 +600,7 @@ async function talk() {
   // One press at a time: a double press (or a held Enter) must not start two listeners, or open two mic tabs.
   if (asking) return;
   asking = true;
+  const at = screen();
   const mic = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
   if (!mic || mic.state === 'granted') { asking = false; hear(); return; }
   const blocked = () => { pre.note = COPY.voice['not-allowed']; render(); };
@@ -603,7 +611,7 @@ async function talk() {
     if (mic.state !== 'granted') return;
     mic.onchange = null;
     asking = false;
-    if (screen() === 'home' && !voice) hear();
+    if (screen() === at && !voice) hear();
   };
   // The mic page opens once per press; it shows the blocked state and Chrome's settings itself.
   void chrome.tabs.create({ url: chrome.runtime.getURL('walks/mic/mic.html'), active: true, ...(here ? { openerTabId: here } : {}) })
@@ -611,26 +619,28 @@ async function talk() {
     .finally(() => { setTimeout(() => { asking = false; }, 1500); });
 }
 
-/** Listens once: the words go into the box as they come, after what is there, and stay there to edit until Send. */
+/** Listens once: the words go into this screen's box as they come, after what is there, and stay there to edit until Send or Create. */
 function hear() {
   pre.note = '';
   let ended = false;
+  const at = screen();
+  const [words, most] = VOICE_BOXES[at];
   const heard = listen(Speech, {
-    base: pre.task,
+    base: pre[words],
     lang: navigator.language || 'en-US',
-    // The box holds 2000 characters, as typing does: a longer talk stops there and says so, rather than going on unseen.
+    // The box holds what typing can: a longer talk stops there and says so, rather than going on unseen.
     onText: (text, settled) => {
-      pre.task = text.slice(0, 2000);
+      pre[words] = text.slice(0, most);
       const box = app.querySelector('textarea.text');
       // The newest words in view: a long talk outgrows the box.
-      if (box) { box.value = pre.task; box.scrollTop = box.scrollHeight; fade(box); }
+      if (box) { box.value = pre[words]; box.scrollTop = box.scrollHeight; fade(box); }
       // Only on final words: an interim guess can run long and then shrink.
-      if (text.length > 2000 && settled && voice) { pre.note = COPY.voice.full; voice.stop(); }
+      if (text.length > most && settled && voice) { pre.note = COPY.voice.full; voice.stop(); }
     },
     onEnd: (error) => { ended = true; voice = null; stopMeter(); if (error) pre.note = COPY.voice[error] ?? COPY.voice.failed; render(); },
   });
   // A recognizer that failed to start has already ended: keep no dead handle, or the button stays pressed.
-  if (!ended) { voice = heard; startMeter(heard); }
+  if (!ended) { voice = heard; voiceAt = at; startMeter(heard); }
   render();
 }
 
@@ -1090,7 +1100,7 @@ const SCREENS = { loading, walking: walkingScreen, end, terminal, 'signed-out': 
 
 function render() {
   const shown = screen();
-  if (shown !== 'home') hush();
+  if (shown !== voiceAt) hush();
   // The account popover belongs to the home, and signed out to that screen: another screen closes it.
   if (shown !== 'home' && shown !== 'loading' && shown !== 'signed-out') pre.menu = false;
   // The moment's time runs from when it is first drawn; a stand-in holds it.
@@ -1159,7 +1169,7 @@ async function start() {
     const { STUBS, PRE, HISTORY, FEED } = await import('./stub.js');
     stubbed = true;
     // Listening, drawn still: the bars as the stand-in's levels, and Stop goes back to the box.
-    if (PRE[stub]?.levels) voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} };
+    if (PRE[stub]?.levels) { voice = { stop() { voice = null; pre.levels = null; render(); }, drop() {}, retype() {} }; voiceAt = PRE[stub].screen ?? 'home'; }
     view = STUBS[stub] ?? STUBS.idle;
     Object.assign(pre, { history: HISTORY }, PRE[stub] ?? PRE.home);
     account = { signedIn: stub !== 'signed-out' && stub !== 'signing-in', pro: stub !== 'not-pro', email: 'dana@example.com' };
