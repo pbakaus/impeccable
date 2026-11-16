@@ -523,4 +523,14 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     let gemini = std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap();
     assert!(claude.contains("Impeccable Taste"), "{claude}");
     assert!(gemini.starts_with("Mine.\n\n<!-- impeccable start -->\nImpeccable Taste"), "{gemini}");
+    // Turning the last switch off in a synced file (the block goes) is sent, not undone.
+    for f in [home.join(".claude/CLAUDE.md"), home.join(".gemini/GEMINI.md")] {
+        let t = std::fs::read_to_string(&f).unwrap();
+        let a = t.find("<!-- impeccable start -->").unwrap();
+        let e = t.find("<!-- impeccable end -->").unwrap() + "<!-- impeccable end -->".len();
+        std::fs::write(&f, format!("{}{}", t[..a].trim_end_matches('\n'), &t[e..])).unwrap();
+    }
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "the removal was sent");
+    assert!(!std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap().contains("Impeccable Taste"));
 }

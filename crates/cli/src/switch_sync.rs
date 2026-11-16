@@ -141,11 +141,19 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         .as_ref()
         .and_then(|c| c["base"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()));
     let files = rule_files(io);
+    // The files a sync has seen with a block before: in one of them, no block now means
+    // every switch was turned off (loop disconnect, or by hand), not an agent new here.
+    let known: Vec<String> = cache
+        .as_ref()
+        .and_then(|c| c["files"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+        .unwrap_or_default();
     let mut sets = Vec::new();
     for f in &files {
         // Only a missing file reads as no switches; one that can't be read stops here.
         match agent_block::block_in(f) {
-            Ok(ids) => sets.push(ids.map(|ids| ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
+            Ok(Some(ids)) => sets.push(Some(ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
+            Ok(None) if known.contains(&f.display().to_string()) => sets.push(Some(vec![])),
+            Ok(None) => sets.push(None),
             Err(_) => return 0,
         }
     }
@@ -179,6 +187,15 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     if let Some(set) = synced {
         next["base"] = json!(sorted(set));
     }
+    // Remember every file that holds a block now, and keep the ones known before.
+    let mut seen = known;
+    for f in &files {
+        let key = f.display().to_string();
+        if !seen.contains(&key) && agent_block::block_in(f).is_ok_and(|b| b.is_some()) {
+            seen.push(key);
+        }
+    }
+    next["files"] = json!(seen);
     let _ = impeccable_account::store::write_private(&cache_path(&account), next.to_string().as_bytes());
     0
 }
