@@ -18,7 +18,7 @@ impl Upstream for Remote {
 
 /// The agents `impeccable agents running` lists now, by name, with whether each is connected.
 fn listed(home: &std::path::Path) -> Vec<(String, bool)> {
-    presence::agents(Some(&home.join("agents")), &presence::snapshot())
+    presence::agents(Some(&home.join("running")), &presence::snapshot())
         .into_iter()
         .filter(|a| a["connected"] == true)
         .map(|a| (a["name"].as_str().unwrap().to_string(), a["harness"] == "codex-mcp-client"))
