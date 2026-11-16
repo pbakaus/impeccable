@@ -167,3 +167,39 @@ fn link_lands_muse_in_the_global_dir() {
     assert!(exists(&format!("{dest}/SKILL.md")));
     assert!(!exists(&format!("{project}/workspace")));
 }
+
+#[cfg(unix)]
+#[test]
+fn copy_preserves_a_linked_muse_install() {
+    let root = temp_root("muse-copy-link");
+    let bundle = format!("{root}/bundle");
+    let checkout = format!("{root}/checkout");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&project).unwrap();
+    bundle_with_muse_skill(&bundle, SKILL);
+    bundle_with_muse_skill(&checkout, "---\nname: impeccable\ndescription: design\n---\ncheckout body\n");
+    let sys = sys_with(&home);
+
+    let mut env: HashMap<String, String> = HashMap::new();
+    env.insert("HOME".into(), home.clone());
+    env.insert("USERPROFILE".into(), home.clone());
+    let (mut io, _captured) = Io::captured("", std::path::PathBuf::from(&project), env);
+
+    // `link --providers=muse`: the global skill dir is a symlink into
+    // the checkout.
+    let linked = link_provider_skills(&sys, &mut io, &checkout, &project, &["workspace"], false).unwrap();
+    assert_eq!(linked.linked, 1);
+
+    // A mixed project-scope install now discovers no Muse at project
+    // scope, so the copy step runs for Muse too. It must not replace
+    // the link with downloaded files.
+    let written = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
+    assert!(written.is_empty());
+    let dest = format!("{home}/workspace/custom-skills/impeccable");
+    let is_link = std::fs::symlink_metadata(&dest).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    assert!(is_link, "expected the link at {dest} to survive the copy");
+    let installed = std::fs::read_to_string(format!("{dest}/SKILL.md")).unwrap();
+    assert!(installed.contains("checkout body"));
+}

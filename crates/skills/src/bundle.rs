@@ -753,6 +753,15 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
         for skill in &skills {
             let src = jsp::join(&[&src_dir, skill]);
             let dest = jsp::join(&[&local_skills_dir, skill]);
+            if is_user_only_provider(provider) && util::is_symlink(&dest) {
+                // A linked install at the provider's actual (global)
+                // destination. Project-scope discovery cannot see that
+                // destination, so a mixed install reaches this copy with
+                // the provider looking missing; linked installs are never
+                // overwritten (checkout changes are how they update), so
+                // leave the link in place.
+                continue;
+            }
             util::rm_rf(&dest);
             util::copy_dir(&src, &dest)?;
             written.push(dest);
