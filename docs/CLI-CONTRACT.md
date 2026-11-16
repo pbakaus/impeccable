@@ -3166,6 +3166,44 @@ IMPECCABLE_NO_TASTE suppresses both the context block and scheduling when it
 is non-empty and neither 0 nor false (false is case-insensitive). With no
 cache, context's existing output remains unchanged.
 
+## `agents running` (REN-2124)
+
+`impeccable agents running [--json]` lists the agent sessions running on this
+machine, for Loop (which reads it on FSEvents under `<IMPECCABLE_HOME>/running/`
+and every 30 s). macOS and Linux; on Windows the list is empty for now.
+
+- **Connected:** each running `impeccable mcp` writes `<IMPECCABLE_HOME>/running/<pid>.json`
+  (folder 0700, file 0600) at `initialize` and removes it when it ends. The record
+  holds `pid` and `start` (its start time as `ps -o lstart` gives it, `LC_ALL=C`),
+  `parent` (`{pid, start}` of the harness process: the first ancestor that isn't
+  node, npm, npx, bun or a shell), `harness` (the agent's `clientInfo.name`),
+  `session` (the harness's session name from its `--name`/`-n` argument: the words
+  up to the next option, since `ps` splits a quoted name), `from`
+  (the session's own name, once a Needs-you call gives one), `cwd`, `repo`
+  (`{key, label}`: the health upload's repository key) and `since` (Unix seconds).
+- **Dead records:** a record whose `pid` is gone, or now has another start time, is a
+  crashed session. The reader removes it, so a killed session is gone at the next read.
+  When `ps` itself fails, nothing is removed and the list is empty.
+- **Seen, not connected:** a running `claude`, `codex`, `pi`, `cursor-agent`,
+  `antigravity`, `gemini` or `opencode` process (by program, or the script `node`
+  runs) that no record names as its parent, and whose own parent isn't one.
+- **`--json`** prints one array: `[{key, name, harness, repo, cwd, pid, parent, since, connected}]`.
+  `key` is `<pid>@<start>`. `name` is `from`, else `session`, else
+  `<repo label> · <harness>`, else the harness. Seen agents have `repo`, `cwd` and
+  `since` null and `parent` set to themselves.
+- **Text** prints one line per agent: `<name>  (<harness>, connected|seen, not connected)`,
+  or `No agents running.`
+- Any argument other than `--json` prints `Usage: impeccable agents running [--json]`
+  on stderr and exits 2.
+- **Calling it without npx (Loop):** run the cached engine directly:
+  `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable agents running --json`,
+  where `<version>` is the highest semver folder whose `impeccable` (`impeccable.exe`
+  on Windows) has an `impeccable.verified` stamp. The launcher writes that stamp
+  (`<sha256> <size>`) after checking the binary against the release manifest, so a
+  stamp whose size differs from the file's, or that is older than the binary, is not
+  verified. Engines from before this verb answer with a non-zero exit and no JSON
+  array: read that as "this engine has no presence list yet".
+
 ## `mcp` (REN-2053)
 
 `impeccable mcp` is the one Impeccable MCP server a coding agent runs, over

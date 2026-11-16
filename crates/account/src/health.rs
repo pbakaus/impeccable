@@ -610,6 +610,12 @@ fn git(dir: &str, args: &[&str]) -> Option<String> {
     git_with_timeout(dir, args, GIT_DEADLINE)
 }
 
+/// The repository at `root` as the service keys it (SHA-256 of its normalized origin, as every upload sends) and
+/// its label: what an agent's presence record names its repository by (REN-2124).
+pub fn repo_key(root: &str, env: &std::collections::HashMap<String, String>) -> Option<(String, Option<String>)> {
+    critique_repo(root, env)
+}
+
 /// Critiques use the same repo identity, including for native projects and subdirectories.
 pub(crate) fn critique_repo(
     root: &str,
