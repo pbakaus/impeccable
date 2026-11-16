@@ -582,7 +582,7 @@ impl Repo {
             return None;
         }
         let configured = git(root, &["config", "--get", "remote.origin.url"]);
-        let remote = configured.as_deref().and_then(normalize_remote);
+        let remote = configured.as_deref().and_then(resolve_remote);
         let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
@@ -636,7 +636,7 @@ fn repo_identity(
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
     let configured = remote.ok()?;
-    let remote = configured.as_deref().and_then(normalize_remote);
+    let remote = configured.as_deref().and_then(resolve_remote);
     let label = repo_name(top, configured.is_some(), remote.as_deref());
     let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
@@ -649,14 +649,30 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
 /// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
 /// answered with a failure or nothing.
 fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
-    let mut child = Command::new("git")
-        .args(["-c", "core.fsmonitor=false", "-C", dir])
-        .args(args)
+    let mut git = Command::new("git");
+    git.args(["-c", "core.fsmonitor=false", "-C", dir]).args(args);
+    output_within(git, timeout, false)
+}
+
+/// A command's trimmed stdout, given at most `timeout`: `Err` when it didn't
+/// answer in time (or couldn't start), `Ok(None)` on a failure or no output.
+/// With `drain`, stdout is read while it runs, for output that can pass the
+/// pipe's buffer (`ssh -G` on a large config); git's answers here never do.
+fn output_within(mut command: Command, timeout: Duration, drain: bool) -> Result<Option<String>, ()> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| ())?;
+    let read = |mut stdout: std::process::ChildStdout| {
+        let mut out = String::new();
+        std::io::Read::read_to_string(&mut stdout, &mut out).ok().map(|_| out)
+    };
+    let reader = match drain {
+        true => child.stdout.take().map(|o| std::thread::spawn(move || read(o))),
+        false => None,
+    };
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -671,11 +687,11 @@ fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>
             }
         }
     };
-    let mut out = String::new();
-    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
-    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
-        return Ok(None);
-    }
+    let out = match reader {
+        Some(reader) => reader.join().ok().flatten(),
+        None => child.stdout.take().and_then(read),
+    };
+    let Some(out) = out else { return Ok(None) };
     let s = out.trim().to_string();
     Ok((status.success() && !s.is_empty()).then_some(s))
 }
@@ -715,6 +731,63 @@ fn publish_id(file: &Path, id: &str) -> Option<String> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => read_id(file),
         Err(_) => None,
     }
+}
+
+/// The `origin` remote as [`normalize_remote`] spells it, after reading an SSH
+/// host alias as the host it stands for, so a clone of `git@work:org/repo`
+/// (`Host work` with `HostName github.com` in the SSH config) is keyed as its
+/// repository (REN-2058).
+pub fn resolve_remote(raw: &str) -> Option<String> {
+    normalize_remote(&unalias(raw, ssh_hostname))
+}
+
+/// `raw` with its SSH host replaced by what `hostname` says it stands for.
+/// Any other remote, or a host `hostname` can't resolve, is unchanged.
+fn unalias(raw: &str, hostname: impl Fn(&str, &str) -> Option<String>) -> String {
+    let raw = raw.trim();
+    if !raw.contains("://") {
+        // scp-like: [user@]host:path
+        let Some((login, path)) = raw.split_once(':') else { return raw.to_string() };
+        let (user, host) = login.rsplit_once('@').map_or(("", login), |(u, h)| (u, h));
+        return match hostname(user, host) {
+            Some(real) if !login.contains('/') && real != host => {
+                let at = if user.is_empty() { "" } else { "@" };
+                format!("{user}{at}{real}:{path}")
+            }
+            _ => raw.to_string(),
+        };
+    }
+    let Ok(mut url) = url::Url::parse(raw) else { return raw.to_string() };
+    if !matches!(url.scheme(), "ssh" | "git+ssh") {
+        return raw.to_string();
+    }
+    let user = url.username().to_string();
+    match url.host_str().and_then(|h| hostname(&user, h)) {
+        Some(real) if url.set_host(Some(&real)).is_ok() => url.to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+/// The host `ssh` connects to for `alias` as `user` (the remote's login, which a
+/// `Match user` block can depend on), from the SSH config (`ssh -G`, which reads
+/// it and connects nowhere). `None` for anything that isn't a plain name or when
+/// ssh can't say within half a second.
+fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
+    let plain = |v: &str| {
+        !v.starts_with('-') && v.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    };
+    if alias.is_empty() || !plain(alias) || !plain(user) {
+        return None;
+    }
+    let mut ssh = Command::new("ssh");
+    ssh.arg("-G");
+    if !user.is_empty() {
+        ssh.args(["-l", user]);
+    }
+    ssh.arg(alias);
+    let out = output_within(ssh, Duration::from_millis(500), true).ok()??;
+    let real = out.lines().find_map(|l| l.strip_prefix("hostname "))?.trim().to_lowercase();
+    (!real.is_empty()).then_some(real)
 }
 
 /// The `origin` remote in one spelling, so every clone of a repo hashes the
@@ -964,6 +1037,29 @@ mod tests {
         );
         assert_eq!(normalize_remote("/srv/repos/b.git"), None);
         assert_eq!(normalize_remote("../b"), None);
+    }
+
+    #[test]
+    fn an_ssh_host_alias_reads_as_the_host_it_stands_for() {
+        // Catches (REN-2058): a clone through an SSH host alias never matching its repository.
+        let config = |user: &str, host: &str| match (user, host) {
+            ("git", "work") | (_, "github.com-work") => Some("github.com".to_string()),
+            (_, other) => Some(other.to_lowercase()),
+        };
+        for raw in ["git@work:a/b.git", "github.com-work:a/b", "ssh://git@work/a/b.git", "git+ssh://git@github.com-work:22/a/b"] {
+            assert_eq!(normalize_remote(&unalias(raw, config)).as_deref(), Some("https://github.com/a/b"), "{raw}");
+        }
+        // Not SSH, a local path, or a host ssh can't resolve: unchanged.
+        for raw in ["https://work/a/b", "/srv/work:a/b", "git@unknown:a/b"] {
+            assert_eq!(unalias(raw, |_, _| None), raw);
+        }
+        assert_eq!(unalias("https://work/a/b", config), "https://work/a/b");
+        // The remote's login reaches the lookup, for a `Match user` block.
+        assert_eq!(normalize_remote(&unalias("deploy@work:a/b", config)).as_deref(), Some("https://work/a/b"));
+        // Only plain names reach ssh.
+        assert_eq!(ssh_hostname("git", "-oProxyCommand=x"), None);
+        assert_eq!(ssh_hostname("-oProxyCommand=x", "work"), None);
+        assert_eq!(ssh_hostname("", "a b"), None);
     }
 
     #[test]

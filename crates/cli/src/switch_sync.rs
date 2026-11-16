@@ -94,7 +94,7 @@ fn repo(cwd: &Path) -> Option<String> {
         .current_dir(cwd)
         .output()
         .ok()?;
-    let url = impeccable_account::health::normalize_remote(String::from_utf8_lossy(&out.stdout).trim())?;
+    let url = impeccable_account::health::resolve_remote(String::from_utf8_lossy(&out.stdout).trim())?;
     Some(Sha256::digest(url.as_bytes()).iter().map(|b| format!("{b:02x}")).collect())
 }
 
