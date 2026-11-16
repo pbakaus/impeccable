@@ -190,9 +190,18 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     // Remember every file that holds a block now, and keep the ones known before while
     // their agent's folder still exists (another CLAUDE_CONFIG_DIR profile included): an
     // agent removed and installed again later starts fresh, with the saved set.
+    // opencode is reached only through a file the person made, so its path goes with
+    // the file; every other agent's goes with its folder.
     let mut seen: Vec<String> = known
         .into_iter()
-        .filter(|k| Path::new(k).parent().is_some_and(Path::is_dir))
+        .filter(|k| {
+            let path = Path::new(k);
+            if path.parent().is_some_and(|p| p.ends_with("opencode")) {
+                path.is_file()
+            } else {
+                path.parent().is_some_and(Path::is_dir)
+            }
+        })
         .collect();
     for f in &files {
         let key = f.display().to_string();
