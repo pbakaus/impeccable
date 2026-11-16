@@ -39,23 +39,9 @@ pub fn schedule(io: &Io) {
     }
 }
 
-/// The user-level rule files of the agents installed here: Claude Code's `CLAUDE.md`
-/// and Codex's `AGENTS.md` (its override when there is one), each only when that
-/// agent's config folder exists.
+/// Every agent's user-level rule file on this machine (`agent_block::user_rule_files`).
 pub(crate) fn rule_files(io: &Io) -> Vec<PathBuf> {
-    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
-    let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-    let claude = var("CLAUDE_CONFIG_DIR").unwrap_or_else(|| home.join(".claude"));
-    let codex = var("CODEX_HOME").unwrap_or_else(|| home.join(".codex"));
-    let mut out = Vec::new();
-    if claude.is_dir() {
-        out.push(claude.join("CLAUDE.md"));
-    }
-    if codex.is_dir() {
-        let over = codex.join("AGENTS.override.md");
-        out.push(if over.exists() { over } else { codex.join("AGENTS.md") });
-    }
-    out
+    agent_block::user_rule_files(io).into_iter().map(|(_, file)| file).collect()
 }
 
 /// What the worker does, decided from the page's set, the base and each file's set.
@@ -76,17 +62,23 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
     v
 }
 
-pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[Vec<String>]) -> Step {
+/// `files` holds each file's set, or `None` for a file with no block yet (an agent
+/// installed since the last sync, or a block never written): such a file is never read
+/// as an edit, only brought up to the page's set.
+pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[Option<Vec<String>>]) -> Step {
     let base = base.map(|b| sorted(b.to_vec()));
+    let written: Vec<Vec<String>> = files.iter().flatten().map(|f| sorted(f.clone())).collect();
     let Some(page) = page.map(|p| sorted(p.to_vec())) else {
-        let union = sorted(files.iter().flatten().cloned().collect());
+        let union = sorted(written.into_iter().flatten().collect());
         return if union.is_empty() { Step::Nothing } else { Step::Seed(union) };
     };
+    let behind = !page.is_empty() && files.iter().any(Option::is_none);
     if base.as_ref() != Some(&page) {
-        return if files.iter().all(|f| sorted(f.clone()) == page) { Step::Nothing } else { Step::Write(page) };
+        return if written.iter().all(|f| *f == page) && !behind { Step::Nothing } else { Step::Write(page) };
     }
-    match files.iter().map(|f| sorted(f.clone())).find(|f| *f != page) {
+    match written.into_iter().find(|f| *f != page) {
         Some(changed) => Step::Push(changed),
+        None if behind => Step::Write(page),
         None => Step::Nothing,
     }
 }
@@ -149,11 +141,19 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         .as_ref()
         .and_then(|c| c["base"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()));
     let files = rule_files(io);
+    // The files a sync has seen with a block before: in one of them, no block now means
+    // every switch was turned off (loop disconnect, or by hand), not an agent new here.
+    let known: Vec<String> = cache
+        .as_ref()
+        .and_then(|c| c["files"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()))
+        .unwrap_or_default();
     let mut sets = Vec::new();
     for f in &files {
         // Only a missing file reads as no switches; one that can't be read stops here.
-        match agent_block::switches_in(f) {
-            Ok(ids) => sets.push(ids.into_iter().map(str::to_string).collect::<Vec<_>>()),
+        match agent_block::block_in(f) {
+            Ok(Some(ids)) => sets.push(Some(ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
+            Ok(None) if known.contains(&f.display().to_string()) => sets.push(Some(vec![])),
+            Ok(None) => sets.push(None),
             Err(_) => return 0,
         }
     }
@@ -187,6 +187,20 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     if let Some(set) = synced {
         next["base"] = json!(sorted(set));
     }
+    // Remember every file that holds a block now, and keep the ones known before while
+    // their agent's folder still exists (another CLAUDE_CONFIG_DIR profile included): an
+    // agent removed and installed again later starts fresh, with the saved set.
+    let mut seen: Vec<String> = known
+        .into_iter()
+        .filter(|k| Path::new(k).parent().is_some_and(Path::is_dir))
+        .collect();
+    for f in &files {
+        let key = f.display().to_string();
+        if !seen.contains(&key) && agent_block::block_in(f).is_ok_and(|b| b.is_some()) {
+            seen.push(key);
+        }
+    }
+    next["files"] = json!(seen);
     let _ = impeccable_account::store::write_private(&cache_path(&account), next.to_string().as_bytes());
     0
 }
@@ -203,15 +217,18 @@ mod tests {
     fn the_page_wins_a_file_change_is_sent_and_an_unset_page_is_seeded() {
         // Catches (REN-2056): a sync that wipes a machine's Loop and taste lines the first
         // time it runs, or undoes the page's change with a stale file, or the reverse.
-        assert_eq!(decide(None, None, &[v(&["taste", "loop"]), v(&[])]), Step::Seed(v(&["loop", "taste"])));
-        assert_eq!(decide(None, None, &[v(&[])]), Step::Nothing);
+        assert_eq!(decide(None, None, &[Some(v(&["taste", "loop"])), None]), Step::Seed(v(&["loop", "taste"])));
+        assert_eq!(decide(None, None, &[None]), Step::Nothing);
         let base = v(&["loop"]);
-        assert_eq!(decide(Some(&v(&["loop", "a11y"])), Some(&base), &[v(&["loop"])]), Step::Write(v(&["a11y", "loop"])));
-        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop", "taste"])]), Step::Push(v(&["loop", "taste"])));
-        assert_eq!(decide(Some(&base), Some(&base), &[v(&["loop"]), v(&["loop"])]), Step::Nothing);
+        assert_eq!(decide(Some(&v(&["loop", "a11y"])), Some(&base), &[Some(v(&["loop"]))]), Step::Write(v(&["a11y", "loop"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop", "taste"]))]), Step::Push(v(&["loop", "taste"])));
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop"])), Some(v(&["loop"]))]), Step::Nothing);
         // A first sync on a machine whose files already match the page writes nothing.
-        assert_eq!(decide(Some(&base), None, &[v(&["loop"])]), Step::Nothing);
+        assert_eq!(decide(Some(&base), None, &[Some(v(&["loop"]))]), Step::Nothing);
         // Both changed: the page wins.
-        assert_eq!(decide(Some(&v(&["wide"])), Some(&base), &[v(&["taste"])]), Step::Write(v(&["wide"])));
+        assert_eq!(decide(Some(&v(&["wide"])), Some(&base), &[Some(v(&["taste"]))]), Step::Write(v(&["wide"])));
+        // A file with no block yet is brought up to the page, never sent.
+        assert_eq!(decide(Some(&base), Some(&base), &[Some(v(&["loop"])), None]), Step::Write(v(&["loop"])));
+        assert_eq!(decide(Some(&v(&[])), Some(&v(&[])), &[None]), Step::Nothing);
     }
 }
