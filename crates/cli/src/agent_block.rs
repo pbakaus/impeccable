@@ -206,6 +206,11 @@ pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
 }
 
+/// Whether `path` can take the block: readable text with no broken markers.
+pub(crate) fn writable(path: &Path) -> Result<()> {
+    switches(&read(path)?.unwrap_or_default()).map(|_| ())
+}
+
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {

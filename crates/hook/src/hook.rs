@@ -248,7 +248,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
             last_skip = "extension";
             continue;
         }
-        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd) {
+        if plain_script_out_of_scope(&ext, configured.is_some(), &project_cwd, &rt.env) {
             last_skip = "plain-script";
             continue;
         }
@@ -863,6 +863,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             Some(since) if looks_like_project_root(root) => crate::stop_discovery::changed_since(
                 root,
                 &home,
+                &rt.env,
                 since,
                 &root_config.extensions,
                 root_config.limits.max_file_bytes,
@@ -886,6 +887,39 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
                 vec![("skipped", Value::from("no-touched-files")), ("durationMs", ms_since(started))],
+            ));
+            continue;
+        }
+        // A plugin hook next to a project hook fires this pass twice at once:
+        // only the first copy scans, as PostToolUse does.
+        // The key covers only what the pass below can scan, under the same
+        // filters and caps, so it never reads a file the pass would skip.
+        let (mut cached_n, mut found_n) = (0usize, 0usize);
+        let touched_paths: Vec<String> = touched
+            .iter()
+            .filter(|(f, _)| {
+                let ext = js::to_lower_case(&jsp::extname(f));
+                !has_path_traversal(f)
+                    && !is_sensitive_path(f)
+                    && !is_generated_path(f)
+                    && (ALLOWED_EXTS.contains(&ext.as_str()) || match_configured_extension(f, &root_config.extensions).is_some())
+                    && !is_ignored_file(&rt.proc_cwd, f, root, &root_config.ignore_files)
+                    && exists(f)
+                    && is_scan_target_inside_project(rt, f, root)
+            })
+            .filter(|(_, found)| {
+                let n = if *found { &mut found_n } else { &mut cached_n };
+                *n += 1;
+                *n <= STOP_MAX_FILES
+            })
+            .map(|(f, _)| f.clone())
+            .collect();
+        let design_inputs = stop_design_inputs(rt, root);
+        if crate::hook_claim::claim_stop(rt, &event, root, &touched_paths, &design_inputs) == crate::hook_claim::Claim::Duplicate {
+            // A duplicate says more than an empty root's skip, so it wins.
+            first_skip = Some(result(
+                &root_audit,
+                vec![("skipped", Value::from("duplicate-event")), ("durationMs", ms_since(started))],
             ));
             continue;
         }
