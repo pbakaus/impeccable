@@ -13,6 +13,7 @@
 //! stdout carries MCP frames only; diagnostics go to stderr. No token, authorization code, `state` or authorization
 //! URL is ever written to either.
 pub mod browser;
+pub mod host_setup;
 
 use impeccable_account::{config::Account, http::ApiError, session::{Session, SessionError}};
 use impeccable_common::Io;
