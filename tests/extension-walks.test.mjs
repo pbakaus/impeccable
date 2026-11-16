@@ -921,11 +921,12 @@ describe('walk worker', () => {
       assert.deepEqual(await answeredAs(method, url, resourceType), [`Fetch.${open}Request`], `${method} ${url}, open`);
     }
     await ops.writes({ open: false });
-    // A held write is refused as a server would refuse it (a 403), so the app does not send it again; a form the top
-    // of the page sent is aborted, so the tab stays on its page.
+    // A held write is refused as a server would refuse it, with a 409 no sign-in library takes for signed out, so the
+    // app neither sends it again nor signs the person out; a form the top of the page sent is aborted, so the tab
+    // stays on its page.
     let at = sent.length;
     await answeredAs('POST', `${SITE}/api/todos`);
-    assert.equal(args[sent.indexOf('Fetch.fulfillRequest', at)].responseCode, 403);
+    assert.equal(args[sent.indexOf('Fetch.fulfillRequest', at)].responseCode, 409);
     at = sent.length;
     await answeredAs('POST', `${SITE}/todos`, 'Document');
     assert.equal(args[sent.indexOf('Fetch.failRequest', at)].errorReason, 'Aborted');
@@ -1013,22 +1014,42 @@ describe('walk worker', () => {
     assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest'], 'held again');
   });
 
-  it('holds a write the page sends with a sign-in it brought on, and lets the person’s own sign-in out once the pause has shown', async (t) => {
+  it('holds what the tab sends at a sign-in pause the page brought on, and lets out only what follows the person’s own press or key', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
-    const { command, current, SIGN_IN_SETTLE_MS } = await walked();
+    const { command, current, INPUT_WINDOW_MS } = await walked();
     page.seen = {};
+    // The walk's own worlds on the page, run as Chrome would: the one that listens for presses tells its binding.
+    const bindings = args.filter((a, n) => sent[n] === 'Runtime.addBinding');
+    const heard = [];
+    for (const { source, worldName } of args.filter((a, n) => sent[n] === 'Page.addScriptToEvaluateOnNewDocument' && a.worldName)) {
+      const world = { addEventListener: (type, listener) => heard.push({ type, listener }) };
+      for (const { name } of bindings.filter((b) => b.executionContextName === worldName)) world[name] = (payload) => fire('Runtime.bindingCalled', { name, payload, executionContextId: 1 });
+      try { vm.runInContext(source, vm.createContext(world)); } catch { /* another world's script, which wants a whole page */ }
+    }
+    const input = (type, isTrusted) => { for (const one of heard.filter((h) => h.type === type)) one.listener({ type, isTrusted }); };
+    const signIn = () => answeredAs('POST', `${SITE}/login`, 'Document');
     // The page moves itself to a sign-in host and writes at once: the pause is the page's doing, the write is not the person's.
     fire('Fetch.requestPaused', { requestId: 'w-signin', resourceType: 'Document', frameId: 'main', request: { method: 'GET', url: 'https://accounts.google.com/signin' } });
     fire('Fetch.requestPaused', { requestId: 'w-with-it', resourceType: 'XHR', frameId: 'main', request: { method: 'POST', url: `${SITE}/api/todos` } });
     await settle(5);
-    assert.deepEqual(args.slice(-2).map((a) => a.responseCode ?? a.errorReason), ['Aborted', 403], 'the move refused, the write held');
-    assert.deepEqual(await answeredAs('POST', `${SITE}/api/todos`), ['Fetch.fulfillRequest']);
+    assert.deepEqual(args.slice(-2).map((a) => a.responseCode ?? a.errorReason), ['Aborted', 409], 'the move refused, the write held');
     assert.deepEqual([current().state, current().held], ['paused', 'sign-in']);
-    t.mock.timers.tick(SIGN_IN_SETTLE_MS);
-    assert.deepEqual(await answeredAs('POST', `${SITE}/login`, 'Document'), ['Fetch.continueRequest'], 'their sign-in');
+    for (const [label, act, answer] of [
+      ['however long the pause shows', () => t.mock.timers.tick(INPUT_WINDOW_MS * 2), 'fail'],
+      ['after a press the page dispatched', () => input('pointerdown', false), 'fail'],
+      ['after a key the page dispatched', () => input('keydown', false), 'fail'],
+      ['just after the person’s own press', () => input('pointerdown', true), 'continue'],
+      ['as long after it as the window', () => t.mock.timers.tick(INPUT_WINDOW_MS), 'continue'],
+      ['once the window has passed', () => t.mock.timers.tick(1), 'fail'],
+      ['just after the person’s own key', () => input('keydown', true), 'continue'],
+    ]) {
+      act();
+      assert.deepEqual(await signIn(), [`Fetch.${answer}Request`], `the sign-in sent ${label}`);
+    }
     assert.deepEqual(await answeredAs('POST', 'https://example.com/collect'), ['Fetch.failRequest'], 'never another site');
     assert.equal(await command('resume'), true);
-    assert.deepEqual(await answeredAs('POST', `${SITE}/login`, 'Document'), ['Fetch.failRequest'], 'walking again');
+    input('pointerdown', true);
+    assert.deepEqual(await signIn(), ['Fetch.failRequest'], 'walking again: the press is not the person’s word');
   });
 
   it('takes no picture of a page it cannot read', async () => {
