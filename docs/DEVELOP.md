@@ -83,6 +83,19 @@ Run `bun run build:extension` once first: it writes the detector into `extension
 3. Click **Load unpacked**.
 4. Choose the `extension` folder of this repository.
 
+#### Journeys in the unpacked build
+
+The folder you load is the permissive development build (`extension/shared/build.js`): it can sign in to an account, and it takes journeys from Impeccable's staging hosts and from this machine as well as from production. `bun run build:extension` stages the store build into `dist/extension-chrome/`, which signs in to nothing and takes journeys from Impeccable's production pages only.
+
+- **A journey needs Impeccable's server**, which is private: sign-in, personas and the journey itself all come from it. Without it the detector works as usual and the journey screens stay empty.
+- **Every side panel state draws offline.** Open `chrome-extension://<extension id>/walks/panel/panel.html?stub=<name>`, with `<name>` a key of `STUBS` or `PRE` in `extension/walks/panel/stub.js` (`idle`, `paused`, `asking`, `done`, `home`, `plan`, `history`, ...). The store build ignores `?stub`.
+- **The server switch** is the Account server field on the extension's options page (right-click the toolbar icon, then Options). It shows in the unpacked build only and takes production, staging or `http://api.localhost:<port>`.
+- **A journey from this machine** is taken only from the local stack of the account server chosen there: `localhost` and `app.localhost` on that server's port. With production or staging chosen, no `localhost` page can hand a journey over.
+
+#### Known limits
+
+- The outing page on Impeccable's site is the trust root of a journey: the extension asks the person nothing before it starts the journey that page hands over. A script injected into that page could start a journey on the origins it names (up to eight). Revisit this before the Chrome Web Store launch.
+
 ## Build System Details
 
 The build system uses a factory pattern under `scripts/`:
