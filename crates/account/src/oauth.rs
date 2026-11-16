@@ -572,6 +572,22 @@ pub fn revoke(client: &Client, endpoint: &str, refresh_token: &str) -> Result<()
 mod scope_tests {
     use super::*;
 
+    // Catches (review): the landing page built from the issuer instead of the browser's
+    // origin. Production's issuer (api.impeccable.style) serves no app pages, so that
+    // mistake would send every sign-in to a 404.
+    #[test]
+    fn the_setup_page_is_on_the_authorization_endpoints_origin_not_the_issuers() {
+        assert_eq!(
+            setup_url("https://impeccable.style/app/oauth/authorize").as_deref(),
+            Some("https://impeccable.style/app/-/setup?signed-in=cli")
+        );
+        assert_eq!(
+            setup_url("http://127.0.0.1:8788/app/oauth/authorize?x=1").as_deref(),
+            Some("http://127.0.0.1:8788/app/-/setup?signed-in=cli")
+        );
+        assert_eq!(setup_url("not a url"), None);
+    }
+
     // Catches the MCP scopes asked for when the service did not offer them, or
     // one asked for twice beside the CLI's own (Taste is both).
     #[test]
