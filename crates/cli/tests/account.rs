@@ -533,4 +533,14 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "the removal was sent");
     assert!(!std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap().contains("Impeccable Taste"));
+    // Gemini removed, a sync without it, then installed again fresh: it gets the saved
+    // set and nothing is sent.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":null,"me":["taste"]}"#);
+    refresh();
+    std::fs::remove_dir_all(home.join(".gemini")).unwrap();
+    refresh();
+    std::fs::create_dir_all(home.join(".gemini")).unwrap();
+    refresh();
+    assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "nothing more sent");
+    assert!(std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap().contains("Impeccable Taste"));
 }

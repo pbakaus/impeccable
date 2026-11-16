@@ -187,8 +187,11 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     if let Some(set) = synced {
         next["base"] = json!(sorted(set));
     }
-    // Remember every file that holds a block now, and keep the ones known before.
-    let mut seen = known;
+    // Remember every file that holds a block now, and keep the ones known before while
+    // their agent is still installed: an agent removed and installed again later starts
+    // fresh, with the saved set.
+    let installed: Vec<String> = files.iter().map(|f| f.display().to_string()).collect();
+    let mut seen: Vec<String> = known.into_iter().filter(|k| installed.contains(k)).collect();
     for f in &files {
         let key = f.display().to_string();
         if !seen.contains(&key) && agent_block::block_in(f).is_ok_and(|b| b.is_some()) {
