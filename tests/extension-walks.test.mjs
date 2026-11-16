@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
 
-import { readHandoff, resultLink } from '../extension/walks/handoff.js';
+import { readHandoff, readStartedHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
 import { listen } from '../extension/walks/panel/voice.js';
@@ -67,7 +67,8 @@ describe('walk hand-off', () => {
   });
 
   // The store build takes a walk from our production pages alone; the build loaded unpacked, from staging too, and
-  // from this machine only on the port of the local account server the person chose.
+  // from this machine only on the port of the local account server the person chose. A walk the account worker
+  // started, on the same socket, follows the same rule.
   const LOCAL = 'http://api.localhost:8794';
   for (const [label, page, socket, server, unpacked] of [
     ['production', PAGE, block().socket, undefined, true],
@@ -81,6 +82,7 @@ describe('walk hand-off', () => {
       const store = await import(pathToFileURL(path.join(STORE(), 'walks/handoff.js')).href);
       const text = JSON.stringify(block({ socket }));
       assert.deepEqual([readHandoff(text, page, server).ok, store.readHandoff(text, page, server).ok], [unpacked, label === 'production']);
+      assert.deepEqual([readStartedHandoff(text, server).ok, store.readStartedHandoff(text, server).ok], [unpacked, label === 'production']);
     });
   }
 

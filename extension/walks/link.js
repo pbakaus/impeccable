@@ -180,7 +180,8 @@ async function take(text, sender, sees) {
  */
 export async function adopt(text, tabId, device, sees) {
   await ready;
-  const read = readStartedHandoff(text);
+  const { accountServer } = await chrome.storage.local.get('accountServer').catch(() => ({}));
+  const read = readStartedHandoff(text, accountServer);
   if (!read.ok) return read;
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   let at = null;

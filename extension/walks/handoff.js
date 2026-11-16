@@ -122,21 +122,25 @@ export function readHandoff(text, pageUrl, server) {
   return readBlock(text, (socket, outing) => ownSocket(socket, new URL(pageUrl), outing), admit);
 }
 
-/** The sockets a walk the account worker started may be on: our servers' (the pairing it signed in to), never another host. */
-function startedSocket(socket, outing) {
+/**
+ * The sockets a walk the account worker started may be on: our servers' (the pairing it signed in to), never another
+ * host; on this machine, only the chosen account server's port (`onChosenStack`).
+ */
+function startedSocket(socket, outing, server) {
   let url;
   try { url = new URL(socket); } catch { return false; }
   const origins = [...new Set(Object.values(SOCKET_HOST))].filter((host) => BUILD.devHosts || !STAGING.test(host)).map((host) => `wss://${host}`);
-  const local = BUILD.devHosts && url.protocol === 'ws:' && url.hostname === 'localhost' ? [url.origin] : [];
+  const local = BUILD.devHosts && url.protocol === 'ws:' && url.hostname === 'localhost' && onChosenStack(url, server) ? [url.origin] : [];
   return [...origins, ...local].some((origin) => url.href === new URL(`${origin}/api/outings/${outing}/socket`).href);
 }
 
 /**
  * Reads the block the account worker passes on for a walk of the person's own tab: the same block, its socket on one of our servers.
  * The tab's own origin is walked (never one of our pages). Its `allow` is empty: only the person's Yes adds a site.
+ * `server` is the account server the person chose, as for `readHandoff`.
  */
-export function readStartedHandoff(text) {
-  const read = readBlock(text, startedSocket, (url) => {
+export function readStartedHandoff(text, server) {
+  const read = readBlock(text, (socket, outing) => startedSocket(socket, outing, server), (url) => {
     const origin = webOrigin(url);
     if (!origin || isOwnPage(url)) throw new Error('no journey can start here');
     return { origin };
