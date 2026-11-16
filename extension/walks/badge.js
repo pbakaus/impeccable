@@ -29,7 +29,7 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
   if (globalThis.__impeccableWalkBadge) return;
   const CSS = `
     :host { all: initial; position: fixed; right: 16px; bottom: 16px; z-index: 2147483647; }
-    .pill { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid oklch(13% 0 0 / 0.45); border-radius: 999px;
+    .pill { all: initial; visibility: inherit; direction: ltr; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid oklch(13% 0 0 / 0.45); border-radius: 999px;
       background: oklch(99.5% 0 0); color: oklch(13% 0 0); box-shadow: 0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.08);
       font: 500 12px/1 "Avenir Next", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; white-space: nowrap; -webkit-font-smoothing: antialiased; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: oklch(84% 0.19 80.46); box-shadow: 0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px oklch(84% 0.19 80 / 0.6); }
@@ -82,7 +82,39 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
   // Only a press a person or the walk really made: a click the page's script made up is not one. While the walk asks,
   // it makes none: every op waits on the answer.
   let go = 'resume';
-  resume.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding](go); });
+  // A Yes lets a deed through (delete, pay, send), so it counts only when the person could see what it said yes to:
+  // the badge whole and on top, unfaded, where it was put, and since a moment before (Chrome's own visibility check).
+  // A page that fades it, covers it or slides it under a control of its own gets nothing from the press: the side
+  // panel asks the same question.
+  const SEEN_MS = 500;
+  let seenSince = null;
+  let askedAt = 0;
+  let asked = '';
+  let spot = null;
+  const look = (entry) => { seenSince = entry.isVisible && entry.intersectionRatio > 0.99 ? (seenSince ?? performance.now()) : null; };
+  const watch = typeof IntersectionObserver === 'function' && 'isVisible' in (globalThis.IntersectionObserverEntry?.prototype ?? {})
+    ? new IntersectionObserver((entries) => entries.forEach(look), { threshold: [0, 1], trackVisibility: true, delay: 100 })
+    : null;
+  watch?.observe(pill);
+  const plain = (node, own) => {
+    const css = getComputedStyle(node);
+    return css.opacity === '1' && css.visibility === 'visible' && css.transform === 'none' && css.filter === 'none' && css.clipPath === 'none'
+      && [css.maskImage, css.webkitMaskImage].every((mask) => !mask || mask === 'none') && (!css.mixBlendMode || css.mixBlendMode === 'normal')
+      && (!own || ((!css.zoom || css.zoom === '1') && css.pointerEvents !== 'none'));
+  };
+  const seen = (event, button) => {
+    if (!watch || !spot || host.parentNode !== document.documentElement) return false;
+    watch.takeRecords().forEach(look);
+    if (seenSince === null || performance.now() - Math.max(seenSince, askedAt) < SEEN_MS) return false;
+    if (!plain(host, true) || !plain(document.documentElement, false)) return false;
+    const box = host.getBoundingClientRect();
+    if (Math.abs(box.left - spot.left) > 1 || Math.abs(box.top - spot.top) > 1) return false;
+    // A key press clicks at no point: its button's middle stands in.
+    const at = button.getBoundingClientRect();
+    const [x, y] = event.detail > 0 ? [event.clientX, event.clientY] : [at.left + at.width / 2, at.top + at.height / 2];
+    return document.elementFromPoint(x, y) === host;
+  };
+  resume.addEventListener('click', (event) => { if (event.isTrusted && (go !== 'yes' || seen(event, resume))) globalThis[binding](go); });
   no.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('no'); });
   stop.addEventListener('click', (event) => { if (event.isTrusted) globalThis[binding]('stop'); });
 
@@ -96,10 +128,11 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
     // The walk lays the page out at its own size, which can be larger than the window: keep to the part on screen.
     if (!fit || !host.isConnected) return;
     const box = pill.getBoundingClientRect();
+    spot = { left: Math.max(8, Math.min(fit.w, innerWidth) - box.width - 16), top: Math.max(8, Math.min(fit.h, innerHeight) - box.height - 16) };
     host.style.right = 'auto';
     host.style.bottom = 'auto';
-    host.style.left = `${Math.max(8, Math.min(fit.w, innerWidth) - box.width - 16)}px`;
-    host.style.top = `${Math.max(8, Math.min(fit.h, innerHeight) - box.height - 16)}px`;
+    host.style.left = `${spot.left}px`;
+    host.style.top = `${spot.top}px`;
   };
   const mount = () => {
     if (host.isConnected || !document.documentElement) return;
@@ -118,6 +151,10 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
       resume.textContent = state.resume;
       resume.hidden = !state.resume;
       go = state.go ?? 'resume';
+      // A new question is read before it is answered: its moment starts now.
+      const question = go === 'yes' ? state.sub : '';
+      if (question && question !== asked) askedAt = performance.now();
+      asked = question;
       no.textContent = state.no ?? '';
       no.hidden = !state.no;
       pill.dataset.state = state.state;
@@ -134,7 +171,7 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
     beat() { expires = Date.now() + lifeMs; if (glowing) glowing = Date.now() + glowLifeMs; },
     veil(on) { veiled = on; host.style.visibility = on ? 'hidden' : ''; showGlow(); },
     // A badge that went is gone from its world too: one put there again starts afresh.
-    remove() { gone = true; clearInterval(timer); host.remove(); glowHost.remove(); if (globalThis.__impeccableWalkBadge === api) delete globalThis.__impeccableWalkBadge; },
+    remove() { gone = true; clearInterval(timer); watch?.disconnect(); host.remove(); glowHost.remove(); if (globalThis.__impeccableWalkBadge === api) delete globalThis.__impeccableWalkBadge; },
   };
   globalThis.__impeccableWalkBadge = api;
 }

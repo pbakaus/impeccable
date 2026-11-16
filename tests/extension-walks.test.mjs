@@ -2143,25 +2143,45 @@ describe('walk worker', () => {
 describe('walk glow', () => {
   // After the worker's tests have put a stand-in Chrome in place: the badge's module hangs on the driver's.
   const badge = () => import('../extension/walks/badge.js');
-  const page = async () => {
+  // `observer`: a Chrome with its visibility check (IntersectionObserver v2). `css`: a node's computed style, as the page
+  // left it; `cover`: what is under a press other than the badge.
+  const page = async ({ observer = true } = {}) => {
     const { badgeInPage } = await badge();
     const clock = { now: 0 };
     const ticks = [];
+    const watchers = [];
+    const pressed = [];
     const node = (tag) => ({
-      tag, style: {}, dataset: {}, isConnected: false, children: [],
-      append(...kids) { for (const kid of kids) { kid.isConnected = true; this.children.push(kid); } },
-      remove() { this.isConnected = false; }, setAttribute() {}, addEventListener() {},
-      attachShadow() { return node('#shadow'); }, getBoundingClientRect: () => ({ width: 100, height: 30 }),
+      tag, style: {}, dataset: {}, isConnected: false, children: [], listeners: {}, css: {},
+      append(...kids) { for (const kid of kids) { kid.isConnected = true; kid.parentNode = this; this.children.push(kid); } },
+      remove() { this.isConnected = false; }, setAttribute() {}, addEventListener(type, listener) { this.listeners[type] = listener; },
+      attachShadow() { this.shadow = node('#shadow'); return this.shadow; },
+      getBoundingClientRect() { return { left: parseFloat(this.style.left) || 0, top: parseFloat(this.style.top) || 0, width: 100, height: 30 }; },
     });
     const root = node('html');
+    const at = { cover: null };
     const context = {
-      document: { createElement: node, documentElement: root }, CSSStyleSheet: class { replaceSync() {} },
-      Date: { now: () => clock.now }, setInterval: (fn) => { ticks.push(fn); return 1; }, clearInterval() {}, innerWidth: 800, innerHeight: 600, addEventListener() {},
+      document: { createElement: node, documentElement: root, elementFromPoint: () => at.cover ?? host() }, CSSStyleSheet: class { replaceSync() {} },
+      Date: { now: () => clock.now }, performance: { now: () => clock.now }, setInterval: (fn) => { ticks.push(fn); return 1; }, clearInterval() {}, innerWidth: 800, innerHeight: 600, addEventListener() {},
+      getComputedStyle: (one) => ({ opacity: '1', visibility: 'visible', transform: 'none', filter: 'none', clipPath: 'none', maskImage: 'none', mixBlendMode: 'normal', zoom: '1', pointerEvents: 'auto', ...one.css }),
+      bind: (what) => pressed.push(what),
+      ...(observer ? {
+        IntersectionObserver: class { constructor(report) { this.report = report; watchers.push(this); } observe() {} takeRecords() { return []; } disconnect() {} },
+        IntersectionObserverEntry: class { get isVisible() { return true; } },
+      } : {}),
     };
     vm.runInNewContext(`(${badgeInPage})('bind', 3000, 1500)`, context);
     const glow = () => root.children.find((child) => child.tag === 'impeccable-walk-glow');
+    const host = () => root.children.find((child) => child.tag === 'impeccable-walk');
     const shows = () => Boolean(glow()?.isConnected && glow().style.visibility !== 'hidden');
-    return { api: context.__impeccableWalkBadge, clock, tick: () => ticks.forEach((fn) => fn()), shows };
+    // Chrome's word on the badge: wholly on screen, and seen (nothing over it, nothing fading it) or not.
+    const see = (visible) => { for (const watcher of watchers) watcher.report([{ isVisible: visible, intersectionRatio: 1 }]); };
+    // A person's press on the badge's No, Yes (or Continue) or Stop, at a point on it.
+    const press = (button) => {
+      const [no, yes, stop] = host().shadow.children[0].children.slice(3);
+      ({ no, yes, stop })[button].listeners.click({ isTrusted: true, detail: 1, clientX: 700, clientY: 560 });
+    };
+    return { api: context.__impeccableWalkBadge, clock, tick: () => ticks.forEach((fn) => fn()), shows, see, press, pressed, host, at };
   };
   const walking = { title: '', sub: '', stop: 'Stop', resume: '', state: 'walking', step: 1, glow: true };
 
@@ -2198,6 +2218,38 @@ describe('walk glow', () => {
   ]) {
     it(`${glow ? 'glows' : 'does not glow'} ${label}`, async () => { assert.equal((await badge()).badgeState(shown, adopted).glow, glow); });
   }
+
+  // Catches a hostile page fading the badge or sliding it under its own control, so a person's click there says Yes.
+  const asking = { title: 'Asking', sub: 'Delete the to-do', stop: 'Stop', resume: 'Yes', go: 'yes', no: 'No', state: 'asking', step: 2, glow: true, fit: { w: 800, h: 600 } };
+  for (const [label, spoil, sent, options] of [
+    ['seen whole and on top for a moment', () => {}, ['yes']],
+    ['pressed before a moment has passed', ({ clock }) => { clock.now = 200; }, []],
+    ['a new question, pressed at once', ({ api }) => api.set({ ...asking, sub: 'Pay $12' }), []],
+    ['covered or faded, as Chrome sees it', ({ see }) => see(false), []],
+    ['faded by the page’s own styles', ({ host }) => { host().css = { opacity: '0.01' }; }, []],
+    ['moved from where it was put', ({ host }) => { host().getBoundingClientRect = () => ({ left: 20, top: 20, width: 100, height: 30 }); }, []],
+    ['under something else at the press', ({ at }) => { at.cover = {}; }, []],
+    ['in a Chrome with no visibility check', () => {}, [], { observer: false }],
+  ]) {
+    it(`${sent.length ? 'says' : 'says nothing for'} Yes on the badge ${label}`, async () => {
+      const at = await page(options);
+      at.api.set(asking);
+      at.see(true);
+      at.clock.now = 1000;
+      spoil(at);
+      at.press('yes');
+      assert.deepEqual(at.pressed, sent);
+    });
+  }
+
+  it('takes No and Stop on the badge whether or not it can be seen', async () => {
+    const at = await page();
+    at.api.set(asking);
+    at.see(false);
+    at.press('no');
+    at.press('stop');
+    assert.deepEqual(at.pressed, ['no', 'stop']);
+  });
 
   it('names Continue apart at a sign-in pause, pressing the same command', async () => {
     const { badgeState } = await badge();
