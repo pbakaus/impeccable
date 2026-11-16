@@ -52,6 +52,9 @@
 //     WebSocket sends.
 //   - a read that changes something: a GET is let through wherever it goes.
 //   - the instant a small download takes: the file can exist for a moment before it is removed.
+//   - our own outing page. It is the trust root: the extension asks the person nothing before it starts the walk that
+//     page hands over (handoff.js), so a script injected there could start one on the origins it names. To revisit
+//     before the Chrome Web Store launch.
 //
 // Mechanism, with the evidence (a real Chrome, each attempt against a second local server that counts requests):
 // Fetch at Document level stopped a link, `location =`, a meta refresh, a redirect and a `goto` with 0 requests

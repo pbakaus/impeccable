@@ -75,7 +75,7 @@ FEATURES
 
 JOURNEYS
 
-In this build, journeys are started from the Impeccable web app only. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
+Journeys are started from the Impeccable web app. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
 
 The same 62 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
 
