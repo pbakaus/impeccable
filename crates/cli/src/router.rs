@@ -401,13 +401,13 @@ pub(crate) fn health_scan(
     }
 }
 
-/// Whether this invocation is a scan the Pro engine may take over: the
-/// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
-/// `detect --before` / `--kept` run no rules, and a Pro build older than
-/// those flags would ignore them and scan instead, so they stay here.
 /// Lets Chrome start the browser relay (REN-2053): the launcher and each present browser's host manifest. Install
 /// and update print what changed; a failure is named and never fails them.
 fn register_browser_host(io: &mut Io) {
+    // CI runs install in throwaway machines: no browser to register with, and no files left behind.
+    if io.env.get("CI").is_some_and(|v| !v.is_empty()) {
+        return;
+    }
     let Some(home) = impeccable_account::config::impeccable_home(&io.env) else { return };
     let user_home = home.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let user_home = io.env.get("HOME").filter(|h| !h.is_empty()).map(std::path::PathBuf::from).unwrap_or(user_home);
@@ -416,6 +416,10 @@ fn register_browser_host(io: &mut Io) {
     }
 }
 
+/// Whether this invocation is a scan the Pro engine may take over: the
+/// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
+/// `detect --before` / `--kept` run no rules, and a Pro build older than
+/// those flags would ignore them and scan instead, so they stay here.
 pub fn is_scan(args: &[String], io: &Io) -> bool {
     if args.iter().any(|a| a == "--before" || a == "--kept") {
         return false;

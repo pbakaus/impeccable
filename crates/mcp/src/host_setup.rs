@@ -5,9 +5,13 @@
 //! newest verified engine under `<IMPECCABLE_HOME>/bin` (the rule in CLI-CONTRACT's `agents` section) and execs it
 //! with its arguments. So it's written once and survives every update; Chrome starts it with a bare environment,
 //! so the home folder is written into it.
+#[cfg(unix)]
 use crate::browser::EXTENSION_IDS;
+#[cfg(unix)]
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 
 /// The host's name, as Chrome and the extension know it.
 pub const HOST_NAME: &str = "style.impeccable.browser";
@@ -38,6 +42,7 @@ exec "$best" "$@"
     )
 }
 
+#[cfg(unix)]
 /// Where Chromium-based browsers read a user's native-messaging hosts: (browser, profile root). A browser counts
 /// as present when its profile root exists.
 fn browsers(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
@@ -62,6 +67,7 @@ fn browsers(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
     list.iter().map(|(name, rel)| (*name, user_home.join(rel))).collect()
 }
 
+#[cfg(unix)]
 /// Sandboxed browsers that can't start a program outside their sandbox: (browser, folder that marks it).
 fn sandboxed(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
     if cfg!(target_os = "macos") {
@@ -80,6 +86,7 @@ fn sandboxed(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
     .collect()
 }
 
+#[cfg(unix)]
 fn manifest(launcher: &Path) -> Value {
     json!({
         "name": HOST_NAME,
@@ -90,6 +97,7 @@ fn manifest(launcher: &Path) -> Value {
     })
 }
 
+#[cfg(unix)]
 /// Write `bytes` to `path` through a file beside it, so a reader never sees half of it.
 fn write_atomically(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
