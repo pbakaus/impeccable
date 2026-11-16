@@ -3216,6 +3216,9 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   extension that stopped answering is
   `The Impeccable extension stopped answering. Open Chrome and try again.`
   The check on `tools/list` is a connect and one probe, within about 100 ms.
+  `initialize` says `tools.listChanged: true`: when the relay's socket appears
+  or goes away after the agent listed (Chrome opened or closed), the next
+  request is preceded by one `notifications/tools/list_changed`.
 - **Native-messaging host.** Chrome starts `impeccable` with the extension's
   origin as its first argument (`chrome-extension://bdkgmiklpdmaojlpflclinlofgjfpabf/`,
   the store build). Only that origin starts the relay; any other first

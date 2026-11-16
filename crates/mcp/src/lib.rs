@@ -96,6 +96,10 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
     let mut agent: Option<String> = None;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
+    // Whether the relay's socket was there at the last tools/list: when that flips (Chrome opened or closed after
+    // the agent listed), the agent is told its tools changed, once. One stat per request, no probe.
+    let mut listed_with: Option<bool> = None;
+    let relay_there = |link: &Option<browser::Link>| link.is_some() || socket.is_some_and(|s| s.exists());
     for line in input.lines() {
         let Ok(line) = line else { break };
         if line.trim().is_empty() {
@@ -109,6 +113,10 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
             agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
         }
         asked_as(&mut request, agent.as_deref());
+        if listed_with.is_some_and(|was| was != relay_there(&link)) {
+            frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
+            listed_with = None;
+        }
         if let Some(socket) = socket {
             if let Some(reply) = browsed(&request, socket, agent.as_deref().unwrap_or("Your agent"), &mut link) {
                 frame(out, &reply);
@@ -116,6 +124,9 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
             }
         }
         let listing = request.get("method").and_then(Value::as_str) == Some("tools/list");
+        if listing {
+            listed_with = Some(relay_there(&link));
+        }
         if let Some(mut reply) = answer(&request, out, err, upstream) {
             // The agent driving keeps its tools; any other lists them while the relay is up and free. Local tools
             // don't wait on the account service: when its list fails, they're the list.
@@ -197,7 +208,7 @@ fn answer(request: &Value, out: &mut dyn Write, err: &mut dyn Write, upstream: &
                 Err(_) => json!({ "protocolVersion": asked }),
             };
             result["serverInfo"] = json!({ "name": "Impeccable", "version": env!("CARGO_PKG_VERSION") });
-            result["capabilities"] = json!({ "tools": {} });
+            result["capabilities"] = json!({ "tools": { "listChanged": true } });
             if result.get("protocolVersion").is_none() {
                 result["protocolVersion"] = json!(asked);
             }

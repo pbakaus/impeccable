@@ -192,3 +192,31 @@ fn replies_reach_only_the_agent_that_asked() {
     assert_eq!(names(&reply).len(), 4);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// Catches an agent that listed before Chrome opened never learning the browser tools exist, and a server that
+// doesn't say it sends that notice.
+#[test]
+fn tells_the_agent_its_tools_changed_when_chrome_connects_later() {
+    let dir = short_dir("changed");
+    let socket = dir.join("browser").join("host.sock");
+    let (mut to_server, server_in) = UnixStream::pair().unwrap();
+    let s = socket.clone();
+    let server = std::thread::spawn(move || {
+        let mut out = Vec::new();
+        serve_with(std::io::BufReader::new(server_in), &mut out, &mut Vec::new(), &mut Remote, Some(&s));
+        out
+    });
+    use std::io::Write as _;
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} })).unwrap();
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    let _ext = relay(&socket);
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 3, "method": "ping" })).unwrap();
+    writeln!(to_server, "{}", json!({ "jsonrpc": "2.0", "id": 4, "method": "ping" })).unwrap();
+    drop(to_server);
+    let out: Vec<Value> = String::from_utf8(server.join().unwrap()).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    let said: Vec<String> = out.iter().map(|m| m["method"].as_str().map(str::to_string).unwrap_or_else(|| m["id"].to_string())).collect();
+    assert_eq!(out[0]["result"]["capabilities"]["tools"]["listChanged"], true);
+    assert_eq!(said, ["1", "2", "notifications/tools/list_changed", "3", "4"]);
+    let _ = std::fs::remove_dir_all(dir);
+}
