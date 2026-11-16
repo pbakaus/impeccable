@@ -298,9 +298,16 @@ pub(crate) fn scan_after_login(
         return "skipped";
     }
     let cwd = io.cwd.display().to_string();
-    let Some(root) = health::repo_top(&cwd) else {
-        io.err("Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.\n");
-        return "skipped";
+    let root = match health::repo_top_in_time(&cwd) {
+        Ok(Some(root)) => root,
+        Ok(None) => {
+            io.err("Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.\n");
+            return "skipped";
+        }
+        Err(()) => {
+            io.err("Git didn't answer in time, so nothing was scanned. Run impeccable detect here to add this repository to your account.\n");
+            return "skipped";
+        }
     };
     if health::first_scan_done(&io.env, &root) {
         return "already";

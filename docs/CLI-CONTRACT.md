@@ -2939,6 +2939,7 @@ subdirectory counts as its repository.
 Exact stderr lines:
 
 - `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
+- `Git didn't answer in time, so nothing was scanned. Run impeccable detect here to add this repository to your account.` when `git rev-parse` gets no answer within 2 seconds.
 - `Scanning this repository for your account (Ctrl-C skips it)...`
 - `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. See it on your Home: {home}` for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), and `... Find it under Repositories in your Impeccable account.` for any other.
 - `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`

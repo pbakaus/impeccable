@@ -303,6 +303,12 @@ pub fn repo_top(dir: &str) -> Option<String> {
     git(dir, &["rev-parse", "--show-toplevel"])
 }
 
+/// [`repo_top`], telling a git that didn't answer in time (`Err`) from a folder
+/// outside any repository (`Ok(None)`).
+pub fn repo_top_in_time(dir: &str) -> Result<Option<String>, ()> {
+    git_run(dir, &["rev-parse", "--show-toplevel"], GIT_DEADLINE)
+}
+
 /// Remember that the repository at `root` had its sign-in scan.
 pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &str) {
     if let Some(key) = first_scan_key(env, root) {
