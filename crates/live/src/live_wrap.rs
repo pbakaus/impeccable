@@ -391,7 +391,9 @@ fn wrap_cli(args: &[String], io: &mut Io) -> i32 {
     let mut deferred_wrapper: Option<(String, usize, usize)> = None;
     let mut svelte_preview_fallback: Option<String> = None;
 
-    if use_vue_component {
+    if use_vue_component && isolation.is_some() {
+        svelte_preview_fallback = Some("Inline selections require ordinary source preview".into());
+    } else if use_vue_component {
         match crate::vue_component::scaffold(
             &id,
             count,
