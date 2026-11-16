@@ -88,7 +88,7 @@ export const COPY = {
     'audio-capture': 'No microphone found. You can still type.',
     network: 'Talking needs an internet connection. You can still type.',
     failed: 'Couldn’t hear that. Try again, or type.',
-    full: 'That’s all the box holds. Edit it, then Send.',
+    full: 'That’s all the box holds. Edit it, then go on.',
   },
   /** The page that asks for the microphone, once, in a tab of its own (walks/mic). */
   mic: {

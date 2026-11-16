@@ -151,6 +151,8 @@ export const PRE = {
   // No app with personas of its own (none, or none with any), and the apps still coming: no "Use a persona from your app".
   'make-no-apps': { personas: PERSONAS, screen: 'make', apps: [] },
   'make-apps-loading': { personas: PERSONAS, screen: 'make', apps: undefined },
+  // Talking to make one: the words heard so far in the make box, the bars beside Create.
+  'make-listening': { personas: PERSONAS, screen: 'make', apps: APPS, describe: 'Rosa, a night-shift nurse who books her shifts', levels: [0.08, 0.22, 0.4, 0.62, 0.5, 0.78, 0.92, 0.66, 0.44, 0.7, 0.55, 0.3, 0.16, 0.06] },
   // Three of their own already: the + is greyed and says why.
   'home-full': { personas: FULL, task: TASK, here: 'https://shop.example/' },
   // A task longer than the box: it grows to six lines, then scrolls inside.
@@ -180,5 +182,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'make-no-apps', 'make-apps-loading', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-refused', 'make-no-apps', 'make-apps-loading', 'make-listening', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

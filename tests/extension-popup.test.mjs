@@ -343,7 +343,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   // `mic`: a browser that hears (speech recognition, the microphone given) and whose mic level can be read; it counts
   // the streams opened and ended, the frames asked for and cancelled, and the audio contexts closed.
   Object.assign(globalThis, mic ? {
-    webkitSpeechRecognition: class { start() { this.onstart?.(); } stop() { this.onend?.(); } abort() {} },
+    webkitSpeechRecognition: class { start() { mic.heard = this; this.onstart?.(); } stop() { this.onend?.(); } abort() {} },
     AudioContext: class { createAnalyser() { return { getByteTimeDomainData() {} }; } createMediaStreamSource() { return { connect() {} }; } async close() { mic.closed += 1; } },
     requestAnimationFrame: () => { mic.frames += 1; return mic.frames; },
     cancelAnimationFrame: () => { mic.cancelled += 1; },
@@ -610,13 +610,17 @@ for (const [what, apps, cast, open] of [
 }
 
 // The waveform reads the mic beside the speech recognition: its stream and frame loop end on Stop and on Send.
-test('the side panel’s mic opens a stream for the waveform while listening, and ends it on Stop and on Send', async () => {
+// Make a persona has the same mic: its words fill the make box, not the task box, and Create ends it.
+test('the side panel’s mic opens a stream for the waveform while listening, ends it on Stop, Send and Create, and fills the box it was pressed in', async () => {
   const mic = { opened: 0, stopped: 0, frames: 0, cancelled: 0, closed: 0 };
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Mira', role: '', slug: 'mira' }], mic });
   const waves = () => h.app.querySelectorAll('.wave').length;
+  const say = async (transcript) => { mic.heard.onresult({ results: [Object.assign([{ transcript }], { isFinal: true })] }); await tick(); };
   await h.press('mic');
   await tick();
   assert.deepEqual([waves(), mic.opened, mic.frames > 0], [1, 1, true]);
+  await say('Add a to-do');
+  assert.equal(h.app.querySelector('textarea').value, 'Add a to-do');
   await h.press('mic');
   assert.deepEqual([waves(), mic.stopped, mic.cancelled, mic.closed], [0, 1, 1, 1], 'Stop: the stream, the frames and the context end');
   await h.press('mic');
@@ -624,6 +628,16 @@ test('the side panel’s mic opens a stream for the waveform while listening, an
   h.app.querySelector('textarea').value = 'Add a to-do.';
   await h.press('send');
   assert.deepEqual([mic.opened, mic.stopped, mic.closed], [2, 2, 2], 'Send ends it too');
+  await h.press('make-persona');
+  await h.press('mic');
+  await tick();
+  assert.deepEqual([h.body.dataset.screen, waves(), h.acts().includes('make')], ['make', 1, true], 'the make box listens beside Create');
+  await say('A night-shift nurse');
+  assert.equal(h.app.querySelector('textarea').value, 'A night-shift nurse');
+  await h.press('make');
+  assert.deepEqual([mic.opened, mic.stopped, h.sent.find((m) => m.account === 'create')?.description], [3, 3, 'A night-shift nurse'], 'Create ends it and sends the words heard');
+  await h.press('back');
+  assert.equal(h.app.querySelector('textarea').value, 'Add a to-do.', 'the task box keeps its own words');
 });
 
 test('a walk that ended with no results page to open offers the way home', async () => {
