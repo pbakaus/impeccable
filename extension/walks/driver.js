@@ -54,16 +54,17 @@ export function fence() {
 
 /**
  * The write hold (REN-2034): every write the tab sends is held, unless writes are open: by the server's `writes`, or
- * by the person's Yes to a deed ({@link letWrite}). The person drives only once they took the tab over, or while the
- * walk is paused at a sign-in, and then only what the tab sends once that has shown for a moment: a write the page
- * queued with what brought the pause on (a page can bring a sign-in pause on, never a take-over) stays held. A plain
- * pause holds them as walking does.
+ * by the person's Yes to a deed ({@link letWrite}). The person drives once they took the tab over. Paused at a sign-in
+ * (which a page can bring on itself, never a take-over), only what the tab sends soon after the person's own press or
+ * key in it is theirs ({@link feelInput}): a page's timer or autosave stays held. A plain pause holds them as walking does.
  */
 let driver = { by: null, since: 0 };
 export function drivenBy(by) { if (by !== driver.by) driver = { by, since: Date.now() }; }
-/** How long a sign-in pause shows before what the tab sends is taken for the person's own: nobody signs in faster. */
-export const SIGN_IN_SETTLE_MS = 1500;
-const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && at - driver.since >= SIGN_IN_SETTLE_MS);
+/** How long after the person's own press or key, at a sign-in pause, what the tab sends is taken for theirs. */
+export const INPUT_WINDOW_MS = 5000;
+/** When the person last pressed or typed in the tab while it was paused at a sign-in. */
+let touched = -Infinity;
+const persons = (at) => driver.by === 'takeover' || (driver.by === 'sign-in' && touched >= driver.since && at - touched <= INPUT_WINDOW_MS);
 const holding = (tab, at) => !tab.writesOpen && !persons(at);
 /** Counts each close: a Yes given after one opens nothing (a late Yes to a deed the server already gave up on). */
 let writesShut = 0;
@@ -251,6 +252,8 @@ export async function endWalk(told, why, { tidy = false } = {}) {
 async function cmd(method, params) {
   // Once the walk is ending, nothing more reaches the tab: not an op a pause held, not the rest of one under way.
   if (!walk || walk.ending) throw fail('OutingClosed', 'no tab is open');
+  const own = method.startsWith('Input.');
+  if (own) ownInput.busy += 1;
   try {
     return await chrome.debugger.sendCommand({ tabId: walk.tabId }, method, params);
   } catch (err) {
@@ -259,8 +262,36 @@ async function cmd(method, params) {
     // On the tab, and refused it while another extension's frame is in the page: as good as pushed off (`lost`).
     if (message.includes('URL of different extension') && walk) void lost(walk);
     throw fail('Error', message);
+  } finally {
+    if (own) { ownInput.busy -= 1; ownInput.at = Date.now(); }
   }
 }
+
+/** The walk's own presses and keys under way, and when the last one was answered: Chrome makes them trusted too. */
+const ownInput = { busy: 0, at: -Infinity };
+/** How long after its own press or key is answered the page may still be telling of it. */
+const OWN_INPUT_MS = 250;
+
+/*
+ * The person's own press or key in the tab, told by the walk's world (never the page's, which cannot reach its
+ * binding), and only if Chrome made it: a page can dispatch a pointerdown or a keydown, never a trusted one. Not a
+ * submit or a click, which a page's `requestSubmit()` or a label can bring about. Installed before the page's own
+ * scripts, so it hears first.
+ */
+const FELT = '__impeccableWalkFelt';
+function feelInput(binding) {
+  if (globalThis.__impeccableWalkFeels) return;
+  globalThis.__impeccableWalkFeels = true;
+  for (const type of ['pointerdown', 'keydown']) addEventListener(type, (event) => { if (event.isTrusted) globalThis[binding]?.(type); }, { capture: true, passive: true });
+}
+hooks.opened.push(async (tab, again = false) => {
+  const source = `(${feelInput})(${JSON.stringify(FELT)})`;
+  await cmd('Runtime.enable');
+  await cmd('Runtime.addBinding', { name: FELT, executionContextName: LOOKOUT });
+  await cmd('Page.addScriptToEvaluateOnNewDocument', { source, worldName: LOOKOUT });
+  // A document already there (the person's own tab, or the debugger back on it) is felt from now on.
+  if (tab.adopted || again) await inLookout(source);
+});
 
 function within(work, ms, message) {
   return new Promise((resolve, reject) => {
@@ -618,6 +649,10 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       }));
       break;
     }
+    case 'Runtime.bindingCalled':
+      // The walk sends no input while paused: a press or key then, not one of its own still being answered, is the person's.
+      if (params.name === FELT && driver.by === 'sign-in' && ownInput.busy === 0 && Date.now() - ownInput.at > OWN_INPUT_MS) touched = Date.now();
+      break;
     case 'Page.fileChooserOpened':
       // Intercepted, so no picker opened; nothing answers it, so the page gets no file.
       say({ event: 'blocked', what: 'file-picker' });

@@ -228,7 +228,7 @@ onView((view) => {
   walking = view.state === 'walking';
   // Taken over, or a question standing: the film takes nothing of it (the badge shows the question, badge.js `hidden`).
   personHas(view.state === 'takeover' || Boolean(view.ask));
-  // Taken over, or paused at a sign-in, the person drives: what they send is theirs, not held (driver.js `holding`).
+  // Taken over, what the person sends is theirs, not held; paused at a sign-in, what follows their own press or key (driver.js `holding`).
   drivenBy(view.state === 'takeover' ? 'takeover' : view.state === 'paused' && view.held === 'sign-in' ? 'sign-in' : null);
   // A question the walk no longer stands behind is over, unanswered.
   if (answering && !view.ask) settle('void');

@@ -24,11 +24,12 @@
 //     the hand-off allowed them or they are on this machine.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
 //     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
-//   - writing unapproved (REN-2034): even a write to its own origins is refused (a 403, or aborted for a form the top
+//   - writing unapproved (REN-2034): even a write to its own origins is refused (a 409, or aborted for a form the top
 //     of the page sent) unless the server opened writes (`writes`) or the person said Yes to the deed. Service
-//     workers are bypassed, so what one would answer for the page passes the hold too. Taken over, or paused at a
-//     sign-in once it has shown for a moment, the person drives: only the rule above holds, so their own sign-in
-//     goes through (driver.js `holding`).
+//     workers are bypassed, so what one would answer for the page passes the hold too. Taken over, the person drives:
+//     only the rule above holds. Paused at a sign-in, so does what the tab sends within a few seconds of the person's
+//     own press or key there (trusted, heard in the walk's world), so their own sign-in goes through and a page's
+//     timer does not (driver.js `holding`).
 //   - saving or sending files: a download the tab starts is cancelled and its file removed; a file picker never
 //     opens; a native dialog is dismissed. The one file a walk ever gives a page is the drawn sample photo shipped
 //     beside this file (driver.js `upload`): the op says where, never which file.
@@ -214,7 +215,7 @@ export async function arm(send) {
 /**
  * Answers one held request, always: let through, or aborted. A request this cannot judge is aborted. `refused` hears
  * the address before the abort is sent, so whoever asked for the navigation knows why it failed by the time it does.
- * `holding`: writes are held (REN-2034), so a write is refused (a 403) even where the guard would let it go.
+ * `holding`: writes are held (REN-2034), so a write is refused (a 409) even where the guard would let it go.
  * Resolves to what became of the request: `continued`, `held`, `refused` or `gone`.
  */
 export async function held(send, paused, mainFrame, allowed, writable, refused, holding = false) {
@@ -229,7 +230,7 @@ export async function held(send, paused, mainFrame, allowed, writable, refused, 
   try {
     if (pass) await send('Fetch.continueRequest', { requestId: paused.requestId });
     // A held write is refused as a server would refuse it: a page takes a network error for a blip and sends it again.
-    else if (answer === 'hold' && !top) await send('Fetch.fulfillRequest', { requestId: paused.requestId, responseCode: 403, responseHeaders: refusal(paused), body: REFUSAL });
+    else if (answer === 'hold' && !top) await send('Fetch.fulfillRequest', { requestId: paused.requestId, responseCode: HELD_STATUS, responseHeaders: refusal(paused), body: REFUSAL });
     else await send('Fetch.failRequest', { requestId: paused.requestId, errorReason: answer === 'block' || answer === 'hold' ? 'Aborted' : 'BlockedByClient' });
   } catch {
     // The request is already gone with its page (a newer navigation took its place while it was held).
@@ -238,8 +239,15 @@ export async function held(send, paused, mainFrame, allowed, writable, refused, 
   return pass ? 'continued' : answer === 'hold' ? 'held' : 'refused';
 }
 
+/**
+ * A held write's answer: 409, which none of the sign-in libraries a site is likely to use takes for signed out, nor
+ * retries (Auth.js, Supabase, Firebase, Clerk and Auth0 sign out only on their own endpoints' answers; axios-auth-refresh
+ * acts on 401 by default and is often widened to 403; axios-retry and ky retry neither 409 nor a POST). A 401 or 403
+ * can sign the person out of their own app. The body says nothing of a walk.
+ */
+const HELD_STATUS = 409;
 /** The body of a held write's refusal, base64 as `Fetch.fulfillRequest` takes it. */
-const REFUSAL = btoa('Held by Impeccable: this journey may not change anything here.');
+const REFUSAL = btoa('Not saved.');
 /** A refusal's headers: plain text, readable by a page on another of the walk's origins (CORS needs the origin named). */
 function refusal(paused) {
   const headers = [{ name: 'Content-Type', value: 'text/plain; charset=utf-8' }];
