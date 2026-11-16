@@ -126,10 +126,10 @@ export const COPY = {
   paused: { line: (name) => `Paused. ${name || 'Your persona'} waits right here.` },
   /**
    * A journey that paused itself at a sign-in: the side panel says it, and so does the toolbar icon's hover text, which
-   * Chrome draws and no page can fake. Exactly three facts: sign in yourself, then continue; we do not look while it
-   * is paused; no screenshots are taken while it is paused.
+   * Chrome draws and no page can fake. Exactly three facts: sign in yourself, then press I’ve signed in; we do not
+   * look while it is paused; no screenshots are taken while it is paused.
    */
-  signIn: 'Sign in yourself, then press Continue. While it’s paused, we don’t look at the page and take no screenshots.',
+  signIn: 'Sign in yourself, then press I’ve signed in. While it’s paused, we don’t look at the page and take no screenshots.',
   /** At that sign-in, once the tab sent something the pause held back: a sign-in with no press or key in the tab (a passkey, a phone, another site's frame). */
   signInHeld: 'Signing in another way? Press Stop, sign in, then start the journey again.',
   /** Before a deed the server marked (delete, pay, send), or before another site, on a journey with no plan: nothing is done until Yes. */
