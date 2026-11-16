@@ -179,12 +179,25 @@ impl Sys {
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
     pub fn provider_skills_dir_candidates(&self, root: &str, provider: &str, scope: Option<Scope>) -> Vec<String> {
-        if scope == Some(Scope::User) {
-            return vec![self.user_provider_skills_dir(root, provider)];
-        }
-        let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
-        if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
-            dirs.insert(0, self.user_provider_skills_dir(root, provider));
+        let mut dirs = if scope == Some(Scope::User) {
+            vec![self.user_provider_skills_dir(root, provider)]
+        } else {
+            let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
+            if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
+                dirs.insert(0, self.user_provider_skills_dir(root, provider));
+            }
+            dirs
+        };
+        // Claude Code reads user skills from $CLAUDE_CONFIG_DIR/skills when that is set
+        // (REN-2029): a copy there is found, named and updated like the home one. Fresh
+        // installs still go to ~/.claude/skills, where their hooks point.
+        if provider == ".claude" && scope != Some(Scope::Project) && self.is_home_dir(root) {
+            if let Some(dir) = self.env.get("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
+                let skills = jsp::join(&[&jsp::resolve(&self.cwd, &[dir]), "skills"]);
+                if !dirs.contains(&skills) {
+                    dirs.insert(0, skills);
+                }
+            }
         }
         dirs
     }
@@ -914,6 +927,31 @@ mod tests {
 
         let sys = with_env(&[]);
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".devin", Some(Scope::Project)), vec![jsp::join(&["/project", ".devin", "skills"])]);
+    }
+
+    #[test]
+    fn a_claude_copy_in_claude_config_dir_is_found_beside_the_home_one() {
+        // Catches (REN-2029): an older Impeccable in $CLAUDE_CONFIG_DIR/skills wins over a project
+        // install while install's warning and `update --user` only look in ~/.claude/skills.
+        let tmp = std::env::temp_dir().join(format!("impeccable-ccd-{}", std::process::id()));
+        let (home, config) = (tmp.join("home"), tmp.join("claude-b"));
+        let skill = config.join("skills").join("impeccable");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: impeccable\nversion: 4.8.2\n---\n").unwrap();
+        let (home, config) = (home.to_string_lossy().to_string(), config.to_string_lossy().to_string());
+        let mut env = Env::new();
+        env.insert("CLAUDE_CONFIG_DIR".into(), config.clone());
+        let sys = Sys { env, cwd: home.clone(), home: home.clone() };
+
+        assert_eq!(sys.get_skills_version(&home, Some(Scope::User)).as_deref(), Some("4.8.2"));
+        assert_eq!(sys.is_already_installed(&home, Some(Scope::User)), Some(".claude"));
+        // Installs still land where the hooks point.
+        assert_eq!(sys.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&home, ".claude", "skills"]));
+        // A project is never read through it, and without the variable nothing changes.
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".claude", None), vec![jsp::join(&["/project", ".claude", "skills"])]);
+        let plain = Sys { env: Env::new(), cwd: home.clone(), home: home.clone() };
+        assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", Some(Scope::User)), vec![jsp::join(&[&home, ".claude", "skills"])]);
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
