@@ -94,6 +94,7 @@ pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upst
 /// `serve`, with the browser relay's socket: its tools are listed while the relay is up and free, and called over it.
 pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream, socket: Option<&std::path::Path>) {
     let mut agent: Option<String> = None;
+    // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
     for line in input.lines() {
         let Ok(line) = line else { break };
@@ -116,10 +117,12 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
         }
         let listing = request.get("method").and_then(Value::as_str) == Some("tools/list");
         if let Some(mut reply) = answer(&request, out, err, upstream) {
-            // The agent driving keeps its tools; any other lists them while the relay is up and free.
+            // The agent driving keeps its tools; any other lists them while the relay is up and free. Local tools
+            // don't wait on the account service: when its list fails, they're the list.
             if listing && (link.is_some() || socket.is_some_and(browser::ready)) {
-                if let Some(list) = reply.pointer_mut("/result/tools").and_then(Value::as_array_mut) {
-                    list.extend(browser::tools());
+                match reply.pointer_mut("/result/tools").and_then(Value::as_array_mut) {
+                    Some(list) => list.extend(browser::tools()),
+                    None => reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "tools": browser::tools() } }),
                 }
             }
             frame(out, &reply);
@@ -166,9 +169,8 @@ fn browsed(request: &Value, socket: &std::path::Path, agent: &str, link: &mut Op
     Some(match answer {
         Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
         Err(line) => {
-            if line == browser::GONE {
-                *link = None;
-            }
+            // Busy or gone, this agent doesn't hold the browser: its next call connects afresh.
+            *link = None;
             said(&id, request, &line)
         }
     })

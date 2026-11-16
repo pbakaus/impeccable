@@ -132,3 +132,63 @@ fn the_driving_agent_keeps_its_tools_when_it_lists_again() {
     assert!(names(&replies[1]).contains(&"browser_act".to_string()));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The account service, unreachable.
+struct Down;
+impl Upstream for Down {
+    fn call(&mut self, _: &Value) -> Result<Value, Failure> {
+        Err(Failure::Other("unreachable".into()))
+    }
+    fn sign_in(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+// Catches a reply for an agent that left reaching the next agent (each agent numbers its calls from 1), a second
+// relay starting beside the first, a busy agent keeping browser tools it can't use, and local tools hidden when the
+// account service is down.
+#[test]
+fn replies_reach_only_the_agent_that_asked() {
+    let dir = short_dir("route");
+    let socket = dir.join("browser").join("host.sock");
+    let mut ext = relay(&socket);
+    let (other_in, other_out) = UnixStream::pair().unwrap();
+    assert_eq!(browser::host(&socket, other_in, other_out).map_err(|e| e.kind()), Err(std::io::ErrorKind::AddrInUse));
+
+    // Agent A asks and leaves before the answer.
+    let mut a = UnixStream::connect(&socket).unwrap();
+    write_frame(&mut a, &json!({ "id": 1, "agent": "a", "tool": "browser_look", "arguments": {} }), browser::TO_EXTENSION_MAX).unwrap();
+    let asked_a = read_frame(&mut ext, FROM_EXTENSION_MAX).unwrap().unwrap();
+    drop(a);
+    assert_eq!(read_frame(&mut ext, FROM_EXTENSION_MAX).unwrap().unwrap()["type"], "agent-gone");
+
+    // Agent B claims; A's late answer arrives first and must not be B's.
+    let mut b = browser::Link::connect(&socket, "b").unwrap();
+    let mut ext_b = ext.try_clone().unwrap();
+    let extension = std::thread::spawn(move || {
+        let asked_b = read_frame(&mut ext_b, FROM_EXTENSION_MAX).unwrap().unwrap();
+        write_frame(&mut ext_b, &json!({ "id": asked_a["id"], "result": { "content": [{ "type": "text", "text": "A's" }] } }), FROM_EXTENSION_MAX).unwrap();
+        write_frame(&mut ext_b, &json!({ "id": asked_b["id"], "result": { "content": [{ "type": "text", "text": "B's" }] } }), FROM_EXTENSION_MAX).unwrap();
+    });
+    assert_eq!(b.call("browser_look", &json!({ "kind": "screenshot" })).unwrap()["content"][0]["text"], "B's");
+    extension.join().unwrap();
+
+    // C, refused while B drives, lists no browser tools after; with the account service down, B's own list is
+    // still its browser tools.
+    let list = json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
+    let call = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": "browser_end", "arguments": {} } });
+    let c = agent_session(&socket, &[call, list.clone()]);
+    assert_eq!((c[0]["result"]["isError"].as_bool(), names(&c[1])), (Some(true), vec!["taste.get".to_string()]));
+    drop(b);
+    for _ in 0..100 {
+        if browser::ready(&socket) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let mut out = Vec::new();
+    serve_with(format!("{list}\n").as_bytes(), &mut out, &mut Vec::new(), &mut Down, Some(&socket));
+    let reply: Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(names(&reply).len(), 4);
+    let _ = std::fs::remove_dir_all(dir);
+}

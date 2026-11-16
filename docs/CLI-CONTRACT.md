@@ -3223,9 +3223,14 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   stdout (a 4-byte native-endian length, then JSON; at most 1 MB to the
   extension, 64 MiB from it) and listens on
   `<IMPECCABLE_HOME>/browser/host.sock` (folder 0700, socket 0600; a file
-  left by a crashed relay is replaced). One agent drives at a time: a probe
+  left by a crashed relay is replaced, under `browser/host.lock`, held for the
+  relay's life, so only one relay runs per user). One agent drives at a time: a probe
   claims nothing, the first call claims the browser, and when that agent's
-  connection ends the extension gets `{"type":"agent-gone"}`. The relay ends,
+  connection ends the extension gets `{"type":"agent-gone"}` before any other
+  agent can claim. The relay numbers calls itself, so an answer reaches only
+  the agent that asked, and is dropped once that agent has gone. When the
+  account service can't list its tools, `tools/list` still answers with the
+  browser tools. The relay ends,
   removing its socket, when the extension closes stdin. Frames to the
   extension: `{"id","agent","tool","arguments"}`; answers:
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a

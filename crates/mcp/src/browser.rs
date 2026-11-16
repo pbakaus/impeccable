@@ -125,88 +125,102 @@ mod unix {
     use std::os::unix::net::{UnixListener, UnixStream};
     use std::sync::{Arc, Mutex};
 
-    /// The agent driving: which connection, and its writer for the extension's answers.
-    type Driver = Arc<Mutex<Option<(u64, UnixStream)>>>;
+    /// Who drives, and which agent's call each relay id answers. One lock decides a claim, a call's id and its
+    /// send, and an agent's departure: so a reply goes only to the agent that asked, and an `agent-gone` can never
+    /// follow the next agent's first call.
+    #[derive(Default)]
+    struct Relay {
+        driver: Option<(u64, UnixStream)>,
+        /// Relay id -> (connection, the agent's own id).
+        pending: HashMap<u64, (u64, Value)>,
+        next: u64,
+    }
 
     /// The relay, until the extension closes its side. `ext_in`/`ext_out` are the host's stdin and stdout.
     pub fn host(socket: &Path, mut ext_in: impl Read + Send + 'static, ext_out: impl Write + Send + 'static) -> io::Result<()> {
         let dir = socket.parent().ok_or_else(|| io::Error::other("no folder"))?;
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
         std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-        // A live relay answers; a file left by a crashed one doesn't, and is removed.
-        if UnixStream::connect(socket).is_ok() {
+        // One relay per machine user: the lock is held for the relay's life, so replacing a stale socket can't race
+        // another relay starting.
+        let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("host.lock"))?;
+        if lock.try_lock().is_err() {
             return Err(io::Error::new(io::ErrorKind::AddrInUse, "another relay is running"));
         }
         let _ = std::fs::remove_file(socket);
         let listener = UnixListener::bind(socket)?;
         std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
         let ext_out = Arc::new(Mutex::new(ext_out));
-        let driver: Driver = Arc::new(Mutex::new(None));
+        let relay = Arc::new(Mutex::new(Relay::default()));
 
         {
-            let (ext_out, driver) = (ext_out.clone(), driver.clone());
+            let (ext_out, relay) = (ext_out.clone(), relay.clone());
             std::thread::spawn(move || {
                 for (n, stream) in listener.incoming().flatten().enumerate() {
-                    let (ext_out, driver) = (ext_out.clone(), driver.clone());
-                    std::thread::spawn(move || agent(n as u64, stream, &ext_out, &driver));
+                    let (ext_out, relay) = (ext_out.clone(), relay.clone());
+                    std::thread::spawn(move || agent(n as u64, stream, &*ext_out, &relay));
                 }
             });
         }
 
-        // The extension: each answer goes to the agent driving, if any. Its end is the relay's end.
-        while let Ok(Some(frame)) = read_frame(&mut ext_in, FROM_EXTENSION_MAX) {
-            if let Some((_, s)) = driver.lock().unwrap().as_mut() {
-                let _ = write_frame(s, &frame, FROM_EXTENSION_MAX);
+        // The extension: an answer goes back to the agent that asked, under its own id, while it still drives.
+        while let Ok(Some(mut frame)) = read_frame(&mut ext_in, FROM_EXTENSION_MAX) {
+            let mut r = relay.lock().unwrap();
+            let to = frame["id"].as_u64().and_then(|rid| r.pending.remove(&rid));
+            let Some((conn, theirs)) = to else { continue };
+            if let Some((d, s)) = r.driver.as_mut() {
+                if *d == conn {
+                    frame["id"] = theirs;
+                    let _ = write_frame(s, &frame, FROM_EXTENSION_MAX);
+                }
             }
         }
-        if let Some((_, s)) = driver.lock().unwrap().take() {
+        if let Some((_, s)) = relay.lock().unwrap().driver.take() {
             let _ = s.shutdown(std::net::Shutdown::Both);
         }
         let _ = std::fs::remove_file(socket);
+        drop(lock);
         Ok(())
     }
 
     /// One connection. A probe is answered here and claims nothing; the first call claims the browser for this
     /// connection, and its end hands it back and tells the extension, which ends the session.
-    fn agent(n: u64, mut stream: UnixStream, ext_out: &Mutex<impl Write>, driver: &Mutex<Option<(u64, UnixStream)>>) {
-        let mut driving = false;
-        while let Ok(Some(frame)) = read_frame(&mut stream, TO_EXTENSION_MAX) {
-            // Whether another agent drives, and this one's claim, are decided under one lock: two can't both claim.
-            let admitted = {
-                let mut slot = driver.lock().unwrap();
-                match slot.as_ref() {
-                    Some((d, _)) if *d != n => false,
-                    Some(_) => true,
-                    None if frame["type"] == "probe" => true,
-                    None => match stream.try_clone() {
-                        Ok(writer) => {
-                            *slot = Some((n, writer));
-                            driving = true;
-                            true
-                        }
-                        Err(_) => break,
-                    },
+    fn agent(n: u64, mut stream: UnixStream, ext_out: &Mutex<impl Write>, relay: &Mutex<Relay>) {
+        while let Ok(Some(mut frame)) = read_frame(&mut stream, TO_EXTENSION_MAX) {
+            let probe = frame["type"] == "probe";
+            let reply = {
+                let mut r = relay.lock().unwrap();
+                let other = r.driver.as_ref().is_some_and(|(d, _)| *d != n);
+                if probe {
+                    Some(if other { json!({ "error": BUSY }) } else { json!({ "type": "ready" }) })
+                } else if other {
+                    Some(json!({ "id": frame["id"], "error": BUSY }))
+                } else {
+                    if r.driver.is_none() {
+                        let Ok(writer) = stream.try_clone() else { break };
+                        r.driver = Some((n, writer));
+                    }
+                    r.next += 1;
+                    let rid = r.next;
+                    r.pending.insert(rid, (n, frame["id"].clone()));
+                    frame["id"] = json!(rid);
+                    if write_frame(&mut *ext_out.lock().unwrap(), &frame, TO_EXTENSION_MAX).is_err() {
+                        break;
+                    }
+                    None
                 }
-            };
-            let reply = match (frame["type"] == "probe", admitted) {
-                (true, true) => Some(json!({ "type": "ready" })),
-                (true, false) => Some(json!({ "error": BUSY })),
-                (false, false) => Some(json!({ "id": frame["id"], "error": BUSY })),
-                (false, true) => None,
             };
             if let Some(reply) = reply {
                 if write_frame(&mut stream, &reply, TO_EXTENSION_MAX).is_err() {
                     break;
                 }
-                continue;
-            }
-            if write_frame(&mut *ext_out.lock().unwrap(), &frame, TO_EXTENSION_MAX).is_err() {
-                break;
             }
         }
-        if driving {
-            *driver.lock().unwrap() = None;
+        let mut r = relay.lock().unwrap();
+        r.pending.retain(|_, (conn, _)| *conn != n);
+        if r.driver.as_ref().is_some_and(|(d, _)| *d == n) {
             let _ = write_frame(&mut *ext_out.lock().unwrap(), &json!({ "type": "agent-gone" }), TO_EXTENSION_MAX);
+            r.driver = None;
         }
     }
 

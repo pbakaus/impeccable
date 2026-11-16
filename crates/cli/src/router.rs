@@ -396,6 +396,8 @@ pub fn is_scan(args: &[String], io: &Io) -> bool {
     }
     match args.first().map(String::as_str) {
         Some("detect" | "hook" | "hook-before-edit") => true,
+        // Chrome starting the extension's native host: never a path to scan, never through Pro dispatch.
+        Some(v) if impeccable_mcp::browser::is_extension_origin(v) => false,
         Some(v) if !KNOWN_VERBS.contains(&v) && !v.starts_with("live") => {
             impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy())
         }
