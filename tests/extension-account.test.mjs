@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 import { CLIENT_ID, PRODUCTION, authorizeUrl, challengeFor, issuerAllowed, readCallback, readMetadata } from '../extension/account/flow.js';
-import { createSession } from '../extension/account/session.js';
+import { createSession, idbStore } from '../extension/account/session.js';
 
 const ISSUER = PRODUCTION;
 const REDIRECT = 'https://ext.chromiumapp.org/callback';
@@ -132,6 +132,22 @@ function harness({ grant = null, me = 401, launched, issuers = [ISSUER], gated =
 }
 const kept = (at = ISSUER, refresh = 'refresh-0') => ({ state: 'signed-in', issuer: at, resource: `${at}/extension/v1`, client: CLIENT_ID, refresh, retire: [] });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+/** IndexedDB over `records`, as Chrome runs it: a request succeeds, then its transaction commits, or aborts (and keeps nothing) while `disk.aborts`. */
+const fakeIndexedDB = (records, disk = {}) => {
+  const later = (fn) => { setTimeout(fn); };
+  const transaction = () => {
+    const tx = {};
+    const ask = (value) => {
+      const req = {};
+      later(() => { req.result = value(); req.onsuccess?.(); later(() => (disk.aborts ? tx.onabort?.() : tx.oncomplete?.())); });
+      return req;
+    };
+    const unlessAborted = (change) => () => { if (!disk.aborts) change(); };
+    tx.objectStore = () => ({ get: (key) => ask(() => records.get(key)), put: (value, key) => ask(unlessAborted(() => records.set(key, value))), delete: (key) => ask(unlessAborted(() => records.delete(key))) });
+    return tx;
+  };
+  return { open() { const req = {}; later(() => { req.result = { createObjectStore() {}, close() {}, transaction }; req.onsuccess(); }); return req; } };
+};
 
 describe('account session', () => {
   for (const [label, answer, available] of [['404', 404, false], ['401', 401, true], ['no answer', null, false]]) {
@@ -141,6 +157,26 @@ describe('account session', () => {
       assert.equal(await session.available(), available);
     });
   }
+
+  // Catches a write said saved before its transaction committed: a rotated refresh token, or a sign-out, lost to an abort.
+  it('says an account record is saved only once the disk committed it', async () => {
+    const was = globalThis.indexedDB;
+    const records = new Map();
+    const disk = { aborts: true };
+    globalThis.indexedDB = fakeIndexedDB(records, disk);
+    try {
+      // A server the account worker's own start, still under way, never writes for.
+      const at = 'https://disk.example';
+      const store = idbStore();
+      await assert.rejects(store.set(at, kept(at)));
+      disk.aborts = false;
+      assert.equal(await store.get(at), null);
+      await store.set(at, kept(at));
+      assert.deepEqual(await store.get(at), kept(at));
+    } finally {
+      globalThis.indexedDB = was;
+    }
+  });
 
   it('refreshes once for callers that ask at the same time', async () => {
     const { session, sent, open } = harness({ grant: kept() });
@@ -305,10 +341,7 @@ describe('account worker', () => {
   const fromPopup = { id: 'ext', url: 'chrome-extension://ext/popup/popup.html' };
   // "Walk this tab", against a stand-in account server that speaks the start door, signed in on a stand-in disk.
   const records = new Map([[ISSUER, kept(ISSUER, 'refresh-walk')]]);
-  const done = (value) => { const req = {}; setTimeout(() => { req.result = value; req.onsuccess(); }); return req; };
-  globalThis.indexedDB = { open() {
-    return done({ createObjectStore() {}, close() {}, transaction: () => ({ objectStore: () => ({ get: (key) => done(records.get(key)), put: (value, key) => done(records.set(key, value)), delete: (key) => done(records.delete(key)) }) }) });
-  } };
+  globalThis.indexedDB = fakeIndexedDB(records);
   const HANDOFF = { v: 1, outing: 'o9', socket: 'wss://impeccable.reviews/api/outings/o9/socket', ticket: 'ticket-0123456789', persona: { name: 'Ines', role: '' }, errand: { name: '', goal: 'Read the top story.', doneWhen: [] }, url: 'https://news.example.com/', allow: [] };
   const posted = [];
   const cancelled = [];

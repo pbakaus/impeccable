@@ -29,9 +29,12 @@ export function idbStore(name = 'impeccable-account') {
     const db = await open();
     try {
       return await new Promise((resolve, reject) => {
-        const req = act(db.transaction('grant', mode).objectStore('grant'));
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        const tx = db.transaction('grant', mode);
+        const req = act(tx.objectStore('grant'));
+        // Done once the transaction commits: a write whose request went through can still be aborted before then.
+        tx.oncomplete = () => resolve(req.result);
+        tx.onabort = () => reject(tx.error ?? req.error ?? new Error('the account record was not saved'));
+        tx.onerror = () => reject(req.error ?? tx.error ?? new Error('the account record was not saved'));
       });
     } finally {
       db.close();
