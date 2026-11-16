@@ -191,6 +191,7 @@ export const COPY = {
     connection: 'The connection dropped.',
     'switched-off': 'Journeys were switched off, so this one stopped.',
     'left-site': (site) => `The page left ${hostOf(site) || 'the allowed address'}.`,
+    unanswered: (site, name) => `${name || 'Your persona'} waited for your answer and stopped.`,
   },
 
   badge: {

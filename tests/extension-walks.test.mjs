@@ -10,6 +10,7 @@ import { readHandoff, resultLink } from '../extension/walks/handoff.js';
 import { MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, onlyThisTab, verdict } from '../extension/walks/guard.js';
 import { isSignInPage, lookInPage } from '../extension/walks/signin.js';
 import { listen } from '../extension/walks/panel/voice.js';
+import { reduce } from '../extension/walks/view.js';
 import { WALK_PERMISSIONS, firefoxManifest, isStoreFile, moduleReferences, stageFirefox, stageStore, storeManifest } from '../scripts/lib/extension-manifests.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -1771,14 +1772,15 @@ describe('walk worker', () => {
     assert.deepEqual([tabs.made, tabs.removed], [[], []]);
   });
 
-  it('asks the person before a deed the server marked: no click before Yes, none on No, and no answer is not a No', async (t) => {
+  // Catches a walk ended for want of an answer being told in the panel as a dropped connection (16 Nov).
+  it('asks the person before a deed the server marked: no click before Yes, none on No, and no answer is not a No but its own ending', async (t) => {
     const { ops, command, current } = await ownTab();
     page.seen = {};
     // The question's own clock, ticked by hand; the test waits on turns of the event loop instead.
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const turns = async (n) => { for (let i = 0; i < n; i++) await new Promise(setImmediate); };
     const clicks = (from) => sent.slice(from).filter((m) => m === 'Input.dispatchMouseEvent').length;
-    for (const [answer, done, failed] of [['yes', 3], ['no', 0, 'Declined'], ['timeout', 0, 'TimeoutError']]) {
+    for (const [answer, done, failed, ending = 'connection'] of [['yes', 3], ['no', 0, 'Declined'], ['timeout', 0, 'TimeoutError', 'unanswered']]) {
       const at = sent.length;
       const click = ops.mouse({ action: 'click', x: 5, y: 5, ask: { kind: 'delete', what: 'Delete “Buy oat milk”' } });
       await turns(20);
@@ -1789,7 +1791,8 @@ describe('walk worker', () => {
       if (answer === 'timeout') t.mock.timers.tick(120_000); else assert.equal(await command(answer), true);
       if (!failed) await click; else await assert.rejects(click, { name: failed });
       await meanwhile;
-      assert.deepEqual([clicks(at), current().ask], [done, null]);
+      // The socket closing now ends the walk as a lost connection, unless nobody answered: the server ended it then.
+      assert.deepEqual([clicks(at), current().ask, reduce(current(), { type: 'fail', reason: 'connection' }).failure.reason], [done, null, ending]);
       // As the server does once the deed settles.
       await ops.writes({ open: false });
     }
