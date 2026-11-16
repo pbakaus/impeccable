@@ -8,7 +8,8 @@
 
 use std::collections::HashMap;
 
-use impeccable_skills::bundle::{copy_provider_skills, is_up_to_date, refresh_provider_skills};
+use impeccable_common::{jsp, Io};
+use impeccable_skills::bundle::{copy_provider_skills, is_up_to_date, link_provider_skills, refresh_provider_skills};
 use impeccable_skills::providers::{is_user_only_provider, skills_dir_name, Scope, Sys};
 
 fn temp_root(name: &str) -> String {
@@ -120,10 +121,14 @@ fn project_scope_still_lands_muse_in_the_global_dir() {
     bundle_with_muse_skill(&bundle, SKILL);
     let sys = sys_with(&home);
 
-    // Candidates resolve to the global dir whatever the scope or root.
+    // Candidates exist only at user scope: at project scope there are
+    // none, so a global install cannot hide a missing project install.
+    // (The expected path is built with jsp::join: a literal `/` string
+    // does not match the joined path on Windows.)
+    assert!(sys.provider_skills_dir_candidates(&project, "workspace", Some(Scope::Project)).is_empty());
     assert_eq!(
-        sys.provider_skills_dir_candidates(&project, "workspace", Some(Scope::Project)),
-        vec![format!("{home}/workspace/custom-skills")]
+        sys.provider_skills_dir_candidates(&home, "workspace", Some(Scope::User)),
+        vec![jsp::join(&[&home, "workspace", "custom-skills"])]
     );
 
     // A mixed project-scope install writes Muse globally, never into
@@ -131,5 +136,34 @@ fn project_scope_still_lands_muse_in_the_global_dir() {
     let written = copy_provider_skills(&sys, &bundle, &project, &["workspace"], Some(Scope::Project)).unwrap();
     assert_eq!(written.len(), 1);
     assert!(exists(&format!("{home}/workspace/custom-skills/impeccable/SKILL.md")));
+    assert!(!exists(&format!("{project}/workspace")));
+}
+
+#[cfg(unix)]
+#[test]
+fn link_lands_muse_in_the_global_dir() {
+    let root = temp_root("muse-link");
+    let bundle = format!("{root}/bundle");
+    let home = format!("{root}/home");
+    let project = format!("{root}/project");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&project).unwrap();
+    bundle_with_muse_skill(&bundle, SKILL);
+    let sys = sys_with(&home);
+
+    let mut env: HashMap<String, String> = HashMap::new();
+    env.insert("HOME".into(), home.clone());
+    env.insert("USERPROFILE".into(), home.clone());
+    let (mut io, _captured) = Io::captured("", std::path::PathBuf::from(&project), env);
+
+    // Link is a project-rooted command, but Muse reads only
+    // ~/workspace/custom-skills: the link must land there, never in
+    // <project>/workspace/custom-skills.
+    let result = link_provider_skills(&sys, &mut io, &bundle, &project, &["workspace"], false).unwrap();
+    assert_eq!(result.linked, 1);
+    let dest = format!("{home}/workspace/custom-skills/impeccable");
+    let is_link = std::fs::symlink_metadata(&dest).map(|m| m.file_type().is_symlink()).unwrap_or(false);
+    assert!(is_link, "expected a symlink at {dest}");
+    assert!(exists(&format!("{dest}/SKILL.md")));
     assert!(!exists(&format!("{project}/workspace")));
 }

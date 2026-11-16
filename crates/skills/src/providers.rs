@@ -203,9 +203,15 @@ impl Sys {
     /// JS: providerSkillsDirCandidates(root, provider, scope)
     pub fn provider_skills_dir_candidates(&self, root: &str, provider: &str, scope: Option<Scope>) -> Vec<String> {
         if is_user_only_provider(provider) {
-            // Muse has no project layout: every scope resolves to the global
-            // custom-skills dir under the real home, never
-            // <root>/workspace/skills, which Muse does not read.
+            // Muse has no project layout: its candidates exist only at user
+            // scope. Returning the global custom-skills dir at project scope
+            // made a global install hide a missing project install, and let
+            // `update --project` rewrite the global copy. An inferred scope
+            // (None) sees the global dir only when the root is the home dir
+            // itself, mirroring the home-override handling below.
+            if scope == Some(Scope::Project) || (scope.is_none() && !self.is_home_dir(root)) {
+                return Vec::new();
+            }
             let home = self.home.clone();
             return vec![self.user_provider_skills_dir(&home, provider)];
         }
@@ -1065,11 +1071,14 @@ mod tests {
         assert!(is_user_only_provider("workspace"));
         assert!(!is_user_only_provider(".claude"));
 
-        // Even asked from a project root at project scope, Muse candidates
-        // resolve to the global custom-skills dir, never
-        // <project>/workspace/skills.
+        // Project scope has no Muse candidates at all: returning the
+        // global dir there made a global install hide a missing project
+        // install. An inferred scope from a project root is empty too,
+        // while one rooted at the home dir still sees the global dir.
+        assert!(sys.provider_skills_dir_candidates("/some/project", "workspace", Some(Scope::Project)).is_empty());
+        assert!(sys.provider_skills_dir_candidates("/some/project", "workspace", None).is_empty());
         assert_eq!(
-            sys.provider_skills_dir_candidates("/some/project", "workspace", Some(Scope::Project)),
+            sys.provider_skills_dir_candidates(&home, "workspace", None),
             vec![jsp::join(&[home, "workspace", "custom-skills"])]
         );
     }

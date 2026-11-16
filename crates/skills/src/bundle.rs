@@ -1038,13 +1038,20 @@ pub struct LinkResult {
 }
 
 /// JS: linkProviderSkills(bundleRoot, root, targets, {force})
-pub fn link_provider_skills(io: &mut Io, bundle_root: &str, root: &str, targets: &[&str], force: bool) -> Result<LinkResult, String> {
+pub fn link_provider_skills(sys: &Sys, io: &mut Io, bundle_root: &str, root: &str, targets: &[&str], force: bool) -> Result<LinkResult, String> {
     let mut result = LinkResult { linked: 0, already: 0, skipped: 0 };
     // JS: resolveUniqueLinkTargets
     let mut seen: Vec<String> = Vec::new();
     let mut unique: Vec<(&str, String)> = Vec::new();
     for provider in targets {
-        let local_skills_dir = jsp::join(&[root, provider, skills_dir_name(provider)]);
+        let local_skills_dir = if is_user_only_provider(provider) {
+            // User-only providers (Muse) read skills from their global dir
+            // under the real home only: link there, never into
+            // <project>/workspace/custom-skills, which Muse does not read.
+            sys.user_provider_skills_dir(&sys.home, provider)
+        } else {
+            jsp::join(&[root, provider, skills_dir_name(provider)])
+        };
         util::mkdir_p(&local_skills_dir)?;
         let real = util::realpath(&local_skills_dir).unwrap_or_else(|| local_skills_dir.clone());
         if seen.contains(&real) {

@@ -623,7 +623,7 @@ fn link(flags: &[String], io: &mut Io) -> R<()> {
             return Err(Flow::Exit(0));
         }
     }
-    let result = bundle::link_provider_skills(io, &source.bundle_root, &root, &targets, force).map_err(Flow::Throw)?;
+    let result = bundle::link_provider_skills(&sys, io, &source.bundle_root, &root, &targets, force).map_err(Flow::Throw)?;
     // Linked installs are excluded from install/update refreshes (overwriting
     // a symlink would destroy the link), so this is the only path that can
     // deliver the OpenCode command bridge to them. A copy, not a symlink: the
@@ -643,7 +643,13 @@ fn link(flags: &[String], io: &mut Io) -> R<()> {
     // launcher/binary executable bit there too (through the symlink), so a
     // checkout whose copier dropped modes still runs.
     for provider in &targets {
-        let skills_dir = util::jsp::join(&[&root, provider, skills_dir_name(provider)]);
+        let skills_dir = if is_user_only_provider(provider) {
+            // Muse links land in the global dir under home (see
+            // link_provider_skills), not under the project root.
+            sys.user_provider_skills_dir(&sys.home, provider)
+        } else {
+            util::jsp::join(&[&root, provider, skills_dir_name(provider)])
+        };
         for skill in util::read_dir_names(&skills_dir).unwrap_or_default() {
             let dir = util::jsp::join(&[&skills_dir, &skill]);
             if util::is_dir(&dir) {
