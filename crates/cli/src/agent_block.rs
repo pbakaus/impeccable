@@ -369,6 +369,25 @@ pub(crate) fn user_rule_files(io: &impeccable_common::Io) -> Vec<(&'static str, 
     out
 }
 
+/// One line per installed agent: its user-level rule file and the switches on in it.
+pub(crate) fn listing(io: &impeccable_common::Io) -> String {
+    let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
+    let files = user_rule_files(io);
+    if files.is_empty() {
+        return "No agent's user-level rule file found.\n".into();
+    }
+    let mut out = String::new();
+    for (name, file) in files {
+        let shown = file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()));
+        out.push_str(&match switches_in(&file) {
+            Ok(ids) if ids.is_empty() => format!("{name} ({shown}): none\n"),
+            Ok(ids) => format!("{name} ({shown}): {}\n", ids.join(", ")),
+            Err(e) => format!("{name} ({shown}): unreadable, {e}\n"),
+        });
+    }
+    out
+}
+
 /// `impeccable switches [--catalog]`: which switches are on in each user-level rule
 /// file this machine's agents read, or (`--catalog`) the catalog as JSON for the
 /// settings page to mirror.
@@ -383,19 +402,7 @@ pub(crate) fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
             0
         }
         None => {
-            let home = std::path::PathBuf::from(impeccable_context::util::homedir(&io.env));
-            let files = user_rule_files(io);
-            if files.is_empty() {
-                io.out("No agent's user-level rule file found.\n");
-            }
-            for (name, file) in files {
-                let shown = file.strip_prefix(&home).map_or_else(|_| file.display().to_string(), |r| format!("~/{}", r.display()));
-                match switches_in(&file) {
-                    Ok(ids) if ids.is_empty() => io.out(&format!("{name} ({shown}): none\n")),
-                    Ok(ids) => io.out(&format!("{name} ({shown}): {}\n", ids.join(", "))),
-                    Err(e) => io.out(&format!("{name} ({shown}): unreadable, {e}\n")),
-                }
-            }
+            io.out(&listing(io));
             0
         }
         _ => {

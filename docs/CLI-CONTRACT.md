@@ -2398,7 +2398,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   uploads use) goes along in the `Impeccable-Project` header, never in the
   URL. Text output: `Signed in to <account>.`, then `This project: <name>.`
   (with the repository URL when the service has matched one) for the project
-  the service marks `current`, then the setup lines below. `--json` prints
+  the service marks `current`, then `Impeccable lines in your agents' rule files:`
+  followed by `impeccable switches`'s lines (read on this machine, REN-2056), then
+  the setup lines below, so `Next:` stays last. `--json` prints
   the service's answer as it came. Exit 1, with one line on stderr, when not
   signed in, when the service has no such read (404: `this account service
   doesn't offer it yet`), or when the answer isn't `version: 1` with a
