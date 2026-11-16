@@ -257,7 +257,10 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
                 // In the person's words, not a feature's name: what was kept, where, and how to stop.
-                io.err("Saved this scan's counts to your account, so Home shows this repository's trend. Never your code or file names.\nTo stop: impeccable health off\n");
+                // A sign-in other than production's names its account (as the Loop question does); Home only where one is hosted.
+                let whose = if account.issuer == crate::config::DEFAULT_ACCOUNT_URL { "your account".to_string() } else { format!("your {} account", account.display_name()) };
+                let trend = if account.home_url().is_some() { "so Home shows this repository's trend" } else { "so you can follow this repository's trend" };
+                io.err(&format!("Saved this scan's counts to {whose}, {trend}. Never your code or file names.\nTo stop: impeccable health off\n"));
                 let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
