@@ -334,6 +334,11 @@ b { font-weight: 500; }
 /* Your personas: History's list and words, each row the face, name and role, then Remove (or Default) on the right. Asking, the row keeps its height without the face. */
 .yours-row { display: flex; gap: 12px; align-items: center; min-height: 65px; padding: 12px 8px; border-top: 1px solid var(--rule); }
 .yours-row:first-child { border-top-color: transparent; }
+.yours-row > .hist-t { flex: 1 1 auto; min-width: 0; }
+.yours-row .where { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yours-end { flex: none; width: 72px; display: flex; justify-content: flex-end; }
+.yours-end > .btn.sm { padding-right: 0; }
+.yours-end > .hist-when { margin-left: 0; }
 
 /* ---------- just signed in: a gold check, then the panel goes on ---------- */
 .done-mark { width: 72px; height: 72px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); margin-bottom: 4px; }

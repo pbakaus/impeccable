@@ -926,8 +926,9 @@ function yourRow(person) {
     onkeydown: sure ? (event) => { if (event.key === 'Escape') { event.stopPropagation?.(); keep(person.slug); } } : undefined },
   sure ? null : face(person, 40),
   sure ? el('span', { class: 'hist-t' }, el('span', { class: 'hist-task', role: 'alert', text: COPY.ask.title }))
-    : el('span', { class: 'hist-t' }, el('span', { class: 'hist-task', text: person.name }), person.role ? el('span', { class: 'where', text: person.role }) : null),
-  end);
+    : el('span', { class: 'hist-t' }, el('span', { class: 'hist-task', text: person.name }), person.role ? el('span', { class: 'where', title: person.role, text: person.role }) : null),
+  // One fixed column on the right: Remove and Default line up row to row, whatever the role's length.
+  sure ? end : el('span', { class: 'yours-end' }, end));
 }
 
 function yours() {
