@@ -58,15 +58,27 @@ const MEASURE_JS: &str = r##"((selectors) => {
   // scrolling or clipped body) does not cut, since the full-page capture
   // unrolls its scroller; the thesis and action keep every clip.
   const pageScroller = (a) => a.clientHeight >= innerHeight * 0.9;
+  // An ancestor that gives fixed descendants their containing block.
+  const holdsFixed = (cs) => cs.transform !== 'none' || cs.perspective !== 'none' || cs.filter !== 'none'
+    || ['translate', 'rotate', 'scale'].some((p) => (cs[p] || 'none') !== 'none')
+    || (cs.backdropFilter || 'none') !== 'none' || /paint|layout|strict|content/.test(cs.contain)
+    || /transform|translate|rotate|scale|perspective|filter/.test(cs.willChange);
   const shownBox = (el, forMedia = false) => {
     const b = el.getBoundingClientRect();
     let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+    // Only ancestors in the containing-block chain clip: a fixed box escapes all until
+    // one holds fixed boxes; an absolute one escapes until a positioned ancestor (#1497).
+    let pos = getComputedStyle(el).position;
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
+      const contains = pos === 'fixed' ? holdsFixed(cs)
+        : pos === 'absolute' ? cs.position !== 'static' || holdsFixed(cs) : true;
+      if (!contains) continue;
       if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && !(forMedia && pageScroller(a))) {
         const ab = a.getBoundingClientRect();
         box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
       }
+      pos = cs.position === 'fixed' || cs.position === 'absolute' ? cs.position : 'static';
     }
     return { whole: { l: b.left, t: b.top, r: b.right, b: b.bottom }, box };
   };

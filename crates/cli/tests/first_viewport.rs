@@ -324,3 +324,34 @@ fn a_link_to_a_slow_page_answers_when_navigation_starts() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("ok    primary action .buy: answers a click"), "{text}");
 }
+
+#[test]
+fn a_fixed_action_escapes_a_clipping_wrapper_unless_one_holds_it() {
+    // Catches (#1497): a position: fixed action at the viewport's edge, wholly visible,
+    // failed because a narrow overflow: hidden wrapper it escapes was counted as clipping it.
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("fixed");
+    let args = ["index.html", "--thesis", ".thesis", "--action", ".buy", "--viewport", "390x844", "--figures-supplied"];
+    let wrapped = |wrapper_style: &str| {
+        page_with(
+            &dir,
+            &format!("<div style=\"margin-left: 50px; width: 120px; height: 100vh; overflow: hidden; {wrapper_style}\">\
+             <a class=\"buy\" href=\"#buy\" style=\"position: fixed; left: 100px; top: 200px; width: 120px\">Buy seeds</a></div>"),
+        );
+        String::from_utf8_lossy(&run(&dir, &args).stdout).to_string()
+    };
+    let text = wrapped("");
+    assert!(text.contains("ok    primary action .buy: wholly inside the first viewport"), "{text}");
+    // A transformed wrapper holds fixed boxes, so it does clip it: the action's box stays
+    // inside the viewport but runs past the wrapper's right edge.
+    for held in ["transform: translateZ(0)", "translate: 0 0", "will-change: scale"] {
+        let text = wrapped(held);
+        assert!(text.contains("FAIL  primary action .buy: not wholly inside"), "{held}: {text}");
+    }
+    // Holding it without clipping changes nothing.
+    let text = wrapped("transform: translateZ(0); overflow: visible");
+    assert!(text.contains("ok    primary action .buy: wholly inside the first viewport"), "{text}");
+}
