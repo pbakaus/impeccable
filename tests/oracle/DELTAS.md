@@ -7471,3 +7471,18 @@ A PRODUCT.md or DESIGN.md longer than 1,600 bytes is no longer pasted in full or
 
 - `context-full-oversized-design`: the padded DESIGN.md (no frontmatter, rules or bullets) now reads `# DESIGN.md (map; full file: DESIGN.md)` and `Full: DESIGN.md (read a section when you need its detail)` in place of the `DOCUMENT_NOT_INLINED` pointer. Every other byte, the exit code and the files are unchanged.
 - `context-full-long-product` (new): a 2.3 KB PRODUCT.md is carried as its title, schema stamp, `## Platform` and `## Anti-references` sections, then `More sections: Users.` and the `Full:` line; the rest of the boot matches `context-full`.
+
+## Recorded 2026-11-16: `side-tab` reads every side bar, square from 2px and rounded at any width
+
+A left or right bar (a one-sided border, an x-only inset box-shadow, a full-height `::before` / `::after`) is `side-tab` on any box from 2px and on a box rounded at any corner at any width, whatever state its selector styles and whatever its colour (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). Re-recorded from the binary and reviewed by hand with a decoded diff of every finding: no rule other than `side-tab` moved in any case, every finding added is a side bar of 2px or more or a 1px bar on a box with a radius above zero, and no hairline on a square box, frame or table grid line was added. Several older fixtures keep square, neutral, state and thin-on-rounded bars in their should-pass columns from the old rounded-card gate; those now report, as the decision asks.
+
+- `detect-fixture-{json,text}-astro-inset-shadow-stripe-astro`: the square, neutral (black, gray, dimgray, shorthand hex), current-colour, selected-state and 2px inset edges report.
+- `detect-fixture-{json,text}-border-baseline-html`, `-modern-color-borders-html`, `-named-color-borders-html`, `-linked-stylesheet-html`: square bars of 3px or more and 1px bars on rounded cards report; snippets keep the `border-left: Npx[ + border-radius: Rpx]` wording.
+- `detect-fixture-{json,text}-external-styles-css`: a neutral 4px left border reports.
+- `detect-fixture-{json,text}-pseudo-stripe-{css,html,vue}`: pseudo-element bars on square hosts, a neutral divider bar, a bar under a rounded stripe side, a timeline rail and a blockquote bar report.
+- `detect-fixture-{json,text}-side-accent-flat-vue`, `-side-accent-markup-square-{svelte,vue}`, `-side-accent-nested-{sass,scss,tsx}`, `-side-accent-producers-{css,html,jsx}`, `-side-accent-square-sheet-css`: square side accents in every producer report (the markup-square and square-sheet cases now exit 2).
+- `detect-fixture-{json,text}-side-tab-far-corners-html`: the thin cases are 1px now; a 1px bar on a box rounded along it or at one small far corner reports, a 1px bar on a square box or on corners with no vertical radius does not.
+- `detect-fixture-{json,text}-side-tab-status-rows-{html,svelte}`: selected, hover, neutral-token, data-state-selected and selected-wrapper rows report; the rounded row card reports from the row scan; the BEM row's logical border also reports as `border-left: 2px` from the borders check.
+- `detect-fixture-{json,text}-side-tab-stylesheet-forms-html`: square stylesheet forms report.
+- `detect-fixture-{json,text}-side-tab-every-variant-{html,css,svelte}` (new): every variant flags and every control passes, including the pressed nav button whose radius sits on its base rule.
+- `legitimate-borders.html` lost the quote, nav, input, timeline and code-diff sections (they are side bars now and live in `side-tab-every-variant.html`); `should-pass.html`'s thin right border is 1px. Neither golden moved.
