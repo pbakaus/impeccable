@@ -153,6 +153,32 @@ fn without_comments(css: &str) -> String {
     out
 }
 
+/// Where a declaration's value ends: the first `;` or `}` outside a quoted string and outside brackets, so
+/// `url("data:image/svg+xml;base64,…")` stays whole.
+fn value_end(rest: &str) -> usize {
+    let (mut quote, mut depth, mut escaped) = (None::<char>, 0i32, false);
+    for (i, c) in rest.char_indices() {
+        if let Some(q) = quote {
+            if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == q {
+                quote = None;
+            }
+            continue;
+        }
+        match c {
+            '"' | '\'' => quote = Some(c),
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ';' | '}' if depth <= 0 => return i,
+            _ => {}
+        }
+    }
+    rest.len()
+}
+
 /// Each custom property a token file declares (`--name: value`, wherever it sits on a line and however many share one;
 /// a value over several lines joined), with the line it starts on. Commented-out declarations are not tokens. The value
 /// is kept whole, so a term deep in a long value still matches; only the printed line is clipped.
@@ -163,7 +189,7 @@ fn custom_properties(css: &str, rel: &str, out: &mut Vec<Entry>) {
     for c in DECL.captures_iter(&css) {
         let (name, whole) = (c.get(1).unwrap(), c.get(0).unwrap());
         let rest = &css[whole.end()..];
-        let value = &rest[..rest.find([';', '}']).unwrap_or(rest.len())];
+        let value = &rest[..value_end(rest)];
         let line = css[..name.start()].matches('\n').count() + 1;
         out.push(Entry { name: format!("--{}", name.as_str()), text: value.split_whitespace().collect::<Vec<_>>().join(" "), at: format!("{rel}:{line}") });
     }
@@ -209,15 +235,19 @@ fn sections(doc: &str, rel: &str, term: &str) -> Vec<String> {
 
 /// What `terms` find in the design system DESIGN.md (`design`, at `rel` in `dir`) describes, within `OUT_SIZE`.
 pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
+    // Files beside DESIGN.md are named from where the lookup ran, as `rel` is (`apps/web/styles/tokens.css`).
+    let base = Path::new(rel).parent().filter(|p| !p.as_os_str().is_empty());
+    let shown = |p: &str| base.map_or(p.to_string(), |b| b.join(p).to_string_lossy().replace('\\', "/"));
+    let (sidecar_rel, archive_rel) = (shown(SIDECAR), shown(ARCHIVE));
     let mut entries = Vec::new();
     frontmatter_entries(design, rel, &mut entries);
     if let Some(sidecar) = safe_read(&dir.join(SIDECAR).to_string_lossy()).and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
-        sidecar_entries(&sidecar, SIDECAR, &mut entries);
+        sidecar_entries(&sidecar, &sidecar_rel, &mut entries);
     }
     // Once compacted, the sections (and the files they name) are in the archive.
     let archived = design.contains(MAP_MARKER).then(|| safe_read(&dir.join(ARCHIVE).to_string_lossy())).flatten();
     let (doc, doc_rel) = match &archived {
-        Some(full) => (full.as_str(), ARCHIVE),
+        Some(full) => (full.as_str(), archive_rel.as_str()),
         None => (design, rel),
     };
     // A link's `#fragment` or `?query` is not part of the file's name.
@@ -231,7 +261,7 @@ pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
     files.dedup();
     for f in &files {
         if let Some(css) = safe_read(&dir.join(f).to_string_lossy()) {
-            custom_properties(&css, f, &mut entries);
+            custom_properties(&css, &shown(f), &mut entries);
         }
     }
 
@@ -276,15 +306,15 @@ pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
         out.push_str(&format!("\n{left} more match{}; use a narrower term.\n", if left == 1 { "" } else { "es" }));
     }
     if out.is_empty() {
-        let mut looked = vec![format!("{rel} (frontmatter and sections)"), SIDECAR.to_string()];
+        let mut looked = vec![format!("{rel} (frontmatter and sections)"), sidecar_rel.clone()];
         if archived.is_some() {
-            looked.push(ARCHIVE.to_string());
+            looked.push(archive_rel.clone());
         }
         let (here, gone): (Vec<String>, Vec<String>) = files.into_iter().partition(|f| dir.join(f).is_file());
-        looked.extend(here);
+        looked.extend(here.iter().map(|f| shown(f)));
         out = format!("Nothing matches {} in {}.\n", terms.join(", "), looked.join(", "));
         if !gone.is_empty() {
-            out.push_str(&format!("DESIGN.md names token files that are not there: {}.\n", gone.join(", ")));
+            out.push_str(&format!("DESIGN.md names token files that are not there: {}.\n", gone.iter().map(|f| shown(f)).collect::<Vec<_>>().join(", ")));
         }
         if out.len() > OUT_SIZE {
             out = format!("{}\n", clip(&out, OUT_SIZE));
@@ -416,6 +446,16 @@ mod tests {
         // A comment marker inside a quoted value opens no comment.
         let dir = dir_with("quoted", &[("styles/tokens.css", ":root { --comment-open: \"/*\"; --brand: red; /* palette */ }\n")]);
         assert_eq!(lookup(design, "DESIGN.md", &dir, &["--brand".into()]), "--brand: red (styles/tokens.css:1)\n");
+    }
+
+    #[test]
+    fn a_quoted_semicolon_keeps_the_value_whole_and_a_workspace_names_its_files() {
+        let design = "# D\n\nTokens: `styles/tokens.css`.\n";
+        let dir = dir_with("workspace", &[("styles/tokens.css", ":root { --icon: url(\"data:image/svg+xml;base64,PHN2Zz4=\"); }\n")]);
+        assert_eq!(
+            lookup(design, "apps/web/DESIGN.md", &dir, &["base64".into()]),
+            "--icon: url(\"data:image/svg+xml;base64,PHN2Zz4=\") (apps/web/styles/tokens.css:1)\n"
+        );
     }
 
     #[test]
