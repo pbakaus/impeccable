@@ -37,6 +37,7 @@ pub use embed_prompt::run as run_embed_prompt;
 pub mod signals;
 pub use signals::run as run_signals;
 pub mod design_parser;
+pub mod design_map;
 pub mod staleness_deep;
 pub mod doctor;
 pub use doctor::run as run_doctor;

@@ -12,7 +12,10 @@
 //!
 //! stdout carries MCP frames only; diagnostics go to stderr. No token, authorization code, `state` or authorization
 //! URL is ever written to either.
+pub mod asset;
 pub mod browser;
+pub mod host_setup;
+pub mod presence;
 
 use impeccable_account::{config::Account, http::ApiError, session::{Session, SessionError}};
 use impeccable_common::Io;
@@ -50,6 +53,11 @@ pub trait Upstream {
     fn browser(&self) -> bool {
         true
     }
+    /// PUT an artifact asset's bytes to the signed address the service reserved (`asset`); Err is the line the agent
+    /// reads.
+    fn upload(&mut self, _url: &str, _content_type: &str, _bytes: &[u8]) -> Result<(), String> {
+        Err("Uploads aren't available here.".into())
+    }
 }
 
 /// `impeccable mcp`: serve stdin until it closes.
@@ -62,7 +70,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut upstream = service(io.env.clone(), browser, Box::new(open_browser));
     let socket = browser::socket_path(&io.env);
     let stdin = std::io::stdin();
-    serve_with(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream, socket.as_deref());
+    let here = (io.env.clone(), io.cwd.clone());
+    serve_session(stdin.lock(), &mut io.stdout, &mut io.stderr, &mut upstream, socket.as_deref(), Some((&here.0, &here.1)));
     0
 }
 
@@ -93,7 +102,21 @@ pub fn serve(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upst
 
 /// `serve`, with the browser relay's socket: its tools are listed while the relay is up and free, and called over it.
 pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream, socket: Option<&std::path::Path>) {
+    serve_session(input, out, err, upstream, socket, None);
+}
+
+/// `serve_with`, and with `here` (the environment and working folder) this session's presence record (REN-2124):
+/// written at `initialize`, named by the first Needs-you call that names itself, removed when the session ends.
+pub fn serve_session(
+    input: impl BufRead,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    upstream: &mut dyn Upstream,
+    socket: Option<&std::path::Path>,
+    here: Option<(&std::collections::HashMap<String, String>, &std::path::Path)>,
+) {
     let mut agent: Option<String> = None;
+    let mut presence: Option<presence::Presence> = None;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
     // Which relay socket was there at the last tools/list (its device, inode and change time, so a relay
@@ -112,11 +135,22 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
         };
         if request.get("method").and_then(Value::as_str) == Some("initialize") {
             agent = request.pointer("/params/clientInfo/name").and_then(Value::as_str).map(agent_label);
+            if let (Some((env, cwd)), None) = (here, &presence) {
+                presence = presence::Presence::start(env, agent.as_deref().unwrap_or("agent"), cwd);
+            }
+        }
+        // The name the session gives itself, before a missing one is filled with the harness's.
+        if let (Some(p), Some(from)) = (presence.as_mut(), named_by(&request)) {
+            p.named(&from);
         }
         asked_as(&mut request, agent.as_deref());
         if listed_with.is_some_and(|was| was != relay_there()) {
             frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
             listed_with = None;
+        }
+        if let Some(reply) = uploaded(&request, out, err, upstream, here.map(|(_, cwd)| cwd)) {
+            frame(out, &reply);
+            continue;
         }
         if let Some(socket) = socket {
             if let Some(reply) = browsed(&request, socket, agent.as_deref().unwrap_or("Your agent"), &mut link) {
@@ -129,6 +163,14 @@ pub fn serve_with(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write,
             listed_with = Some(relay_there());
         }
         if let Some(mut reply) = answer(&request, out, err, upstream) {
+            // The service's own `artifact.asset` takes a digest; the agent gets this one, which takes a file.
+            if listing {
+                if let Some(list) = reply.pointer_mut("/result/tools").and_then(Value::as_array_mut) {
+                    if let Some(at) = list.iter().position(|t| t["name"] == asset::NAME) {
+                        list[at] = asset::tool();
+                    }
+                }
+            }
             // The agent driving keeps its tools; any other lists them while the relay is up and free. Local tools
             // don't wait on the account service: when its list fails, they're the list.
             if listing && (link.is_some() || socket.is_some_and(browser::ready)) {
@@ -151,6 +193,16 @@ fn agent_label(name: &str) -> String {
 
 /// Every agent on this machine shares the CLI's one sign-in, so a Needs-you call that doesn't name its session is
 /// named for the agent that made it (its `clientInfo.name`): Claude Code and Codex keep their own questions.
+/// The `from` a Needs-you call names itself with, if any.
+fn named_by(request: &Value) -> Option<String> {
+    if request.get("method").and_then(Value::as_str) != Some("tools/call")
+        || !request.pointer("/params/name").and_then(Value::as_str).is_some_and(|n| n.starts_with("needs_you."))
+    {
+        return None;
+    }
+    request.pointer("/params/arguments/from").and_then(Value::as_str).filter(|f| !f.trim().is_empty()).map(str::to_string)
+}
+
 fn asked_as(request: &mut Value, agent: Option<&str>) {
     let Some(agent) = agent.filter(|a| !a.trim().is_empty()) else { return };
     if request.get("method").and_then(Value::as_str) != Some("tools/call") {
@@ -161,6 +213,49 @@ fn asked_as(request: &mut Value, agent: Option<&str>) {
     if needs_you && !args.contains_key("from") {
         args.insert("from".into(), json!(agent));
     }
+}
+
+/// `artifact.asset` with a file: read and hashed here, reserved with the service, and its bytes uploaded only when the
+/// workspace doesn't have them yet. None for anything else.
+fn uploaded(
+    request: &Value,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    upstream: &mut dyn Upstream,
+    cwd: Option<&std::path::Path>,
+) -> Option<Value> {
+    if request.get("method").and_then(Value::as_str) != Some("tools/call") || request.pointer("/params/name") != Some(&json!(asset::NAME)) {
+        return None;
+    }
+    let id = request.get("id").cloned().unwrap_or(Value::Null);
+    let args = request.pointer("/params/arguments").cloned().unwrap_or_else(|| json!({}));
+    let Some(path) = args["path"].as_str() else {
+        return Some(said(&id, request, "Pass path: the file to upload."));
+    };
+    let here = cwd.map(std::path::Path::to_path_buf).or_else(|| std::env::current_dir().ok()).unwrap_or_default();
+    let local = match asset::read(&here, path) {
+        Ok(l) => l,
+        Err(line) => return Some(said(&id, request, &line)),
+    };
+    let mut reserve = json!({ "sha256": local.sha256, "bytes": local.bytes.len(), "contentType": local.content_type });
+    if let Some(w) = args.get("workspace") {
+        reserve["workspace"] = w.clone();
+    }
+    let mut ask = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": asset::NAME, "arguments": reserve } });
+    // The caller's progress token, so a sign-in on the way still tells it to wait.
+    if let Some(meta) = request.pointer("/params/_meta") {
+        ask["params"]["_meta"] = meta.clone();
+    }
+    let reply = held(&ask, out, err, upstream);
+    let Some(result) = reply.get("result") else { return Some(reply) };
+    Some(match asset::reservation(result) {
+        Err(line) => said(&id, request, &line),
+        Ok((key, None)) => json!({ "jsonrpc": "2.0", "id": id, "result": asset::done(&key) }),
+        Ok((key, Some(url))) => match upstream.upload(&url, local.content_type, &local.bytes) {
+            Ok(()) => json!({ "jsonrpc": "2.0", "id": id, "result": asset::done(&key) }),
+            Err(line) => said(&id, request, &line),
+        },
+    })
 }
 
 /// A browser tool's call, answered over the relay; None for anything else.
@@ -279,6 +374,18 @@ struct Service {
 }
 
 impl Upstream for Service {
+    fn upload(&mut self, url: &str, content_type: &str, bytes: &[u8]) -> Result<(), String> {
+        let account = Account::from_env(&self.env).map_err(|e| e.to_string())?;
+        // Up to 50 MB: more time than a tool call's minute.
+        let client = impeccable_account::http::Client::with_deadline(&account, std::time::Duration::from_secs(600));
+        match client.put_bytes(url, content_type, bytes) {
+            Ok(_) => Ok(()),
+            Err(ApiError::Status { status: 403, .. }) => Err("That upload is no longer allowed. Call artifact.asset again.".into()),
+            Err(ApiError::Network(_)) => Err("Impeccable can’t be reached right now. Try again in a minute.".into()),
+            Err(e) => Err(format!("The upload failed ({e}). Call artifact.asset again.")),
+        }
+    }
+
     fn call(&mut self, request: &Value) -> Result<Value, Failure> {
         let account = Account::from_env(&self.env).map_err(Failure::Other)?;
         let url = format!("{}/mcp", account.issuer);

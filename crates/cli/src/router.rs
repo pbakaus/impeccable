@@ -83,6 +83,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 crate::setup_report::schedule(io);
                 scan_after_login(io, &engines, pack.rule_pack);
                 crate::loop_install::after_login(io);
+                sign_in_summary(io);
             }
             code
         }
@@ -104,18 +105,30 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
-        "skills" => impeccable_skills::run(rest, io),
+        "skills" => {
+            let code = impeccable_skills::run(rest, io);
+            // The launcher finds the newest engine itself, so only install registers it, never update.
+            if code == 0 && rest.first().map(String::as_str) == Some("install") {
+                register_browser_host(&rest[1..], io);
+            }
+            code
+        }
         "loop" => crate::loop_install::run(rest, io),
         "switches" => crate::agent_block::run(rest, io),
         "switches-refresh" => crate::switch_sync::run_refresh(rest, io),
         "walkthrough" => crate::walkthrough::run(rest, io),
         // The one MCP server an agent runs, over stdio (REN-2053). Never schedules a report: it serves for the agent's whole session.
         "mcp" => impeccable_mcp::run(rest, io),
-        "agents" => impeccable_agents::run(rest, io),
+        // `running` lists the agent sessions running now (REN-2124), beside the engine's own protocol verbs.
+        "agents" => match rest.split_first() {
+            Some((sub, more)) if sub == "running" => impeccable_mcp::presence::run(more, io),
+            _ => impeccable_agents::run(rest, io),
+        },
         "install" => {
             let code = impeccable_skills::run(args, io);
             // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
             if code == 0 {
+                register_browser_host(rest, io);
                 crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
             }
             code
@@ -312,7 +325,15 @@ pub(crate) fn scan_after_login(
     if health::first_scan_done(&io.env, &root) {
         return "already";
     }
-    io.err("Scanning this repository for your account (Ctrl-C skips it)...\n");
+    // A person at a terminal watches it scan in place (impeccable_common::steps); anything else gets the plain lines.
+    let steps = impeccable_common::steps::Steps::new(io);
+    let scanning = match &steps {
+        Some(steps) => Some(steps.progress(io, "Scanning this repository (Ctrl-C skips it)")),
+        None => {
+            io.err("\nScanning this repository for your account (Ctrl-C skips it)...\n");
+            None
+        }
+    };
     let _ = io.stderr.flush();
     let started = std::time::SystemTime::now();
     let mut report = None;
@@ -328,6 +349,7 @@ pub(crate) fn scan_after_login(
     io.stdout = out;
     io.stderr = err;
     let Some(full) = report else {
+        drop(scanning);
         io.err("Couldn't scan this repository. Run impeccable detect here to add it to your account.\n");
         return "failed";
     };
@@ -336,7 +358,11 @@ pub(crate) fn scan_after_login(
     // Counted as Home counts them, so the two say the same number.
     let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);
-    let synced = health::after_sign_in_scan(io, &scan);
+    // What the upload says (the notices) waits under the finished step, so it never breaks the line still drawing.
+    let (synced, said) = match &steps {
+        Some(steps) => steps.held(io, |io| health::after_sign_in_scan(io, &scan)),
+        None => (health::after_sign_in_scan(io, &scan), vec![]),
+    };
     let plural = |n: usize, one: &str| {
         if n == 1 {
             format!("1 {one}")
@@ -349,15 +375,30 @@ pub(crate) fn scan_after_login(
         found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
     }
     let recorded = synced.recorded();
+    if let (Some(steps), Some(scanning)) = (&steps, scanning) {
+        let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
+        if recorded {
+            scanning.done(steps, io, &format!("Added this repository: {found}"), &[&format!("Sent {sent} and foundations checks, never your code or file names.")]);
+            steps.details(io, &said);
+            match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+                Some(url) => steps.link(io, "See it in Foundations:", &format!("{url}/-/foundations")),
+                None => steps.details(io, &["Find it under Foundations in your Impeccable account.".to_string()]),
+            }
+        } else {
+            scanning.failed(steps, io, &format!("Scanned this repository ({found})"), &["Couldn't add it to your account just now. Run impeccable detect here to try again."]);
+        }
+        set_last_scan(found);
+        return if recorded { "done" } else { "failed" };
+    }
     if recorded {
         // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
-            Some(url) => format!("See it in Foundations: {url}/-/foundations"),
+            Some(url) => format!("See it in Foundations:\n{url}/-/foundations"),
             None => "Find it under Foundations in your Impeccable account.".to_string(),
         };
         let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
         io.err(&format!(
-            "Added this repository to your account: {found}. Sent {sent} and foundations checks, never your code or file names. {find}\n"
+            "Added this repository to your account: {found}.\nSent {sent} and foundations checks, never your code or file names.\n{find}\n"
         ));
     } else {
         io.err(&format!(
@@ -365,6 +406,35 @@ pub(crate) fn scan_after_login(
         ));
     }
     if recorded { "done" } else { "failed" }
+}
+
+/// A person at a terminal ends a sign-in on one tidy summary of where things stand; anything else ends as before.
+pub(crate) fn sign_in_summary(io: &mut Io) {
+    let Some(steps) = impeccable_common::steps::Steps::new(io) else {
+        return;
+    };
+    let mut rows = vec![];
+    if let Ok(account) = impeccable_account::config::Account::from_env(&io.env) {
+        rows.push(("Account", account.display_name()));
+    }
+    if let Some(found) = last_scan() {
+        rows.push(("This repository", found));
+    }
+    if let Some(said) = crate::loop_install::last_loop() {
+        rows.push(("Loop", said));
+    }
+    steps.summary(io, "You're signed in", &rows);
+}
+
+/// What the first scan found, for the closing summary of the sign-in it followed.
+static LAST_SCAN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+fn set_last_scan(found: String) {
+    if let Ok(mut s) = LAST_SCAN.lock() {
+        *s = Some(found);
+    }
+}
+pub(crate) fn last_scan() -> Option<String> {
+    LAST_SCAN.lock().ok().and_then(|s| s.clone())
 }
 
 /// Design health's view of a full scan, with its foundations states.
@@ -390,6 +460,23 @@ pub(crate) fn health_scan(
         ruleset: full.ruleset,
         engine_version: VERSION.to_string(),
         started,
+    }
+}
+
+/// Lets Chrome start the browser relay (REN-2053): the launcher and each present browser's host manifest. Install
+/// prints what changed; a failure is named and never fails it. `args` are the verb's own: asking for
+/// help changes nothing.
+fn register_browser_host(args: &[String], io: &mut Io) {
+    // CI runs install in throwaway machines: no browser to register with, and no files left behind.
+    if io.env.get("CI").is_some_and(|v| !v.is_empty()) || args.iter().any(|a| a == "-h" || a == "--help") {
+        return;
+    }
+    let Some(home) = impeccable_account::config::impeccable_home(&io.env) else { return };
+    let user_home = home.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+    let user_home = io.env.get("HOME").filter(|h| !h.is_empty()).map(std::path::PathBuf::from).unwrap_or(user_home);
+    let config_home = io.env.get("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    for line in impeccable_mcp::host_setup::register(&user_home, &home, config_home.as_deref()) {
+        let _ = writeln!(io.stdout, "{line}");
     }
 }
 
@@ -538,5 +625,33 @@ mod verb_tests {
         assert!(!super::is_scan(&args(&["detect", "--before", "page.html"]), &io));
         assert!(!super::is_scan(&args(&["detect", "--kept", "--json", "page.html"]), &io));
         assert!(!super::is_scan(&args(&["--kept", "page.html"]), &io));
+    }
+
+    /// Catches asking install or update for help registering a browser host, and CI leaving one behind (#1533).
+    #[test]
+    fn help_and_ci_register_no_browser_host() {
+        let home = std::env::temp_dir().join(format!("imp-router-host-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let launcher = home.join(".impeccable/browser/host");
+        let run = |args: &[&str], ci: bool| {
+            let mut env: std::collections::HashMap<String, String> = [("HOME".to_string(), home.to_string_lossy().into_owned())].into();
+            if ci {
+                env.insert("CI".into(), "true".into());
+            }
+            let (mut io, _) = impeccable_common::Io::captured("", std::env::temp_dir(), env);
+            super::register_browser_host(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), &mut io);
+        };
+        // A verified engine in the cache, so only help and CI stand in the way.
+        let bin = home.join(".impeccable/bin/1.0.0/impeccable");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(bin.with_file_name("impeccable.verified"), b"abc 10\n").unwrap();
+        run(&["--help"], false);
+        run(&["-y"], true);
+        assert!(!launcher.exists());
+        run(&["-y"], false);
+        assert_eq!(launcher.exists(), cfg!(unix));
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

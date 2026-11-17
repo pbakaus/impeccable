@@ -14,9 +14,9 @@ pub(crate) fn emit(io: &mut Io, account: &Account, login: u64, kind: Kind, quiet
         return;
     }
     let (key, text) = match kind {
-        Kind::Design => ("design", "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n"),
-        Kind::Critique => ("critique", "Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off\n"),
-        Kind::Audit => ("audit", "Uploaded this audit report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off\n"),
+        Kind::Design => ("design", "Saved your DESIGN.md to your account, and again whenever it changes.\nTo stop: impeccable health design off\n"),
+        Kind::Critique => ("critique", "Saved this critique report to your account, and each one you save after it.\nTo stop: impeccable critiques off\n"),
+        Kind::Audit => ("audit", "Saved this audit report to your account, and each one you save after it.\nTo stop: impeccable critiques off\n"),
     };
     // The caller holds this upload kind's admission lock through this step.
     // Login is stable across token refreshes and changes on a new sign-in.
@@ -79,7 +79,7 @@ mod tests {
             assert!(cap.out().is_empty() && cap.err().is_empty());
             emit(&mut io, &account, 1, kind, false);
             let first = (cap.out(), cap.err());
-            assert!(first.0.contains("Uploaded") || first.1.contains("Uploaded"));
+            assert!(first.0.contains("To stop:") || first.1.contains("To stop:"));
             emit(&mut io, &account, 1, kind, false);
             assert_eq!((cap.out(), cap.err()), first);
             emit(&mut io, &account, 2, kind, false);
@@ -103,7 +103,7 @@ mod tests {
         for kind in [Kind::Design, Kind::Critique] {
             let (mut io, cap) = Io::captured("", home.clone(), Default::default());
             emit(&mut io, &account, 1, kind, false);
-            assert!(cap.out().contains("Uploaded") || cap.err().contains("Uploaded"));
+            assert!(cap.out().contains("To stop:") || cap.err().contains("To stop:"));
         }
         std::fs::remove_file(home).unwrap();
     }

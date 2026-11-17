@@ -340,7 +340,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.critiques { scopes.push("critiques:write"); }
                         if k.worlds { scopes.push("worlds:read"); }
                         if k.cli_mcp {
-                            for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start"] {
+                            for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start", "artifacts:write"] {
                                 if !scopes.contains(&s) { scopes.push(s); }
                             }
                         }
@@ -365,7 +365,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "taste:read" => k.taste || k.cli_mcp,
                         "design:write" => k.design,
                         "worlds:read" => k.worlds,
-                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" => k.cli_mcp,
+                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" | "artifacts:write" => k.cli_mcp,
                         _ => false,
                     })
                 };

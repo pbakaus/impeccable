@@ -7464,3 +7464,10 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 ## Recorded 2026-11-14: two cases from main take the `detect --changed` detector line
 
 `context-taste-ready` and `context-seeded-world-starter-css-with-product` arrived from main after this branch changed the `MANUAL_DETECTOR_REQUIRED` line to name `detect --json --changed`. Both were re-recorded from the branch binary and reviewed by hand: only that one stdout line changes in each; exit, stderr and files are unchanged.
+
+## Recorded 2026-11-16: `context` carries a long DESIGN.md as a map and a long PRODUCT.md as whole sections
+
+A PRODUCT.md or DESIGN.md longer than 1,600 bytes is no longer pasted in full or replaced by `DOCUMENT_NOT_INLINED`. DESIGN.md arrives under `# DESIGN.md (map; full file: <path>)` as a map built by fixed code (frontmatter name, colours and font families, the North Star, each named rule's first sentence, each Do and Don't lead, mentioned files that exist, and a `Full:` line); PRODUCT.md arrives under `# PRODUCT.md (sections; full file: <path>)` as whole sections up to the budget (the title and first section, then the anti-references, then the rest in order while they fit), the names of the sections left out, and a `Full:` line (`docs/CLI-CONTRACT.md`, `context`, **Long documents**). Files within the budget are carried as written, so every other `context` golden is unchanged. Re-recorded from the binary and reviewed by hand.
+
+- `context-full-oversized-design`: the padded DESIGN.md (no frontmatter, rules or bullets) now reads `# DESIGN.md (map; full file: DESIGN.md)` and `Full: DESIGN.md (read a section when you need its detail)` in place of the `DOCUMENT_NOT_INLINED` pointer. Every other byte, the exit code and the files are unchanged.
+- `context-full-long-product` (new): a 2.3 KB PRODUCT.md is carried as its title, schema stamp, `## Platform` and `## Anti-references` sections, then `More sections: Users.` and the `Full:` line; the rest of the boot matches `context-full`.

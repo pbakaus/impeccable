@@ -828,10 +828,19 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
 
     let want_hooks = install_hooks && decide_hook_install(&sys, &mut prompt, io, &hook_root, &targets, yes, scope == Scope::User)?;
 
-    out(io, "\nDownloading impeccable skills...");
+    // A person at a terminal watches it download in place (impeccable_common::steps); anything else the plain line.
+    let steps = impeccable_common::steps::Steps::new(io);
+    let downloading = match &steps {
+        Some(steps) => Some(steps.progress(io, "Downloading impeccable skills")),
+        None => {
+            out(io, "\nDownloading impeccable skills...");
+            None
+        }
+    };
     let bundle_dir = match bundle::download_and_extract_bundle(&sys) {
         Ok(d) => d,
         Err(e) => {
+            drop(downloading);
             err(io, &format!("Download failed: {e}"));
             return Err(Flow::Exit(1));
         }
@@ -854,6 +863,7 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
         Ok(v) => v,
         Err(e) => {
             util::rm_rf(&bundle_dir);
+            drop(downloading);
             err(io, &format!("Install failed: {e}"));
             return Err(Flow::Exit(1));
         }
@@ -861,19 +871,23 @@ fn install(flags: &[String], io: &mut Io) -> R<()> {
     util::rm_rf(&bundle_dir);
 
     if written.is_empty() {
+        drop(downloading);
         err(io, &format!("Nothing was installed: the bundle had no variants for {}.", targets.join(", ")));
         return Err(Flow::Exit(1));
     }
-    out(io, &format!(
-        "Installed impeccable into: {} ({})",
-        targets.join(", "),
-        if scope == Scope::User { "global" } else { "project" }
-    ));
+    let installed = format!("{} ({})", targets.join(", "), if scope == Scope::User { "global" } else { "project" });
+    match (&steps, downloading) {
+        (Some(steps), Some(downloading)) => downloading.done(steps, io, &format!("Installed impeccable into {installed}"), &[]),
+        _ => out(io, &format!("Installed impeccable into: {installed}")),
+    }
     install_engine_binaries(&sys, io, &written);
     bundle::report_provider_agents(&sys, io, &agent_results);
     report_hook_targets(&sys, io, &hook_targets, if want_hooks { &targets } else { &[] });
     name_global_copy(&sys, io, &install_root, scope);
-    out(io, "\nDone! Now type /impeccable init in your AI coding agent's chat (not in this terminal) to set up design context.\n");
+    match &steps {
+        Some(steps) => steps.done(io, "Done", &["Now type /impeccable init in your AI coding agent's chat (not in this terminal) to set up design context."]),
+        None => out(io, "\nDone! Now type /impeccable init in your AI coding agent's chat (not in this terminal) to set up design context.\n"),
+    }
     Ok(())
 }
 

@@ -251,7 +251,7 @@ Examples:
      - listening & matched: `\n${name} dev server detected on localhost:${port}.\nFor more accurate results, scan the running site:\n  npx impeccable detect http://localhost:${port}\n\n`
      - listening & !matched: `\n${name} project detected (${basename(configPath)}).\nPort ${port} is in use by another service. Start the ${name} dev server and scan via URL for best results.\n\n`
      - not listening: `\n${name} project detected (${basename(configPath)}).\nStart the dev server and scan via URL for best results:\n  npx impeccable detect http://localhost:${port}\n\n`
-     Then `files = walkDir(resolved, config.extensions).filter(f => !shouldIgnoreDetectionFile(f, cwd, config))`. The walk collects built-in scannable extensions plus any `detector.extensions` from cwd config (empty under `--no-config`). If `files.length > 50 && stdin.isTTY && !json && !quiet && !github && !sarif`: `stderr> \nFound ${n} files (${htmlCount} HTML) in ${target}.\nScanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\nTarget a specific subdirectory to narrow scope.\n` then readline prompt `Continue? [Y/n] ` on stderr; empty or `/^y(es)?$/i` continues; otherwise `stderr> Aborted.\n`, `exit 0`. Then `buildImportGraph(files)` → reverse map; each file scanned with its own options; findings from a file that is imported get `f.importedBy = [basename(importer), ...]` (Set iteration order). 
+     Then `files = walkDir(resolved, config.extensions).filter(f => !shouldIgnoreDetectionFile(f, cwd, config))`. The walk collects built-in scannable extensions plus any `detector.extensions` from cwd config (empty under `--no-config`). If `(files.length > 500 || htmlCount > 50) && stdin.isTTY && !json && !quiet && !github && !sarif`: `stderr> \nFound ${n} files (${htmlCount} HTML) in ${place}.` (`place` is `this folder` for a target of `.` or `./`, else the target)`\nScanning may take a while${htmlCount > 10 ? ' (static HTML/CSS processes each HTML file individually)' : ''}.\nTarget a specific subdirectory to narrow scope.\n` then readline prompt `Continue? [Y/n] ` on stderr; empty or `/^y(es)?$/i` continues; otherwise `stderr> Aborted.\n`, `exit 0`. Then `buildImportGraph(files)` → reverse map; each file scanned with its own options; findings from a file that is imported get `f.importedBy = [basename(importer), ...]` (Set iteration order). 
    - **File**: skipped if `shouldIgnoreDetectionFile`; else `detectLocalFile`.
    - `detectLocalFile(fp, opts)`: a configured `detector.extensions` entry matching the file (longest suffix) picks the engine (`html` → `detectHtml(fp, opts)`, `text` → `detectText`); otherwise extension (lowercased) in `HTML_EXTENSIONS = {'.html','.htm'}` → `detectHtml(fp, opts)`; else `detectText(readFileSync(fp,'utf-8'), fp, opts)`. The design hook uses the same rule.
    - **Linked stylesheets (#1087)**: the static HTML engine reads every local `<link rel=stylesheet>` for the cascade, but a linked sheet that `detector.ignoreFiles` waives is left out of the page-level pattern scan, so a pattern found only in that sheet is no longer reported under the page at line 0. Element rules still apply its styles through the cascade, and sheets that are not waived join the pattern scan as before. The design hook waives linked sheets the same way, matching each one the way it matches the edited file.
@@ -821,11 +821,15 @@ followed by a single `\n`. Overwrites (one brief per slug).
      **No PRODUCT.md** branch, parts in order:
      - if `hasVisualImplementation`: four parts: `NO_PRODUCT_MD: This project has no PRODUCT.md yet, but it does have an incumbent visual implementation. For \`init\`, \`teach\`, \`shape\`, or any request to create a new surface or replacement visual world, load reference/init.md and create PRODUCT.md with the user first. After init writes PRODUCT.md, reference/new-work.md preserves and documents the incumbent system for an extension or replaces it with the user for a redesign/rebrand. Other narrow refinement commands may read the CSS, tokens, components, and assets and proceed without blocking, then offer \`${IMPECCABLE_COMMAND} init\` as a follow-up.` ; `BUILD_INIT_REQUIRED: Before shape or any new-surface/redesign flow, init must capture PRODUCT.md with the human or structured simulated user. Init writes product truth only; reference/new-work.md owns every visual decision.` ; `SCOPED_EXISTING_ALLOWED: Narrow refinement commands may use the incumbent implementation as authority without blocking on context setup; they must preserve it and offer init afterward.` ; `EXISTING_VISUAL_SYSTEM: For refinement or extension, code and assets are incumbent design authority and missing DESIGN.md is a documentation gap. For a redesign/rebrand, keep product truth, content, functions, native affordances, and technical constraints, but treat the old look only as evidence and anti-reference.`
      - else two parts: `NO_PRODUCT_MD: This project has no PRODUCT.md yet. For \`init\`, \`teach\`, \`shape\`, or wording that clearly maps to a from-scratch build/shape flow, load reference/init.md, complete its human or structured simulated-user interview, and write PRODUCT.md before designing. If no answer mechanism truly exists, init may infer only from the explicit brief and must label its assumptions. It never writes DESIGN.md. For any other (scoped) command against existing code, proceed using the code as context and offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).` ; `PRODUCT_INIT_REQUIRED: No product context or visual authority was found. New builds and redesigns must finish reference/init.md for PRODUCT.md, then reference/new-work.md establishes the world and surface. Scoped fixes to existing code do not need the new-surface flow.`
-     - `# DESIGN.md\n\n<design.trim()>` if design present
+     - the DESIGN.md part (see **Long documents**) if design present
      - surface-brief part (below)
      - `RESOLVED_CONTEXT:\n<JSON>` (below)
      - `MANUAL_DETECTOR_REQUIRED` (cond.), `IMAGE_GEN_AVAILABLE` (cond.), `BUILD_PATH_DEFAULT` (cond.), `AUTONOMY_DIRECTIVE_CHECK` (always), `SUBAGENT_AUTHORIZATION` (always), `MONOREPO_TARGET_REQUIRED` (cond.), `IMAGE_TOOLS` (always), `CONTEXT_STALE` (cond.), `UPDATE_AVAILABLE` (cond.). Then `process.exit(0)`.
-     **PRODUCT.md** branch, in order: `# PRODUCT.md\n\n<product.trim()>`; `# DESIGN.md\n\n...` if present; surface-brief part; RESOLVED_CONTEXT; MANUAL_DETECTOR_REQUIRED; IMAGE_GEN_AVAILABLE; BUILD_PATH_DEFAULT; AUTONOMY_DIRECTIVE_CHECK; SUBAGENT_AUTHORIZATION; MONOREPO_TARGET_REQUIRED (cond.); if no DESIGN.md: `INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. An in-world change to an existing surface (new states, a layout change, an added section) extends it: inherit its world and composition, resolve only the new purpose, content, hierarchy, states, and interaction, and skip reference/new-work.md. Load reference/new-work.md only for shape, a whole new surface, or a redesign that replaces the world: a new surface documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.` (visual) or `WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.`; native reference parts, one per file: `# NATIVE PLATFORM REFERENCE: IOS (reference/ios.md)\n\n<content.trim()>` and/or `...ANDROID (reference/android.md)...` (`ios` -> ios; `android` -> android; `adaptive` -> ios then android; missing file skipped silently); IMAGE_TOOLS; CONTEXT_STALE (cond.); if platform unrecognized (extractPlatform null but a raw `## Platform` value exists): `WARNING: PRODUCT.md's \`## Platform\` value \`<raw>\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`; UPDATE_AVAILABLE (cond.). Natural exit 0.
+     **PRODUCT.md** branch, in order: the PRODUCT.md part; the DESIGN.md part if present (both per **Long documents**); surface-brief part; RESOLVED_CONTEXT; MANUAL_DETECTOR_REQUIRED; IMAGE_GEN_AVAILABLE; BUILD_PATH_DEFAULT; AUTONOMY_DIRECTIVE_CHECK; SUBAGENT_AUTHORIZATION; MONOREPO_TARGET_REQUIRED (cond.); if no DESIGN.md: `INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. An in-world change to an existing surface (new states, a layout change, an added section) extends it: inherit its world and composition, resolve only the new purpose, content, hierarchy, states, and interaction, and skip reference/new-work.md. Load reference/new-work.md only for shape, a whole new surface, or a redesign that replaces the world: a new surface documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.` (visual) or `WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.`; native reference parts, one per file: `# NATIVE PLATFORM REFERENCE: IOS (reference/ios.md)\n\n<content.trim()>` and/or `...ANDROID (reference/android.md)...` (`ios` -> ios; `android` -> android; `adaptive` -> ios then android; missing file skipped silently); IMAGE_TOOLS; CONTEXT_STALE (cond.); if platform unrecognized (extractPlatform null but a raw `## Platform` value exists): `WARNING: PRODUCT.md's \`## Platform\` value \`<raw>\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`; UPDATE_AVAILABLE (cond.). Natural exit 0.
+     **Long documents**: a PRODUCT.md or DESIGN.md whose trimmed text is at most 1,600 bytes is carried as written, `# PRODUCT.md\n\n<product.trim()>` / `# DESIGN.md\n\n<design.trim()>`. A longer one is never inlined in full and never becomes `DOCUMENT_NOT_INLINED`:
+     - DESIGN.md becomes `# DESIGN.md (map; full file: <designPath>)\n\n<map>`, a map built by fixed code (`crates/context/src/design_map.rs`), one item per line: `Name: <name>`, `World: <world>`, `Colors: <name> <value>, ...` (cut near 240 bytes with ` (+N more in the frontmatter)`), `Fonts: <first family> (<roles>); ...`, `Spacing: <name> <value>, ...` and `Radius: <name> <value>, ...` (from `spacing` and `rounded`, each cut near 200 bytes the same way) from the frontmatter; `North Star: <text>` from a `North Star:` line; a `Reference image:` line as written; `Rules:` with each bold lead ending in `Rule` plus its first sentence; `Don't:` and `Do:` with each bullet's first sentence (bullets under a `Do` / `Don't` / `Do Not` heading, or starting with `Do`, `Don't`, `Do not`); `Map: <path>` for up to 8 relative paths the file names in backticks or link targets that exist beside DESIGN.md; then `Full: <designPath> (read a section when you need its detail)`. Over 2,400 bytes (the map's own cap) the lists drop their last items, the Do list first, then Rules, then Don't, each keeping at least one; every line is at most 280 bytes (cut with `...`), and a map still over the cap keeps whole lines up to it and then the `Full:` line and ends with `- (+N more in the full file)`. The file itself is never changed.
+     - PRODUCT.md becomes `# PRODUCT.md (sections; full file: <productPath>)\n\n<sections>`: whole sections, in the file's order, chosen as the title and first \`## \` section (always), then the first section whose heading contains "anti-reference", then the rest in order while the chosen sections total at most 1,600 bytes. When the title and first section alone pass 3,200 bytes, the text is cut at the last line break within 3,200 bytes and ends `\n(cut here; the rest is in the full file)`. Then `\n\nMore sections: <names of the sections left out>.` when any are, then `\nFull: <productPath> (read a section when you need its detail)`. The same for every command.
+     - Surface briefs and native references keep the output budget below.
      **Output budget**: while the joined output would exceed 24,000 characters, the largest part whose size grows with the project takes its compact form. A document part (PRODUCT.md, DESIGN.md, the surface brief, or a native reference) becomes `<its heading>\n\nDOCUMENT_NOT_INLINED: <path> (<N> characters) ...`, a pointer telling the agent to read the file in full and not rerun `context`; `SURFACE_CONTEXT_AVAILABLE` and `RESOLVED_CONTEXT` replace their candidate list with `<N> candidates omitted for size; run \`<surface-brief cmd> list <projectRoot>\` to see every persisted brief` (the project root, shell-quoted like the launcher path, steers `list` to the same app) (in `RESOLVED_CONTEXT`, as the string value of `surfaceBriefCandidates`). Output under the budget is unchanged.
 
   Directive texts:
@@ -2420,13 +2424,13 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `quiet` marked so), `Not connected yet: ...` (`off`, and `needs-pro`
   marked `(Pro)`), the agent place's `fix.line` when the service sets one
   (what a machine reported, such as an unfinished change), and
-  `Next: <label>[: <command or https url>]` from the service's `next`. The places print in the service's order under the names
+  `Next: <label>[: <command>]`, or `Next: <label>:` with the https url alone on the next line, from the service's `next`. The places print in the service's order under the names
   Your agent, Agent tools, Loop, Chrome extension and GitHub pull requests;
   an unknown kind prints as sent, and an `unavailable` place or an unknown
   state is left out. The CLI never computes a next step and never rewrites a
   label. Control characters in the service's strings are dropped, and a url
   that isn't https is not shown.
-- After a successful `impeccable login`, the same lines follow on stderr
+- After a successful `impeccable login`, the same lines follow on stderr after a blank line
   (stdout keeps only the sign-in link with `--no-browser`). A failed read
   prints nothing more and login still exits 0.
 
@@ -2485,8 +2489,10 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   agent found on this machine is not fully connected (`loop status` row not
   `connected` with MCP, hooks and instruction in place), login offers that
   step for the agents still waiting, named as `Claude Code`, `Codex` or
-  `Claude Code and Codex`. A person at a terminal is asked `Loop is installed.
-  Connect <agents> to it now? [Y/n]` (Enter means yes; no prints `Later:
+  `Claude Code and Codex`. A person at a terminal is asked, after a blank line, `Loop is installed.
+  Connect <agents> to it, so their questions reach you in Loop?` then `Enter
+  connects them[ to <account>]; n skips. [Y/n]` (`to <account>` names an
+  account other than production, as `Signed in to` does; no prints `Later:
   impeccable loop connect`); otherwise nothing is changed and login prints
   `Loop is installed. Connect <agents> to it: impeccable loop connect`. All of
   it goes to stderr, after the setup lines. A yes connects as `loop connect`
@@ -2940,8 +2946,8 @@ Exact stderr lines:
 
 - `Not in a repository, so nothing was scanned. Run impeccable detect in one to add it to your account.`
 - `Git didn't answer in time, so nothing was scanned. Run impeccable detect here to add this repository to your account.` when `git rev-parse` gets no answer within 2 seconds.
-- `Scanning this repository for your account (Ctrl-C skips it)...`
-- `Added this repository to your account: {n findings} in {files} files. Sent its name, finding counts and foundations checks, never your code or file names. See it on your Home: {home}` for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), and `... Find it under Repositories in your Impeccable account.` for any other.
+- `Scanning this repository for your account (Ctrl-C skips it)...`, after a blank line
+- `Added this repository to your account: {n findings} in {files} files.`, then `Sent its name, finding counts and foundations checks, never your code or file names.`, then `See it in Foundations:` and `{home}/-/foundations` alone on the next line for the production and staging accounts (`https://app.impeccable.style/app`, `https://app.staging.impeccable.style/app`), or `Find it under Foundations in your Impeccable account.` for any other.
 - `Scanned this repository ({n findings}), but couldn't add it to your account just now. Run impeccable detect here to try again.`
 - `Couldn't scan this repository. Run impeccable detect here to add it to your account.`
 
@@ -2967,7 +2973,7 @@ Exact output strings:
 - `DESIGN.md sync: couldn't save the setting: {e}.`
 - `DESIGN.md sync: couldn't save the setting: another impeccable command is using it; try again.`
 - `Design health: couldn't save the setting: another impeccable command is using it; try again.`
-- `Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off`
+- `Saved your DESIGN.md to your account, and again whenever it changes.` then `To stop: impeccable health design off`
 
 `impeccable health design on` opts into uploading DESIGN.md file contents;
 `impeccable health design off` stops those uploads. The setting is `design`
@@ -3048,7 +3054,7 @@ Exact output strings:
 - `Critique sync: couldn't save the setting.`
 - `Critique history deleted; sync is off.`
 - `Critique sync is off, but deleting your history couldn't be confirmed. Run impeccable critiques forget again.`
-- `Uploaded this critique report to your Impeccable account. Each report you save uploads too. To stop: impeccable critiques off`
+- `Saved this critique report to your account, and each one you save after it.` then `To stop: impeccable critiques off` (an audit report: `Saved this audit report ...`)
 
 `impeccable critiques [status|on|off|forget]` manages the local
 `IMPECCABLE_HOME/critiques.json` setting. The default is on
@@ -3166,6 +3172,44 @@ IMPECCABLE_NO_TASTE suppresses both the context block and scheduling when it
 is non-empty and neither 0 nor false (false is case-insensitive). With no
 cache, context's existing output remains unchanged.
 
+## `agents running` (REN-2124)
+
+`impeccable agents running [--json]` lists the agent sessions running on this
+machine, for Loop (which reads it on FSEvents under `<IMPECCABLE_HOME>/running/`
+and every 30 s). macOS and Linux; on Windows the list is empty for now.
+
+- **Connected:** each running `impeccable mcp` writes `<IMPECCABLE_HOME>/running/<pid>.json`
+  (folder 0700, file 0600) at `initialize` and removes it when it ends. The record
+  holds `pid` and `start` (its start time as `ps -o lstart` gives it, `LC_ALL=C`),
+  `parent` (`{pid, start}` of the harness process: the first ancestor that isn't
+  node, npm, npx, bun or a shell), `harness` (the agent's `clientInfo.name`),
+  `session` (the harness's session name from its `--name`/`-n` argument: the words
+  up to the next option, since `ps` splits a quoted name), `from`
+  (the session's own name, once a Needs-you call gives one), `cwd`, `repo`
+  (`{key, label}`: the health upload's repository key) and `since` (Unix seconds).
+- **Dead records:** a record whose `pid` is gone, or now has another start time, is a
+  crashed session. The reader removes it, so a killed session is gone at the next read.
+  When `ps` itself fails, nothing is removed and the list is empty.
+- **Seen, not connected:** a running `claude`, `codex`, `pi`, `cursor-agent`,
+  `antigravity`, `gemini` or `opencode` process (by program, or the script `node`
+  runs) that no record names as its parent, and whose own parent isn't one.
+- **`--json`** prints one array: `[{key, name, harness, repo, cwd, pid, parent, since, connected}]`.
+  `key` is `<pid>@<start>`. `name` is `from`, else `session`, else
+  `<repo label> · <harness>`, else the harness. Seen agents have `repo`, `cwd` and
+  `since` null and `parent` set to themselves.
+- **Text** prints one line per agent: `<name>  (<harness>, connected|seen, not connected)`,
+  or `No agents running.`
+- Any argument other than `--json` prints `Usage: impeccable agents running [--json]`
+  on stderr and exits 2.
+- **Calling it without npx (Loop):** run the cached engine directly:
+  `<IMPECCABLE_HOME or ~/.impeccable>/bin/<version>/impeccable agents running --json`,
+  where `<version>` is the highest semver folder whose `impeccable` (`impeccable.exe`
+  on Windows) has an `impeccable.verified` stamp. The launcher writes that stamp
+  (`<sha256> <size>`) after checking the binary against the release manifest, so a
+  stamp whose size differs from the file's, or that is older than the binary, is not
+  verified. Engines from before this verb answer with a non-zero exit and no JSON
+  array: read that as "this engine has no presence list yet".
+
 ## `mcp` (REN-2053)
 
 `impeccable mcp` is the one Impeccable MCP server a coding agent runs, over
@@ -3240,6 +3284,41 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   extension: `{"id","agent","tool","arguments"}`; answers:
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
+- **Registering the host with Chrome** (macOS and Linux). After a successful
+  `install` (or `skills install`), and not for `-h`/`--help` or when `CI` is
+  set, and once `<home>/bin` holds an engine the launcher would run (a bundled
+  engine fills no cache, so that install registers nothing until one does), the
+  CLI writes `<IMPECCABLE_HOME>/browser/host`
+  (0700, its folder 0700): a `sh` launcher with the home folder written in
+  (Chrome starts hosts with a bare environment). Each time it runs it picks the
+  highest `x.y.z` folder under `<home>/bin` whose `impeccable` is executable
+  and has an `impeccable.verified` stamp whose size field matches the binary
+  and that isn't older than it, and execs it with its arguments and `IMPECCABLE_HOME` set to that home. With none, it
+  prints `Impeccable: no verified engine in <home>/bin. Run npx impeccable
+  install.` to stderr and exits 1. It names no version, so `update` never
+  touches it. Then, for each of Chrome, Chrome Beta, Chrome Canary (macOS),
+  Chromium, Edge and Brave whose profile folder exists (on Linux under
+  `$XDG_CONFIG_HOME` when set, else `~/.config`), it writes
+  `NativeMessagingHosts/style.impeccable.browser.json` atomically
+  (`type: stdio`, `path` the launcher, `allowed_origins` the store build's
+  origin). A file of that name naming another path or origins is left alone,
+  with one line saying so. Snap and Flatpak Chromium builds are named and
+  skipped, since they can't start a program outside their sandbox. The CLI
+  prints one line naming the browsers it registered with, and nothing when all
+  was already in place. Failures are named and never fail install or update.
+  Nothing is written on Windows.
+- **`artifact.asset` is answered locally** (REN-2123). In `tools/list`, the
+  service's `artifact.asset` (which takes `sha256`, `bytes`, `contentType`) is
+  replaced by one taking `{path, workspace?}`: a file absolute or relative to the
+  working folder, a regular file (never a symlink), 1 byte to 50 MB, typed by its
+  extension (png, jpg, jpeg, webp, gif, avif, svg, mp4, webm, mp3, woff2, woff,
+  css, js, mjs, json). The process hashes it (SHA-256) and calls the service's
+  `artifact.asset`. On `{key, exists: true}` it answers `{key}`; on
+  `{key, upload: {url}}` it PUTs the bytes to `url` (on the account service's own
+  origin, exact `Content-Length`, the type as `Content-Type`, no bearer), then
+  answers `{key}`. Any refusal is the tool's error text. The bytes never pass
+  through the agent.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
-  write, personas, Taste, journeys) only when the service's metadata says
-  `impeccable_cli_mcp: true`, and only those it lists.
+  write, personas, Taste, journeys, `artifacts:write`) only when the service's
+  metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in
+  made before the service listed a scope signs in again on the next `login`.
