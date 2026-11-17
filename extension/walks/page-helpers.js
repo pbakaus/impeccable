@@ -169,7 +169,7 @@ function clickByText(wanted, opts) {
       continue;
     const label = norm(`${el.innerText || el.textContent || ""}`) || norm(el.getAttribute("aria-label") ?? "");
     const labelled = Array.prototype.map.call(el.labels ?? [], (l) => l.innerText || l.textContent || "").join(" ");
-    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${/^password$/i.test(el.getAttribute("type") ?? "") || el.getAttribute("data-impeccable-secret-field") !== null || el.getAttribute("data-impeccable-secret-maybe") !== null || /(?:^|\s)(?:cc-\S*|one-time-code|current-password|new-password)(?=\s|$)/i.test(el.getAttribute("autocomplete") ?? "") || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")) ? "" : el.value ?? ""} ${row} ${labelled}`);
+    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${/^password$/i.test(el.getAttribute("type") ?? "") || el.getAttribute("data-impeccable-secret-field") !== null || el.getAttribute("data-impeccable-secret-maybe") !== null || /(?:^|\s)(?:cc-\S*|one-time-code|current-password|new-password)(?=\s|$)/i.test(el.getAttribute("autocomplete") ?? "") || el.tagName === "INPUT" && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")) ? "" : el.value ?? ""} ${row} ${labelled}`);
     if (!text)
       continue;
     let score = 0;
@@ -514,7 +514,7 @@ function currentUrlOf() {
 
 function fieldReads(point, noSecrets = false) {
   const doc = globalThis.document;
-  const secret = (el, narrow) => el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || !narrow && (el.getAttribute("data-impeccable-secret-maybe") !== null || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")));
+  const secret = (el, narrow) => el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || !narrow && (el.getAttribute("data-impeccable-secret-maybe") !== null || el.tagName === "INPUT" && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")));
   const holds = (el, narrow) => secret(el, narrow) || Array.from(el.shadowRoot?.querySelectorAll?.("*") ?? []).some((inner) => holds(inner, narrow));
   const read = (el, through = []) => {
     if (!el)
@@ -610,7 +610,7 @@ function pageAddress() {
 function pageSignature() {
   const g = globalThis;
   const text = (g.document.body?.innerText ?? "").slice(0, 400000);
-  const states = Array.from(g.document.querySelectorAll("[aria-expanded],[aria-selected],[aria-checked],[aria-pressed],[aria-hidden],[aria-invalid],[aria-current],[hidden],[disabled],[open],[data-state],input,select,textarea,dialog,details")).slice(0, 4000).map((el) => `${el.tagName}|${["aria-expanded", "aria-selected", "aria-checked", "aria-pressed", "aria-hidden", "aria-invalid", "aria-current", "hidden", "disabled", "open", "data-state"].map((n) => el.getAttribute(n) ?? "␀").join(",")}|${typeof el.value !== "string" ? "" : el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || el.getAttribute("data-impeccable-secret-maybe") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")) ? el.value ? "•" : "" : el.value}|${el.checked === true ? 1 : 0}|${el.open === true ? 1 : 0}`).join(`
+  const states = Array.from(g.document.querySelectorAll("[aria-expanded],[aria-selected],[aria-checked],[aria-pressed],[aria-hidden],[aria-invalid],[aria-current],[hidden],[disabled],[open],[data-state],input,select,textarea,dialog,details")).slice(0, 4000).map((el) => `${el.tagName}|${["aria-expanded", "aria-selected", "aria-checked", "aria-pressed", "aria-hidden", "aria-invalid", "aria-current", "hidden", "disabled", "open", "data-state"].map((n) => el.getAttribute(n) ?? "␀").join(",")}|${typeof el.value !== "string" ? "" : el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || el.getAttribute("data-impeccable-secret-maybe") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")) ? el.value ? "•" : "" : el.value}|${el.checked === true ? 1 : 0}|${el.open === true ? 1 : 0}`).join(`
 `);
   let h = 2166136261;
   for (const part of [text, states])
@@ -1615,7 +1615,8 @@ function coverSecrets(on, forMs) {
   const maybe = "data-impeccable-secret-maybe";
   const held = "data-impeccable-secret-form";
   const named = ["name", "id", "placeholder", "aria-label"];
-  const fields = `input[type="password" i], [${seen}], [${maybe}], input:is([type="text" i], :not([type])):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
+  const other = ["checkbox", "radio", "button", "submit", "hidden", "file", "range", "color", "image", "reset", "date", "datetime-local", "month", "time", "week"];
+  const fields = `input[type="password" i], [${seen}], [${maybe}], input:not(${other.map((t) => `[type="${t}" i]`).join(", ")}):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
   const rule = `@layer secret-cover { ${fields} { ${mark}: 1; filter: brightness(0) !important; background-color: #000 !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; } }`;
   const g = globalThis;
   const ours = (sheet) => {
@@ -1657,7 +1658,8 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      const textual = (f) => !other.includes(kind(f));
+      const counts = (f) => f.getAttribute(seen) !== null || textual(f) && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
       const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
@@ -1672,7 +1674,7 @@ function coverSecrets(on, forMs) {
         const hidden = all.filter((f) => counts(f) && !shown(f));
         const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || Boolean(h.value) && h.value === f.value);
         for (const f of all)
-          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clone(f)))
+          if (textual(f) && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clone(f)))
             f.setAttribute(maybe, "");
       }
       for (const field of inputs(root)) {
@@ -1731,4 +1733,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '27c151c4b1c45b44';
+export const HASH = '629bbf371a82e4f1';
