@@ -102,7 +102,7 @@ export function isOwnPage(url) {
  * consent (all of accounts.google.com is a sign-in page already, signin.js).
  */
 const CONSENT = [
-  { host: 'github.com', path: /^\/(login\/oauth\/authorize|login\/device|apps\/[^/]+\/installations|settings\/installations|settings\/connections\/applications|settings\/apps\/authorizations|github-copilot\/signup)(\/|$)/ },
+  { host: 'github.com', path: /^\/(login\/oauth\/authorize|login\/device|apps\/[^/]+\/installations|settings\/installations|organizations\/[^/]+\/settings\/(installations|oauth_application_policy)|settings\/connections\/applications|settings\/apps\/authorizations|github-copilot\/signup)(\/|$)/ },
   { host: 'accounts.google.com', path: /^\/(o\/oauth2|signin\/oauth)(\/|$)/ },
 ];
 

@@ -12,7 +12,7 @@
 // (driver.js `typable`), a secret field in any picture, scripts of its own (no `evaluate`, no `cdp`), files, and
 // downloads. The person's Allow comes from the side panel only, never from the page. How it ends: Stop, the tab
 // closing, `browser_end`, the agent going away, the host going away, ten minutes idle, or an hour in all.
-import { AGENT, DEVICES, ops, walk, hooks } from './driver.js';
+import { AGENT, DEVICES, ops, stopOpening, walk, hooks } from './driver.js';
 import { askSite } from './control.js';
 import { isConsentPage, isOwnPage, webOrigin } from './guard.js';
 import { current, dispatch, onView } from './store.js';
@@ -158,10 +158,13 @@ async function open(url) {
   if (!session.started) dispatch({ type: 'agent', name: session.name, site: origin });
   try {
     if (!(await mayUse(origin))) { endWaiting(); return refused(`The person didn’t allow ${new URL(origin).host}.`); }
+    session.opening = true;
     await ops.open({ url, name: session.name, allow: [...session.allowed], free: true, helpers: true, [AGENT]: true });
   } catch (err) {
     endWaiting();
     throw err;
+  } finally {
+    if (session) session.opening = false;
   }
   session.started = true;
   await settle();
@@ -283,6 +286,8 @@ async function filmstrip(seconds) {
 /** Ends the agent's walk: the debugger leaves, and the tab it opened stays as it left it. */
 async function end() {
   clearTimeout(idle);
+  // A tab still opening for the agent never finishes opening.
+  if (session?.opening) stopOpening();
   if (walk?.agent) await ops.close();
   endWaiting();
   over();
@@ -306,6 +311,8 @@ async function call(frame) {
   if (walk?.agent && (state === 'paused' || state === 'takeover')) return pausedLine();
   if (tool === 'browser_open') return open(String(args.url ?? ''));
   if (!walk?.agent) return refused('No page is open: call browser_open first.');
+  // Handed back on a consent page the person went to: theirs to finish.
+  if (isConsentPage(walk.url)) return refused(CONSENT_LINE);
   if (tool === 'browser_act') return act(args);
   if (tool === 'browser_look') return look(args);
   return refused(`No tool ${String(tool).slice(0, 40)}.`);

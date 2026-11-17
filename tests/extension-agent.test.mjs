@@ -211,7 +211,7 @@ describe('agent session', () => {
   // Where one click grants an app access beyond the page: the agent never, even on a site it may use.
   it('refuses OAuth and app-install consent pages on an allowed site, by address and by a move there', async () => {
     const { driver } = await loaded;
-    for (const url of ['https://github.com/login/oauth/authorize?client_id=x', 'https://github.com/apps/impeccable/installations/new', 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x']) {
+    for (const url of ['https://github.com/login/oauth/authorize?client_id=x', 'https://github.com/apps/impeccable/installations/new', 'https://github.com/organizations/acme/settings/installations/12', 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x']) {
       const result = await call('browser_act', { op: 'goto', url });
       assert.equal(result.isError, true, url);
       assert.match(said(result), /grants an app access/);

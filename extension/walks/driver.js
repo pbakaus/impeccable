@@ -1134,9 +1134,9 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
       const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
-      // A consent page, while the person's own agent drives: refused as a site it may not be on. The person, once they
-      // have the tab, may.
-      const consent = tab.agent && top && driver.by === null && isConsentPage(params.request?.url);
+      // A consent page, while the person's own agent has the tab or is paused at a sign-in: refused as a site it may
+      // not be on. The person may, once they take the tab over.
+      const consent = tab.agent && top && driver.by !== 'takeover' && isConsentPage(params.request?.url);
       const allowed = consent ? [] : signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
       // A free walk's page may write to any origin but our own pages (guard.js `verdict`), from its own site: never a form
       // the top of the page sends off the site, nor anything on another site the person let it go to, where it only looks.
