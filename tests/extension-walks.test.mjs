@@ -1165,10 +1165,14 @@ describe('walk worker', () => {
       // Chrome's list of the top document's frames: the card box first, then the one no script enters.
       Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
-      let cardBox = false;
+      let [cardBox, slow, passes] = [false, 0, 0];
       chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1 }, { frameId: 7, parentFrameId: 0 }, { frameId: 9, parentFrameId: 0 }, { frameId: 11, parentFrameId: 9 }];
       chrome.scripting.executeScript = async ({ target, func, args }) => {
-        if (func === helpers.coverSecrets) { cardBox = args[0]; return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
+        if (func === helpers.coverSecrets) {
+          passes += args[0] === true;
+          if (args[0] && slow > 0) { slow -= 1; await new Promise((resolve) => setTimeout(resolve, 2500)); }
+          cardBox = args[0];
+          return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
         if (func.name === 'frameIndex') return [{ frameId: 0, result: -1 }, { frameId: 7, result: 0 }];
         assert.deepEqual(target.frameIds, [0]);
         return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
@@ -1177,6 +1181,30 @@ describe('walk worker', () => {
       try {
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'frames from other sites');
         assert.deepEqual([cardBox, world.document.adoptedStyleSheets.length], [false, 0], 'each frame as it was once the still is taken');
+        // A frame slower to cover than a cover lasts by itself: never pictured with the top document's cover gone. Tried
+        // once more, then not pictured.
+        const frames = chrome.webNavigation.frames, pictured = answers['Page.captureScreenshot'];
+        chrome.webNavigation.frames = frames.slice(0, 2);
+        answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets.length ? 'covered' : 'shown') });
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+        Object.assign(world, { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+        try {
+          for (const [times, seen] of [[1, 'covered'], [2, 'NotAllowed']]) {
+            [slow, passes] = [times, 0];
+            let got;
+            ops.screenshot({ format: 'png' }).then((r) => { got = atob(r.value.data); }, (err) => { got = err.name; });
+            for (let turn = 0; turn < 400 && got === undefined; turn++) {
+              for (let flush = 0; flush < 10; flush++) await new Promise((resolve) => setImmediate(resolve));
+              t.mock.timers.tick(50);
+            }
+            assert.deepEqual([got, passes], [seen, 2], `a frame slow to cover ${times === 1 ? 'once' : 'twice'}`);
+          }
+        } finally {
+          t.mock.timers.reset();
+          Object.assign(world, { setTimeout, clearTimeout });
+          chrome.webNavigation.frames = frames;
+          answers['Page.captureScreenshot'] = pictured;
+        }
         // One whose box nothing could draw (its element not found) is not pictured, after a second try.
         chrome.webNavigation.frames = [...chrome.webNavigation.frames, { frameId: 13, parentFrameId: 0 }];
         t.mock.timers.enable({ apis: ['setTimeout'] });

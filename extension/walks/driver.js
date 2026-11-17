@@ -405,7 +405,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         if (signInShows(tab, seen)) { spotted(); continue; }
         if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
         // Its secret fields covered first, and kept so from frame to frame (`cover`); one that could not be is not filmed.
-        if (!(await cover(true))) { await sleep(FILM_RETRY_MS); continue; }
+        const covered = await cover(true);
+        if (Date.now() >= covered) { await sleep(FILM_RETRY_MS); continue; }
         // Not while the pointer acts (`pointer`): nothing awaited between this and the picture.
         if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
@@ -414,7 +415,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         capturing = taking;
         void taking.then(() => { if (capturing === taking) capturing = null; });
         const shot = await Promise.race([asked, sleep(FILM_SHOT_MS).then(() => null)]);
-        if (!shot) continue;
+        // Nor one back after its cover may have come off.
+        if (!shot || Date.now() >= covered) continue;
         // Seen as its still is: at the still's size (`stillSize`), then made smaller.
         const frame = await smaller(await seenAs(shot.data, 'jpeg', 80, stillSize(tab)), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
@@ -660,10 +662,12 @@ const COVER_MS = 2000;
 /**
  * Every password, card and one-time-code field on the page drawn as a solid box (`coverSecrets`), in the walk's own
  * world, or taken off again: put on just before each picture, so none shows what one holds, typed or filled in by
- * Chrome. Whether it could be.
+ * Chrome. Put on, the time until which every part of it surely stays (`COVER_MS` from before the first was put on), or
+ * 0 when it could not be; a picture not back by then may show a part whose cover came off by itself.
  */
 async function cover(on) {
-  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null && (await coverFrames(on));
+  const from = Date.now();
+  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null && (await coverFrames(on)) ? from + COVER_MS : 0;
 }
 /** How long a still whose page could not be covered waits before it is tried once more, its world made again. */
 const COVER_RETRY_MS = 150;
@@ -1717,12 +1721,20 @@ export const ops = {
   // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
   // beyond the viewport is blank, as Chrome's own clip of it is.
   async screenshot({ format, quality, clip }) {
-    // Its secret fields covered for the picture alone (`cover`): a page that could not be, tried twice, is not pictured.
+    // Its secret fields covered for the picture alone (`cover`), until it is back: a page that could not be, tried
+    // twice, is not pictured.
     let data;
     stills += 1;
     try {
-      if (!(await cover(true)) && !(await sleep(COVER_RETRY_MS), await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
-      ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
+      for (let tries = 0; ; tries++) {
+        const covered = await cover(true);
+        if (Date.now() < covered) {
+          ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
+          if (Date.now() < covered) break;
+        }
+        if (tries) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
+        await sleep(COVER_RETRY_MS);
+      }
     } finally {
       stills -= 1;
       if (!stills && !walk?.film) await cover(false);
