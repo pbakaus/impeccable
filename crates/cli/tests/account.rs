@@ -438,8 +438,12 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":5,"team":["wide","voice"],"me":["wide","voice"],"teamSet":false,"meSet":false}"#);
     let outside = home.join("not-a-repo");
     std::fs::create_dir_all(&outside).unwrap();
-    assert!(impeccable(&env, &["switches-refresh", "--now"]).current_dir(&outside).status().unwrap().success());
+    let said = |args: &[&str]| String::from_utf8_lossy(&impeccable(&env, args).current_dir(&outside).output().unwrap().stdout).to_string();
+    // It says what it did, one line, for Loop's log; `--help` names `--now`.
+    assert_eq!(said(&["switches-refresh", "--now"]), "synced\n");
     assert!(on().ends_with(": wide, voice"), "{}", on());
+    assert_eq!(said(&["switches-refresh", "--now"]), "unchanged\n");
+    assert_eq!(said(&["switches-refresh", "--help"]), "Usage: impeccable switches-refresh [--now]\n");
     // A repository's refresh sends its key; one outside any repository sends none.
     let reads = fake.record.lock().unwrap().agents_reads.clone();
     assert!(reads.first().is_some_and(|q| q.starts_with("repo=") && q.len() == 5 + 64), "{reads:?}");
