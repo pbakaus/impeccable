@@ -671,7 +671,19 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
         // only the row's own outer edge reads as its stripe.
         let outer = |edge: &str| {
             flagged || {
-                let cells = dom.parent(el).map(|p| dom.children(p)).unwrap_or_default();
+                // Its sibling cells, by tag, role or a cell-named class.
+                let cells: Vec<ElId> = dom
+                    .parent(el)
+                    .map(|p| dom.children(p))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|&c| {
+                        matches_or_false(dom, c, ROW_OR_CELL)
+                            || class_attr(dom, c)
+                                .split_whitespace()
+                                .any(|n| crate::checks::row_stripe::is_row_or_cell_selector(&format!(".{n}")))
+                    })
+                    .collect();
                 if edge == "left" { cells.first() == Some(&el) } else { cells.last() == Some(&el) }
             }
         };
