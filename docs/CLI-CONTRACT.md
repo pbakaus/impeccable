@@ -2520,7 +2520,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   page's set. The switch sync writes the same files with the set the page shows the person
   (`me`, which the service already falls back to the team's switch by switch). Until they
   have set their own (`meSet: false`; an older service's `me: null`), a block this machine
-  already holds is sent as their first set instead of overwritten. It waits up to 4 s for the sign-in
+  already holds is sent as their first set instead of overwritten. `context` starts it at most once
+  a minute; `impeccable switches-refresh [--now]` started directly (as Loop does on a change
+  notice) always runs, and outside any repository reads the person's set with no repository.
+  It prints one line: `synced` (files written or a change sent), `unchanged`, or
+  `skipped: <why>` (not signed in, Impeccable didn't answer, another refresh is running, a
+  rule file can't be read or written, Impeccable didn't take the change), and exits 0. `--help` prints `Usage: impeccable switches-refresh [--now]`;
+  any other argument prints it on stderr and exits 2.
+  It waits up to 4 s for the sign-in
   lock, so a refresh started beside another worker runs after it, never skips. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other

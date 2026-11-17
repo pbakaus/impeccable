@@ -433,6 +433,31 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     refresh();
     assert!(on().ends_with(": wide"), "{}", on());
     assert_eq!(fake.hits("/cli/v1/agents/me"), sent);
+    // Loop starts it with `--now` from outside any working copy: it still runs, unthrottled,
+    // and writes the person's set.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":5,"team":["wide","voice"],"me":["wide","voice"],"teamSet":false,"meSet":false}"#);
+    let outside = home.join("not-a-repo");
+    std::fs::create_dir_all(&outside).unwrap();
+    let said = |args: &[&str]| String::from_utf8_lossy(&impeccable(&env, args).current_dir(&outside).output().unwrap().stdout).to_string();
+    // It says what it did, one line, for Loop's log; `--help` names `--now`.
+    assert_eq!(said(&["switches-refresh", "--now"]), "synced\n");
+    assert!(on().ends_with(": wide, voice"), "{}", on());
+    assert_eq!(said(&["switches-refresh", "--now"]), "unchanged\n");
+    assert_eq!(said(&["switches-refresh", "--help"]), "Usage: impeccable switches-refresh [--now]\n");
+    // A repository's refresh sends its key; one outside any repository sends none.
+    let reads = fake.record.lock().unwrap().agents_reads.clone();
+    assert!(reads.first().is_some_and(|q| q.starts_with("repo=") && q.len() == 5 + 64), "{reads:?}");
+    assert_eq!(reads.last().map(String::as_str), Some(""), "{reads:?}");
+    // A notice arriving while another refresh runs waits its turn and still fetches.
+    let lock = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]).join("switches.lock");
+    std::fs::write(&lock, "").unwrap();
+    let before = fake.hits("/cli/v1/agents");
+    let mut waiting = impeccable(&env, &["switches-refresh", "--now"]).current_dir(&outside).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    assert_eq!(fake.hits("/cli/v1/agents"), before, "it waited");
+    std::fs::remove_file(&lock).unwrap();
+    assert!(waiting.wait().unwrap().success());
+    assert_eq!(fake.hits("/cli/v1/agents"), before + 1);
 }
 
 #[test]
@@ -470,7 +495,9 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
     let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line} instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.\n<!-- impeccable end -->"));
     std::fs::write(&claude, t).unwrap();
     fake.route("POST", "/cli/v1/agents/me", 500, vec![], "{}");
-    refresh();
+    // The failure is said, never "unchanged", so Loop's log can tell it from a settled refresh.
+    let out = impeccable(&env, &["switches-refresh"]).current_dir(&project).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "skipped: Impeccable didn't take the change\n");
     assert!(lines(&claude).contains(loop_line), "the unsent change stays: {}", lines(&claude));
     // The send works next time; then both files carry the set and nothing is sent again.
     fake.route("POST", "/cli/v1/agents/me", 200, vec![], r#"{"outcome":"set","rev":2,"team":null,"me":["taste","loop"]}"#);
