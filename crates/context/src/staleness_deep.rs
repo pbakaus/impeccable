@@ -17,7 +17,7 @@ const TOKEN_SCRIPT_EXTENSIONS: [&str; 6] = ["json", "js", "ts", "mjs", "cjs", "m
 const TOKEN_NAMES: [&str; 4] = ["token", "theme", "tailwind", "design"];
 
 /// A file whose values DESIGN.md's colours should be found in.
-fn is_token_file(p: &str) -> bool {
+pub(crate) fn is_token_file(p: &str) -> bool {
     let lower = p.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or(&lower);
     let ext = name.rsplit('.').next().unwrap_or("");

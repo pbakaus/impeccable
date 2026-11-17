@@ -7559,3 +7559,18 @@ have accepted deltas. They are not re-recorded to absorb unrelated upstream
 side-bar, image-contrast, and fixture changes during this merge. The individual
 fixture goldens pin the media changes. No new accepted-delta exemption and no
 frozen function vector was added or changed.
+
+## Recorded 2026-11-17: the DESIGN.md map names `design-lookup` (REN-2129, S4)
+
+`context` follows a mapped DESIGN.md with one `Lookup:` line naming `design-lookup`, which prints one token,
+component or section with its file, so an agent never reads a whole file for one detail.
+
+- `context-compacted-design`: gains that line after the map's body.
+## Recorded 2026-11-17: this repo's DESIGN.md describes what ships here (REN-2129)
+
+DESIGN.md and `.impeccable/design.json` described the departed site's dark lacquer palette; they now describe the
+extension's paper-and-instruments tokens (`extension/shared/kinpaku.css`). Two detect cases scan a fixture from the
+repo root, so they read that palette.
+
+- `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and its greys are
+  no longer in the palette, so they report as advisories beside `#33d17a`.

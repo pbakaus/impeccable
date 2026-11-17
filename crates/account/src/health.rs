@@ -822,7 +822,9 @@ fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
 /// The `origin` remote in one spelling, so every clone of a repo hashes the
 /// same: credentials dropped, `git@host:path` and `ssh://` read as
 /// `https://host/path`, scheme and host lower-cased, a trailing `/` and
-/// `.git` removed.
+/// `.git` removed. GitHub reads owner and name in any case, so a github.com
+/// path is lower-cased too: `Org/Repo` and `org/repo` are one repository, as
+/// the service matches it (REN-2058).
 pub fn normalize_remote(raw: &str) -> Option<String> {
     let raw = raw.trim();
     let (host, path) = if !raw.contains("://") {
@@ -847,6 +849,9 @@ pub fn normalize_remote(raw: &str) -> Option<String> {
     let path = path.trim_end_matches('/');
     if host.is_empty() || path.is_empty() {
         return None;
+    }
+    if host == "github.com" {
+        return Some(format!("https://{host}/{}", path.to_lowercase()));
     }
     Some(format!("https://{host}/{path}"))
 }
@@ -1064,6 +1069,9 @@ mod tests {
             normalize_remote("https://git.example.com:8443/a/b").as_deref(),
             Some("https://git.example.com:8443/a/b")
         );
+        // Catches (REN-2058): a mixed-case GitHub clone missing its repository. Other hosts keep the path's case.
+        assert_eq!(normalize_remote("git@github.com:Crit-Co/Web.git").as_deref(), Some("https://github.com/crit-co/web"));
+        assert_eq!(normalize_remote("https://git.example.com/A/b").as_deref(), Some("https://git.example.com/A/b"));
         assert_eq!(normalize_remote("/srv/repos/b.git"), None);
         assert_eq!(normalize_remote("../b"), None);
     }
@@ -1102,7 +1110,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let git = |args: &[&str]| assert!(Command::new("git").args(["-c", "core.fsmonitor=false", "-C"]).arg(&dir).args(args).output().unwrap().status.success());
         git(&["init", "-q"]);
-        for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web"] {
+        for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web", "https://github.com/Crit-Co/Web.git"] {
             git(&["config", "remote.origin.url", raw]);
             // `critique_repo` gives git 150 ms a call; a loaded machine gets a few tries.
             let key = (0..5).find_map(|_| critique_repo(&dir.to_string_lossy(), &std::collections::HashMap::new())).map(|(key, _)| key);
