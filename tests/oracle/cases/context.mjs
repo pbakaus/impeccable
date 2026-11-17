@@ -539,15 +539,11 @@ const cases = [
   { id: 'doctor-hook-not-installed-skill-above-cwd', verb: 'doctor', workspace: 'ctx-product-only', cwd: 'web', setup: (ws) => { gitBoundary(ws, '.'); write(ws, '.claude/skills/impeccable/SKILL.md', ''); write(ws, 'web/package.json', JSON.stringify({ name: 'web' }) + '\n'); }, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
   { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
+    // What DESIGN.md contradicts (REN-2129): a component it names that is gone, a colour its token file lost.
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
     setup: (ws) => {
-      write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n');
-      gitInit(ws);
-      for (let i = 0; i < 26; i++) {
-        write(ws, `src/c${i}.tsx`, `export const C${i} = () => null;\n`);
-        git(ws, 'add', '.');
-        git(ws, 'commit', '-qm', `change ${i}`);
-      }
+      write(ws, 'styles/tokens.css', ':root { --brand: #c8552b; }\n');
+      write(ws, 'DESIGN.md', '---\ncolors:\n  brand: "#c8552b"\n  gold: "#d4af37"\n---\n# D\n\nTokens: `styles/tokens.css`. Cards: `src/Card.tsx`.\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n');
     },
     args: ['--json'], env: env(),
   },

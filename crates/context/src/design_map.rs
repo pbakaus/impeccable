@@ -321,7 +321,7 @@ fn first_sentence(text: &str) -> String {
 }
 
 /// Backticked spans and markdown link targets that look like file paths.
-fn path_mentions(line: &str) -> Vec<String> {
+pub(crate) fn path_mentions(line: &str) -> Vec<String> {
     let mut found = Vec::new();
     for (i, span) in line.split('`').enumerate() {
         if i % 2 == 1 {
@@ -340,7 +340,7 @@ fn path_mentions(line: &str) -> Vec<String> {
     found
 }
 
-fn is_relative_path(p: &str) -> bool {
+pub(crate) fn is_relative_path(p: &str) -> bool {
     let path = Path::new(p);
     !path.is_absolute() && !p.starts_with('~') && path.components().all(|c| matches!(c, std::path::Component::Normal(_)))
 }
