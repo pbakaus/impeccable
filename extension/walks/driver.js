@@ -673,19 +673,15 @@ async function cover(on) {
 const COVER_RETRY_MS = 150;
 
 /**
- * The page's other frames covered as its top document is, by the extension's own copy of `coverSecrets` run in each:
- * the walk's own world reaches only the top document and its same-site frames, not another site's, such as a hosted
- * card box. A frame not even that reaches (a page that failed to load, another extension's) is drawn as one solid box
+ * The page's frames covered as its top document is, by the extension's own copy of `coverSecrets` run in each, the top
+ * one too: the walk's own world reaches only the top document, its open shadow roots and its same-site frames, not a
+ * closed root (which `chrome.dom` opens here) or another site's frame, such as a hosted card box. A frame not even that reaches (a page that failed to load, another extension's) is drawn as one solid box
  * by the frame around it (`boxFrames`); one inside it is under that box. Whether every frame was.
  */
 async function coverFrames(on) {
   const tabId = walk?.tabId;
   const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null);
-  // A page left with one frame still has its top document's own timer from this script (`framesCovered`) put on again
-  // or cleared: it would otherwise take the cover off before `cover` says.
-  if (frames?.length === 1 && !framesCovered) return true;
   const target = { tabId, allFrames: true };
-  framesCovered = on;
   const ran = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverSecrets, args: [on, COVER_MS] }).catch(() => []);
   if (!on) return true;
   if (!frames) return false;
@@ -702,9 +698,6 @@ async function coverFrames(on) {
   }
   return true;
 }
-
-/** Whether `coverFrames` last put covers on with its own script, its timer in the top document among them. */
-let framesCovered = false;
 
 /** Run by the extension in a frame: its place among the frames around it (`window.frames`), -1 at the top or unlisted. */
 function frameIndex() {

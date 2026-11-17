@@ -1211,6 +1211,18 @@ describe('walk worker', () => {
         // A screen reader's keys never go there either: the server asks first, by name.
         assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
       }
+      // A page of one frame is covered by the extension's own script too: only there does `chrome.dom` open a closed root.
+      const own = chrome.scripting.executeScript, pass = [];
+      chrome.scripting.executeScript = async ({ target, func }) => { pass.push(target.allFrames === true && func === helpers.coverSecrets); return []; };
+      await ops.screenshot({ format: 'png' });
+      chrome.scripting.executeScript = own;
+      assert.ok(pass.includes(true), 'a one-frame page’s top document covered by the extension’s own script');
+      const field = { tagName: 'INPUT', type: 'text', value: '123', getAttribute: (n) => (n === 'autocomplete' ? 'cc-csc' : null), setAttribute() {}, removeAttribute() {}, children: [] };
+      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-secret-spot]' ? [] : [field]) };
+      const payment = { tagName: 'PAY-CARD', shadowRoot: null };
+      const content = vm.createContext({ CSSStyleSheet: world.CSSStyleSheet, setTimeout: () => 0, clearTimeout() {}, document: { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [payment] : []) }, chrome: { dom: { openOrClosedShadowRoot: (el) => (el === payment ? closed : null) } } });
+      vm.runInContext(`(${helpers.coverSecrets})(true)`, content);
+      assert.equal(closed.adoptedStyleSheets.length, 1, 'a card field in a closed shadow root covered');
       // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
       // enter is drawn as a box by the frame around it, and one inside that box needs nothing more.
       const card = world.document.activeElement;
