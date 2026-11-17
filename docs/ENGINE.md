@@ -38,6 +38,10 @@ crates/
                every check takes in and hands back
   core         the rule logic: every `check_*` / `scan_*` and its heuristics,
                the browser rule adapters, the visual-contrast decisions
+  foundations-scan
+               the Foundations file checks over a `Source` (no fs, process
+               or clock): the CLI's disk source, and `scan_listing` over a
+               repository's tree listing for wasm hosts
   wasm         wasm-bindgen exports over `core` (the in-page bundle and the
                extension's offscreen core)
   bundle       the page JS plus the bundler: in-page bundle, extension
