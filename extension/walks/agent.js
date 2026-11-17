@@ -12,9 +12,9 @@
 // (driver.js `typable`), a secret field in any picture, scripts of its own (no `evaluate`, no `cdp`), files, and
 // downloads. The person's Allow comes from the side panel only, never from the page. How it ends: Stop, the tab
 // closing, `browser_end`, the agent going away, the host going away, ten minutes idle, or an hour in all.
-import { AGENT, DEVICES, ops, walk, hooks } from './driver.js';
+import { AGENT, DEVICES, ops, stopOpening, walk, hooks } from './driver.js';
 import { askSite } from './control.js';
-import { webOrigin, isOwnPage } from './guard.js';
+import { isConsentPage, isOwnPage, webOrigin } from './guard.js';
 import { current, dispatch, onView } from './store.js';
 import { isLive } from './view.js';
 import { COPY } from './panel/copy.js';
@@ -46,6 +46,8 @@ let idle = null;
 /** The refs of the last tree the agent read: its number for a control, to what that control is called. */
 let refs = new Map();
 
+/** An app's consent or install page: what the agent reads instead, there or when a click led there. */
+const CONSENT_LINE = 'That page grants an app access. Only the person can, in their own tab: ask them.';
 const text = (t) => ({ content: [{ type: 'text', text: t }] });
 const refused = (t) => ({ content: [{ type: 'text', text: t }], isError: true });
 const KNOWN = { 'claude-code': 'Claude Code', codex: 'Codex', 'codex-mcp-client': 'Codex', cursor: 'Cursor', 'cursor-vscode': 'Cursor', gemini: 'Gemini', 'gemini-cli-mcp-client': 'Gemini', windsurf: 'Windsurf', zed: 'Zed' };
@@ -150,15 +152,19 @@ async function open(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
   if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (walk?.agent) return go(url);
   if (isLive(current())) return refused('A journey is using the browser right now. Try again when it has finished.');
   if (!session.started) dispatch({ type: 'agent', name: session.name, site: origin });
   try {
     if (!(await mayUse(origin))) { endWaiting(); return refused(`The person didn’t allow ${new URL(origin).host}.`); }
+    session.opening = true;
     await ops.open({ url, name: session.name, allow: [...session.allowed], free: true, helpers: true, [AGENT]: true });
   } catch (err) {
     endWaiting();
     throw err;
+  } finally {
+    if (session) session.opening = false;
   }
   session.started = true;
   await settle();
@@ -175,6 +181,7 @@ async function go(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
   if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (!(await mayUse(origin))) return refused(`The person didn’t allow ${new URL(origin).host}.`);
   await ops.goto({ url, waitUntil: 'load', timeout: LOAD_MS });
   logged(COPY.yourAgent.opened(hostPath(url)));
@@ -192,7 +199,7 @@ async function watching(run) {
     hooks.said.splice(hooks.said.indexOf(hear), 1);
   }
 }
-const blockedNote = (blocked) => (blocked.length ? `The page tried to go to ${blocked[0]}, a site you aren't allowed on. To go there, call browser_act with op goto and that url: the person is asked.` : '');
+const blockedNote = (blocked) => (blocked.length && isConsentPage(blocked[0]) ? CONSENT_LINE : blocked.length ? `The page tried to go to ${blocked[0]}, a site you aren't allowed on. To go there, call browser_act with op goto and that url: the person is asked.` : '');
 
 async function act(args) {
   const { op } = args;
@@ -279,6 +286,8 @@ async function filmstrip(seconds) {
 /** Ends the agent's walk: the debugger leaves, and the tab it opened stays as it left it. */
 async function end() {
   clearTimeout(idle);
+  // A tab still opening for the agent never finishes opening.
+  if (session?.opening) stopOpening();
   if (walk?.agent) await ops.close();
   endWaiting();
   over();
@@ -302,6 +311,8 @@ async function call(frame) {
   if (walk?.agent && (state === 'paused' || state === 'takeover')) return pausedLine();
   if (tool === 'browser_open') return open(String(args.url ?? ''));
   if (!walk?.agent) return refused('No page is open: call browser_open first.');
+  // Handed back on a consent page the person went to: theirs to finish.
+  if (isConsentPage(walk.url)) return refused(CONSENT_LINE);
   if (tool === 'browser_act') return act(args);
   if (tool === 'browser_look') return look(args);
   return refused(`No tool ${String(tool).slice(0, 40)}.`);
@@ -331,6 +342,14 @@ function armIdle() {
   clearTimeout(idle);
   idle = setTimeout(() => { void end(); }, IDLE_MS);
 }
+
+// A site the person takes out of Always allow (Options) ends a session that may use it: they asked it to stop there.
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area !== 'local' || !changes[SITES_KEY] || !session) return;
+  const now = new Set(Array.isArray(changes[SITES_KEY].newValue) ? changes[SITES_KEY].newValue : []);
+  const taken = (Array.isArray(changes[SITES_KEY].oldValue) ? changes[SITES_KEY].oldValue : []).filter((origin) => !now.has(origin));
+  if (taken.some((origin) => session.allowed.includes(origin))) void end();
+});
 
 // The person's Stop, or the tab closing, ends the agent's session (a persona's walk ending is not its): what the agent
 // asks after a Stop is refused until it goes, and its next one asks the person again.

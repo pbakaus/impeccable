@@ -104,7 +104,7 @@ describe('agent session', () => {
       onEvent: event('debugger-event'), onDetach: event('detach'), async attach() {}, async detach() {},
       async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(params); },
     },
-    storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
+    storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } }, onChanged: event('storage-changed') },
     tabs: {
       onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {}, async query() { return []; },
       async create() { tabs.created += 1; return { id: 11, windowId: 1 }; }, async get() { return { id: 11, windowId: 1, width: 800, height: 600, active: true, title: 'Issues' }; },
@@ -208,6 +208,25 @@ describe('agent session', () => {
     assert.deepEqual((await chrome.storage.local.get('agentSites')).agentSites, ['https://linear.app']);
   });
 
+  // Where one click grants an app access beyond the page: the agent never, even on a site it may use.
+  it('refuses OAuth and app-install consent pages on an allowed site, by address and by a move there', async () => {
+    const { driver } = await loaded;
+    for (const url of ['https://github.com/login/oauth/authorize?client_id=x', 'https://github.com/apps/impeccable/installations/new', 'https://github.com/organizations/acme/settings/installations/12', 'https://accounts.google.com/o/oauth2/v2/auth?client_id=x']) {
+      const result = await call('browser_act', { op: 'goto', url });
+      assert.equal(result.isError, true, url);
+      assert.match(said(result), /grants an app access/);
+    }
+    // A page that sends the tab there itself, on a site the agent may use: the guard aborts the document.
+    assert.equal(driver.walk.allowed.includes('https://github.com'), true);
+    const at = sent.length;
+    const ask = (requestId, to) => fire('Fetch.requestPaused', { requestId, resourceType: 'Document', frameId: 'main', request: { url: to, method: 'GET' } });
+    ask('consent', 'https://github.com/settings/installations/1');
+    ask('issues', 'https://github.com/acme/issues');
+    await until(() => sent.slice(at).filter((m) => m.startsWith('Fetch.')).length >= 2, 'both answered');
+    const answered = Object.fromEntries(args.slice(at).map((p, i) => [p?.requestId, sent[at + i]]).filter(([id]) => id));
+    assert.deepEqual([answered.consent, answered.issues], ['Fetch.failRequest', 'Fetch.continueRequest']);
+  });
+
   it('goes to another always-allowed site with no question', async () => {
     const { current } = await loaded;
     await chrome.storage.local.set({ agentSites: ['https://linear.app', 'https://figma.com'] });
@@ -215,6 +234,17 @@ describe('agent session', () => {
     assert.equal(result.isError, undefined, said(result));
     assert.equal(current().ask, null);
     assert.equal(url, 'https://figma.com/file/x');
+  });
+
+  it('ends a session using a site the person takes out of Always allow', async () => {
+    const { driver } = await loaded;
+    assert.ok(driver.walk?.agent);
+    const before = (await chrome.storage.local.get('agentSites')).agentSites;
+    await chrome.storage.local.set({ agentSites: [] });
+    for (const listener of listeners['storage-changed']) listener({ agentSites: { oldValue: before, newValue: [] } }, 'local');
+    await until(() => !driver.walk, 'the walk to end');
+    // Put back for what follows.
+    await chrome.storage.local.set({ agentSites: ['https://linear.app'] });
   });
 
   it('forgets an Allow once when the session ends', async () => {
