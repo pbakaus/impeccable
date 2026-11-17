@@ -884,6 +884,7 @@ describe('walk worker', () => {
   // never where a frame of it could not be drawn blank (`unblank`): a field Chrome filled would show, nor where the tab
   // moved on while it was taken or its title read (`moved`): the picture and the title would be of the next page. Its
   // title goes with its picture only, and neither to a server that never said it takes them (`older`).
+  let blankFields;
   for (const [sign, show, pictured, unblank = false, older = false] of [
     ['a visible password field', () => { fresh('s1'); page.seen = { password: true }; }, true],
     ['a move to a sign-in host', () => { fresh('s2'); fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } }); }, false],
@@ -917,7 +918,7 @@ describe('walk worker', () => {
       let answeredWhile;
       chrome.debugger.sendCommand = async (target, method, params) => { if (method.startsWith('Fetch.')) answeredWhile ??= current().state; return sendCommand(target, method, params); };
       const { executeScript } = chrome.scripting, blanks = [];
-      chrome.scripting.executeScript = async (call) => { if (call.func?.name === 'blankFields') { blanks.push(call.args[0]); if (unblank === true && call.args[0]) return []; } else if (call.func?.name === 'coverSecrets' && call.args[0]) blanks.push('cover'); return executeScript(call); };
+      chrome.scripting.executeScript = async (call) => { if (call.func?.name === 'blankFields') { blankFields = call.func; blanks.push(call.args[0]); if (unblank === true && call.args[0]) return []; } else if (call.func?.name === 'coverSecrets' && call.args[0]) blanks.push('cover'); return executeScript(call); };
       const shots = sent.length, heard = told.length;
       try { show(); } finally { setTimeout(() => { chrome.debugger.sendCommand = sendCommand; }, 10); }
       let answered = false;
@@ -948,6 +949,25 @@ describe('walk worker', () => {
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
+
+  // The page's own `!important` rules can't show a filled field: each field's own style says it, important, and is put
+  // back as it was.
+  it('blanks a sign-in page’s fields through their own style, and puts it back', () => {
+    const style = (init) => {
+      const props = new Map(Object.entries(init));
+      return { props, setProperty(prop, value, priority = '') { props.set(prop, [value, priority]); }, removeProperty(prop) { props.delete(prop); }, getPropertyValue: (prop) => props.get(prop)?.[0] ?? '', getPropertyPriority: (prop) => props.get(prop)?.[1] ?? '' };
+    };
+    const field = (value, init = {}, autofill = false) => ({ value, isContentEditable: false, style: style(init), hasAttribute: () => true, getAttribute: () => 'x', matches: (sel) => autofill && sel === ':-webkit-autofill' });
+    const [typed, empty, autofilled] = [field('dana@example.com'), field('', { color: ['red', ''] }), field('', {}, true)];
+    class Sheet { cssRules = []; insertRule(rule) { this.cssRules.push({ cssText: rule }); } }
+    const document = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [] : [typed, empty, autofilled]) };
+    const page = vm.createContext({ CSSStyleSheet: Sheet, setTimeout: () => 0, clearTimeout() {}, document });
+    const of = (f) => Object.fromEntries([...f.style.props].map(([prop, [value, priority]]) => [prop, `${value}${priority ? ' !' : ''}`]));
+    assert.equal(vm.runInContext(`(${blankFields})(true, 0)`, page), 3);
+    assert.deepEqual([of(typed).filter, of(typed)['-webkit-text-fill-color'], of(empty).filter, of(empty).color, of(autofilled).filter], ['brightness(0) !', 'transparent !', undefined, 'transparent !', 'brightness(0) !']);
+    vm.runInContext(`(${blankFields})(false)`, page);
+    assert.deepEqual([of(typed), of(empty), of(autofilled), document.adoptedStyleSheets.length], [{}, { color: 'red' }, {}, 0]);
+  });
 
   it('tells the other end again when the person’s pause becomes a sign-in pause', async () => {
     const { command, current } = await walked();
