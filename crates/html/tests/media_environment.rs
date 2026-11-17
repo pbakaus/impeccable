@@ -250,6 +250,8 @@ fn linked_stylesheets_use_media_assigned_by_simple_onload_handlers() {
     std::fs::write(dir.join("async.css"), "body{color:#eee}").unwrap();
     for (handler, expected) in [
         ("this.media='all'", 1),
+        ("this.media=&quot;screen&quot;", 1),
+        ("this.media=''", 1),
         ("this.onload=null;this.media='all'", 1),
         (" this.media = 'screen'; this.onload = null; ", 1),
         ("this.media='print'", 0),
