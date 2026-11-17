@@ -152,7 +152,7 @@ function clickByText(wanted, opts) {
       continue;
     const label = norm(`${el.innerText || el.textContent || ""}`) || norm(el.getAttribute("aria-label") ?? "");
     const labelled = Array.prototype.map.call(el.labels ?? [], (l) => l.innerText || l.textContent || "").join(" ");
-    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${/^password$/i.test(el.getAttribute("type") ?? "") || /(?:^|\s)(?:cc-\S*|one-time-code|current-password|new-password)(?=\s|$)/i.test(el.getAttribute("autocomplete") ?? "") ? "" : el.value ?? ""} ${row} ${labelled}`);
+    const row = rowOf(el), text = norm(`${label} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${/^password$/i.test(el.getAttribute("type") ?? "") || el.getAttribute("data-secret-field") !== null || /(?:^|\s)(?:cc-\S*|one-time-code|current-password|new-password)(?=\s|$)/i.test(el.getAttribute("autocomplete") ?? "") ? "" : el.value ?? ""} ${row} ${labelled}`);
     if (!text)
       continue;
     let score = 0;
@@ -499,7 +499,7 @@ function fieldReads(point, noSecrets = false) {
   const read = (el) => {
     if (!el)
       return null;
-    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -728,7 +728,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const focused = doc.activeElement;
   if (best.score === 0 && focused && fields.includes(focused))
     best = { el: focused, score: 0 };
-  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
     return null;
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
@@ -1564,7 +1564,7 @@ function secretFocus() {
   if (!el)
     return null;
   const tokens = String(el.getAttribute?.("autocomplete") ?? "").toLowerCase().split(/\s+/);
-  if (el.tagName === "INPUT" && (String(el.type).toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password")))
+  if (el.tagName === "INPUT" && String(el.type).toLowerCase() === "password" || el.getAttribute?.("data-secret-field") != null || tokens.some((t) => t === "current-password" || t === "new-password"))
     return "password";
   if (tokens.some((t) => t.startsWith("cc-")))
     return "card";
@@ -1637,4 +1637,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '03ec3b1bd346854c';
+export const HASH = '66fd72b7aad3faab';
