@@ -42,6 +42,10 @@ A finding that reports a deprecated field (`## Register` is the current one) is 
 
 The same restraint applies to `workspace-context-inherited`. Inheritance is a designed behavior. Whether one product record truthfully describes several apps is a question for the user, not a defect to fix.
 
+## Step 5: Compact DESIGN.md only with consent
+
+On `design-md-sprawl`, run `.hermes/skills/impeccable/scripts/impeccable design-compact` (with Step 1's `--target`) and show the person its proposal and saving. Add `--write` only once they agree here; the original moves to `.impeccable/design-full.md`. Never compact as a side effect.
+
 ## Monorepo notes
 
 - `workspace-platform-native-evidence` is the finding that matters most here: a workspace carrying native build files while inheriting a root record that resolves to web gets web guidance for its whole life and never loads [ios.md](ios.md) or [android.md](android.md). The repair is a child PRODUCT.md in that workspace, because one inherited record cannot hold two platforms.
