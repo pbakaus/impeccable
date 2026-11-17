@@ -462,7 +462,7 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
         trace.textStepCalls = trace.toolCalls.length;
         saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages });
       },
-      stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],
+      stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [({ steps }) => stopAfter(trace, steps)] : [])],
       // Real client-side deadline on the provider call: without it a stalled
       // stream wedges the whole sweep with no tally.
       abortSignal: controller.signal,
