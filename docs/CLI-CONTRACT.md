@@ -3280,6 +3280,17 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   extension: `{"id","agent","tool","arguments"}`; answers:
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
+- **`artifact.asset` is answered locally** (REN-2123). In `tools/list`, the
+  service's `artifact.asset` (which takes `sha256`, `bytes`, `contentType`) is
+  replaced by one taking `{path, workspace?}`: a file absolute or relative to the
+  working folder, a regular file (never a symlink), 1 byte to 50 MB, typed by its
+  extension (png, jpg, jpeg, webp, gif, avif, svg, mp4, webm, mp3, woff2, woff,
+  css, js, mjs, json). The process hashes it (SHA-256) and calls the service's
+  `artifact.asset`. On `{key, exists: true}` it answers `{key}`; on
+  `{key, upload: {url}}` it PUTs the bytes to `url` (on the account service's own
+  origin, exact `Content-Length`, the type as `Content-Type`, no bearer), then
+  answers `{key}`. Any refusal is the tool's error text. The bytes never pass
+  through the agent.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
   write, personas, Taste, journeys, `artifacts:write`) only when the service's
   metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in

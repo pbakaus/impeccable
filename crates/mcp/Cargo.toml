@@ -13,6 +13,7 @@ publish.workspace = true
 impeccable-common = { path = "../common" }
 impeccable-account = { path = "../account" }
 serde_json = { workspace = true }
+sha2 = "0.10"
 
 [dev-dependencies]
 # The account service's fake (crates/account/tests/support) and what it needs.
