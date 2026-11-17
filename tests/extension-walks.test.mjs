@@ -382,6 +382,9 @@ describe('walk worker', () => {
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
+    // The walked tab's frames: the top document alone, unless a test gives it more.
+    webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
+    scripting: { async executeScript() { return []; } },
     // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
     declarativeNetRequest: {
       rules: [{ id: 20541 }, { id: 20542 }],
@@ -1070,7 +1073,7 @@ describe('walk worker', () => {
   });
 
   // The store bars running code a server sent: a server that names helpers gets only this extension's own run, and no code.
-  it('on a walk whose server names helpers, runs each of its own page helpers by name for its op and in its world, its own consent rules, and refuses code', async () => {
+  it('on a walk whose server names helpers, runs each of its own page helpers by name for its op and in its world, its own consent rules, and refuses code', async (t) => {
     const { ops, walk } = await walked();
     const { helpers, pageWorld, newDocument } = await import('../extension/walks/page-helpers.js');
     const consentRules = readFileSync(path.join(ROOT, 'extension/walks/consent-rules.js'), 'utf8');
@@ -1126,7 +1129,7 @@ describe('walk worker', () => {
       assert.match(consentRules, /autoconsent/);
       // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`,
       // nor pictured: a still or a film's frame is taken with it covered (`coverSecrets`, in the walk's own world).
-      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } };
+      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text }); } };
       const lookout = answers['Runtime.evaluate'];
       answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
       // The screen as Chrome draws it: the field's value, unless a sheet covers it.
@@ -1152,8 +1155,53 @@ describe('walk worker', () => {
         // A screen reader's keys never go there either: the server asks first, by name.
         assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
       }
-      answers['Runtime.evaluate'] = (params) => (params.expression.includes('coverSecrets') ? { exceptionDetails: {} } : lookout(params));
-      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' }, 'a page it could not cover is not pictured');
+      // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
+      // enter is drawn as a box by the frame around it, and one inside that box needs nothing more.
+      const card = world.document.activeElement;
+      const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, frameId: 9 };
+      const body = { localName: 'body', nodeType: 1, children: [frame] }, html = { localName: 'html', nodeType: 1, children: [body], parentNode: { nodeType: 9 } };
+      [frame.parentNode, body.parentNode] = [body, html];
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : [card]), elementFromPoint: () => card };
+      world.chrome = { runtime: { getFrameId: (el) => el.frameId } };
+      const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
+      let cardBox = false;
+      chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1 }, { frameId: 7, parentFrameId: 0 }, { frameId: 9, parentFrameId: 0 }, { frameId: 11, parentFrameId: 9 }];
+      chrome.scripting.executeScript = async ({ target, func, args }) => {
+        assert.equal(target.allFrames, true);
+        if (func === helpers.coverSecrets) { cardBox = args[0]; return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
+        return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
+      };
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets[0]?.cssRules.some((r) => r.cssText.startsWith('html > body:nth-child(1) > iframe:nth-child(1) ')) ? 'covered' : 'shown') });
+      try {
+        assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'frames from other sites');
+        assert.deepEqual([cardBox, world.document.adoptedStyleSheets.length], [false, 0], 'each frame as it was once the still is taken');
+        // One whose box nothing could draw (its element not found) is not pictured, after a second try.
+        chrome.webNavigation.frames = [...chrome.webNavigation.frames, { frameId: 13, parentFrameId: 0 }];
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const refused = assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' }, 'a frame neither covered nor boxed');
+        for (let turn = 0; turn < 50; turn++) await new Promise((resolve) => setImmediate(resolve));
+        t.mock.timers.tick(1000);
+        await refused;
+      } finally {
+        t.mock.timers.reset();
+        chrome.webNavigation.frames = tabs;
+        chrome.scripting.executeScript = scripted;
+      }
+      // A page it could not cover once is tried again, its world made again; one it could not cover twice is not pictured.
+      answers['Page.captureScreenshot'] = () => ({ data: btoa('taken') });
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      try {
+        for (const [fails, pictured] of [[1, true], [2, false]]) {
+          let tries = 0;
+          answers['Runtime.evaluate'] = (params) => (params.expression.includes('coverSecrets') && /\)\(true, \d+\)$/.test(params.expression) && ++tries <= fails * 2 ? { exceptionDetails: {} } : params.expression.includes('coverSecrets') ? { result: { value: 0 } } : lookout(params));
+          const taken = ops.screenshot({ format: 'png' }).then(() => true, (err) => (err.name === 'NotAllowed' ? false : Promise.reject(err)));
+          for (let turn = 0; turn < 50; turn++) await new Promise((resolve) => setImmediate(resolve));
+          t.mock.timers.tick(1000);
+          assert.equal(await taken, pictured, `a page it could not cover ${fails === 1 ? 'once' : 'twice'}`);
+        }
+      } finally {
+        t.mock.timers.reset();
+      }
     } finally {
       walk.named = false;
       answers['Runtime.evaluate'] = was;

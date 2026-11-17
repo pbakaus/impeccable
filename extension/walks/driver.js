@@ -663,7 +663,66 @@ const COVER_MS = 2000;
  * Chrome. Whether it could be.
  */
 async function cover(on) {
-  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null;
+  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null && (await coverFrames(on));
+}
+/** How long a still whose page could not be covered waits before it is tried once more, its world made again. */
+const COVER_RETRY_MS = 150;
+
+/**
+ * The page's other frames covered as its top document is, by the extension's own copy of `coverSecrets` run in each:
+ * the walk's own world reaches only the top document and its same-site frames, not another site's, such as a hosted
+ * card box. A frame not even that reaches is drawn as one solid box by the frame around it (`boxFrames`). Whether
+ * every frame was, but for one inside a frame drawn as a box.
+ */
+async function coverFrames(on) {
+  const tabId = walk?.tabId;
+  const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null);
+  if (frames?.length === 1) return true;
+  const target = { tabId, allFrames: true };
+  const ran = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverSecrets, args: [on, COVER_MS] }).catch(() => []);
+  if (!on) return true;
+  if (!frames) return false;
+  const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
+  const missed = frames.filter((f) => f.frameId !== 0 && !done.has(f.frameId)).map((f) => f.frameId);
+  if (!missed.length) return true;
+  const told = await chrome.scripting.executeScript({ target, injectImmediately: true, func: boxFrames, args: [missed] }).catch(() => []);
+  const boxed = new Set(told.flatMap((r) => r.result?.boxed ?? []));
+  const reached = new Set([...boxed, ...told.flatMap((r) => r.result?.reached ?? [])]);
+  const parent = new Map(frames.map((f) => [f.frameId, f.parentFrameId]));
+  const underBox = (id) => { for (let at = parent.get(id); at !== undefined && at >= 0; at = parent.get(at)) if (boxed.has(at)) return true; return false; };
+  return missed.every((id) => reached.has(id) || underBox(id));
+}
+
+/**
+ * Run by the extension in a frame: each frame in it, by Chrome's frame ids (`ids`), that the extension's script could
+ * not enter, drawn as one solid box by a rule added to the cover's own sheet in its root (`coverSecrets`), so it comes
+ * off with the cover. Through open shadow roots and the frame's same-site frames; one of those is `reached`, already
+ * covered from here.
+ */
+function boxFrames(ids) {
+  const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes('--secret-cover') === true; } catch { return false; } };
+  const boxed = [], reached = [];
+  const visit = (root) => {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      if (el.shadowRoot) visit(el.shadowRoot);
+      if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
+      let inner = null;
+      try { inner = el.contentDocument ?? null; } catch { inner = null; }
+      if (inner) visit(inner);
+      const id = chrome.runtime.getFrameId(el);
+      if (!ids.includes(id)) continue;
+      if (inner) { reached.push(id); continue; }
+      const sheet = root.adoptedStyleSheets.find(ours);
+      if (!sheet) continue;
+      const steps = [];
+      for (let at = el; at && at.nodeType === 1; at = at.parentNode) steps.unshift(at.parentNode?.nodeType === 1 ? `${at.localName}:nth-child(${Array.prototype.indexOf.call(at.parentNode.children, at) + 1})` : at.localName);
+      const rule = `${steps.join(' > ')} { --secret-cover: 1; filter: brightness(0) !important; }`;
+      if (!Array.from(sheet.cssRules).some((r) => r.cssText === rule)) sheet.insertRule(rule, sheet.cssRules.length);
+      boxed.push(id);
+    }
+  };
+  visit(document);
+  return { boxed, reached };
 }
 /** Stills being taken: the cover comes off only once none is, and no film keeps it on. */
 let stills = 0;
@@ -1649,11 +1708,11 @@ export const ops = {
   // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
   // beyond the viewport is blank, as Chrome's own clip of it is.
   async screenshot({ format, quality, clip }) {
-    // Its secret fields covered for the picture alone (`cover`): a page that could not be covered is not pictured.
+    // Its secret fields covered for the picture alone (`cover`): a page that could not be, tried twice, is not pictured.
     let data;
     stills += 1;
     try {
-      if (!(await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
+      if (!(await cover(true)) && !(await sleep(COVER_RETRY_MS), await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
       ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
     } finally {
       stills -= 1;
