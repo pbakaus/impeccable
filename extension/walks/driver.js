@@ -718,7 +718,10 @@ function frameIndex() {
 function boxFrames(covered) {
   const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes('--secret-cover') === true; } catch { return false; } };
   // Chrome opens only an HTML element's root, and throws on an SVG one.
-  const shadow = (el) => { try { return el.shadowRoot ?? globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; } };
+  const shadow = (el) => {
+    if (el.shadowRoot || (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) return el.shadowRoot ?? null;
+    try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
+  };
   let seen = 0;
   const visit = (root) => {
     for (const el of Array.from(root.querySelectorAll('*'))) {
