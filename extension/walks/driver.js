@@ -618,13 +618,13 @@ async function scriptsOn(tab, seals) {
 }
 
 /**
- * Whether a field on the page holds a password, Continue or not (signin.js `lookInPage`): a password field filled, or,
- * on a walk whose server names no helpers and so runs its own code, any filled field that may hold one.
+ * Whether a filled field on the page may hold a password that a script could read (signin.js `lookInPage`): a password
+ * field, or, on a walk whose server names no helpers and so runs its own code, any field that may hold one.
  */
-const passwordHeld = (tab, seen) => seen?.filled === true || (tab?.named !== true && seen?.maybe === true);
+const mayRead = (tab, seen) => seen?.filled === true || (tab?.named !== true && seen?.maybe === true);
 
-/** Whether a password-like field on the page holds a value: no script runs then. */
-export const passwordIn = async () => passwordHeld(walk, await look());
+/** Whether a password-like field on the page holds a value: no script runs then, until Continue lets a soft hold go. */
+export const passwordIn = async () => mayRead(walk, await look());
 
 /**
  * The world the server's page reads run in: one of their own, not the page's, nor the walk's lookout (whose binding
@@ -877,7 +877,9 @@ function stepList(key, change) {
 export function letPast(on = true) { if (walk) walk.past = on && walk.url ? walk.url : null; }
 
 /** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
-const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || passwordHeld(tab, seen) || (signingIn(seen) && (!tab.past || tab.past !== tab.url));
+// A filled password field holds it past Continue; a field that may hold one (a server's own code could read it) until
+// Continue, as a false alarm there must not hold a walk for the page's life.
+const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || seen?.filled === true || ((signingIn(seen) || mayRead(tab, seen)) && (!tab.past || tab.past !== tab.url));
 
 /** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
 let spotted = () => undefined;

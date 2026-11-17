@@ -1367,10 +1367,11 @@ describe('walk worker', () => {
 
   // Catches: a script run while the password is in its field, or refused where the server waits out a pause. And an
   // older server's own script run while a field that may hold a password (a "show password" swap) is filled: only the
-  // named helpers keep it unread, so a walk that runs the server's code holds there past Continue.
-  for (const [label, seen] of [
-    ['a password is in a field', { password: true, filled: true }],
-    ['a field that may hold a password is filled, on an older server', { password: false, filled: false, maybe: true }],
+  // named helpers keep it unread, so a walk that runs the server's code pauses there, and the person's Continue lets go
+  // (a false alarm must not hold the walk for the page's life); a password field holds past it.
+  for (const [label, seen, held] of [
+    ['a password is in a field', { password: true, filled: true }, true],
+    ['a field that may hold a password is filled, on an older server', { password: false, filled: false, maybe: true }, false],
   ]) {
     it(`holds a script while ${label}, and runs it after Continue on the same page`, async () => {
       const { ops, command, current, walk } = await walked();
@@ -1381,8 +1382,10 @@ describe('walk worker', () => {
       const read = ops.evaluate({ fn: '() => 1', args: [] });
       await settle(20);
       assert.deepEqual([current().state, current().held, inRead()], ['paused', 'sign-in', 0], 'not run while it is filled');
-      assert.equal(await command('resume'), false, 'and Continue waits while it is filled');
-      page.seen = {};
+      if (held) {
+        assert.equal(await command('resume'), false, 'and Continue waits while it is filled');
+        page.seen = {};
+      }
       assert.equal(await command('resume'), true);
       await read;
       assert.deepEqual([inRead(), since(at, 'Page.navigate') + since(at, 'Page.reload'), walk.loader], [1, 0, 'filled']);

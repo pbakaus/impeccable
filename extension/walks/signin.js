@@ -12,7 +12,7 @@
 //   - a password field (not one only named for a password), shown or hidden, holds a value or Chrome's autofill:
 //     always, Continue or not; one a "show password" button made text still counts, by the mark `lookInPage` gave it
 //     when it saw it; on a walk whose server names no helpers and sends its own code, any filled field that may hold
-//     a password too (`maybe`: one named for a password, or one a "show password" swap put in);
+//     a password too (`maybe`: one named for a password, or one a "show password" swap put in), until Continue;
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -86,19 +86,21 @@ export function lookInPage() {
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => kind(input) === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
   // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round each
-  // password field, marked or named for one (its form, or the elements round it up to the first that holds an account
-  // field, two when none does, never `<html>`, and `<body>` only round a field right in it) keep how many they held and
-  // showed, and whether one held an account field. While a box holds fewer, no box in it does, and a marked account
+  // password field, marked or named for one and for no account (its form, or the elements round it up to the first that
+  // holds an account field, two when none does, never `<html>`, and `<body>` only round a field right in it) keep how
+  // many they held and showed, and whether one held an account field. While a box holds fewer and a marked account
   // field is still in it, or it never held one, each filled, shown text field in it that names no account is marked as
-  // one that may hold a secret (while it only shows fewer, each beside a hidden one or holding what it holds: a clone shown):
-  // covered and never read, and no pause unless the server sends its own code (`maybe`). That mark is no password
-  // field, so a box keeps watching for the password typed after a filled name took it. A search box in a page's header
-  // stays plain once a sign-in below it went, and so does a checkout whose account section was only hidden.
+  // one that may hold a secret (while it only shows fewer, each beside a hidden one or holding what it holds: a clone
+  // shown): covered and never read, and a pause Continue lets go only when the server sends its own code (`maybe`).
+  // That mark is no password field, so a box keeps watching for the password typed after a filled name took it. A false
+  // mark costs a black box, a miss a password, so every such box marks. A search box in a page's header stays plain
+  // once a sign-in below it went (unless an element round both holds the account field), and so does a checkout whose
+  // account section was only hidden.
   const MAYBE = 'data-impeccable-secret-maybe';
   const HELD = 'data-impeccable-secret-form';
   const inputs = (box) => [...box.querySelectorAll('input')];
   const shown = (f) => { const size = f.getBoundingClientRect(); return size.width > 0 && size.height > 0; };
-  const counts = (f) => f.getAttribute(MARK) !== null || named(f);
+  const counts = (f) => f.getAttribute(MARK) !== null || (named(f) && !NAMED.some((name) => /e-?mail|user|login/i.test(f.getAttribute(name) ?? '')));
   const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
   const account = (f) => {
     const said = [...NAMED, 'autocomplete'].map((name) => f.getAttribute(name) ?? '').join(' ');
@@ -106,20 +108,12 @@ export function lookInPage() {
   };
   for (const root of roots) {
     for (const f of inputs(root)) if (f.getAttribute(MARK) === null && (kind(f) === 'password' || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? ''))) f.setAttribute(MARK, '');
-    const fewer = [];
     for (const box of root.querySelectorAll(`[${HELD}]`)) {
       const [most, mostShown, had] = (box.getAttribute(HELD) ?? '').split(' ');
       const gone = passwords(box, true) < Number(most);
-      if (gone || passwords(box, false) < Number(mostShown)) fewer.push({ box, gone, had });
-    }
-    const within = (el, box) => {
-      for (let at = el.parentElement; at; at = at.parentElement) if (at === box) return true;
-      return false;
-    };
-    for (const { box, gone, had } of fewer) {
       const all = inputs(box);
-      if (fewer.some((other) => within(other.box, box)) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null))) continue;
-        // One gone: any filled field may be the one swapped in. One only hidden: a shown clone, beside it or holding what it holds.
+      if ((!gone && passwords(box, false) >= Number(mostShown)) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null))) continue;
+      // One gone: any filled field may be the one swapped in. One only hidden: a shown clone, beside it or holding what it holds.
       const hidden = all.filter((f) => counts(f) && !shown(f));
       const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || (Boolean(h.value) && h.value === f.value));
       for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null && (gone || clone(f))) f.setAttribute(MAYBE, '');
@@ -150,7 +144,7 @@ export function lookInPage() {
   const holds = (field) => !field.disabled && !field.readOnly && (Boolean(field.value) || autofilled(field));
   const filled = fields.some(({ field }) => secret(field) && holds(field));
   // Any filled field that may hold one: a password field, one named for a password, or one marked as maybe. Code the
-  // server sends (an older one, which names no helpers) could read it, so that walk holds paused past Continue too.
+  // server sends (an older one, which names no helpers) could read it, so that walk pauses there too, until Continue.
   const maybe = filled || roots.some((root) => inputs(root).some((f) => (named(f) || f.getAttribute(MAYBE) !== null) && holds(f)));
   const password = filled || fields.some(({ field, root }) => visible(field) && !field.disabled && !changing(field, root));
 
