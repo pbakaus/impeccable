@@ -28,8 +28,6 @@ fn inactive_and_unknown_media_do_not_override_screen_styles() {
         "(min-width: 1281px)",
         "(unknown-feature: yes)",
         "not (unknown-feature: yes)",
-        "(prefers-reduced-motion: no-preference)",
-        "not (prefers-reduced-motion: reduce)",
         "screen and (min-width: 9000px)",
     ] {
         assert_eq!(
@@ -213,5 +211,139 @@ fn boolean_discrete_features_keep_active_contrast_styles() {
             0,
             "{query}"
         );
+    }
+}
+
+#[test]
+fn browser_default_media_features_match_values_and_boolean_forms() {
+    for (name, active, inactive, boolean) in [
+        ("prefers-reduced-motion", "no-preference", "reduce", false),
+        ("prefers-contrast", "no-preference", "more", false),
+        ("hover", "hover", "none", true),
+        ("any-hover", "hover", "none", true),
+        ("pointer", "fine", "coarse", true),
+        ("any-pointer", "fine", "none", true),
+        ("forced-colors", "none", "active", false),
+    ] {
+        for (query, expected) in [
+            (format!("({name}: {active})"), 1),
+            (format!("not ({name}: {inactive})"), 1),
+            (format!("({name}: {inactive})"), 0),
+            (format!("not ({name}: {active})"), 0),
+            (format!("({name})"), usize::from(boolean)),
+            (format!("not ({name})"), usize::from(!boolean)),
+            (format!("not ({name}: invalid)"), 0),
+        ] {
+            assert_eq!(
+                contrast_count(&format!("@media {query}{{body{{color:#eee}}}}")),
+                expected,
+                "{query}"
+            );
+        }
+    }
+}
+
+#[test]
+fn linked_stylesheets_use_media_assigned_by_simple_onload_handlers() {
+    let dir = std::env::temp_dir().join(format!("impeccable-media-onload-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("async.css"), "body{color:#eee}").unwrap();
+    for (handler, expected) in [
+        ("this.media='all'", 1),
+        ("this.onload=null;this.media='all'", 1),
+        (" this.media = 'screen'; this.onload = null; ", 1),
+        ("this.media='print'", 0),
+        ("this.media='all';this.media='print'", 0),
+        ("this.media='print';this.media='screen'", 1),
+        ("this.title='all'", 0),
+        ("console.log(`this.media='all'`)", 0),
+        ("/* this.media='all' */", 0),
+        ("if (false) this.media='all'", 0),
+        ("this.media=='all'", 0),
+    ] {
+        let html = format!("<html><head><style>body{{color:#111;background:#fff;font:16px Georgia}}</style><link rel='stylesheet' media='print' href='async.css' onload=\"{handler}\"></head><body><p>Async stylesheet text.</p></body></html>");
+        let findings = detect_html_source(
+            &html,
+            &dir.join("index.html"),
+            &DetectHtmlOptions::default(),
+        );
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.antipattern == "low-contrast")
+                .count(),
+            expected,
+            "{handler}: {findings:?}"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn browser_defaults_fixture_reports_active_rows_only() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/antipatterns/static-media-browser-defaults.html");
+    let html = std::fs::read_to_string(&path).unwrap();
+    let findings = detect_html_source(&html, &path, &DetectHtmlOptions::default());
+    assert_eq!(
+        findings
+            .iter()
+            .filter(|f| f.antipattern == "low-contrast")
+            .count(),
+        8,
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn hover_media_keeps_hover_contrast_rules() {
+    assert_eq!(
+        contrast_count("@media (hover: hover){p:hover{color:#eee}}"),
+        1
+    );
+    assert_eq!(
+        contrast_count("@media (hover: none){p:hover{color:#eee}}"),
+        0
+    );
+}
+
+#[test]
+fn no_preference_keeps_recording_dot_animation() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/antipatterns/pulsing-dot.html");
+    let html = std::fs::read_to_string(&path).unwrap();
+    let findings = detect_html_source(&html, &path, &DetectHtmlOptions::default());
+    assert!(
+        findings
+            .iter()
+            .any(|f| f.antipattern == "pulsing-dot" && f.snippet.contains(".rec-mark")),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn inactive_unread_stylesheets_do_not_make_card_corners_unknown() {
+    for href in ["missing.css", "https://example.invalid/theme.css"] {
+        for (attributes, expected) in [
+            ("media='print'", 0),
+            ("media='screen'", 1),
+            ("media='print' onload=\"this.media='all'\"", 1),
+            ("media='all' onload=\"this.media='print'\"", 0),
+        ] {
+            let html = format!("<html><head><link rel='stylesheet' href='{href}' {attributes}><style>.card{{width:400px;height:120px;padding:16px;background:#fdfdfd;border-left:4px solid #6366f1}}</style></head><body><div class='card'><h3>Card</h3><p>Body copy.</p></div></body></html>");
+            let findings = detect_html_source(
+                &html,
+                Path::new("/nonexistent/media-card/page.html"),
+                &DetectHtmlOptions::default(),
+            );
+            assert_eq!(
+                findings
+                    .iter()
+                    .filter(|f| f.antipattern == "side-tab")
+                    .count(),
+                expected,
+                "{href} {attributes}: {findings:?}"
+            );
+        }
     }
 }

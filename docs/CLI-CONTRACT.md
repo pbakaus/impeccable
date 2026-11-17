@@ -45,10 +45,20 @@ unchanged; a static HTML scan is not a review of every responsive state.
 Supported conditions are `screen`/`all` media types (other media types do not
 match), `not`/`only`, comma-separated alternatives, grouped `and`/`or` conditions,
 light/dark `prefers-color-scheme`, `orientation`, and `width`/`height` conditions.
+The desktop defaults also match `prefers-reduced-motion: no-preference`,
+`prefers-contrast: no-preference`, `hover: hover`, `any-hover: hover`,
+`pointer: fine`, `any-pointer: fine`, and `forced-colors: none`. Their other
+valid values do not match; `none` and `no-preference` are false in boolean form.
 Dimensions support min/max, equality, and range syntax in px or initial-font
 em/rem (16px). Unsupported features, units, functions, and malformed conditions
 are excluded, including when negated. Use a rendered scan at the desired viewport
 for other environments. Existing `@supports` and `@layer` behavior is unchanged.
+
+For local linked stylesheets, a simple `onload="this.media='all'"` handler
+supplies the media value after loading. Straight-line literal `this.media`
+assignments, with optional `this.onload=null` statements, are supported; the
+last media assignment wins. Other JavaScript is not evaluated and keeps the
+original `media` attribute. This includes conditions, calls, and escaped values.
 
 The recorded `collectStaticCssRules` function vectors retain their historical
 behavior. Runtime scans filter media before the collector and custom-property

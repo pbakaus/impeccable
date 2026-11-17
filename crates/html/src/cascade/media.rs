@@ -75,31 +75,36 @@ fn comparison(left: f64, op: &[Term], right: f64) -> Option<bool> {
     }
 }
 
+/// The rendered scanner's desktop defaults and the valid discrete values.
+fn discrete_feature(name: &str) -> Option<(&'static str, &'static [&'static str])> {
+    Some(match name {
+        "prefers-color-scheme" => ("light", &["light", "dark"]),
+        "orientation" => ("landscape", &["landscape", "portrait"]),
+        "prefers-reduced-motion" => ("no-preference", &["no-preference", "reduce"]),
+        "prefers-contrast" => (
+            "no-preference",
+            &["no-preference", "more", "less", "custom"],
+        ),
+        "hover" | "any-hover" => ("hover", &["none", "hover"]),
+        "pointer" | "any-pointer" => ("fine", &["none", "coarse", "fine"]),
+        "forced-colors" => ("none", &["none", "active"]),
+        _ => return None,
+    })
+}
+
 fn feature(t: &[Term]) -> Option<bool> {
     match t {
-        // These supported features have no zero/none value in this environment.
+        [Term::Ident(name)] if matches!(name.as_str(), "width" | "height") => Some(true),
+        // In boolean context, none and no-preference are false.
         // https://www.w3.org/TR/mediaqueries-5/#mq-boolean-context
-        [Term::Ident(name)]
-            if matches!(
-                name.as_str(),
-                "width" | "height" | "orientation" | "prefers-color-scheme"
-            ) =>
-        {
-            Some(true)
+        [Term::Ident(name)] => {
+            let (actual, _) = discrete_feature(name)?;
+            Some(!matches!(actual, "none" | "no-preference"))
         }
-        [Term::Ident(name), Term::Mark(':'), Term::Ident(value)] => match name.as_str() {
-            "prefers-color-scheme" => match value.as_str() {
-                "light" => Some(true),
-                "dark" => Some(false),
-                _ => None,
-            },
-            "orientation" => match value.as_str() {
-                "landscape" => Some(true),
-                "portrait" => Some(false),
-                _ => None,
-            },
-            _ => None,
-        },
+        [Term::Ident(name), Term::Mark(':'), Term::Ident(value)] => {
+            let (actual, values) = discrete_feature(name)?;
+            values.contains(&value.as_str()).then_some(actual == value)
+        }
         [Term::Ident(name), Term::Mark(':'), value @ Term::Length(_)] => {
             let (kind, key) = if let Some(s) = name.strip_prefix("min-") {
                 (1, s)
@@ -300,6 +305,8 @@ mod tests {
             "screen/**/and (width:80rem)",
             "screen/* , ( */ and (width:80rem)",
             "not print",
+            "(prefers-reduced-motion:no-preference)",
+            "not (prefers-reduced-motion:reduce)",
             "not screen and (max-width:500px)",
             "not (prefers-color-scheme:dark)",
             "(width)",
@@ -319,8 +326,6 @@ mod tests {
             "screen nonsense",
             "screen or (width)",
             "screen and (width) or (height)",
-            "(prefers-reduced-motion:no-preference)",
-            "not (prefers-reduced-motion:reduce)",
             "(prefers-color-scheme:dark)",
             "(height > 800px)",
             "(orientation:portrait)",

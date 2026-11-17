@@ -18,7 +18,7 @@ use super::{
     normalize_static_css_value, parse_static_style_attribute, static_default_style, CssRule,
     DeclMeta, SpecifiedDecl, SpecifiedStore, StyleValues, UrlBase, STATIC_DEFAULT_STYLE,
 };
-use crate::dom::StaticDocument;
+use crate::dom::{StaticDocument, StaticElement};
 use crate::profile::{self, Meta, ProfileSink};
 use ego_tree::NodeId;
 use impeccable_core::checks::css_scan::{collect_css_custom_props, css_length_to_px};
@@ -37,6 +37,33 @@ static STYLESHEET_REL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?-u:\b)stylesheet(?-u:\b)").expect("STYLESHEET_REL_RE"));
 static REMOTE_HREF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^(https?:)?//").expect("REMOTE_HREF_RE"));
+
+// Recognize the usual async-CSS onload idiom without evaluating JavaScript.
+// Only straight-line literal media assignments and onload=null are accepted;
+// strings, comments, conditions and calls cannot masquerade as assignments.
+static ONLOAD_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*this\s*\.\s*(?:media\s*=\s*(?:'([^'\\]*)'|"([^"\\]*)")|onload\s*=\s*null)\s*(?:;|$)"#)
+        .expect("ONLOAD_ASSIGNMENT_RE")
+});
+
+fn loaded_media(mut handler: &str) -> Option<&str> {
+    let mut media = None;
+    while !handler.trim().is_empty() {
+        let assignment = ONLOAD_ASSIGNMENT_RE.captures(handler)?;
+        if let Some(value) = assignment.get(1).or_else(|| assignment.get(2)) {
+            media = Some(value.as_str());
+        }
+        handler = &handler[assignment.get(0)?.end()..];
+    }
+    media
+}
+
+fn link_media_matches(link: &StaticElement<'_>) -> bool {
+    link.get_attribute("onload")
+        .and_then(loaded_media)
+        .or_else(|| link.get_attribute("media"))
+        .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
+}
 
 /// JS: css-cascade.mjs#resolveLinkedCssPath(fileDir, href)
 /// Cache-busting (styles.css?v=3) and root-relative (/static/app.css) hrefs
@@ -210,10 +237,7 @@ pub fn collect_static_css_text(
         }
     }
     for link in doc.query_selector_all("link") {
-        if link
-            .get_attribute("media")
-            .is_some_and(|m| !m.trim().is_empty() && !super::media::matches_media(m))
-        {
+        if !link_media_matches(&link) {
             continue;
         }
         let rel = link.get_attribute("rel").unwrap_or("");
@@ -1164,12 +1188,13 @@ static FONT_STYLESHEET_RE: Lazy<Regex> = Lazy::new(|| {
 /// Whether the page links a stylesheet the static engine did not read: a
 /// remote sheet (other than a font service, which carries no box rules) or a
 /// local one it could not open. [`collect_static_css_text`] skips both.
+/// Inactive sheets cannot change the page's box rules and do not count.
 pub fn has_unread_stylesheet(doc: &StaticDocument, file_dir: &Path) -> bool {
     let dir = file_dir.to_string_lossy().into_owned();
     doc.query_selector_all("link").iter().any(|link| {
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
-        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() {
+        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || !link_media_matches(link) {
             return false;
         }
         if REMOTE_HREF_RE.is_match(href) {
