@@ -8,7 +8,8 @@
 //     document, a frame on its origin, or an open shadow root in either (a closed one is not seen), unless its form
 //     only changes a password (`lookInPage`); and not on a page the person already pressed Continue on at a sign-in
 //     (driver.js `signInShows`);
-//   - any such field, shown or hidden, holds a value or Chrome's autofill: always, Continue or not;
+//   - any such field, shown or hidden, holds a value or Chrome's autofill: always, Continue or not; a password field
+//     a "show password" button made text still counts, by the mark `lookInPage` gave it when it saw it;
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -69,17 +70,20 @@ export function lookInPage() {
   // A form of two or more password fields and nothing to name an account by (no text, email or phone field) changes
   // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
   // a name or an email (signing in, signing up), is.
-  // A password field, or one that says it takes a password or a one-time code whatever its type (a "show password"
-  // toggle turns it to text; a code step is a text field).
+  // A password field, one marked as one when seen, or one that says it takes a password or a one-time code whatever
+  // its type: a "show password" toggle turns it to text, so each password field is marked at every look, before the
+  // person can show it (the cover keeps it covered by the same mark); a code step is a text field.
+  const MARK = 'data-secret-field';
+  for (const root of roots) for (const field of root.querySelectorAll(`input[type="password" i]:not([${MARK}])`)) field.setAttribute(MARK, '');
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
-  const secret = (input) => String(input.type).toLowerCase() === 'password' || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
+  const secret = (input) => String(input.type).toLowerCase() === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
   const changing = (field, root) => {
     const inputs = [...(field.form ?? root).querySelectorAll('input')].filter(visible);
     return inputs.filter(secret).length >= 2 && !inputs.some((input) => !secret(input) && ['text', 'email', 'tel'].includes(String(input.type).toLowerCase()));
   };
   // Chrome keeps an autofilled value from scripts (`value` is empty) until the person acts: the filled look counts too.
   const autofilled = (field) => ['autofill', '-webkit-autofill'].some((state) => { try { return field.matches(`:${state}`); } catch { return false; } });
-  const SECRETS = 'input[type="password" i], input[autocomplete~="current-password" i], input[autocomplete~="new-password" i], input[autocomplete~="one-time-code" i]';
+  const SECRETS = `input[type="password" i], input[${MARK}], input[autocomplete~="current-password" i], input[autocomplete~="new-password" i], input[autocomplete~="one-time-code" i]`;
   const fields = roots.flatMap((root) => [...root.querySelectorAll(SECRETS)].map((field) => ({ field, root })));
   // A password in a field, typed or filled, shown or hidden, always pauses the walk: nothing it runs may read it.
   // A disabled or read-only field holds no password the person typed or had filled (a "••••••" placeholder).
@@ -101,7 +105,7 @@ export function lookInPage() {
   }
   if (!focus && el) {
     const tokens = String(el.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/);
-    if (el.tagName === 'INPUT' && (String(el.type).toLowerCase() === 'password' || tokens.some((token) => token === 'current-password' || token === 'new-password'))) focus = 'password';
+    if (el.tagName === 'INPUT' && (String(el.type).toLowerCase() === 'password' || el.getAttribute?.(MARK) != null || tokens.some((token) => token === 'current-password' || token === 'new-password'))) focus = 'password';
     else if (tokens.some((token) => token.startsWith('cc-'))) focus = 'card';
     else if (tokens.includes('one-time-code')) focus = 'code';
   }

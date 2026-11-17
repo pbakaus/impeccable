@@ -282,10 +282,11 @@ describe('walk guard', () => {
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
   // `autofill`: Chrome filled it, which a script sees only as the `:autofill` state (its value reads empty).
-  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', disabled: attrs.disabled === true, readOnly: attrs.readOnly === true, matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', disabled: attrs.disabled === true, readOnly: attrs.readOnly === true, matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
-  // A selector of password fields, read as Chrome would: by `type`, or by an `autocomplete` token.
-  const picks = (sel, f) => (/type="password"/.test(sel) && f.type === 'password') || [...sel.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token));
+  // A selector of password fields, read as Chrome would: by `type`, by the mark a field seen as one keeps, or by an
+  // `autocomplete` token.
+  const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-secret-field]' && f.getAttribute('data-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
   const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords.filter((f) => picks(sel, f))) });
   // A form of these fields: each knows it (`field.form`), and the page holds them all.
   const form = (...fields) => {
@@ -325,6 +326,16 @@ describe('walk lookout', () => {
   ]) {
     it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, ...expected, status: 200 }); });
   }
+
+  // Catches a password the person shows with the site's "show password" button, at a sign-in pause, let past by their
+  // Continue as a plain text field, and typed into: a field seen as a password stays one.
+  it('sees a password field it saw as one once a button shows it as text', () => {
+    const shown = field({ type: 'password' });
+    const page = doc({ passwords: [shown], active: shown });
+    assert.deepEqual(seen(page), { password: true, filled: false, focus: 'password', status: 200 });
+    Object.assign(shown, { type: 'text', value: 'x' });
+    assert.deepEqual(seen(page), { password: true, filled: true, focus: 'password', status: 200 });
+  });
 
   it('sees a 401 page', () => { assert.equal(seen(doc(), 401).status, 401); });
 
@@ -636,8 +647,8 @@ describe('walk worker', () => {
       { nodeId: '6', role: { value: 'Iframe' }, backendDOMNodeId: 60, childIds: [] },
       { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
     ];
-    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }];
-    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] } };
+    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 90, childIds: [] }];
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] } };
     const was = { ...answers };
     Object.assign(answers, {
       'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
@@ -649,7 +660,7 @@ describe('walk worker', () => {
       const { value } = await ops.hear({ what: 'tree' });
       const byId = new Map(value.nodes.map((n) => [n.nodeId, n]));
       assert.deepEqual([byId.get('2').value, byId.get('2').name.value, byId.has('3'), byId.get('4').value.value, byId.has('5')], [undefined, 'Card number', false, 'milk', true], 'the card field keeps its label, not its number');
-      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes?.find((n) => n.nodeId === '2')?.value ?? (nodes ? 'read' : null)]), [[60, 'read'], [70, null]], 'the same site’s frame is read, its code field blank; another site’s is not');
+      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes?.find((n) => n.nodeId === '2')?.value ?? (nodes ? 'read' : null)]), [[60, 'read'], [70, null]], 'the same site’s frame is read, its password shown as text blank; another site’s is not');
       assert.deepEqual(args.slice(at).filter((_, i) => sent[at + i] === 'Accessibility.getFullAXTree').map((p) => p?.frameId ?? 'top'), ['top', 'own']);
       // One node by its number: its box, in view, focused. Nothing for another tab, a node by no number, or a method by name.
       answers['DOM.getBoxModel'] = () => ({ model: { border: [1, 2, 3, 2, 3, 4, 1, 4] } });
@@ -1132,17 +1143,23 @@ describe('walk worker', () => {
       world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text, selectorText: text.slice(0, text.indexOf(' {')) }); } };
       const lookout = answers['Runtime.evaluate'];
       answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
-      // The screen as Chrome draws it: the field's value, unless a sheet covers it.
+      // The screen as Chrome draws it: the field's value, unless a rule of a sheet on it picks the field out, read as
+      // Chrome reads the cover's selectors (by `type`, by the mark, by part of `autocomplete`).
+      const picked = (el, part) => (part === 'input[type="password" i]' ? el.type === 'password' : part === '[data-secret-field]' ? el.getAttribute('data-secret-field') !== null : String(el.getAttribute('autocomplete') ?? '').includes(/^\[autocomplete\*="([\w-]+)" i\]$/.exec(part)?.[1] ?? '\0'));
+      const covers = (el) => world.document.adoptedStyleSheets.some((sheet) => [...sheet.cssRules].some((r) => r.cssText.slice(0, r.cssText.indexOf(' {')).split(', ').some((part) => picked(el, part))));
       const drawn = [];
-      answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(world.document.adoptedStyleSheets.length ? 'covered' : world.document.activeElement.value) - 1]) });
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
         const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
-        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: () => [field], elementFromPoint: () => field };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => (/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password' ? [] : [field]), elementFromPoint: () => field };
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
-        // A password field keeps a mark once seen, so a "show password" button that makes it text leaves it covered.
-        if (kind === 'password') assert.equal(field.getAttribute('data-secret-field'), '', 'a password field seen is marked');
+        // A password field a "show password" button makes text after a still stays covered, unread and untyped.
+        if (kind === 'password') {
+          field.type = attrs.type = 'text';
+          assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'a password shown as text');
+        }
         const from = drawn.length;
         await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
         await settle(40);
