@@ -472,7 +472,7 @@ describe('walk worker', () => {
     // The walked tab's frames: the top document alone, unless a test gives it more.
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
     // The extension's own cover, and its blank fields for a sign-in's still, run in the top document (frame 0); nothing else answers.
-    scripting: { async executeScript({ func }) { return ['coverSecrets', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
+    scripting: { async executeScript({ func }) { return ['coverSecrets', 'coverHolds', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
     // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
     declarativeNetRequest: {
       rules: [{ id: 20541 }, { id: 20542 }],
@@ -1368,6 +1368,10 @@ describe('walk worker', () => {
       const own = chrome.scripting.executeScript, pass = [];
       chrome.scripting.executeScript = async ({ target, func }) => { pass.push(target.allFrames === true && func === helpers.coverSecrets); return []; };
       await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
+      // Catches a still of a field a site's own style kept uncovered (an inline `all: revert`, an earlier layer's
+      // `!important`), or put back since the cover ran: checked as drawn right before the picture, it is not taken.
+      chrome.scripting.executeScript = async ({ func }) => [{ frameId: 0, result: func === helpers.coverHolds ? 1 : 0 }];
+      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
       // Chrome's own page for a load that failed takes no script and holds no page: its still is taken, so a journey
       // that meets a dead link goes on.
       const listed = chrome.webNavigation.frames;
@@ -1411,6 +1415,7 @@ describe('walk worker', () => {
           cardBox = args[0];
           return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
         if (func.name === 'frameIndex') return [{ frameId: 0, result: -1 }, { frameId: 7, result: 0 }];
+        if (func === helpers.coverHolds) return [{ frameId: 0, result: 0 }, { frameId: 7, result: 0 }];
         assert.deepEqual(target.frameIds, [0]);
         return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
       };

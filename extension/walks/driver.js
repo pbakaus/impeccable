@@ -701,7 +701,11 @@ async function coverFrames(on) {
   const ran = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverSecrets, args: [on, COVER_MS] }).catch(() => []);
   if (!on) return true;
   if (!frames) return false;
-  const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
+  // Then checked as drawn, in a run of its own right before the picture (`coverHolds`): a frame whose page put a field
+  // back since, or whose fields a site's own style kept uncovered, counts as not covered.
+  const held = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverHolds }).catch(() => []);
+  const holds = new Set(held.filter((r) => r.result === 0).map((r) => r.frameId));
+  const done = new Set(ran.filter((r) => typeof r.result === 'number' && holds.has(r.frameId)).map((r) => r.frameId));
   // The top document's closed roots are opened only by this script (`chrome.dom`): without it, no still. But for
   // Chrome's own error page (a load that failed), which takes no script and holds no page: the walk's own world covered it.
   if (frames.find((f) => f.frameId === 0)?.errorOccurred) done.add(0);
