@@ -1251,6 +1251,18 @@ describe('walk worker', () => {
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
+        // Drawn for a persona's sight, the picture as taken goes beside it: the same capture, so under the same cover.
+        const sight = { bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas, handoff: (await chrome.storage.session.get('handoff')).handoff };
+        globalThis.createImageBitmap = async (blob) => ({ width: 2, height: 1, px: new Uint8ClampedArray(await blob.arrayBuffer()), close() {} });
+        globalThis.OffscreenCanvas = class { getContext() { const canvas = this; return { drawImage(bitmap) { canvas.px = bitmap.px; }, getImageData: () => ({ data: canvas.px }), putImageData({ data }) { canvas.px = data; } }; } async convertToBlob() { return new Blob([this.px]); } };
+        await chrome.storage.session.set({ handoff: { ...sight.handoff, sees: 'older' } });
+        try {
+          const { data, plain } = (await ops.screenshot({ format: 'png', plain: true })).value;
+          assert.deepEqual([atob(plain), data !== plain], ['covered', true], `${kind}: the plain still`);
+        } finally {
+          await chrome.storage.session.set({ handoff: sight.handoff });
+          Object.assign(globalThis, { createImageBitmap: sight.bitmap, OffscreenCanvas: sight.canvas });
+        }
         // A password field a "show password" button makes text after a still stays covered, unread and untyped.
         if (kind === 'password') {
           field.type = attrs.type = 'text';
@@ -1476,15 +1488,16 @@ describe('walk worker', () => {
     // `sight`: the panel's pick for this journey; `card`: the persona card's own.
     const seen = async (sight, card) => {
       await chrome.storage.session.set({ handoff: { ...was, ...(sight ? { sees: sight } : {}), persona: { name: 'Mira', role: '', ...(card ? { sees: card } : {}) } } });
-      const { data } = (await ops.screenshot({ format: 'png' })).value;
+      const { data, plain } = (await ops.screenshot({ format: 'png', plain: true })).value;
       const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
-      return { data, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
+      return { data, plain, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
     };
     try {
-      assert.equal((await seen(null)).data, taken, 'none chosen: the picture as taken');
+      assert.deepEqual(await seen(null).then(({ data, plain }) => [data, plain]), [taken, undefined], 'none chosen: the picture as taken, and no second');
       assert.equal((await seen('normal', 'older-eyes')).data, taken, 'Normal picked for a persona with older eyes: the picture as taken');
       const card = await seen(null, 'colour-blind');
       assert.ok(card.data !== taken && card.data === (await seen('colour-blind')).data, 'none picked: the card’s own');
+      assert.equal(card.plain, taken, 'and the picture as taken beside it');
       const [red, green, blue] = (await seen('colour-blind')).px;
       assert.ok(Math.abs(red[0] - red[1]) < 40 && Math.abs(green[0] - green[1]) < 40, `red and green both turn olive: ${red} ${green}`);
       assert.ok(blue[2] > blue[0] + 100, `blue stays blue: ${blue}`);

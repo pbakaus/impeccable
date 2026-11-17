@@ -52,12 +52,12 @@ onSignIn(() => { pauseFor('sign-in'); });
 const shot = unseen('screenshot', ops.screenshot);
 /** The sign-in page the walk paused at, as it was before the person had it: its still, or none where it could not be taken safely. */
 async function stillAtSignIn() {
-  const still = await signInStill(() => shot({ format: 'png' }), () => current().state === 'paused' && current().held === 'sign-in');
+  const still = await signInStill(() => shot({ format: 'png', plain: true }), () => current().state === 'paused' && current().held === 'sign-in');
   if (still === undefined) return;
   // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
   const title = still && walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
   if (still) dispatch({ type: 'pictured' });
-  say({ event: 'sign-in-page', ...(still ? { still } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
+  say({ event: 'sign-in-page', ...(still ? { still: still.data, ...(still.plain ? { plain: still.plain } : {}) } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
 }
 
 /** The ops that take something of the page: none runs on a page the walk could not check. */
