@@ -358,6 +358,8 @@ export const SUITES = {
         wallClockMs: 3_600_000,
         files: ['tests/skill-workflow/full-build.test.mjs'],
       },
+      // REN-1952's seed walk: skips unless SEED_WALK_SEED and SEED_WALK_OUT are set, and caps its own spend.
+      { runner: 'node', timeoutMs: 2_000_000, wallClockMs: 2_400_000, files: ['tests/skill-workflow/seed-walk.test.mjs'] },
     ],
   },
   'live-svelte-adapter-deepseek': {

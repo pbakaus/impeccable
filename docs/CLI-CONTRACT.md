@@ -940,6 +940,7 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 
 - **Invoked from**: `reference/craft-floor.md`'s self-hosted-face rule (`{{scripts_path}}/impeccable font-fetch <Family>`).
 - **CLI args / flags**: the family (one quoted argument or several words); `--weights <list>` (default `400,700`, each 1 to 1000); `--italic`; `--out <dir>` (default `assets/fonts`, relative, no `..`); `--help`/`-h`. No family, or one with characters other than letters, digits and spaces -> usage on stderr, exit 1.
+- **Refusals before any request**: `--out` must stay inside the project as written and as it resolves (a linked directory on the way -> `<out> resolves outside this project: nothing written.`, exit 1); a link where a font file goes is never written through (exit 1).
 - **Behaviour**: GETs `https://fonts.googleapis.com/css2?family=<Family>:wght@<w;…>` (`ital,wght@0,w;…;1,w;…` with `--italic`) `&display=swap` with a browser user agent, so WOFF2 comes back. HTTP 400 -> `Google Fonts has no family named "<Family>" at those weights. …`, exit 1; any other failure -> `Could not reach Google Fonts: …`, exit 1. Keeps the `latin` and `latin-ext` faces, writes each file once (a URL two faces share, as a variable font's weights do, is fetched once) as `<slug>-<weight>[-italic]-<subset>.woff2` under `--out`, skipping a file already there, at most 2 MB each. Prints one `@font-face` per face (`font-display: swap`, `src: url("<out>/<file>") format("woff2")`, its `unicode-range`), then `<n> files in <out>. …`, exit 0.
 
 #### `pin.mjs` -> `impeccable pin`

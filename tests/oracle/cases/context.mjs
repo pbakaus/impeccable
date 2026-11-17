@@ -580,6 +580,16 @@ const cases = [
       { id: 'design-lookup-no-term', verb: 'design-lookup', workspace: 'ctx-signals', setup, env: env() },
     ];
   })(),
+  // `font-fetch` (REN-1952): its refusals, all before any network call. A linked fonts directory never takes a write.
+  { id: 'font-fetch-help', verb: 'font-fetch', workspace: 'ctx-empty', args: ['--help'], env: env() },
+  { id: 'font-fetch-no-family', verb: 'font-fetch', workspace: 'ctx-empty', env: env() },
+  { id: 'font-fetch-bad-weights', verb: 'font-fetch', workspace: 'ctx-empty', args: ['Inter', '--weights', 'bold'], env: env() },
+  { id: 'font-fetch-out-escapes', verb: 'font-fetch', workspace: 'ctx-empty', args: ['Inter', '--out', '../fonts'], env: env() },
+  {
+    id: 'font-fetch-out-linked', verb: 'font-fetch', workspace: 'ctx-empty',
+    setup: (ws) => { fs.mkdirSync(`${ws}/assets`, { recursive: true }); fs.symlinkSync('/tmp', `${ws}/assets/fonts`); },
+    args: ['Inter'], env: env(),
+  },
   { id: 'doctor-design-no-drift', verb: 'doctor', workspace: 'ctx-signals', setup: (ws) => { write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n'); gitInit(ws); }, args: ['--json'], env: env() },
 
   // ======================================================================

@@ -139,6 +139,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     weights.sort_unstable();
     weights.dedup();
+    let dir = io.cwd.join(&out);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        io.err(&format!("Could not create {out}: {e}\n"));
+        return 1;
+    }
+    // The spelling is inside the project; so must be where it resolves: a directory on the way may be a link out.
+    let inside = match (std::fs::canonicalize(&io.cwd), std::fs::canonicalize(&dir)) {
+        (Ok(root), Ok(real)) => real.starts_with(&root),
+        _ => false,
+    };
+    if !inside {
+        io.err(&format!("{out} resolves outside this project: nothing written.\n"));
+        return 1;
+    }
     let css = match get(&css_url(&family, &weights, italic)).and_then(|r| r.into_string().map_err(|e| e.to_string())) {
         Ok(css) => css,
         Err(e) if e == "HTTP 400" => {
@@ -155,11 +169,6 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         io.err(&format!("Google Fonts returned no latin files for \"{family}\".\n"));
         return 1;
     }
-    let dir = io.cwd.join(&out);
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        io.err(&format!("Could not create {out}: {e}\n"));
-        return 1;
-    }
     let mut rules = String::new();
     // A variable font serves one file for every weight: fetch it once and point each rule at it.
     let mut fetched: Vec<(String, String)> = Vec::new();
@@ -173,6 +182,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         let name = if shared { variable_name(&family, face) } else { file_name(&family, face) };
         fetched.push((face.url.clone(), name.clone()));
         let path = dir.join(&name);
+        // A file already here is kept; a link in its place (dangling or not) is never written through.
+        match std::fs::symlink_metadata(&path) {
+            Ok(m) if m.file_type().is_symlink() => {
+                io.err(&format!("{out}/{name} is a link: nothing written through it.\n"));
+                return 1;
+            }
+            _ => {}
+        }
         if !path.exists() {
             let bytes = get(&face.url).and_then(|r| {
                 let mut buf = Vec::new();
