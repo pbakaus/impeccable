@@ -14,7 +14,7 @@
 // walking, and goes with the badge at the end. Should the debugger leave without a word (nothing can reach the page
 // then), it goes by itself when its heartbeat stops: within GLOW_LIFE_MS.
 import { hooks, send, walk } from './driver.js';
-import { helpers } from './page-helpers.js';
+import { atAPoint } from './page-helpers.js';
 import { COPY } from './panel/copy.js';
 import { current, onView } from './store.js';
 import { ON_TAB } from './view.js';
@@ -251,7 +251,7 @@ hooks.closed.push(drop);
 onView(() => { void push(); });
 
 /** The page helpers that find what lies at a point: the badge, over the page's corner, must never be what they find. */
-const AT_A_POINT = new Set(Object.keys(helpers).filter((name) => String(helpers[name]).includes('elementFromPoint')));
+const AT_A_POINT = new Set(atAPoint);
 
 const draw = () => call(`veil(${hidden()})`);
 

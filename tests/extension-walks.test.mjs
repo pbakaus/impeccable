@@ -286,8 +286,8 @@ describe('walk lookout', () => {
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
   // A selector of password fields, read as Chrome would: by `type`, by the mark a field seen as one keeps, or by an
   // `autocomplete` token.
-  const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-secret-field]' && f.getAttribute('data-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
-  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : sel === '[data-secret-spot]' ? [...new Set(inputs.map((f) => f.parentElement))].filter((own) => own?.getAttribute('data-secret-spot') != null) : passwords.filter((f) => picks(sel, f))) });
+  const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-impeccable-secret-field]' && f.getAttribute('data-impeccable-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : sel === '[data-impeccable-secret-spot]' ? [...new Set(inputs.map((f) => f.parentElement))].filter((own) => own?.getAttribute('data-impeccable-secret-spot') != null) : passwords.filter((f) => picks(sel, f))) });
   // A form of these fields, in this order: each knows it (`field.form`, its `parentElement`), and the page holds them all.
   const form = (...fields) => {
     const attrs = {};
@@ -355,6 +355,7 @@ describe('walk lookout', () => {
     ['a sign-up’s company typed beside its password', false, true, { filled: false, marked: false }, { name: 'company' }],
     ['a company typed once the password field beside it went', 'gone', true, { filled: false, marked: false }, { name: 'company' }],
     ['a company typed in the next step, drawn in the sign-in’s form', 'step', true, { filled: false, marked: false }, { name: 'company' }],
+    ['a company filled in the next step, drawn in the sign-in’s form with as many fields', 'next', true, { filled: false, marked: false }, { name: 'company' }],
   ]) {
     it(`sees ${label}`, () => {
       const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password' }));
@@ -363,13 +364,14 @@ describe('walk lookout', () => {
       const text = field({ ...attrs, value: typed ? 'x' : '' });
       text.form = text.parentElement = fields[0].form;
       if (swap === 'step') fields.splice(0, 2, text);
+      else if (swap === 'next') fields.splice(0, 2, field({ name: 'first-name' }), text);
       else if (swap === 'gone') fields.splice(1, 1) && fields.unshift(text);
       else if (swap) fields[1] = text;
       else fields.push(text);
       if (typed) text.value = 'x';
       else { seen(page); text.value = 'x'; }
       const now = seen(page);
-      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-secret-field') !== null }, expected);
+      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-impeccable-secret-field') !== null }, expected);
     });
   }
 
@@ -384,6 +386,22 @@ describe('walk lookout', () => {
     ['http://localhost:3000/login', false],
   ]) {
     it(`takes ${url} ${expected ? 'for' : 'not for'} a sign-in page`, () => { assert.equal(isSignInPage(url), expected); });
+  }
+});
+
+// The generated page helpers as carried: a regenerate that drops one of these fixes fails here.
+describe('walk page helpers', () => {
+  // Catches what a card code holds hashed into the page signature the server gets, which it could brute-force back.
+  for (const [label, attrs, changes] of [
+    ['a card security code', { autocomplete: 'cc-csc' }, false],
+    ['a search', { placeholder: 'Search' }, true],
+  ]) {
+    it(`signs the page ${changes ? 'anew' : 'the same'} whatever ${label} field holds`, async () => {
+      const { helpers } = await import('../extension/walks/page-helpers.js');
+      const field = { tagName: 'INPUT', value: '', getAttribute: (n) => attrs[n] ?? null };
+      const signed = (value) => { field.value = value; return vm.runInNewContext(`(${helpers.pageSignature})()`, { location: { href: 'https://shop.example/pay' }, document: { body: { innerText: 'Pay' }, querySelectorAll: () => [field] } }); };
+      assert.equal(signed('123') !== signed('456'), changes);
+    });
   }
 });
 
@@ -431,7 +449,8 @@ describe('walk worker', () => {
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
     // The walked tab's frames: the top document alone, unless a test gives it more.
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
-    scripting: { async executeScript() { return []; } },
+    // The extension's own cover runs in the top document (frame 0); nothing else answers.
+    scripting: { async executeScript({ func }) { return func?.name === 'coverSecrets' ? [{ frameId: 0, result: 0 }] : []; } },
     // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
     declarativeNetRequest: {
       rules: [{ id: 20541 }, { id: 20542 }],
@@ -684,7 +703,7 @@ describe('walk worker', () => {
       { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
     ];
     const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '3', '4'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }, { nodeId: '3', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 91, childIds: [] }, { nodeId: '4', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 92, childIds: [] }];
-    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] }, 92: { nodeName: 'INPUT', attributes: ['type', 'text', 'placeholder', 'Password'] } };
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-impeccable-secret-field', ''] }, 92: { nodeName: 'INPUT', attributes: ['type', 'text', 'placeholder', 'Password'] } };
     const was = { ...answers };
     Object.assign(answers, {
       'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
@@ -1175,6 +1194,12 @@ describe('walk worker', () => {
       const added = args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument');
       assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`, consentRules]);
       assert.match(consentRules, /autoconsent/);
+      // A cookie banner with no decline button is never accepted: the rules' engine is told to press only a reject.
+      const told = [];
+      const consentPage = { autoconsentReceiveMessage: (m) => told.push(m) };
+      try { vm.runInNewContext(consentRules, consentPage); } catch { /* the engine after the bridge needs a real page */ }
+      await consentPage.autoconsentSendMessage({ type: 'init' });
+      assert.equal(told[0]?.config?.heuristicMode, 'reject');
       // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`,
       // nor pictured: a still or a film's frame is taken with it covered (`coverSecrets`, in the walk's own world).
       world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text, selectorText: text.slice(0, text.indexOf(' {')) }); } };
@@ -1182,13 +1207,13 @@ describe('walk worker', () => {
       answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
       // The screen as Chrome draws it: the field's value, unless a rule of a sheet on it picks the field out, read as
       // Chrome reads the cover's selectors (by `type`, by the mark, by part of `autocomplete`).
-      const picked = (el, part) => (part === 'input[type="password" i]' ? el.type === 'password' : part === '[data-secret-field]' ? el.getAttribute('data-secret-field') !== null : String(el.getAttribute('autocomplete') ?? '').includes(/^\[autocomplete\*="([\w-]+)" i\]$/.exec(part)?.[1] ?? '\0'));
+      const picked = (el, part) => (part === 'input[type="password" i]' ? el.type === 'password' : part === '[data-impeccable-secret-field]' ? el.getAttribute('data-impeccable-secret-field') !== null : String(el.getAttribute('autocomplete') ?? '').includes(/^\[autocomplete\*="([\w-]+)" i\]$/.exec(part)?.[1] ?? '\0'));
       const covers = (el) => world.document.adoptedStyleSheets.some((sheet) => [...sheet.cssRules].some((r) => r.cssText.slice(0, r.cssText.indexOf(' {')).split(', ').some((part) => picked(el, part))));
       const drawn = [];
       answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
         const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
-        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-secret-spot]' ? [] : [field]), elementFromPoint: () => field };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-impeccable-secret-spot]' ? [] : [field]), elementFromPoint: () => field };
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
@@ -1211,14 +1236,15 @@ describe('walk worker', () => {
         // A screen reader's keys never go there either: the server asks first, by name.
         assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
       }
-      // A page of one frame is covered by the extension's own script too: only there does `chrome.dom` open a closed root.
+      // A page of one frame is covered by the extension's own script too: only there does `chrome.dom` open a closed
+      // root. Where that script can't run in the top document, no still is taken.
       const own = chrome.scripting.executeScript, pass = [];
       chrome.scripting.executeScript = async ({ target, func }) => { pass.push(target.allFrames === true && func === helpers.coverSecrets); return []; };
-      await ops.screenshot({ format: 'png' });
+      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
       chrome.scripting.executeScript = own;
       assert.ok(pass.includes(true), 'a one-frame page’s top document covered by the extension’s own script');
       const field = { tagName: 'INPUT', type: 'text', value: '123', getAttribute: (n) => (n === 'autocomplete' ? 'cc-csc' : null), setAttribute() {}, removeAttribute() {}, children: [] };
-      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-secret-spot]' ? [] : [field]) };
+      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-impeccable-secret-spot]' ? [] : [field]) };
       const payment = { tagName: 'PAY-CARD', shadowRoot: null };
       const content = vm.createContext({ CSSStyleSheet: world.CSSStyleSheet, setTimeout: () => 0, clearTimeout() {}, document: { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [payment] : []) }, chrome: { dom: { openOrClosedShadowRoot: (el) => (el === payment ? closed : null) } } });
       vm.runInContext(`(${helpers.coverSecrets})(true)`, content);
@@ -1229,7 +1255,7 @@ describe('walk worker', () => {
       const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, contentWindow: { at: 1 } };
       const body = { localName: 'body', nodeType: 1, children: [frame] }, html = { localName: 'html', nodeType: 1, children: [body], parentNode: { nodeType: 9 } };
       [frame.parentNode, body.parentNode] = [body, html];
-      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : sel === '[data-secret-spot]' ? [] : [card]), elementFromPoint: () => card };
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : sel === '[data-impeccable-secret-spot]' ? [] : [card]), elementFromPoint: () => card };
       // Chrome's list of the top document's frames: the card box first, then the one no script enters.
       Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;

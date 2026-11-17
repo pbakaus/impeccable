@@ -73,8 +73,9 @@ export function lookInPage() {
   // A password field, one marked as one when seen, one that says it takes a password or a one-time code whatever
   // its type, or a text field whose name, id, placeholder and label read as a password and not as an email (a reset
   // field): a "show password" toggle turns it to text, so each password field is marked at every look, before the
-  // person can show it (the cover keeps it covered by the same mark); a code step is a text field.
-  const MARK = 'data-secret-field';
+  // person can show it (the cover keeps it covered by the same mark); a code step is a text field. The marks stay once
+  // the walk lets go of the tab: a later walk there still knows a password shown since, which it could not tell from text.
+  const MARK = 'data-impeccable-secret-field';
   for (const root of roots) for (const field of root.querySelectorAll(`input[type="password" i]:not([${MARK}])`)) field.setAttribute(MARK, '');
   const NAMED = ['name', 'id', 'placeholder', 'aria-label'];
   const words = (input) => NAMED.map((name) => input.getAttribute?.(name) ?? '').join(' ');
@@ -86,26 +87,37 @@ export function lookInPage() {
   // it has and which of them hold a password field (counted as the cover counts them), and whether each held one. At
   // the next look, with as many children, a text field in such a place (or alone in it) that names no account is marked
   // if it holds something, so the walk stays paused on this page; one still empty and named for nothing, where the
-  // password field was empty too, waits to be typed into. Anything else ends it: a field that was beside the password,
-  // or a next step drawn where it was, is plain.
-  const SPOT = 'data-secret-spot';
+  // password field was empty too, waits to be typed into. The element also keeps a short hash of its other fields (their
+  // type, names and autocomplete, never a value; other password places left out): a swap leaves them as they were. Anything
+  // else ends it: a field that was beside the password, or a next step drawn where it was (the sign-in's email gone), is plain.
+  const SPOT = 'data-impeccable-secret-spot';
   const passwordField = (f) => String(f.type).toLowerCase() === 'password' || f.getAttribute(MARK) !== null || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? '') || named(f);
   const account = (f) => {
     const said = `${words(f)} ${f.getAttribute('autocomplete') ?? ''}`;
     return ['email', 'tel'].includes(String(f.type).toLowerCase()) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
   };
+  const shape = (box, at) => {
+    let h = 0;
+    [...box.children].forEach((child, k) => {
+      if (at.some((i) => parseInt(i, 10) === k)) return;
+      for (const f of child.tagName === 'INPUT' ? [child] : child.querySelectorAll('input')) {
+        for (const c of `${String(f.type).toLowerCase()} ${words(f)} ${f.getAttribute('autocomplete') ?? ''}|`) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
+      }
+    });
+    return `${box.children.length}.${(h >>> 0).toString(36)}`;
+  };
   for (const root of roots) {
     for (const f of root.querySelectorAll('input')) if (f.getAttribute(MARK) === null && passwordField(f)) f.setAttribute(MARK, '');
     for (const box of root.querySelectorAll(`[${SPOT}]`)) {
-      const [count, ...at] = (box.getAttribute(SPOT) ?? '').split(' ');
-      const waits = Number(count) !== box.children.length ? [] : at.filter((i) => {
+      const [was, ...at] = (box.getAttribute(SPOT) ?? '').split(' ');
+      const waits = was !== shape(box, at) ? [] : at.filter((i) => {
         const el = box.children[parseInt(i, 10)];
         const f = el?.tagName === 'INPUT' ? el : el?.querySelectorAll('input').length === 1 ? el.querySelectorAll('input')[0] : undefined;
         if (!f || String(f.type).toLowerCase() !== 'text' || passwordField(f) || account(f)) return false;
         if (f.value) f.setAttribute(MARK, '');
         return !f.value && !i.endsWith('f') && !words(f).trim();
       });
-      if (waits.length) box.setAttribute(SPOT, `${count} ${waits.join(' ')}`);
+      if (waits.length) box.setAttribute(SPOT, [shape(box, waits), ...waits].join(' '));
       else box.removeAttribute(SPOT);
     }
     // Its parent, and the one above when the parent is the field's own wrapper (a swap may replace the wrapper).
@@ -114,7 +126,8 @@ export function lookInPage() {
       for (let el = field, box = field.parentElement, up = 0; box && up < 2; el = box, box = box.parentElement, up++) {
         const i = [...box.children].indexOf(el);
         const [, ...at] = (box.getAttribute(SPOT) ?? '').split(' ').filter((t, n) => n === 0 || parseInt(t, 10) !== i);
-        box.setAttribute(SPOT, [box.children.length, ...at, `${i}${field.value ? 'f' : ''}`].join(' '));
+        at.push(`${i}${field.value ? 'f' : ''}`);
+        box.setAttribute(SPOT, [shape(box, at), ...at].join(' '));
         if (box.querySelectorAll('input').length > 1) break;
       }
     }
