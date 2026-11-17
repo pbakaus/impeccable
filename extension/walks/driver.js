@@ -679,6 +679,19 @@ function submitsAt(at, enter) {
   const changes = /\b(?:approve|reject|decline|deny|submit|save|delete|remove|send|pay|confirm|publish|archive|revoke|withdraw|transfer)\b|\bcancel [a-z]/;
   const shops = /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe)\b/;
   let el = at ? document.elementFromPoint(at.x, at.y) : document.activeElement;
+  // A key goes to the control focus is on, through shadow roots and same-site frames, as signin.js `lookInPage` follows
+  // it; in another site's frame it can't be named, as a button with none can't: the server asks about that one.
+  for (; !at;) {
+    if (el?.shadowRoot?.activeElement) { el = el.shadowRoot.activeElement; continue; }
+    if (el && (el.tagName === 'IFRAME' || el.tagName === 'FRAME')) {
+      let inner = null;
+      try { inner = el.contentDocument; } catch { /* another origin's */ }
+      if (!inner) return null;
+      el = inner.activeElement;
+      continue;
+    }
+    break;
+  }
   while (el) {
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute('type') ?? '').toLowerCase();

@@ -1520,6 +1520,13 @@ describe('walk worker', () => {
       assert.deepEqual(await tried('keyboard', { action: 'press', key: 'Enter' }), NOT_ASKED, 'Enter in a search');
       dom.document.activeElement = node('input', '', { type: 'email', 'aria-label': 'Email' }, post);
       assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Enter' })).asked, ['send', true], 'Enter in a form that posts');
+      // A key reaches the control inside a shadow root or a same-site frame, not their host.
+      dom.document.activeElement = Object.assign(node('div', 'Settings', {}, null, false), { shadowRoot: { activeElement: node('button', 'Delete account', { type: 'button' }) } });
+      assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Space' })).asked, ['send', true], 'Space on a delete in a shadow root');
+      dom.document.activeElement = Object.assign(node('iframe', '', {}, null, false), { contentDocument: { activeElement: node('button', 'Pay now', {}, post) } });
+      assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Enter' })).asked, ['send', true], 'Enter on a pay in a same-site frame');
+      dom.document.activeElement = Object.assign(node('div', 'Delete account', {}, null, false), { shadowRoot: { activeElement: node('button', 'Show more', { type: 'button' }) } });
+      assert.deepEqual(await tried('keyboard', { action: 'press', key: 'Enter' }), NOT_ASKED, 'a harmless button in a shadow root');
       assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1, ask: { kind: 'send', what: 'Add the lamp' } }, 'yes'), { asked: ['send', false], told: [], done: true, pressed: true }, 'the server’s own ask, unannounced');
       await ops.writes({ open: false });
       await ops.writes({ open: true });
