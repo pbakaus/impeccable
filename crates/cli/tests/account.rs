@@ -420,6 +420,19 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     agents("[]");
     refresh();
     assert_eq!(std::fs::read_to_string(&claude_md).unwrap(), "# mine\n");
+    // A person who never set their own gets the set the page shows them (the service
+    // falls back to the team's), written, not sent back.
+    let sent = fake.hits("/cli/v1/agents/me");
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":["wide","a11y"],"me":["wide","a11y"],"teamSet":true,"meSet":false}"#);
+    refresh();
+    assert!(on().ends_with(": wide, a11y"), "{}", on());
+    assert_eq!(fake.hits("/cli/v1/agents/me"), sent);
+    // The next refresh keeps following the page: a later team change arrives, and the
+    // inherited set is never sent back as the person's own.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":4,"team":["wide"],"me":["wide"],"teamSet":true,"meSet":false}"#);
+    refresh();
+    assert!(on().ends_with(": wide"), "{}", on());
+    assert_eq!(fake.hits("/cli/v1/agents/me"), sent);
 }
 
 #[test]

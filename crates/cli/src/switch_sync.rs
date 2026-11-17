@@ -183,9 +183,17 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     };
     // What this refresh sent and the service took, if anything: Cursor's rule follows it.
     let mut pushed: Option<Vec<String>> = None;
-    let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
+    // The page's set for this person (the service already falls back to the team's,
+    // switch by switch). Until they've set their own, a block this machine already holds
+    // (from `loop connect` or `install`) is sent as their first set instead of overwritten.
+    let holds_block = sets.iter().any(|s| s.as_ref().is_some_and(|v| !v.is_empty()));
+    // Only a block no sync has written yet (no base saved) is migrated; one this sync wrote
+    // from the team's set keeps following the page.
+    let migrate = !remote.me_set && holds_block && base.is_none();
+    let page: Option<Vec<String>> = if migrate { None } else { remote.me.clone() };
+    let synced: Option<Vec<String>> = match decide(page.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
-            let first = remote.me.is_none();
+            let first = !remote.me_set;
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
             let sent = link.push(&catalog, &refs, first);
             if sent.is_some() {
@@ -201,13 +209,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         Step::Write(on) => {
             if write_all(&on, &link) { Some(on) } else { base.clone() }
         }
-        Step::Nothing => remote.me.clone().or(base.clone()),
+        Step::Nothing => page.clone().or(base.clone()),
     };
     // Cursor's rule in this repository ends at the set this refresh settled on (what it
     // just sent, or the page's), whatever the step; a repository that can't take it is
     // skipped without touching the shared state.
     // The retry base is never Cursor's target: a set just sent, else the page's.
-    let settled = pushed.or_else(|| remote.me.clone());
+    let settled = pushed.or_else(|| page.clone());
     if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
         if link.still_current() {
             let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
