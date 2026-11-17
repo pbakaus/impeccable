@@ -83,6 +83,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 crate::setup_report::schedule(io);
                 scan_after_login(io, &engines, pack.rule_pack);
                 crate::loop_install::after_login(io);
+                sign_in_summary(io);
             }
             code
         }
@@ -324,7 +325,15 @@ pub(crate) fn scan_after_login(
     if health::first_scan_done(&io.env, &root) {
         return "already";
     }
-    io.err("\nScanning this repository for your account (Ctrl-C skips it)...\n");
+    // A person at a terminal watches it scan in place (impeccable_common::steps); anything else gets the plain lines.
+    let steps = impeccable_common::steps::Steps::new(io);
+    let scanning = match &steps {
+        Some(steps) => Some(steps.progress(io, "Scanning this repository (Ctrl-C skips it)")),
+        None => {
+            io.err("\nScanning this repository for your account (Ctrl-C skips it)...\n");
+            None
+        }
+    };
     let _ = io.stderr.flush();
     let started = std::time::SystemTime::now();
     let mut report = None;
@@ -340,6 +349,7 @@ pub(crate) fn scan_after_login(
     io.stdout = out;
     io.stderr = err;
     let Some(full) = report else {
+        drop(scanning);
         io.err("Couldn't scan this repository. Run impeccable detect here to add it to your account.\n");
         return "failed";
     };
@@ -348,7 +358,11 @@ pub(crate) fn scan_after_login(
     // Counted as Home counts them, so the two say the same number.
     let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);
-    let synced = health::after_sign_in_scan(io, &scan);
+    // What the upload says (the notices) waits under the finished step, so it never breaks the line still drawing.
+    let (synced, said) = match &steps {
+        Some(steps) => steps.held(io, |io| health::after_sign_in_scan(io, &scan)),
+        None => (health::after_sign_in_scan(io, &scan), vec![]),
+    };
     let plural = |n: usize, one: &str| {
         if n == 1 {
             format!("1 {one}")
@@ -361,6 +375,21 @@ pub(crate) fn scan_after_login(
         found.push_str(&format!(", {} to fix", plural(to_fix, "foundation")));
     }
     let recorded = synced.recorded();
+    if let (Some(steps), Some(scanning)) = (&steps, scanning) {
+        let sent = if synced.named { "its name, finding counts" } else { "finding counts" };
+        if recorded {
+            scanning.done(steps, io, &format!("Added this repository: {found}"), &[&format!("Sent {sent} and foundations checks, never your code or file names.")]);
+            steps.details(io, &said);
+            match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
+                Some(url) => steps.link(io, "See it in Foundations:", &format!("{url}/-/foundations")),
+                None => steps.details(io, &["Find it under Foundations in your Impeccable account.".to_string()]),
+            }
+        } else {
+            scanning.failed(steps, io, &format!("Scanned this repository ({found})"), &["Couldn't add it to your account just now. Run impeccable detect here to try again."]);
+        }
+        set_last_scan(found);
+        return if recorded { "done" } else { "failed" };
+    }
     if recorded {
         // Foundations lists a person's own repositories from any space they're in.
         let find = match impeccable_account::config::Account::from_env(&io.env).ok().and_then(|a| a.home_url()) {
@@ -377,6 +406,35 @@ pub(crate) fn scan_after_login(
         ));
     }
     if recorded { "done" } else { "failed" }
+}
+
+/// A person at a terminal ends a sign-in on one tidy summary of where things stand; anything else ends as before.
+pub(crate) fn sign_in_summary(io: &mut Io) {
+    let Some(steps) = impeccable_common::steps::Steps::new(io) else {
+        return;
+    };
+    let mut rows = vec![];
+    if let Ok(account) = impeccable_account::config::Account::from_env(&io.env) {
+        rows.push(("Account", account.display_name()));
+    }
+    if let Some(found) = last_scan() {
+        rows.push(("This repository", found));
+    }
+    if let Some(said) = crate::loop_install::last_loop() {
+        rows.push(("Loop", said));
+    }
+    steps.summary(io, "You're signed in", &rows);
+}
+
+/// What the first scan found, for the closing summary of the sign-in it followed.
+static LAST_SCAN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+fn set_last_scan(found: String) {
+    if let Ok(mut s) = LAST_SCAN.lock() {
+        *s = Some(found);
+    }
+}
+pub(crate) fn last_scan() -> Option<String> {
+    LAST_SCAN.lock().ok().and_then(|s| s.clone())
 }
 
 /// Design health's view of a full scan, with its foundations states.

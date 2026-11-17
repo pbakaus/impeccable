@@ -38,17 +38,8 @@ pub mod util;
 
 use impeccable_common::Io;
 
-/// How a JS code path leaves the verb: `process.exit(code)`, a thrown
-/// `PromptAbortError` (cli.js prints `\nAborted.` and exits 130), or any
-/// other uncaught throw (cli.js prints the message to stderr and exits 1).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Flow {
-    Exit(i32),
-    Abort,
-    Throw(String),
-}
-
-pub type R<T> = Result<T, Flow>;
+// How a verb leaves: moved to impeccable-common with the prompts, so the account crate draws with them too.
+pub use impeccable_common::flow::{Flow, R};
 
 /// JS: skills.mjs#run, wrapped in cli.js's `main().catch(...)`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
