@@ -711,14 +711,18 @@ function frameIndex() {
 /**
  * Run by the extension in a frame: each frame in it, but those at the places `covered` (`frameIndex`), drawn as one
  * solid box by a rule added to the cover's own sheet in its root (`coverSecrets`), so it comes off with the cover; one
- * of this frame's own site is covered from here already. Through open shadow roots. How many frames it saw to.
+ * of this frame's own site is covered from here already. Through shadow roots, closed ones too (`chrome.dom`, as the
+ * cover opens them). The box is black behind the frame too, and in the cover's own layer, so neither a transparent frame
+ * nor a site's own `!important` rule shows through. How many frames it saw to.
  */
 function boxFrames(covered) {
   const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes('--secret-cover') === true; } catch { return false; } };
+  const shadow = (el) => el.shadowRoot ?? globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
   let seen = 0;
   const visit = (root) => {
     for (const el of Array.from(root.querySelectorAll('*'))) {
-      if (el.shadowRoot) visit(el.shadowRoot);
+      const own = shadow(el);
+      if (own) visit(own);
       if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
       let place = -1;
       for (let at = 0; at < window.length; at++) if (window[at] === el.contentWindow) place = at;
@@ -732,7 +736,7 @@ function boxFrames(covered) {
       const steps = [];
       for (let at = el; at && at.nodeType === 1; at = at.parentNode) steps.unshift(at.parentNode?.nodeType === 1 ? `${at.localName}:nth-child(${Array.prototype.indexOf.call(at.parentNode.children, at) + 1})` : at.localName);
       const selector = steps.join(' > ');
-      if (!Array.from(sheet.cssRules).some((r) => r.selectorText === selector)) sheet.insertRule(`${selector} { --secret-cover: 1; filter: brightness(0) !important; }`, sheet.cssRules.length);
+      if (!Array.from(sheet.cssRules).some((r) => r.cssText.includes(` ${selector} {`))) sheet.insertRule(`@layer secret-cover { ${selector} { --secret-cover: 1; filter: brightness(0) !important; background-color: #000 !important; } }`, sheet.cssRules.length);
     }
   };
   visit(document);

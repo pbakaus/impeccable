@@ -1208,7 +1208,7 @@ describe('walk worker', () => {
       // The screen as Chrome draws it: the field's value, unless a rule of a sheet on it picks the field out, read as
       // Chrome reads the cover's selectors (by `type`, by the mark, by part of `autocomplete`).
       const picked = (el, part) => (part === 'input[type="password" i]' ? el.type === 'password' : part === '[data-impeccable-secret-field]' ? el.getAttribute('data-impeccable-secret-field') !== null : String(el.getAttribute('autocomplete') ?? '').includes(/^\[autocomplete\*="([\w-]+)" i\]$/.exec(part)?.[1] ?? '\0'));
-      const covers = (el) => world.document.adoptedStyleSheets.some((sheet) => [...sheet.cssRules].some((r) => r.cssText.slice(0, r.cssText.indexOf(' {')).split(', ').some((part) => picked(el, part))));
+      const covers = (el) => world.document.adoptedStyleSheets.some((sheet) => [...sheet.cssRules].some((r) => { const text = r.cssText.replace(/^@layer [\w-]+ \{ /, ''); return text.slice(0, text.indexOf(' {')).split(', ').some((part) => picked(el, part)); }));
       const drawn = [];
       answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
@@ -1250,12 +1250,15 @@ describe('walk worker', () => {
       vm.runInContext(`(${helpers.coverSecrets})(true)`, content);
       assert.equal(closed.adoptedStyleSheets.length, 1, 'a card field in a closed shadow root covered');
       // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
-      // enter is drawn as a box by the frame around it, and one inside that box needs nothing more.
+      // enter is drawn as a solid box by the frame around it (black behind a transparent frame, inside a closed shadow
+      // root too), and one inside that box needs nothing more.
       const card = world.document.activeElement;
       const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, contentWindow: { at: 1 } };
-      const body = { localName: 'body', nodeType: 1, children: [frame] }, html = { localName: 'html', nodeType: 1, children: [body], parentNode: { nodeType: 9 } };
-      [frame.parentNode, body.parentNode] = [body, html];
-      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : sel === '[data-impeccable-secret-spot]' ? [] : [card]), elementFromPoint: () => card };
+      const inPay = { nodeType: 11, adoptedStyleSheets: [], children: [frame], querySelectorAll: (sel) => (sel === '*' ? [frame] : []) };
+      const pay = { localName: 'pay-frame', tagName: 'PAY-FRAME', nodeType: 1, shadowRoot: null };
+      frame.parentNode = inPay;
+      world.chrome = { dom: { openOrClosedShadowRoot: (el) => (el === pay ? inPay : null) } };
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [pay] : sel === '[data-impeccable-secret-spot]' ? [] : [card]), elementFromPoint: () => card };
       // Chrome's list of the top document's frames: the card box first, then the one no script enters.
       Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
@@ -1271,7 +1274,7 @@ describe('walk worker', () => {
         assert.deepEqual(target.frameIds, [0]);
         return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
       };
-      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets[0]?.cssRules.some((r) => r.selectorText === 'html > body:nth-child(1) > iframe:nth-child(1)') ? 'covered' : 'shown') });
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && inPay.adoptedStyleSheets[0]?.cssRules.some((r) => /^@layer [\w-]+ \{ iframe \{.*filter: brightness\(0\) !important; background-color: #000 !important;/.test(r.cssText)) ? 'covered' : 'shown') });
       try {
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'frames from other sites');
         assert.deepEqual([cardBox, world.document.adoptedStyleSheets.length], [false, 0], 'each frame as it was once the still is taken');
