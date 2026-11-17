@@ -116,6 +116,10 @@ pub fn run_with_accepted(args: &[String], io: &mut Io, accepted: &mut crate::OnA
 /// path (never origin, query or fragment) and how many variants it generated.
 fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::Accepted> {
     let cwd = io.cwd.to_string_lossy().into_owned();
+    // Only read a journal that exists: opening the store would create its folder.
+    if !std::path::Path::new(&crate::paths::live_sessions_dir(&cwd, &io.env)).join(format!("{id}.jsonl")).is_file() {
+        return None;
+    }
     let snapshot = crate::session::create_live_session_store(&cwd, &io.env, Some(id))
         .read_state(id, true)
         .ok()?
