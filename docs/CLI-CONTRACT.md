@@ -3282,7 +3282,9 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   session are the extension's to decide.
 - **Registering the host with Chrome** (macOS and Linux). After a successful
   `install` (or `skills install`), and not for `-h`/`--help` or when `CI` is
-  set, the CLI writes `<IMPECCABLE_HOME>/browser/host`
+  set, and once `<home>/bin` holds an engine the launcher would run (a bundled
+  engine fills no cache, so that install registers nothing until one does), the
+  CLI writes `<IMPECCABLE_HOME>/browser/host`
   (0700, its folder 0700): a `sh` launcher with the home folder written in
   (Chrome starts hosts with a bare environment). Each time it runs it picks the
   highest `x.y.z` folder under `<home>/bin` whose `impeccable` is executable

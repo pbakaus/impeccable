@@ -45,6 +45,10 @@ fn registers_with_present_browsers_and_leaves_anothers_host_alone() {
     let user = temp("reg");
     let home = user.join(".impeccable");
     std::fs::create_dir_all(chrome_root(&user)).unwrap();
+    // No verified engine in the cache yet: nothing registered, so Chrome never starts a host that can't run.
+    assert!(register(&user, &home).is_empty());
+    assert!(!home.join("browser/host").exists());
+    engine(&home, "1.0.0", "ok");
     let lines = register(&user, &home);
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(lines[0].contains("Chrome"));
@@ -76,7 +80,9 @@ fn registers_with_present_browsers_and_leaves_anothers_host_alone() {
 fn the_launcher_runs_the_newest_verified_engine() {
     let user = temp("launch");
     let home = user.join(".impeccable");
+    engine(&home, "0.9.0", "ok");
     register(&user, &home);
+    std::fs::remove_dir_all(home.join("bin")).unwrap();
     let run = |args: &[&str]| Command::new(home.join("browser/host")).args(args).env_clear().output().unwrap();
 
     let none = run(&["x"]);

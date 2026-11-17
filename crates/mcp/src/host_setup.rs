@@ -111,12 +111,34 @@ fn write_atomically(path: &Path, bytes: &[u8], mode: u32) -> std::io::Result<()>
     })
 }
 
-/// Write the launcher and every present browser's manifest. Returns the lines install prints: nothing when it was
-/// all in place already. Never fails the install: a folder it can't write is named and skipped.
+/// Whether `<home>/bin` holds an engine the launcher would run: an `x.y.z` folder whose `impeccable` has an
+/// `impeccable.verified` stamp whose size field matches it, and that is not newer than the stamp (the launcher's rule).
+#[cfg(unix)]
+pub fn verified_engine(impeccable_home: &Path) -> bool {
+    let Ok(dirs) = std::fs::read_dir(impeccable_home.join("bin")) else { return false };
+    dirs.flatten().any(|d| {
+        let name = d.file_name();
+        let semver = name.to_str().is_some_and(|n| { let p: Vec<_> = n.split('.').collect(); p.len() == 3 && p.iter().all(|x| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit())) });
+        let bin = d.path().join("impeccable");
+        let stamp = d.path().join("impeccable.verified");
+        let (Ok(b), Ok(st)) = (std::fs::metadata(&bin), std::fs::metadata(&stamp)) else { return false };
+        let size = std::fs::read_to_string(&stamp).ok().and_then(|t| t.split_whitespace().nth(1).and_then(|n| n.parse::<u64>().ok()));
+        let newer = matches!((b.modified(), st.modified()), (Ok(bm), Ok(sm)) if bm > sm);
+        semver && size == Some(b.len()) && !newer
+    })
+}
+
+/// Write the launcher and every present browser's manifest, once the cache holds a verified engine. Returns the lines
+/// install prints: nothing when it was all in place already, or with no engine to run. Never fails the install: a folder it can't write is named and skipped.
 #[cfg(unix)]
 pub fn register(user_home: &Path, impeccable_home: &Path) -> Vec<String> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let mut lines = Vec::new();
+    // A launcher with no engine to run would only fail in Chrome: an install that runs a bundled engine and fills no
+    // cache registers nothing, and the next install that does fills it registers then.
+    if !verified_engine(impeccable_home) {
+        return lines;
+    }
     let dir = impeccable_home.join("browser");
     let launcher = dir.join("host");
     let script = launcher_script(impeccable_home);

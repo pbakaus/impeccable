@@ -582,6 +582,12 @@ mod verb_tests {
             let (mut io, _) = impeccable_common::Io::captured("", std::env::temp_dir(), env);
             super::register_browser_host(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), &mut io);
         };
+        // A verified engine in the cache, so only help and CI stand in the way.
+        let bin = home.join(".impeccable/bin/1.0.0/impeccable");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(bin.with_file_name("impeccable.verified"), b"abc 10\n").unwrap();
         run(&["--help"], false);
         run(&["-y"], true);
         assert!(!launcher.exists());
