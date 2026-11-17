@@ -56,6 +56,7 @@ async function stillAtSignIn() {
   if (still === undefined) return;
   // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
   const title = still && walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
+  if (still) dispatch({ type: 'pictured' });
   say({ event: 'sign-in-page', ...(still ? { still } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
 }
 

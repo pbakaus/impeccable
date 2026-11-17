@@ -862,7 +862,8 @@ describe('walk worker', () => {
       const asked = ops.url().then(() => { answered = true; });
       for (let turn = 0; turn < 40 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
       chrome.scripting.executeScript = executeScript;
-      assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
+      // The pause says it kept a picture only where it did.
+      assert.deepEqual([current().state, current().held, current().pictured, titles.at(-1), answered], ['paused', 'sign-in', pictured, pictured ? COPY.signInPictured : COPY.signIn, false]);
       // Fields blank, then secrets covered, the one picture, and both off again; none at all where nothing shows to sign in with.
       assert.deepEqual([told.slice(heard).filter((m) => m.event === 'sign-in-page').map((m) => typeof m.still), since(shots, 'Page.captureScreenshot'), blanks], pictured ? [['string'], 1, [true, 'cover', false]] : [['undefined'], 0, unblank ? [true, false] : []]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
