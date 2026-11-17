@@ -1129,7 +1129,7 @@ describe('walk worker', () => {
       assert.match(consentRules, /autoconsent/);
       // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`,
       // nor pictured: a still or a film's frame is taken with it covered (`coverSecrets`, in the walk's own world).
-      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text }); } };
+      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text, selectorText: text.slice(0, text.indexOf(' {')) }); } };
       const lookout = answers['Runtime.evaluate'];
       answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
       // The screen as Chrome draws it: the field's value, unless a sheet covers it.
@@ -1158,20 +1158,22 @@ describe('walk worker', () => {
       // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
       // enter is drawn as a box by the frame around it, and one inside that box needs nothing more.
       const card = world.document.activeElement;
-      const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, frameId: 9 };
+      const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, contentWindow: { at: 1 } };
       const body = { localName: 'body', nodeType: 1, children: [frame] }, html = { localName: 'html', nodeType: 1, children: [body], parentNode: { nodeType: 9 } };
       [frame.parentNode, body.parentNode] = [body, html];
       world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : [card]), elementFromPoint: () => card };
-      world.chrome = { runtime: { getFrameId: (el) => el.frameId } };
+      // Chrome's list of the top document's frames: the card box first, then the one no script enters.
+      Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
       let cardBox = false;
       chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1 }, { frameId: 7, parentFrameId: 0 }, { frameId: 9, parentFrameId: 0 }, { frameId: 11, parentFrameId: 9 }];
       chrome.scripting.executeScript = async ({ target, func, args }) => {
-        assert.equal(target.allFrames, true);
         if (func === helpers.coverSecrets) { cardBox = args[0]; return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
+        if (func.name === 'frameIndex') return [{ frameId: 0, result: -1 }, { frameId: 7, result: 0 }];
+        assert.deepEqual(target.frameIds, [0]);
         return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
       };
-      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets[0]?.cssRules.some((r) => r.cssText.startsWith('html > body:nth-child(1) > iframe:nth-child(1) ')) ? 'covered' : 'shown') });
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets[0]?.cssRules.some((r) => r.selectorText === 'html > body:nth-child(1) > iframe:nth-child(1)') ? 'covered' : 'shown') });
       try {
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'frames from other sites');
         assert.deepEqual([cardBox, world.document.adoptedStyleSheets.length], [false, 0], 'each frame as it was once the still is taken');
