@@ -10,6 +10,7 @@
 .f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; }
 .f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; }
 .f-inset-hover:hover { box-shadow: inset 3px 0 0 #2563eb; }
+.f-inset-focus:focus-within { box-shadow: inset 2px 0 0 #2563eb; }
 .f-inset-selected.is-selected { box-shadow: inset -2px 0 0 var(--text); }
 .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
 .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
@@ -28,3 +29,6 @@
 .p-band-square { border-bottom: 3px solid #2563eb; }
 .p-focus:focus-visible { outline: 2px solid #2563eb; }
 .p-grid td + td { border-left: 2px solid #e5e7eb; }
+.p-caret { width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 6px solid #333333; }
+.p-framed { border: 1px solid #d4d4d4; border-radius: 6px; }
+.p-framed.is-on { border-left: 1px solid #2563eb; }

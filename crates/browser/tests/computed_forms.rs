@@ -141,8 +141,9 @@ fn a_side_border_on_a_status_row_or_cell_is_a_side_tab() {
 
 /// `side-tab-every-variant.html`: every side bar form reads off the rendered
 /// box, square at 2px and up, rounded at 1px, in any state and colour; a
-/// square hairline, a frame, a transparent edge, a square band, a focus ring
-/// and a table's grid line pass.
+/// square hairline, a frame (with a hairline of another colour on one side),
+/// a transparent edge, a caret, a square band, a focus ring and a table's
+/// grid line pass.
 #[test]
 fn every_side_bar_variant_is_a_side_tab() {
     let Some(engine) = engine() else { return };
@@ -153,7 +154,6 @@ fn every_side_bar_variant_is_a_side_tab() {
         "#flag-hairline-rounded",
         "#flag-inline-start-neutral",
         "#flag-inset-not",
-        "#flag-inset-hover",
         "#flag-inset-selected",
         "#flag-before",
         "#flag-after",
@@ -165,6 +165,11 @@ fn every_side_bar_variant_is_a_side_tab() {
     ] {
         assert!(found.iter().any(|(_, s)| s == id), "missing {id} in {found:#?}");
     }
+    // A bar in a hover or focus state reads from the stylesheet, on the
+    // elements its selector names in any state.
+    for form in [".f-inset-hover:hover —", ".f-inset-focus:focus-within —"] {
+        assert!(found.iter().any(|(snippet, _)| snippet.starts_with(form)), "missing {form} in {found:#?}");
+    }
     for id in [
         "#pass-hairline-square",
         "#pass-inset-hairline-square",
@@ -172,6 +177,8 @@ fn every_side_bar_variant_is_a_side_tab() {
         "#pass-transparent",
         "#pass-band-square",
         "#pass-focus",
+        "#pass-caret",
+        "#pass-framed",
         "#pass-grid",
     ] {
         assert!(!found.iter().any(|(_, s)| s.starts_with(id)), "unexpected {id} in {found:#?}");

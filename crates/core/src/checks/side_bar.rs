@@ -100,6 +100,23 @@ pub fn side_bar_thickness(snippet: &str) -> Option<f64> {
     PX_RE.captures(snippet).and_then(|c| c[1].parse().ok())
 }
 
+/// The selector with every interaction state taken out (`:hover`, `:focus`,
+/// `:focus-visible`, `:focus-within`, `:active`, `:checked`, `:target`): the
+/// elements a bar in that state paints on, whatever state they are in at
+/// capture.
+pub fn without_state_pseudos(selector: &str) -> String {
+    re!(
+        STATE_RE,
+        r"(?i):(?:hover|focus-visible|focus-within|focus|active|checked|target)(?:$|[^-_A-Za-z0-9(])".to_string()
+    );
+    let mut out = selector.to_string();
+    while let Some(m) = STATE_RE.find(&out) {
+        let end = m.end() - if m.as_str().ends_with(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_') { 1 } else { 0 };
+        out.replace_range(m.start()..end, "");
+    }
+    out
+}
+
 /// [`check_borders`] with its left and right findings replaced by the side
 /// bar reading: what the static and browser engines report for an element's
 /// own borders. `colors` are the computed border colours; a side whose colour
@@ -122,6 +139,11 @@ pub fn check_borders_with_side_bars(
                 .get(i)
                 .map_or(true, |c| parse_any_color(Some(c)).map_or(true, |c| c.alpha_or_one() >= 0.1))
     };
+    // A transparent side beside a drawn one is a CSS triangle (a caret, an
+    // arrow), not a bar.
+    if (0..4).any(|j| widths.get(j) > 0.0 && !visible(j)) {
+        return hits;
+    }
     let rounded = corners_round(opts.corners.as_ref());
     for (i, side) in [(1usize, "right"), (3, "left")] {
         if !visible(i) {
@@ -489,6 +511,11 @@ mod tests {
         assert!(ids("div", sides(2.0, 2.0), grey, 6.0).is_empty());
         assert!(ids("td", sides(3.0, 0.0), grey, 0.0).is_empty());
         assert!(ids("div", sides(3.0, 0.0), colours("rgba(0, 0, 0, 0)"), 6.0).is_empty());
+        // A caret drawn with transparent sides.
+        let caret = Sides { top: 6.0, right: 0.0, bottom: 6.0, left: 6.0 };
+        let caret_colours = Sides { top: Some("rgba(0, 0, 0, 0)"), right: Some("rgba(0, 0, 0, 0)"), bottom: Some("rgba(0, 0, 0, 0)"), left: Some("rgb(51, 51, 51)") };
+        assert!(check_borders_with_side_bars("span", &caret, &caret_colours, 0.0, &opts(0.0)).is_empty());
+        assert_eq!(without_state_pseudos(".a:hover .b:focus-within, .c:not(:focus)"), ".a .b, .c:not()");
         let mut ring = opts(20.0);
         ring.box_size = Some([40.0, 40.0]);
         assert!(check_borders_with_side_bars("div", &sides(3.0, 0.0), &grey, 20.0, &ring).is_empty());

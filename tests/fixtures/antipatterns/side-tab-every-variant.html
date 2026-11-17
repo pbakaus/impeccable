@@ -12,8 +12,9 @@
   .f-split.is-active).
 
   Not side bars: a 1px hairline on a square box (a column divider), a border
-  on every side, a transparent edge, a table's grid lines, a focus outline,
-  and a top or bottom band on a square box (the band keeps its older rule).
+  on every side (with a hairline of another colour on one side too), a
+  transparent edge, a CSS caret, a table's grid lines, a focus outline, and a
+  top or bottom band on a square box (the band keeps its older rule).
 -->
 <style>
   :root { --text: #1a1a1a; --surface-inset: #f2f2f2; --hover: #f7f7f7; }
@@ -26,7 +27,8 @@
   .f-hairline-rounded { border-left: 1px solid #d4d4d4; border-radius: 8px; }
   .f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; }
   .f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; }
-  .f-inset-hover:hover, .f-inset-hover { box-shadow: inset 3px 0 0 #2563eb; }
+  .f-inset-hover:hover { box-shadow: inset 3px 0 0 #2563eb; }
+  .f-inset-focus:focus-within { box-shadow: inset 2px 0 0 #2563eb; }
   .f-inset-selected.is-selected { box-shadow: inset -2px 0 0 var(--text); border-radius: 6px; }
   .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
   .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
@@ -49,6 +51,9 @@
   .p-grid { width: 400px; border-collapse: collapse; }
   .p-grid td { width: 200px; height: 32px; padding: 4px; }
   .p-grid td + td { border-left: 2px solid #e5e7eb; }
+  .p-caret { width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 6px solid #333333; }
+  .p-framed { border: 1px solid #d4d4d4; border-radius: 6px; }
+  .p-framed.is-on { border-left: 1px solid #2563eb; }
 </style>
 </head>
 <body>
@@ -58,7 +63,8 @@
   <div class="card f-hairline-rounded" id="flag-hairline-rounded">Rounded card, 1px left border</div>
   <div class="card f-inline-start-neutral" id="flag-inline-start-neutral">Neutral 2px inline-start border</div>
   <div class="card f-inset-not" id="flag-inset-not">Inset bar behind a :not() state</div>
-  <div class="card f-inset-hover" id="flag-inset-hover">Inset bar on hover</div>
+  <div class="card f-inset-hover" id="flag-inset-hover">Inset bar on hover only</div>
+  <div class="card f-inset-focus" id="flag-inset-focus"><input aria-label="Field" value="Focus within"></div>
   <div class="card f-inset-selected is-selected" id="flag-inset-selected">Selected item, inset bar on the right</div>
   <div class="card f-before" id="flag-before">A ::before bar on the left</div>
   <div class="card f-after" id="flag-after">An ::after bar on the right</div>
@@ -76,6 +82,8 @@
   <div class="card p-transparent" id="pass-transparent">A transparent left edge</div>
   <div class="card p-band-square" id="pass-band-square">A bottom band on a square box</div>
   <button class="card p-focus" id="pass-focus">A focus outline</button>
+  <span class="p-caret" id="pass-caret"></span>
+  <div class="card p-framed is-on" id="pass-framed">A framed card with a hairline of another colour on one side</div>
   <table class="p-grid" id="pass-grid"><tr><td>Name</td><td>Value</td></tr></table>
 </div>
 </body>

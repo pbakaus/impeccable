@@ -1252,6 +1252,8 @@ struct RadiusRule {
     /// Source position of the block, the order its declarations apply in.
     order: usize,
     decls: Vec<RadiusDecl>,
+    /// The block draws a border across the top or bottom.
+    draws_frame: bool,
 }
 
 impl RadiusRule {
@@ -1512,13 +1514,28 @@ impl<'a> CssHostIndex<'a> {
                 ))
             })
             .collect();
-        if decls.is_empty() {
+        // Whether the block draws a border across the top or bottom, the
+        // frame a one-sided hairline beside it belongs to.
+        let draws_frame = frame.direct.split(';').any(|part| {
+            let Some((prop, value)) = part.split_once(':') else { return false };
+            let prop = js::to_lower_case(js::trim(prop));
+            let value = js::to_lower_case(js::trim(value));
+            matches!(
+                prop.as_str(),
+                "border" | "border-width" | "border-top" | "border-bottom" | "border-block" | "border-top-width" | "border-bottom-width"
+            ) && !value.is_empty()
+                && !value.starts_with("none")
+                && !value.starts_with("hidden")
+                && !value.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
+        });
+        if decls.is_empty() && !draws_frame {
             return;
         }
         let id = self.rules.len();
         // A block the static cascade never applies: nested in a style rule,
         // or under an at-rule it skips.
-        if frame.styles_elements
+        if !decls.is_empty()
+            && frame.styles_elements
             && (frame.is_rule || frame.in_rule)
             && !(frame.is_rule && frame.static_reachable)
         {
@@ -1539,6 +1556,7 @@ impl<'a> CssHostIndex<'a> {
         self.rules.push(RadiusRule {
             order: frame.order,
             decls,
+            draws_frame,
         });
     }
 
@@ -1896,6 +1914,15 @@ impl<'a> CssHostIndex<'a> {
     pub fn is_declaration_rounded(&self, pos: usize) -> bool {
         self.declaration_hosts(pos)
             .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// Whether a rule tied to the box the declaration at `pos` styles draws a
+    /// border across its top or bottom: a hairline on one side of it is part
+    /// of a frame, not a bar (`.btn { border: 1px solid }` frames
+    /// `.g .btn + .btn { border-left: 1px solid }`).
+    pub fn is_declaration_framed(&self, pos: usize) -> bool {
+        self.declaration_hosts(pos)
+            .is_some_and(|hosts| self.tied_rules(&hosts).iter().any(|id| self.rules[*id].draws_frame))
     }
 
     /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding

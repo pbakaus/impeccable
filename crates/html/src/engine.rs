@@ -485,8 +485,11 @@ pub fn detect_html_source(
         for f in row_hits {
             let Some(selector) = f.selector.as_deref() else { continue };
             // The selector as written when the engine reads it, so a
-            // `:not()` keeps excluding; stripped of what it cannot read
-            // otherwise.
+            // `:not()` keeps excluding, less any hover or focus state (a
+            // stripe in that state paints on those rows whatever their
+            // state); stripped of what it cannot read otherwise.
+            let state_free = impeccable_core::checks::side_bar::without_state_pseudos(selector);
+            let selector = state_free.as_str();
             let stripped = PSEUDO_STRIP_RE.replace_all(selector, "");
             let query = if doc.compile(selector).is_ok() {
                 selector

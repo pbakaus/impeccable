@@ -2743,8 +2743,11 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
             side_tabs(tsx, "/x/a.tsx"),
             vec!["border-l-2".to_string(), "borderLeft: '1px solid".to_string()]
         );
-        // Not side bars: a frame, a transparent edge, a table's grid line.
-        let not = ".frame { border: 2px solid #ddd; }\n.t { border-left: 3px solid transparent; }\ntd + td { border-left: 2px solid #ddd; background: #fff; }\n";
+        // Not side bars: a frame (a hairline of another colour on one side of
+        // it too), a transparent edge, a table's grid line, a caret.
+        let not = ".frame { border: 2px solid #ddd; }\n.t { border-left: 3px solid transparent; }\ntd + td { border-left: 2px solid #ddd; background: #fff; }\n\
+.caret { width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 6px solid #333; }\n\
+.x { border: 1px solid #ddd; border-radius: 6px; border-left: 1px solid #06c; }\n.btn { border: 1px solid #ccc; border-radius: 6px; }\n.g .btn + .btn { border-left: 1px solid #999; }\n";
         assert_eq!(side_tabs(not, "/x/not.css"), Vec::<String>::new());
     }
 }

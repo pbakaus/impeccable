@@ -1075,6 +1075,35 @@ pub fn side_tab_match_stands<'s>(
     if row_rule {
         return false;
     }
+    let whole = m.whole();
+    let markup = TW_SIDE_TAB_WHOLE_RE.is_match(whole) || JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(source.line(i), m.index);
+    let statements: Vec<String> = if markup {
+        Vec::new()
+    } else if sass {
+        sass_scope_statements(source, i).0.into_iter().next().unwrap_or_default()
+    } else {
+        brace_scope_statements(source, i, m.index).0.into_iter().next().map(|(s, _)| s).unwrap_or_default()
+    };
+    let declared = |names: &[&str], test: &dyn Fn(&str) -> bool| {
+        statements.iter().any(|st| {
+            split_declaration(st).is_some_and(|(p, v)| names.contains(&js::to_lower_case(&p).as_str()) && test(&js::to_lower_case(js::trim(&v))))
+        })
+    };
+    // A box drawn as a CSS triangle (no size, transparent sides) is a caret.
+    if declared(&["width", "height"], &|v| matches!(v, "0" | "0px"))
+        || declared(&["border-top", "border-bottom", "border-right", "border-left", "border-color", "border-top-color", "border-bottom-color"], &|v| v.contains("transparent"))
+    {
+        return false;
+    }
+    let width = num(m.g(1));
+    // A hairline on one side of a framed box is part of the frame.
+    if width < 2.0
+        && (declared(&["border", "border-width", "border-top", "border-bottom", "border-block"], &|v| {
+            !v.is_empty() && !v.starts_with("none") && !v.starts_with("hidden") && !v.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
+        }) || index().is_some_and(|index| index.is_declaration_framed(pos)))
+    {
+        return false;
+    }
     side_bar_stands(num(m.g(1)), false)
         || side_bar_stands(
             num(m.g(1)),

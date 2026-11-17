@@ -1197,6 +1197,15 @@ fn pattern_finding_stands(
     let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) else {
         return Some(None);
     };
+    // A side bar in a hover or focus state paints on the elements its
+    // selector names in any state.
+    let state_free;
+    let selector = if f.id == "side-tab" {
+        state_free = crate::checks::side_bar::without_state_pseudos(selector);
+        state_free.as_str()
+    } else {
+        selector
+    };
     let matches = selector_nodes_for_live_dom(dom, selector)?;
     if matches.is_empty() {
         return None;
