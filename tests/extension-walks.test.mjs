@@ -287,10 +287,11 @@ describe('walk lookout', () => {
   // A selector of password fields, read as Chrome would: by `type`, by the mark a field seen as one keeps, or by an
   // `autocomplete` token.
   const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-secret-field]' && f.getAttribute('data-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
-  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords.filter((f) => picks(sel, f))) });
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : sel === '[data-secret-form]' ? [...new Set(inputs.map((f) => f.form))].filter((own) => own?.getAttribute('data-secret-form') != null) : passwords.filter((f) => picks(sel, f))) });
   // A form of these fields: each knows it (`field.form`), and the page holds them all.
   const form = (...fields) => {
-    const own = { querySelectorAll: (sel) => (sel === 'input' ? fields : fields.filter((f) => f.type === 'password')) };
+    const attrs = {};
+    const own = { getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, querySelectorAll: (sel) => (sel === 'input' ? fields : fields.filter((f) => f.type === 'password')) };
     for (const f of fields) f.form = own;
     return fields;
   };
@@ -314,10 +315,13 @@ describe('walk lookout', () => {
     ['settings signed in, Chrome’s autofill in the change of password', page(form(field({ type: 'password', autofill: true }), field({ type: 'password' }))), { password: true, filled: true, focus: null }],
     ['a shown password: a text field for the current password, holding one', doc({ passwords: [field({ autocomplete: 'current-password', value: 'x' })] }), { password: true, filled: true, focus: null }],
     ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
+    // Catches a walk started with the password already shown as text: no look saw it as a password field.
+    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, filled: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
     ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
     ['a disabled placeholder holding dots', page(form(field({ type: 'email' })), form(field({ type: 'password', value: '••••••', disabled: true }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
+    ['focus on a password shown from the start (a text field whose placeholder asks for one)', doc({ active: field({ placeholder: 'Password' }) }), { password: false, focus: 'password' }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
     ['focus in a frame on another origin', doc({ active: frame(null) }), { password: false, focus: 'frame' }],
@@ -336,6 +340,34 @@ describe('walk lookout', () => {
     Object.assign(shown, { type: 'text', value: 'x' });
     assert.deepEqual(seen(page), { password: true, filled: true, focus: 'password', status: 200 });
   });
+
+  // Catches a "show password" button that swaps in a new, unmarked text field holding the password, before or after
+  // it is typed: the walk went on and pictured it; and one named for a password left unmarked, which a guard that reads
+  // only the mark (the page helpers' `clickByText`) reads. And, the other way, a sign-up's Company field the walk types
+  // beside a password it never replaced, or in the next step drawn in the sign-in's form, taken for one: the walk would
+  // pause on every page with it filled.
+  for (const [label, swap, typed, expected, attrs = {}] of [
+    ['a password a button swapped for a new text field', true, true, { filled: true, marked: true }],
+    ['a password field a button swapped while empty, then typed into', true, false, { filled: true, marked: true }],
+    ['a password a button swapped for a new text field named for one', true, true, { filled: true, marked: true }, { placeholder: 'Password' }],
+    ['a sign-up’s company typed beside its password', false, true, { filled: false, marked: false }, { name: 'company' }],
+    ['a company typed in the next step, drawn in the sign-in’s form', 'step', true, { filled: false, marked: false }, { name: 'company' }],
+  ]) {
+    it(`sees ${label}`, () => {
+      const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password' }));
+      const page = doc({ inputs: fields, passwords: fields });
+      seen(page);
+      const text = field({ ...attrs, value: typed ? 'x' : '' });
+      text.form = fields[0].form;
+      if (swap === 'step') fields.splice(0, 2, text);
+      else if (swap) fields[1] = text;
+      else fields.push(text);
+      if (typed) text.value = 'x';
+      else { seen(page); text.value = 'x'; }
+      const now = seen(page);
+      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-secret-field') !== null }, expected);
+    });
+  }
 
   it('sees a 401 page', () => { assert.equal(seen(doc(), 401).status, 401); });
 
@@ -647,8 +679,8 @@ describe('walk worker', () => {
       { nodeId: '6', role: { value: 'Iframe' }, backendDOMNodeId: 60, childIds: [] },
       { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
     ];
-    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '3'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }, { nodeId: '3', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 91, childIds: [] }];
-    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] } };
+    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '3', '4'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }, { nodeId: '3', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 91, childIds: [] }, { nodeId: '4', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 92, childIds: [] }];
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] }, 92: { nodeName: 'INPUT', attributes: ['type', 'text', 'placeholder', 'Password'] } };
     const was = { ...answers };
     Object.assign(answers, {
       'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
@@ -660,7 +692,7 @@ describe('walk worker', () => {
       const { value } = await ops.hear({ what: 'tree' });
       const byId = new Map(value.nodes.map((n) => [n.nodeId, n]));
       assert.deepEqual([byId.get('2').value, byId.get('2').name.value, byId.has('3'), byId.get('4').value.value, byId.has('5')], [undefined, 'Card number', false, 'milk', true], 'the card field keeps its label, not its number');
-      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes ? nodes.filter((n) => n.nodeId !== '1').map((n) => n.value ?? 'blank') : null]), [[60, ['blank', 'blank']], [70, null]], 'the same site’s frame is read, its code field and its password shown as text blank; another site’s is not');
+      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes ? nodes.filter((n) => n.nodeId !== '1').map((n) => n.value ?? 'blank') : null]), [[60, ['blank', 'blank', 'blank']], [70, null]], 'the same site’s frame is read, its code field and its passwords shown as text (marked, or a new field a button swapped in) blank; another site’s is not');
       assert.deepEqual(args.slice(at).filter((_, i) => sent[at + i] === 'Accessibility.getFullAXTree').map((p) => p?.frameId ?? 'top'), ['top', 'own']);
       // One node by its number: its box, in view, focused. Nothing for another tab, a node by no number, or a method by name.
       answers['DOM.getBoxModel'] = () => ({ model: { border: [1, 2, 3, 2, 3, 4, 1, 4] } });
@@ -1151,7 +1183,7 @@ describe('walk worker', () => {
       answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
         const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
-        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => (/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password' ? [] : [field]), elementFromPoint: () => field };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-secret-form]' ? [] : [field]), elementFromPoint: () => field };
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
@@ -1180,7 +1212,7 @@ describe('walk worker', () => {
       const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, contentWindow: { at: 1 } };
       const body = { localName: 'body', nodeType: 1, children: [frame] }, html = { localName: 'html', nodeType: 1, children: [body], parentNode: { nodeType: 9 } };
       [frame.parentNode, body.parentNode] = [body, html];
-      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : [card]), elementFromPoint: () => card };
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [frame] : sel === '[data-secret-form]' ? [] : [card]), elementFromPoint: () => card };
       // Chrome's list of the top document's frames: the card box first, then the one no script enters.
       Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
