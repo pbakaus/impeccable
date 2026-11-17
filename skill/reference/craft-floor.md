@@ -32,7 +32,7 @@ Surface habits:
 
 - Gradient text. Emphasis comes from weight or size. <!-- rule:skill-ban-gradient-text -->
 - Glass and blur as decoration rather than as a specific effect. <!-- rule:skill-ban-glassmorphism-default -->
-- A bar down one side of a box (a one-sided border, inset shadow or pseudo-element), any colour, any state. Use a full border, a background tint, or a leading icon or label. <!-- rule:skill-ban-side-stripe-borders -->
+- A bar down one side of a rounded box (a one-sided border, inset shadow or pseudo-element), any colour, any state. Use a full border, a background tint, or a leading icon or label. <!-- rule:skill-ban-side-stripe-borders -->
 - Hard offset shadows (`box-shadow: 4px 4px 0`) outside a world that is actually neobrutalist. The zero-blur block shadow is a costume, not a depth system; a world that did not choose it never earns it as a default. <!-- rule:skill-ban-hard-offset-shadow -->
 - Sparklines, progress rings, and soft-shadowed rounded rectangles standing in for content. <!-- rule:skill-reflex-decorative-chrome -->
 - Monospace as a costume for "technical" rather than for code, data, or measurement. <!-- rule:skill-reflex-mono-as-technical -->

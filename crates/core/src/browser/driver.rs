@@ -1237,10 +1237,9 @@ fn pattern_finding_stands(
         let stands = if side % 2 == 1 {
             let thickness = crate::checks::side_bar::side_bar_thickness(&f.snippet).unwrap_or(0.0);
             matches.iter().any(|&el| {
-                crate::checks::side_bar::side_bar_stands_on(
+                crate::checks::side_bar::side_bar_stands(
                     thickness,
                     crate::checks::side_bar::corners_round(corners(el).as_ref()),
-                    super::element_checks::element_is_typographic(dom, el),
                 )
             })
         } else {
@@ -3520,8 +3519,8 @@ mod tests {
         assert!(page_paints_stock_violet(&d), "a violet body");
     }
 
-    /// The style-text side bar scan runs in the browser too: a bar of 2px or
-    /// more reports on any element, a thinner one only on a rounded element.
+    /// The style-text side bar scan runs in the browser too: a bar reports
+    /// only on a rounded element, at any width.
     #[test]
     fn style_text_side_bars_read_the_elements_they_paint() {
         let mut d = FakeDom::new();
@@ -3561,8 +3560,6 @@ mod tests {
                 ".h2[aria-pressed=true] — inset box-shadow 1px stripe (left)".to_string(),
                 ".rd::before — absolute 5px pseudo-element stripe (left: 0)".to_string(),
                 ".rs — inset box-shadow 7px stripe (left)".to_string(),
-                ".sh — inset box-shadow 6px stripe (left)".to_string(),
-                ".sq::before — absolute 4px pseudo-element stripe (left: 0)".to_string(),
             ]
         );
     }

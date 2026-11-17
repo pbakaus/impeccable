@@ -10,14 +10,13 @@
 //!   [`SIDE_BAR_MAX_PX`] wide, against the left or right edge, spanning the
 //!   box's height.
 //!
-//! It is `side-tab` on a rounded box at any width, and on any box once it is
-//! [`SIDE_BAR_MIN_PX`] wide ([`side_bar_stands`]). The state a selector styles
-//! (hover, pressed, selected, current) and the bar's colour (neutral, the
-//! text colour, a token that does not resolve) do not matter. What is not a
-//! side bar at all stays out: a border drawn on every side, a 1px hairline on
-//! a square box (a column divider), the grid lines of a table, whose rows and
-//! cells [`crate::checks::row_stripe`] reads, a focus outline, and a circle,
-//! whose one-sided border is an arc.
+//! It is `side-tab` only on a rounded box, at any width ([`side_bar_stands`]):
+//! a bar on a square box is fine, whatever its width. The state a selector
+//! styles (hover, pressed, selected, current) and the bar's colour (neutral,
+//! the text colour, a token that does not resolve) do not matter. What is not
+//! a side bar at all stays out: a border drawn on every side, the grid lines
+//! of a table, whose rows and cells [`crate::checks::row_stripe`] reads, a
+//! focus outline, and a circle, whose one-sided border is an arc.
 //!
 //! Top and bottom bands keep their own, older gate (a band on a card rounded
 //! away from it), read by [`crate::checks::rules::check_borders`] and the
@@ -47,8 +46,7 @@ macro_rules! re {
     };
 }
 
-/// A bar this wide is `side-tab` on any box; a thinner one only on a rounded
-/// box.
+/// A side this wide reads as a bar beside hairlines ([`is_bar_beside`]).
 pub const SIDE_BAR_MIN_PX: f64 = 2.0;
 /// The widest inset shadow or pseudo-element that reads as a bar rather than
 /// a panel.
@@ -63,58 +61,9 @@ const SIDE_BAR_EXEMPT_TAGS: &[&str] = &[
 ];
 
 /// Whether a bar `thickness` px wide is `side-tab` on a box that is or is not
-/// `rounded`.
+/// `rounded`: only a rounded box carries one (Paul, 17 Nov 2026).
 pub fn side_bar_stands(thickness: f64, rounded: bool) -> bool {
-    thickness >= SIDE_BAR_MIN_PX || (thickness >= 1.0 && rounded)
-}
-
-/// [`side_bar_stands`] on a box that may be `typographic`
-/// ([`is_typographic_box`]): a quote's rule or a code line's gutter on a
-/// square box is typography, not a tab; rounded, it is a tab at any width.
-pub fn side_bar_stands_on(thickness: f64, rounded: bool, typographic: bool) -> bool {
-    side_bar_stands(thickness, rounded) && (rounded || !typographic)
-}
-
-re!(TYPO_CLASS_RE, r"(?i)(?:^|[-_])(?:quote|blockquote|pullquote|diff|gutter|lineno|line-?numbers?)(?:$|[-_])".to_string());
-re!(TYPO_TAG_SELECTOR_RE, r"(?i)(?:^|[\s>+~,(])(?:blockquote|pre|code)(?:$|[\s.#:\[>+~,)])".to_string());
-re!(SELECTOR_CLASS_RE, r"\.([-_A-Za-z0-9]+)".to_string());
-
-/// Whether a box is typography a one-sided rule belongs to: a quote (a
-/// `blockquote`, or a box whose class names a quote) or a code line (inside
-/// a `pre` or `code`, or a box whose class names a diff, a gutter or line
-/// numbers). `tags` are the box's own tag, then its ancestors'.
-pub fn is_typographic_box<'a>(own_class: &str, tags: impl IntoIterator<Item = &'a str>) -> bool {
-    own_class.split_whitespace().any(|c| TYPO_CLASS_RE.is_match(c))
-        || tags.into_iter().take(12).any(|t| matches!(t, "blockquote" | "pre" | "code"))
-}
-
-/// [`is_typographic_box`] read off a selector list: every branch names a
-/// `blockquote`, `pre` or `code`, or a quote, diff, gutter or line-number
-/// class, on its subject or on an ancestor of it. A sibling (`blockquote +
-/// .card`) and anything inside a functional pseudo-class (`:not(.quote)`)
-/// do not describe the box.
-pub fn is_typographic_selector(selector: &str) -> bool {
-    let branches: Vec<&str> = split_commas_outside_parens(selector).into_iter().map(js::trim).filter(|b| !b.is_empty()).collect();
-    !branches.is_empty() && branches.iter().all(|b| branch_is_typographic(b))
-}
-
-/// One selector of a list: its subject and the compounds it descends from,
-/// arguments dropped, up to the first sibling combinator.
-fn branch_is_typographic(branch: &str) -> bool {
-    let mut plain = String::with_capacity(branch.len());
-    let mut depth = 0i32;
-    for c in branch.chars() {
-        match c {
-            '(' => depth += 1,
-            ')' if depth > 0 => depth -= 1,
-            _ if depth == 0 => plain.push(c),
-            _ => {}
-        }
-    }
-    // The box and its ancestors: everything right of the last `+` or `~`.
-    let own = plain.rsplit(['+', '~']).next().unwrap_or("");
-    let own = format!(" {own} ");
-    TYPO_TAG_SELECTOR_RE.is_match(&own) || SELECTOR_CLASS_RE.captures_iter(&own).any(|c| TYPO_CLASS_RE.is_match(&c[1]))
+    rounded && thickness >= 1.0
 }
 
 /// Whether a side `px` wide is a bar beside other sides at most `other` px:
@@ -199,7 +148,6 @@ pub fn check_borders_with_side_bars(
     colors: &Sides<Option<&str>>,
     radius: f64,
     opts: &BorderOpts,
-    typographic: bool,
 ) -> Vec<RuleHit> {
     let mut hits = check_borders(tag, widths, colors, radius, opts);
     hits.retain(|h| !is_inline_side_tab(&h.id, &h.snippet));
@@ -228,7 +176,7 @@ pub fn check_borders_with_side_bars(
             .map(|j| widths.get(j))
             .fold(0.0f64, f64::max);
         let bar = is_bar_beside(w, max_other);
-        if !bar || !side_bar_stands_on(w, rounded, typographic) {
+        if !bar || !side_bar_stands(w, rounded) {
             continue;
         }
         // The wording the borders check used: the leading radius when it has
@@ -604,11 +552,6 @@ mod tests {
         // A state inside a functional pseudo-class stays.
         assert_eq!(without_state_pseudos(".it:not(:focus)"), ".it:not(:focus)");
         assert_eq!(without_state_pseudos(".it:hover:not(:focus)"), ".it:not(:focus)");
-        // Typography is read per branch, off the box and its ancestors only.
-        assert!(!is_typographic_selector("blockquote, .card"));
-        assert!(!is_typographic_selector(".card:not(.quote)"));
-        assert!(!is_typographic_selector("blockquote + .card"));
-        assert!(is_typographic_selector("blockquote, pre .line"));
         // A side border in a hover state, for an engine that reads borders
         // at rest; not in the plain scan, where the border matchers read it.
         let hover = ".it:hover { border-left: 2px solid #ddd; }";
@@ -640,24 +583,8 @@ mod tests {
     }
 
     #[test]
-    fn a_quote_rule_or_code_gutter_is_typography_on_a_square_box() {
-        assert!(is_typographic_box("", ["blockquote"]));
-        assert!(is_typographic_box("line", ["span", "code", "pre"]));
-        assert!(is_typographic_box("pullquote", ["aside"]));
-        assert!(is_typographic_box("diff-line added", ["div"]));
-        assert!(!is_typographic_box("nav-item is-active", ["a", "li", "nav"]));
-        assert!(is_typographic_selector("blockquote"));
-        assert!(is_typographic_selector(".post pre > .line"));
-        assert!(is_typographic_selector(".diff .added"));
-        assert!(!is_typographic_selector(".precise .coder"));
-        assert!(!side_bar_stands_on(4.0, false, true));
-        assert!(side_bar_stands_on(1.0, true, true));
-        assert!(side_bar_stands_on(2.0, false, false));
-    }
-
-    #[test]
-    fn a_bar_stands_on_a_rounded_box_at_any_width_and_on_any_box_from_two_px() {
-        assert!(side_bar_stands(2.0, false));
+    fn a_bar_stands_on_a_rounded_box_at_any_width_and_never_on_a_square_one() {
+        assert!(!side_bar_stands(6.0, false));
         assert!(side_bar_stands(1.0, true));
         assert!(!side_bar_stands(1.0, false));
         assert!(!side_bar_stands(0.5, true));
@@ -672,15 +599,15 @@ mod tests {
         let sides = |l: f64, rest: f64| Sides { top: rest, right: rest, bottom: rest, left: l };
         let colours = |l: &'static str| Sides { top: Some("rgb(0, 0, 0)"), right: Some("rgb(0, 0, 0)"), bottom: Some("rgb(0, 0, 0)"), left: Some(l) };
         let ids = |tag: &str, w: Sides<f64>, c: Sides<Option<&str>>, r: f64| {
-            check_borders_with_side_bars(tag, &w, &c, r, &opts(r), false).into_iter().map(|h| h.snippet).collect::<Vec<_>>()
+            check_borders_with_side_bars(tag, &w, &c, r, &opts(r)).into_iter().map(|h| h.snippet).collect::<Vec<_>>()
         };
         let grey = colours("rgb(209, 213, 219)");
-        // A neutral bar on a button, square or rounded; a hairline on a rounded box.
-        assert_eq!(ids("button", sides(2.0, 0.0), grey, 0.0), vec!["border-left: 2px"]);
+        // A neutral bar on a rounded button; a hairline on a rounded box.
         assert_eq!(ids("a", sides(3.0, 1.0), grey, 6.0), vec!["border-left: 3px + border-radius: 6px"]);
         assert_eq!(ids("div", sides(1.0, 0.0), grey, 6.0), vec!["border-left: 1px + border-radius: 6px"]);
-        // A hairline on a square box, a full border, a table cell, an
+        // Any bar on a square box, a full border, a table cell, an
         // invisible side, a circle.
+        assert!(ids("button", sides(4.0, 0.0), grey, 0.0).is_empty());
         assert!(ids("div", sides(1.0, 0.0), grey, 0.0).is_empty());
         assert!(ids("div", sides(2.0, 2.0), grey, 6.0).is_empty());
         assert!(ids("td", sides(3.0, 0.0), grey, 0.0).is_empty());
@@ -688,10 +615,10 @@ mod tests {
         // A caret drawn with transparent sides.
         let caret = Sides { top: 6.0, right: 0.0, bottom: 6.0, left: 6.0 };
         let caret_colours = Sides { top: Some("rgba(0, 0, 0, 0)"), right: Some("rgba(0, 0, 0, 0)"), bottom: Some("rgba(0, 0, 0, 0)"), left: Some("rgb(51, 51, 51)") };
-        assert!(check_borders_with_side_bars("span", &caret, &caret_colours, 0.0, &opts(0.0), false).is_empty());
+        assert!(check_borders_with_side_bars("span", &caret, &caret_colours, 0.0, &opts(0.0)).is_empty());
         assert_eq!(without_state_pseudos(".a:hover .b:focus-within, .c:not(:focus)"), ".a .b, .c:not(:focus)");
         let mut ring = opts(20.0);
         ring.box_size = Some([40.0, 40.0]);
-        assert!(check_borders_with_side_bars("div", &sides(3.0, 0.0), &grey, 20.0, &ring, false).is_empty());
+        assert!(check_borders_with_side_bars("div", &sides(3.0, 0.0), &grey, 20.0, &ring).is_empty());
     }
 }

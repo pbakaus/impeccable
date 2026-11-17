@@ -1,5 +1,5 @@
-//! Side bars through the static cascade: a left or right bar of 2px or more
-//! reports on any box, and a 1px bar on a box the cascade rounds, by the
+//! Side bars through the static cascade: a left or right bar reports only on
+//! a box the cascade rounds, at any width, by the
 //! `border-radius` shorthand, the corner longhands a utility framework emits,
 //! or a utility class. A radius the cascade cannot read is not known to round
 //! the box.
@@ -26,12 +26,12 @@ fn side_tab_snippets(card_css: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_side_bar_of_two_px_reports_on_a_square_card() {
-    assert_eq!(side_tab_snippets("border-left:4px solid #6366f1;"), vec!["border-left: 4px"]);
-    assert_eq!(side_tab_snippets("border-left:2px solid #9ca3af;border-radius:0;"), vec!["border-left: 2px"]);
-    assert_eq!(side_tab_snippets("border-inline-end:3px solid currentColor;"), vec!["border-right: 3px"]);
-    // A hairline on a square card is a divider; a frame, a transparent edge
-    // are not bars.
+fn a_side_bar_on_a_square_card_is_fine_at_any_width() {
+    assert!(side_tab_snippets("border-left:4px solid #6366f1;").is_empty());
+    assert!(side_tab_snippets("border-left:2px solid #9ca3af;border-radius:0;").is_empty());
+    assert!(side_tab_snippets("border-inline-end:3px solid currentColor;").is_empty());
+    assert_eq!(side_tab_snippets("border-inline-end:3px solid currentColor;border-radius:8px;"), vec!["border-right: 3px + border-radius: 8px"]);
+    // A hairline on a square card, a frame, a transparent edge.
     assert!(side_tab_snippets("border-left:1px solid #ddd;").is_empty());
     assert!(side_tab_snippets("border:2px solid #ddd;").is_empty());
     assert!(side_tab_snippets("border-left:3px solid transparent;").is_empty());
@@ -82,8 +82,8 @@ const PRODUCER_BODY: &str =
     "<div class=\"c bd\">b</div><div class=\"c sq\">p</div><div class=\"c sh\">s</div>";
 
 /// One visual, three authorings: a border, an absolute ::before bar, an inset
-/// box-shadow. The static engine answers all three the same way, square at
-/// 2px and up, rounded at 1px, whatever their colour.
+/// box-shadow. The static engine answers all three the same way: silent on a
+/// square box, reported on a rounded one at any width, whatever their colour.
 #[test]
 fn every_static_producer_answers_the_same_visual_the_same_way() {
     let bars = |w: u8| {
@@ -93,14 +93,7 @@ fn every_static_producer_answers_the_same_visual_the_same_way() {
 .sh{{box-shadow:inset {w}px 0 0 0 var(--text)}}"
         )
     };
-    assert_eq!(
-        side_tab_page(&bars(2), PRODUCER_BODY),
-        vec![
-            ".sh — inset box-shadow 2px stripe (left)".to_string(),
-            ".sq::before — absolute 2px pseudo-element stripe (left: 0)".to_string(),
-            "border-left: 2px".to_string(),
-        ]
-    );
+    assert_eq!(side_tab_page(&bars(4), PRODUCER_BODY), Vec::<String>::new());
     assert_eq!(side_tab_page(&bars(1), PRODUCER_BODY), Vec::<String>::new());
     let rounded = format!("{}.bd,.sq,.sh{{border-radius:12px}}", bars(1));
     assert_eq!(
@@ -217,10 +210,10 @@ fn a_row_stripe_reports_only_where_its_selector_matches_a_cell() {
     assert_eq!(square.len(), 1, "{square:?}");
 }
 
-/// A square quote's rule and a code line's gutter are typography; rounded,
-/// the same rule is a tab.
+/// A square quote's rule and a code line's gutter are fine; rounded, the same
+/// rule is a tab.
 #[test]
-fn a_square_quote_rule_or_code_gutter_is_typography() {
+fn a_square_quote_rule_or_code_gutter_is_fine() {
     let css = "blockquote{border-left:4px solid #ddd}.r{border-radius:8px}pre .add{display:block;border-left:3px solid #2a2}";
     assert!(side_tabs_on_page(&format!("<style>{css}</style>"), "<blockquote>Quote</blockquote><pre><code><span class=\"add\">+ a</span></code></pre>").is_empty());
     assert_eq!(
@@ -230,25 +223,23 @@ fn a_square_quote_rule_or_code_gutter_is_typography() {
 }
 
 /// Review round one: a two-value logical width, a bar only in a hover state,
-/// and a quote branch beside a card branch.
+/// on rounded boxes; the same bars on square boxes are fine.
 #[test]
 fn logical_pairs_hover_borders_and_mixed_branches() {
     let page = |css: &str, body: &str| side_tabs_on_page(&format!("<style>{css}</style>"), body);
     assert_eq!(
-        page(".x{width:400px;height:120px;border-left:3px solid red;border-inline-width:0 4px}", "<div class=\"x\">x</div>"),
-        vec!["border-right: 4px"]
+        page(".x{width:400px;height:120px;border-radius:8px;border-left:3px solid red;border-inline-width:0 4px}", "<div class=\"x\">x</div>"),
+        vec!["border-right: 4px + border-radius: 8px"]
     );
     assert_eq!(
-        page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>"),
+        page(".it{width:400px;height:40px;border-radius:6px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>"),
         vec![".it:hover — border-left 2px stripe (left)"]
     );
     // A right bar in a hover state behind a thinner left border.
     assert_eq!(
-        page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd;border-right:4px solid #ddd}", "<button class=\"it\">x</button>"),
+        page(".it{width:400px;height:40px;border-radius:6px}.it:hover{border-left:2px solid #ddd;border-right:4px solid #ddd}", "<button class=\"it\">x</button>"),
         vec![".it:hover — border-right 4px stripe (right)"]
     );
-    assert_eq!(
-        page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>"),
-        vec!["blockquote, .card — inset box-shadow 3px stripe (left)"]
-    );
+    assert!(page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>").is_empty());
+    assert!(page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>").is_empty());
 }

@@ -127,30 +127,27 @@ fn a_side_border_on_a_status_row_or_cell_is_a_side_tab() {
     let port = serve();
     let found = findings(&engine, port, "side-tab-status-rows.html", "side-tab");
     let snippets: Vec<&str> = found.iter().map(|(snippet, _)| snippet.as_str()).collect();
-    for expected in [
-        "border-left 3px stripe on a row or cell (left edge)",
-        "border-left: 2px",
-    ] {
+    for expected in ["border-left 3px stripe on a row or cell (left edge)"] {
         assert!(snippets.iter().any(|s| s.contains(expected)), "missing {expected} in {snippets:#?}");
     }
     for silent in ["td.bounded", "is-void"] {
         assert!(!snippets.iter().any(|s| s.contains(silent)), "unexpected {silent} in {snippets:#?}");
     }
-    assert_eq!(found.len(), 12, "{snippets:#?}");
+    assert_eq!(found.len(), 11, "{snippets:#?}");
 }
 
 /// `side-tab-every-variant.html`: every side bar form reads off the rendered
-/// box, square at 2px and up, rounded at 1px, in any state and colour; a
-/// square hairline, a frame (with a hairline of another colour on one side),
-/// a square quote's rule, a code line's gutter, a transparent edge, a caret,
-/// a square band, a focus ring and a table's grid line pass.
+/// box, on a rounded box only, at any width, in any state and colour; any bar
+/// on a square box, a frame (with a hairline of another colour on one side),
+/// a transparent edge, a caret, a square band, a focus ring and a table's
+/// grid line pass.
 #[test]
 fn every_side_bar_variant_is_a_side_tab() {
     let Some(engine) = engine() else { return };
     let port = serve();
     let found = findings(&engine, port, "side-tab-every-variant.html", "side-tab");
     for id in [
-        "#flag-border-square",
+        "#flag-border-rounded",
         "#flag-hairline-rounded",
         "#flag-inline-start-neutral",
         "#flag-inset-not",
@@ -171,6 +168,9 @@ fn every_side_bar_variant_is_a_side_tab() {
         assert!(found.iter().any(|(snippet, _)| snippet.starts_with(form)), "missing {form} in {found:#?}");
     }
     for id in [
+        "#pass-border-square",
+        "#pass-inset-square",
+        "#pass-before-square",
         "#pass-hairline-square",
         "#pass-inset-hairline-square",
         "#pass-full-border",

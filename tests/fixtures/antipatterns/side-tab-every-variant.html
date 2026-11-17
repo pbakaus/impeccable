@@ -6,16 +6,16 @@
 <!--
   A side bar is a border on one inline side, an inset box-shadow offset along
   x alone, or an absolute ::before / ::after against the left or right edge
-  spanning the height. It is side-tab at any width on a rounded box, and from
-  2px on any box, whatever state its selector styles and whatever its colour.
-  The radius can live in another rule for the same element (.f-split rounds
+  spanning the height. It is side-tab only on a rounded box, at any width,
+  whatever state its selector styles and whatever its colour. The radius can
+  live in another rule for the same element (.f-split rounds
   .f-split.is-active).
 
-  Not side bars: a 1px hairline on a square box (a column divider), a border
+  Passes: any bar on a square box (a 3px border, an inset bar, a ::before
+  bar, a hairline divider, a quote's rule, a code line's gutter), a border
   on every side (with a hairline of another colour on one side too), a
-  square quote's rule and a code line's gutter (typography; rounded, they
-  are tabs), a transparent edge, a CSS caret, a table's grid lines, a focus outline, and a
-  top or bottom band on a square box (the band keeps its older rule).
+  transparent edge, a CSS caret, a table's grid lines, a focus outline, and
+  a top or bottom band on a square box (the band keeps its older rule).
 -->
 <style>
   :root { --text: #1a1a1a; --surface-inset: #f2f2f2; --hover: #f7f7f7; }
@@ -24,18 +24,21 @@
   h2 { font-size: 20px; margin: 0 0 16px; }
   .card { position: relative; width: 400px; height: 80px; padding: 16px; margin: 0 0 24px; background: #fdfdfd; box-sizing: border-box; }
 
-  .f-border-square { border-left: 3px solid #0d9488; }
+  .f-border-rounded { border-left: 3px solid #0d9488; border-radius: 8px; }
   .f-hairline-rounded { border-left: 1px solid #d4d4d4; border-radius: 8px; }
-  .f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; }
-  .f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; }
+  .f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; border-radius: 8px; }
+  .f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; border-radius: 8px; }
+  .f-inset-hover { border-radius: 8px; }
   .f-inset-hover:hover { box-shadow: inset 3px 0 0 #2563eb; }
+  .f-inset-focus { border-radius: 8px; }
   .f-inset-focus:focus-within { box-shadow: inset 2px 0 0 #2563eb; }
   .f-inset-selected.is-selected { box-shadow: inset -2px 0 0 var(--text); border-radius: 6px; }
+  .f-before, .f-after { border-radius: 8px; }
   .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
   .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
   .f-split { border-radius: 6px; }
   .f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
-  .f-text-colour { border-left: 2px solid var(--text); }
+  .f-text-colour { border-left: 2px solid var(--text); border-radius: 8px; }
   .f-quote-rounded { border-left: 3px solid #d1d5db; border-radius: 8px; padding-left: 16px; }
   .f-input { width: 400px; height: 40px; border: 1px solid #fca5a5; border-left: 3px solid #b91c1c; border-radius: 6px; }
 
@@ -43,6 +46,9 @@
   .it:hover { background: var(--hover); }
   .it[aria-pressed='true'] { background: var(--surface-inset); box-shadow: inset 2px 0 0 var(--text); font-weight: 600; }
 
+  .p-border-square { border-left: 3px solid #0d9488; }
+  .p-inset-square { box-shadow: inset 3px 0 0 #6366f1; }
+  .p-before-square::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: #9ca3af; }
   .p-hairline-square { border-left: 1px solid #d4d4d4; }
   .p-inset-hairline-square { box-shadow: inset 1px 0 0 #d4d4d4; }
   .p-full-border { border: 2px solid #0d9488; border-radius: 8px; }
@@ -63,7 +69,7 @@
 <body>
 <div class="col">
   <h2>Should flag</h2>
-  <div class="card f-border-square" id="flag-border-square">Square card, 3px left border</div>
+  <div class="card f-border-rounded" id="flag-border-rounded">Rounded card, 3px left border</div>
   <div class="card f-hairline-rounded" id="flag-hairline-rounded">Rounded card, 1px left border</div>
   <div class="card f-inline-start-neutral" id="flag-inline-start-neutral">Neutral 2px inline-start border</div>
   <div class="card f-inset-not" id="flag-inset-not">Inset bar behind a :not() state</div>
@@ -80,6 +86,9 @@
 </div>
 <div class="col">
   <h2>Should pass</h2>
+  <div class="card p-border-square" id="pass-border-square">Square card, 3px left border</div>
+  <div class="card p-inset-square" id="pass-inset-square">Square card, 3px inset bar</div>
+  <div class="card p-before-square" id="pass-before-square">Square card, 3px ::before bar</div>
   <div class="card p-hairline-square" id="pass-hairline-square">A 1px divider on a square box</div>
   <div class="card p-inset-hairline-square" id="pass-inset-hairline-square">A 1px inset divider on a square box</div>
   <div class="card p-full-border" id="pass-full-border">A border on every side</div>

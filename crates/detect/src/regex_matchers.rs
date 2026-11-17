@@ -11,7 +11,7 @@ use impeccable_core::checks::rules::{
     DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
 };
 use impeccable_core::checks::row_stripe::is_row_or_cell_selector;
-use impeccable_core::checks::side_bar::{is_typographic_box, is_typographic_selector, side_bar_stands_on};
+use impeccable_core::checks::side_bar::side_bar_stands;
 use impeccable_core::color::{is_neutral_color, parse_any_color};
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
 use impeccable_core::findings::{finding, Finding};
@@ -1121,13 +1121,7 @@ pub fn side_tab_match_stands<'s>(
     if width < 2.0 && index().is_some_and(|index| index.is_declaration_framed(pos)) {
         return false;
     }
-    // A quote's rule or a code line's gutter on a square box is typography.
     let classes = tag.map(tag_classes).unwrap_or_default();
-    let typographic = if let Some(tag) = tag {
-        is_typographic_box(&classes.join(" "), [tag_name(tag).as_str()])
-    } else {
-        !selectors.is_empty() && selectors.iter().all(|h| is_typographic_selector(h))
-    };
     let rounded = || {
         side_tab_scope_corners(m, source, i, sass).rounds_any()
             || index().is_some_and(|index| index.is_declaration_rounded(pos))
@@ -1148,7 +1142,7 @@ pub fn side_tab_match_stands<'s>(
                 markup_index.get_or_init(|| CssHostIndex::new(text)).element_corners(tag, &classes, &inline).rounds_any()
             })
     };
-    side_bar_stands_on(width, false, typographic) || side_bar_stands_on(width, rounded(), typographic)
+    side_bar_stands(width, rounded())
 }
 
 /// The stripe side of a `side-tab` match: `3` for left or start, else `1`.
