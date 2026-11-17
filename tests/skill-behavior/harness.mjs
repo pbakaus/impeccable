@@ -326,13 +326,13 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
         if (!fs.existsSync(resolved)) return `File not found: ${p}`;
         const stat = fs.statSync(resolved);
         if (stat.isDirectory()) return `Path is a directory: ${p}. Use list instead.`;
+        // A picture reaches the model as one (as a host's Read gives it), never as its bytes decoded as text, which
+        // filled the context and the token counts with noise. Read first: a file that can't be read is never loaded.
+        const mediaType = IMAGE_TYPES[path.extname(resolved).toLowerCase()];
+        const output = mediaType ? { image: fs.readFileSync(resolved).toString('base64'), mediaType } : fs.readFileSync(resolved, 'utf8');
         call.succeeded = true;
         call.loadedFiles = [p];
-        // A picture reaches the model as one (as a host's Read gives it), never as its bytes decoded as text, which
-        // filled the context and the token counts with noise.
-        const mediaType = IMAGE_TYPES[path.extname(resolved).toLowerCase()];
-        if (mediaType) return { image: fs.readFileSync(resolved).toString('base64'), mediaType };
-        return fs.readFileSync(resolved, 'utf8');
+        return output;
       },
       toModelOutput: ({ output }) => (typeof output === 'string'
         ? { type: 'text', value: output }
