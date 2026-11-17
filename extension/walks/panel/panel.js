@@ -772,6 +772,12 @@ const moodOf = (step) => step?.mood ?? (step?.issue ? 'confused' : step ? 'curio
 /** A question a walk from the terminal still asks: nothing is done until Yes. A planned walk asks none. */
 function question() {
   if (!view.ask) return null;
+  if (view.ask.kind === 'site') {
+    return el('div', { class: 'ask', role: 'alertdialog', 'aria-label': COPY.ask.site(name(), view.ask.what), 'data-kind': 'site' },
+      el('p', { class: 'ask-what', text: COPY.ask.site(name(), view.ask.what) }),
+      el('div', { class: 'pair' }, button('once', COPY.ask.once), button('always', COPY.ask.always, 'gold')),
+      button('no', COPY.ask.notNow, 'ghost'));
+  }
   const line = view.ask.kind === 'go' ? COPY.ask.go(name(), view.ask.what) : view.ask.what;
   return el('div', { class: 'ask', role: 'alertdialog', 'aria-label': COPY.ask.title, 'data-kind': view.ask.kind },
     el('p', { class: 'ask-what', text: line }),
@@ -797,12 +803,12 @@ function walkingScreen() {
   const steps = [...view.steps].reverse();
   return [
     top(view.site ?? hereUrl),
-    el('div', { class: 'walk-head' }, face(walking(), 112, moodOf(view.steps.at(-1))), el('h2', { class: 'hd', role: 'status', text: COPY.walking.line(name()) })),
+    el('div', { class: 'walk-head' }, view.agent ? null : face(walking(), 112, moodOf(view.steps.at(-1))), el('h2', { class: 'hd', role: 'status', text: !view.agent ? COPY.walking.line(name()) : view.state === 'waiting' ? COPY.yourAgent.wants(name()) : COPY.yourAgent.line(name()) })),
     question(),
     held(),
     steps.length > 0 ? el('ol', { class: 'sofar scrolls' }, steps.map((step, i) => el('li', { class: i === 0 ? 'now' : '', 'data-n': step.n, 'data-issue': step.issue ? 'yes' : undefined },
       el('span', { class: 'n', text: String(step.n) }),
-      el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : el('p', { class: 'task', text: COPY.walking.first(name()) }),
+      el('span', { class: 't' }, i === 0 ? el('b', { text: step.did }) : step.did, i === 0 && step.said ? el('q', { text: step.said }) : null)))) : view.agent && view.state === 'waiting' ? null : el('p', { class: 'task', text: view.agent ? COPY.yourAgent.first(name()) : COPY.walking.first(name()) }),
     el('span', { class: 'grow' }),
     el('div', { class: 'bar' }, el('button', { type: 'button', 'data-act': 'stop', onclick: () => act('stop') }, COPY.controls.stop)),
   ];

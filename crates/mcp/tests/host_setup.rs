@@ -62,6 +62,13 @@ fn registers_with_present_browsers_and_leaves_anothers_host_alone() {
     let other = if cfg!(target_os = "macos") { user.join("Library/Application Support/Chromium") } else { user.join(".config/chromium") };
     assert!(!other.exists());
     assert!(register(&user, &home, None).is_empty());
+    // One an older impeccable wrote, before the developer build was admitted, is brought up to date.
+    let ours = chrome_root(&user).join(format!("NativeMessagingHosts/{HOST_NAME}.json"));
+    let older = serde_json::json!({ "name": HOST_NAME, "path": manifest["path"], "type": "stdio", "allowed_origins": ["chrome-extension://bdkgmiklpdmaojlpflclinlofgjfpabf/"] });
+    std::fs::write(&ours, older.to_string()).unwrap();
+    assert_eq!(register(&user, &home, None).len(), 1);
+    let now: Value = serde_json::from_str(&std::fs::read_to_string(&ours).unwrap()).unwrap();
+    assert_eq!(now["allowed_origins"], manifest["allowed_origins"]);
 
     // Another program's host of the same name stays as it was.
     let edge = if cfg!(target_os = "macos") { user.join("Library/Application Support/Microsoft Edge") } else { user.join(".config/microsoft-edge") };

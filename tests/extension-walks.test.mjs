@@ -2837,7 +2837,8 @@ describe('derived extension manifests', () => {
 // Chrome's permission warnings (developer.chrome.com, "Permissions list" and "Permission warning guidelines"): the
 // permissions below show none. Any other permission, and any host, counts as one. An update that adds a warning
 // switches the extension off until the person accepts it: walks add the four of driving a tab, and nothing else. The
-// account (not in the store build) adds one more: the notice when an agent asks for a journey.
+// account (not in the store build) adds one more: the notice when an agent asks for a journey. So does the person's own
+// agent's line to the CLI (walks/agent.js), the developer build's alone until its own submission.
 describe('extension install warnings', () => {
   const SILENT = ['activeTab', 'alarms', 'declarativeNetRequestWithHostAccess', 'identity', 'offscreen', 'scripting', 'sidePanel', 'storage'];
   /** As published in 1.4.0, the version people have installed. */
@@ -2846,7 +2847,7 @@ describe('extension install warnings', () => {
   const hosts = (manifest) => [...(manifest.host_permissions ?? []), ...(manifest.content_scripts ?? []).flatMap((entry) => entry.matches)];
 
   const GAINED = ['debugger', 'downloads', 'tabGroups', 'tabs'];
-  for (const [label, manifest, account] of [['loaded unpacked', MANIFEST, ['notifications']], ['the store build', storeManifest(MANIFEST), []]]) {
+  for (const [label, manifest, account] of [['loaded unpacked', MANIFEST, ['nativeMessaging', 'notifications']], ['the store build', storeManifest(MANIFEST), []]]) {
     it(`asks for no warning 1.4.0 did not but walks': ${label}`, () => {
       assert.deepEqual(warned(manifest), [...warned(PUBLISHED), ...GAINED, ...account].sort());
       // 1.4.0 has every site, so any content script's pages are already in its warning.

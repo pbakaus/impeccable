@@ -181,6 +181,7 @@ export function badgeInPage(binding, lifeMs, glowLifeMs) {
 export function badgeState(view) {
   const name = view.who?.name ?? '';
   const step = view.steps.at(-1)?.n ?? 0;
+  if (view.ask?.kind === 'site') return { state: 'asking', step, title: COPY.ask.site(name, view.ask.what), sub: '', resume: '', no: COPY.ask.notNow, stop: COPY.badge.stop, glow: true };
   if (view.ask) {
     const what = view.ask.kind === 'go' ? COPY.ask.go(name, view.ask.what) : view.ask.what;
     return { state: 'asking', step, title: COPY.ask.title, sub: what, resume: COPY.ask.yes, go: 'yes', no: COPY.ask.no, stop: COPY.badge.stop, glow: true };

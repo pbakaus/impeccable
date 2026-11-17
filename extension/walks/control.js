@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
-import { asWebp, drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
+import { AGENT, asWebp, drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { ON_TAB, detachAction, isLive } from './view.js';
 
@@ -75,14 +75,15 @@ async function stillAtSignIn() {
 }
 
 /** The ops that take something of the page: none runs on a page the walk could not check. */
-const LOOKING = new Set(['screenshot', 'evaluate', 'hear']);
+const LOOKING = new Set(['screenshot', 'evaluate', 'hear', 'inspect']);
 
 /** Returns once the walk may act, and not at a sign-in: whether it had to wait for a pause. Throws while the person has the tab. */
 async function clear(name) {
   let waited = false;
   for (;;) {
     const { state } = current();
-    if (stopped) throw fail('Stopped', 'the person stopped this journey');
+    // A stopped hand-off; the person's own agent's Stop is agent.js's.
+    if (stopped && !walk?.agent) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     // Over (the socket went, the tab closed, it failed): nothing is coming back to wait for.
     if (!ON_TAB.includes(state)) throw fail('OutingClosed', 'no tab is open');
@@ -145,6 +146,11 @@ function settle(said) {
 }
 // Another site nobody answered for in time stays shut, as a No to it does (driver.js `mayGo`).
 onAsk((ask) => consent(ask).then((said) => (said === 'timeout' ? 'no' : said)));
+/**
+ * Asks the person whether their own agent may use a site (agent.js): `once`, `always`, `no`, `timeout`, or `void`
+ * when the walk ended first. Only the panel's buttons answer it, never the page.
+ */
+export const askSite = (host) => consent({ kind: 'site', what: host });
 
 /** A click or key the server marked (`ask`: delete, pay or send) is done only once the person says yes to it. */
 const askOf = (name, req) => (ACTS.has(name) && req?.ask && typeof req.ask === 'object' && req.action !== 'up' && req.action !== 'move' ? { kind: req.ask.kind, what: req.ask.what } : null);
@@ -163,8 +169,9 @@ for (const [name, run] of Object.entries(ops)) {
     }
     let ask = askOf(name, req);
     let agreed = ask === null;
-    // A free walk holds no write: a submit the server did not mark is asked here first, once the walk may act.
-    let checked = ask !== null || !ACTS.has(name);
+    // A free walk holds no write: a submit the server did not mark is asked here first, once the walk may act. The
+    // person's own agent is trusted at the agent, as their own hands are (REN-2053): it is asked nothing.
+    let checked = ask !== null || !ACTS.has(name) || walk?.agent === true;
     for (;;) {
       const at = fenced();
       if (!(await clear(name)) && at === fenced()) {
@@ -204,13 +211,15 @@ for (const [name, run] of Object.entries(ops)) {
         if (at === fenced()) { if (failed) throw failed; return out; }
       }
       // Focus a screen reader moved is a key's: not done on a page the person has used since.
-      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus')) throw overtaken();
+      // So is any op of the person's own agent's: it was told it was paused, and asks again.
+      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus') || walk?.agent) throw overtaken();
     }
   };
 }
 const open = ops.open;
 ops.open = (req) => {
-  if (stopped) throw fail('Stopped', 'the person stopped this journey');
+  // The agent's own Stop is agent.js's: a stopped hand-off never blocks it, nor it a hand-off.
+  if (stopped && req?.[AGENT] !== true) throw fail('Stopped', 'the person stopped this journey');
   return open(req);
 };
 
@@ -254,8 +263,10 @@ async function attempt(name) {
   return said;
 }
 async function tryTo(name) {
-  if (name === 'yes' || name === 'no') {
-    if (!answering) return false;
+  if (name === 'yes' || name === 'no' || name === 'once' || name === 'always') {
+    // A site's question takes Allow once, Always allow or Not now; any other, Yes or No.
+    const site = current().ask?.kind === 'site';
+    if (!answering || !(name === 'no' || (site ? name !== 'yes' : name === 'yes'))) return false;
     settle(name);
     return true;
   }

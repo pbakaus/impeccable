@@ -19,7 +19,7 @@ export const isLive = (view) => LIVE.includes(view.state);
 
 /** Before any walk: whether this browser has ever been handed one decides which empty state it is. */
 export function emptyView(linked = false) {
-  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null, withheld: false, pictured: false, unanswered: false };
+  return { v: 1, state: linked ? 'idle' : 'signed-out', linked, agent: false, who: null, workflow: null, site: null, tab: null, steps: [], notes: [], outcome: null, failure: null, held: null, ask: null, withheld: false, pictured: false, unanswered: false };
 }
 
 const fresh = (view) => ({ ...emptyView(view.linked), state: view.state });
@@ -41,8 +41,11 @@ function whoOf(persona, before) {
 const FACE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 export const faceOf = (face) => (typeof face === 'string' && face.length <= 360_000 && FACE.test(face) ? face : null);
 
-/** Kinds of question a walk asks the person: a deed the server marked (delete, pay, send), or another site (go). */
-const ASKS = ['delete', 'pay', 'send', 'go'];
+/**
+ * Kinds of question a walk asks the person: a deed the server marked (delete, pay, send), another site (go), or a site
+ * the person's own agent wants to use (site: Allow once, Always allow or Not now, agent.js).
+ */
+const ASKS = ['delete', 'pay', 'send', 'go', 'site'];
 /** The faces a step may wear: the cells of a persona's face sheet. */
 export const MOODS = ['neutral', 'curious', 'confident', 'confused', 'frustrated', 'delighted'];
 
@@ -54,7 +57,9 @@ const atSignIn = (view) => view.state === 'paused' && view.held === 'sign-in';
  */
 export function reduce(view, action) {
   const next = step(view, action);
-  const asked = next.ask && next.state !== 'walking' ? { ...next, ask: null } : next;
+  // An agent's first site is asked before its tab opens, while it waits.
+  const standing = next.state === 'walking' || (next.state === 'waiting' && next.ask?.kind === 'site');
+  const asked = next.ask && !standing ? { ...next, ask: null } : next;
   return (asked.withheld || asked.pictured) && !atSignIn(asked) ? { ...asked, withheld: false, pictured: false } : asked;
 }
 
@@ -66,6 +71,13 @@ function step(view, action) {
     case 'handoff':
       if (live) return view;
       return { ...fresh(view), linked: true, state: 'waiting', who: whoOf(action.handoff.persona), workflow: workflowOf(action.handoff.errand), site: action.handoff.site ?? null };
+    // The person's own agent asked for the browser (agent.js): it waits for their Allow, then opens its tab.
+    case 'agent':
+      if (live) return view;
+      return { ...fresh(view), linked: view.linked, state: 'waiting', agent: true, who: whoOf({ name: action.name }), site: action.site ?? null };
+    // The agent's wait ended with no tab (Not now, or it could not open): back to before it.
+    case 'unwait':
+      return view.state === 'waiting' && view.agent ? emptyView(view.linked) : view;
     // The tab is open and the debugger is on it. Once the walk is over, the panel shows its end on that tab alone.
     case 'opened':
       if (onTab) return view;
@@ -98,7 +110,7 @@ function step(view, action) {
     }
     // The walk asks the person before it goes on: one question at a time.
     case 'ask':
-      if (view.state !== 'walking' || view.ask || !ASKS.includes(action.ask?.kind)) return view;
+      if (!(view.state === 'walking' || (view.state === 'waiting' && action.ask?.kind === 'site')) || view.ask || !ASKS.includes(action.ask?.kind)) return view;
       return { ...view, ask: { kind: action.ask.kind, what: text(action.ask.what, 200) } };
     case 'answer': return view.ask ? { ...view, ask: null } : view;
     // Nobody answered a deed's question in time: the server ends the walk ('fail').
