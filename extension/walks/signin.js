@@ -86,7 +86,7 @@ export function lookInPage() {
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => kind(input) === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
   // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round each
-  // password field, marked or named for one (not to reset it) (its form, or the elements round it up to the first that
+  // password field, marked or named for one (its form, or the elements round it up to the first that
   // holds an account field, two when none does, never `<html>`, and `<body>` only round a field right in it) keep how
   // many they held and showed, and whether one held an account field. While a box holds fewer and a marked account
   // field is still in it, or it never held one, each filled, shown text field in it that names no account is marked as
@@ -100,7 +100,7 @@ export function lookInPage() {
   const HELD = 'data-impeccable-secret-form';
   const inputs = (box) => [...box.querySelectorAll('input')];
   const shown = (f) => { const size = f.getBoundingClientRect(); return size.width > 0 && size.height > 0; };
-  const counts = (f) => f.getAttribute(MARK) !== null || (named(f) && !NAMED.some((name) => /reset|forgot|recover|passwordless/i.test(f.getAttribute(name) ?? '')));
+  const counts = (f) => f.getAttribute(MARK) !== null || named(f);
   const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
   const account = (f) => {
     const said = [...NAMED, 'autocomplete'].map((name) => f.getAttribute(name) ?? '').join(' ');
