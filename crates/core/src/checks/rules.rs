@@ -202,6 +202,13 @@ impl DeclaredCorners {
         true
     }
 
+    /// Whether a declaration rounds any corner to a radius known to be above
+    /// zero. A box with no radius declaration is square, and a corner the
+    /// reader could not resolve is not known to round it.
+    pub fn rounds_any(&self) -> bool {
+        self.corners.iter().any(|c| c.is_some_and(|v| v > 0.0))
+    }
+
     /// Whether any radius declaration was seen at all.
     pub fn declared(&self) -> bool {
         self.declared
@@ -317,7 +324,7 @@ pub const CIRCLE_MAX_ASPECT: f64 = 1.1;
 /// spinner, an orbit ring around an icon, observations-1010 row 6), not a
 /// stripe on a card. A box whose size or corners the caller could not read
 /// is not a circle.
-fn is_circle(opts: &BorderOpts) -> bool {
+pub fn is_circle(opts: &BorderOpts) -> bool {
     let (Some([w, h]), Some(c)) = (opts.box_size, opts.corners.as_ref()) else {
         return false;
     };

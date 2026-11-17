@@ -33,6 +33,10 @@ use crate::quality::{check_element_quality, check_page_quality_from_doc, pf0};
 use impeccable_core::checks::css_scan::{side_stripe_index, CssHostIndex};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
+use impeccable_core::checks::side_bar::{
+    corners_round, is_inline_side_tab, is_typographic_selector, scan_css_text_for_side_bars_with, side_bar_stands_on,
+    side_bar_thickness,
+};
 use impeccable_core::checks::rules::{is_rounded_away_from_side, RuleHit, SafeTagTextSeen};
 use impeccable_core::findings::{try_finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
@@ -404,9 +408,13 @@ pub fn detect_html_source(
             Meta::new("page", "html-patterns", fp),
             |f: &impeccable_core::checks::css_scan::PatternFinding| f.id.as_str(),
             || {
+                // Left and right side bars are read by the side bar scan,
+                // whatever state or colour; the recorded stripe scans keep
+                // the top and bottom bands.
                 check_html_patterns(html, Some(&corpora))
                     .into_iter()
-                    .filter(|item| item.id != "bounce-easing")
+                    .filter(|item| item.id != "bounce-easing" && !is_inline_side_tab(&item.id, &item.snippet))
+                    .chain(scan_css_text_for_side_bars_with(&corpora.style_text, true))
                     .collect()
             },
         );
@@ -431,24 +439,40 @@ pub fn detect_html_source(
                     hosts = matches;
                 }
             }
-            // A stripe on any edge from the style-text scans reports only
-            // on a card rounded away from it: read off the cascade for the
-            // elements the rule paints, else off the host rule's own
+            // A side bar from the style text stands at 2px, and thinner on
+            // a rounded box; a band across the top or bottom only on a card
+            // rounded away from it. The corners are read off the cascade for
+            // the elements the rule paints, else off the host rule's own
             // declarations when no element on the page matches.
             if let Some(side) = side_stripe_index(&f) {
-                let rounded = if hosts.is_empty() {
-                    host_index
-                        .get_or_init(|| CssHostIndex::new(&corpora.style_text))
-                        .side_stripe_on_rounded_host(&f)
-                } else {
-                    hosts.iter().any(|el| {
-                        let style = el.style();
-                        let corners =
-                            resolve_side_accent_corners(el, style, pf0(sv(style, "width")));
-                        is_rounded_away_from_side(corners.as_ref(), side)
-                    })
+                let index = || host_index.get_or_init(|| CssHostIndex::new(&corpora.style_text));
+                let corners = |el: &StaticElement<'_>| {
+                    let style = el.style();
+                    resolve_side_accent_corners(el, style, pf0(sv(style, "width")))
                 };
-                if !rounded {
+                let stands = if side % 2 == 1 {
+                    let thickness = side_bar_thickness(&f.snippet).unwrap_or(0.0);
+                    if hosts.is_empty() {
+                        side_bar_stands_on(
+                            thickness,
+                            index().side_bar_on_rounded_host(&f),
+                            is_typographic_selector(f.selector.as_deref().unwrap_or("")),
+                        )
+                    } else {
+                        hosts.iter().any(|el| {
+                            side_bar_stands_on(
+                                thickness,
+                                corners_round(corners(el).as_ref()),
+                                crate::adapters::static_is_typographic(el),
+                            )
+                        })
+                    }
+                } else if hosts.is_empty() {
+                    index().side_stripe_on_rounded_host(&f)
+                } else {
+                    hosts.iter().any(|el| is_rounded_away_from_side(corners(el).as_ref(), side))
+                };
+                if !stands {
                     continue;
                 }
             }
@@ -472,8 +496,11 @@ pub fn detect_html_source(
         for f in row_hits {
             let Some(selector) = f.selector.as_deref() else { continue };
             // The selector as written when the engine reads it, so a
-            // `:not()` keeps excluding; stripped of what it cannot read
-            // otherwise.
+            // `:not()` keeps excluding, less any hover or focus state (a
+            // stripe in that state paints on those rows whatever their
+            // state); stripped of what it cannot read otherwise.
+            let state_free = impeccable_core::checks::side_bar::without_state_pseudos(selector);
+            let selector = state_free.as_str();
             let stripped = PSEUDO_STRIP_RE.replace_all(selector, "");
             let query = if doc.compile(selector).is_ok() {
                 selector
@@ -483,27 +510,9 @@ pub fn detect_html_source(
             if doc.compile(query).is_err() {
                 continue;
             }
-            // A row by class only that may be rounded (another rule's
-            // radius, or one the engine cannot see) is a card, and the card
-            // scans above report it: a table or ARIA row or cell is a row
-            // whatever its corners.
-            let hosts: Vec<_> = doc
-                .query_selector_all(query)
-                .into_iter()
-                .filter(|el| {
-                    let tag = el.tag_lower();
-                    let role = el.get_attribute("role").unwrap_or("").to_ascii_lowercase();
-                    if matches!(tag.as_str(), "tr" | "td" | "th")
-                        || matches!(role.as_str(), "row" | "cell" | "gridcell" | "rowheader")
-                    {
-                        return true;
-                    }
-                    let style = el.style();
-                    resolve_side_accent_corners(el, style, pf0(sv(style, "width"))).is_some_and(|c| {
-                        [c.top_left, c.top_right, c.bottom_right, c.bottom_left].iter().all(|r| *r <= 0.0)
-                    })
-                })
-                .collect();
+            // A row by class only rounded by another rule is a side bar all
+            // the same: the stripe reports wherever the selector paints.
+            let hosts = doc.query_selector_all(query);
             if hosts.is_empty() || hosts.iter().all(|el| scoped_ignore_active(el, &f.id)) {
                 continue;
             }

@@ -1252,6 +1252,8 @@ struct RadiusRule {
     /// Source position of the block, the order its declarations apply in.
     order: usize,
     decls: Vec<RadiusDecl>,
+    /// The block draws a border across the top or bottom.
+    draws_frame: Option<bool>,
 }
 
 impl RadiusRule {
@@ -1512,13 +1514,36 @@ impl<'a> CssHostIndex<'a> {
                 ))
             })
             .collect();
-        if decls.is_empty() {
+        // Whether the block draws a border across the top or bottom (the
+        // frame a one-sided hairline beside it belongs to), takes one away
+        // (`border: 0`), or says nothing of it: its last such declaration.
+        let draws_frame = frame
+            .direct
+            .split(';')
+            .filter_map(|part| {
+                let (prop, value) = part.split_once(':')?;
+                let prop = js::to_lower_case(js::trim(prop));
+                let value = js::to_lower_case(js::trim(value));
+                matches!(
+                    prop.as_str(),
+                    "border" | "border-width" | "border-top" | "border-bottom" | "border-block" | "border-top-width" | "border-bottom-width" | "border-style"
+                )
+                .then(|| {
+                    !value.is_empty()
+                        && !value.starts_with("none")
+                        && !value.starts_with("hidden")
+                        && !value.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
+                })
+            })
+            .last();
+        if decls.is_empty() && draws_frame.is_none() {
             return;
         }
         let id = self.rules.len();
         // A block the static cascade never applies: nested in a style rule,
         // or under an at-rule it skips.
-        if frame.styles_elements
+        if !decls.is_empty()
+            && frame.styles_elements
             && (frame.is_rule || frame.in_rule)
             && !(frame.is_rule && frame.static_reachable)
         {
@@ -1539,6 +1564,7 @@ impl<'a> CssHostIndex<'a> {
         self.rules.push(RadiusRule {
             order: frame.order,
             decls,
+            draws_frame,
         });
     }
 
@@ -1878,6 +1904,65 @@ impl<'a> CssHostIndex<'a> {
                 }
             })
             .collect()
+    }
+
+    /// Whether the rule whose selector starts at `pos` (a byte offset into
+    /// the comment-blanked text) styles a box its tied rules round at all,
+    /// any radius above zero: what a side bar under 2px needs
+    /// ([`crate::checks::side_bar`]). The rules tied to `.it` round
+    /// `.it[aria-pressed]`, `.it:hover` and `.it.is-active`. A host the index
+    /// cannot name is not known to be rounded.
+    pub fn is_rule_rounded(&self, pos: usize, selector: &str) -> bool {
+        self.hosts_at(pos, selector)
+            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a declaration at `pos`,
+    /// a byte offset into the text the index was built on.
+    pub fn is_declaration_rounded(&self, pos: usize) -> bool {
+        self.declaration_hosts(pos)
+            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// Whether a rule tied to the box the declaration at `pos` styles draws a
+    /// border across its top or bottom: a hairline on one side of it is part
+    /// of a frame, not a bar (`.btn { border: 1px solid }` frames
+    /// `.g .btn + .btn { border-left: 1px solid }`).
+    pub fn is_declaration_framed(&self, pos: usize) -> bool {
+        self.declaration_hosts(pos)
+            .is_some_and(|hosts| {
+                // The last tied rule that says anything of the frame wins.
+                self.tied_rules(&hosts).iter().filter_map(|id| self.rules[*id].draws_frame).last().unwrap_or(false)
+            })
+    }
+
+    /// Whether the rules whose subject could match a markup element (its tag,
+    /// its literal classes), applied in source order, leave it rounded to a
+    /// radius known to be above zero: what a hairline in a `style` attribute
+    /// reads from the file's style blocks.
+    pub fn is_element_rounded(&self, tag: Option<&str>, classes: &[String]) -> bool {
+        // Every matching rule's radius declarations, applied together in
+        // source order: a later square radius undoes an earlier round one.
+        let mut ids: Vec<usize> = self
+            .exact
+            .iter()
+            .filter(|(selector, _)| selector_could_apply(selector, tag, false, classes))
+            .flat_map(|(_, ids)| ids.iter().copied())
+            .collect();
+        ids.sort_unstable_by_key(|id| (self.rules[*id].order, *id));
+        ids.dedup();
+        let mut corners = DeclaredCorners::default();
+        for id in ids {
+            self.rules[id].apply_to(&mut corners);
+        }
+        corners.rounds_any()
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding
+    /// from the text this index was built on.
+    pub fn side_bar_on_rounded_host(&self, finding: &PatternFinding) -> bool {
+        let pos = self.content_offset(finding.index.unwrap_or(0));
+        self.is_rule_rounded(pos, finding.selector.as_deref().unwrap_or(""))
     }
 
     /// Whether a CSS-text finding from the text this index was built on
