@@ -47,7 +47,7 @@ exec "$best" "$@"
 #[cfg(unix)]
 /// Where Chromium-based browsers read a user's native-messaging hosts: (browser, profile root). A browser counts
 /// as present when its profile root exists.
-fn browsers(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
+fn browsers(user_home: &Path, config_home: Option<&Path>) -> Vec<(&'static str, PathBuf)> {
     let list: &[(&str, &str)] = if cfg!(target_os = "macos") {
         &[
             ("Chrome", "Library/Application Support/Google/Chrome"),
@@ -66,7 +66,14 @@ fn browsers(user_home: &Path) -> Vec<(&'static str, PathBuf)> {
             ("Brave", ".config/BraveSoftware/Brave-Browser"),
         ]
     };
-    list.iter().map(|(name, rel)| (*name, user_home.join(rel))).collect()
+    // On Linux a set XDG_CONFIG_HOME moves every Chromium profile from ~/.config to it.
+    let config = config_home.filter(|p| p.is_absolute()).map(Path::to_path_buf);
+    list.iter()
+        .map(|(name, rel)| match (&config, rel.strip_prefix(".config/")) {
+            (Some(root), Some(under)) => (*name, root.join(under)),
+            _ => (*name, user_home.join(rel)),
+        })
+        .collect()
 }
 
 #[cfg(unix)]
@@ -131,7 +138,7 @@ pub fn verified_engine(impeccable_home: &Path) -> bool {
 /// Write the launcher and every present browser's manifest, once the cache holds a verified engine. Returns the lines
 /// install prints: nothing when it was all in place already, or with no engine to run. Never fails the install: a folder it can't write is named and skipped.
 #[cfg(unix)]
-pub fn register(user_home: &Path, impeccable_home: &Path) -> Vec<String> {
+pub fn register(user_home: &Path, impeccable_home: &Path, config_home: Option<&Path>) -> Vec<String> {
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let mut lines = Vec::new();
     // A launcher with no engine to run would only fail in Chrome: an install that runs a bundled engine and fills no
@@ -154,7 +161,7 @@ pub fn register(user_home: &Path, impeccable_home: &Path) -> Vec<String> {
     let ours = manifest(&launcher);
     let body = format!("{}\n", serde_json::to_string_pretty(&ours).unwrap_or_default());
     let mut added = Vec::new();
-    for (name, root) in browsers(user_home) {
+    for (name, root) in browsers(user_home, config_home) {
         if !root.is_dir() {
             continue;
         }
@@ -183,6 +190,6 @@ pub fn register(user_home: &Path, impeccable_home: &Path) -> Vec<String> {
 }
 
 #[cfg(not(unix))]
-pub fn register(_: &Path, _: &Path) -> Vec<String> {
+pub fn register(_: &Path, _: &Path, _: Option<&Path>) -> Vec<String> {
     Vec::new()
 }

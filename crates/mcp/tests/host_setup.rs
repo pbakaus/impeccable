@@ -46,10 +46,10 @@ fn registers_with_present_browsers_and_leaves_anothers_host_alone() {
     let home = user.join(".impeccable");
     std::fs::create_dir_all(chrome_root(&user)).unwrap();
     // No verified engine in the cache yet: nothing registered, so Chrome never starts a host that can't run.
-    assert!(register(&user, &home).is_empty());
+    assert!(register(&user, &home, None).is_empty());
     assert!(!home.join("browser/host").exists());
     engine(&home, "1.0.0", "ok");
-    let lines = register(&user, &home);
+    let lines = register(&user, &home, None);
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert!(lines[0].contains("Chrome"));
     let manifest: Value = serde_json::from_str(&std::fs::read_to_string(chrome_root(&user).join(format!("NativeMessagingHosts/{HOST_NAME}.json"))).unwrap()).unwrap();
@@ -61,14 +61,14 @@ fn registers_with_present_browsers_and_leaves_anothers_host_alone() {
     // Nothing for a browser that isn't there; nothing printed the second time.
     let other = if cfg!(target_os = "macos") { user.join("Library/Application Support/Chromium") } else { user.join(".config/chromium") };
     assert!(!other.exists());
-    assert!(register(&user, &home).is_empty());
+    assert!(register(&user, &home, None).is_empty());
 
     // Another program's host of the same name stays as it was.
     let edge = if cfg!(target_os = "macos") { user.join("Library/Application Support/Microsoft Edge") } else { user.join(".config/microsoft-edge") };
     let theirs = edge.join(format!("NativeMessagingHosts/{HOST_NAME}.json"));
     std::fs::create_dir_all(theirs.parent().unwrap()).unwrap();
     std::fs::write(&theirs, r#"{"path":"/elsewhere","allowed_origins":["chrome-extension://x/"]}"#).unwrap();
-    let lines = register(&user, &home);
+    let lines = register(&user, &home, None);
     assert!(lines.iter().any(|l| l.contains("left it as it is")), "{lines:?}");
     assert!(std::fs::read_to_string(&theirs).unwrap().contains("/elsewhere"));
     let _ = std::fs::remove_dir_all(user);
@@ -81,7 +81,7 @@ fn the_launcher_runs_the_newest_verified_engine() {
     let user = temp("launch");
     let home = user.join(".impeccable");
     engine(&home, "0.9.0", "ok");
-    register(&user, &home);
+    register(&user, &home, None);
     std::fs::remove_dir_all(home.join("bin")).unwrap();
     let run = |args: &[&str]| Command::new(home.join("browser/host")).args(args).env_clear().output().unwrap();
 
@@ -97,5 +97,19 @@ fn the_launcher_runs_the_newest_verified_engine() {
     let out = run(&["chrome-extension://abc/", "two"]);
     // The engine finds this home (its relay socket, its sign-in) though Chrome passes no environment.
     assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("1.10.0 chrome-extension://abc/ two {}", home.display()));
+    let _ = std::fs::remove_dir_all(user);
+}
+
+// Catches a Linux Chrome whose profiles XDG_CONFIG_HOME moved being skipped, or its manifest written where it never reads.
+#[cfg(target_os = "linux")]
+#[test]
+fn follows_xdg_config_home_on_linux() {
+    let user = temp("xdg");
+    let home = user.join(".impeccable");
+    let xdg = user.join("cfg");
+    std::fs::create_dir_all(xdg.join("google-chrome")).unwrap();
+    engine(&home, "1.0.0", "ok");
+    assert_eq!(register(&user, &home, Some(&xdg)).len(), 1);
+    assert!(xdg.join(format!("google-chrome/NativeMessagingHosts/{HOST_NAME}.json")).exists());
     let _ = std::fs::remove_dir_all(user);
 }

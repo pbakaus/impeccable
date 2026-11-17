@@ -3293,7 +3293,8 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   prints `Impeccable: no verified engine in <home>/bin. Run npx impeccable
   install.` to stderr and exits 1. It names no version, so `update` never
   touches it. Then, for each of Chrome, Chrome Beta, Chrome Canary (macOS),
-  Chromium, Edge and Brave whose profile folder exists, it writes
+  Chromium, Edge and Brave whose profile folder exists (on Linux under
+  `$XDG_CONFIG_HOME` when set, else `~/.config`), it writes
   `NativeMessagingHosts/style.impeccable.browser.json` atomically
   (`type: stdio`, `path` the launcher, `allowed_origins` the store build's
   origin). A file of that name naming another path or origins is left alone,

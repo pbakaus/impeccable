@@ -474,7 +474,8 @@ fn register_browser_host(args: &[String], io: &mut Io) {
     let Some(home) = impeccable_account::config::impeccable_home(&io.env) else { return };
     let user_home = home.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let user_home = io.env.get("HOME").filter(|h| !h.is_empty()).map(std::path::PathBuf::from).unwrap_or(user_home);
-    for line in impeccable_mcp::host_setup::register(&user_home, &home) {
+    let config_home = io.env.get("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    for line in impeccable_mcp::host_setup::register(&user_home, &home, config_home.as_deref()) {
         let _ = writeln!(io.stdout, "{line}");
     }
 }
