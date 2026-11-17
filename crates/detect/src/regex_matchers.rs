@@ -17,7 +17,8 @@ use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::fonts::extract_google_font_families;
 use impeccable_core::js::{self, ci, math_round, number_to_string, parse_float, string_to_number};
-use impeccable_core::js_ext_a::{advance_utf16, slice_utf16_start, utf16_index, utf16_length};
+use impeccable_core::js_ext_a::{advance_utf16, slice_utf16_start, split_commas_outside_parens, utf16_index, utf16_length};
+use impeccable_core::checks::css_scan::css_length_to_px;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -1056,6 +1057,8 @@ pub fn side_tab_match_stands<'s>(
     sass: bool,
     index: &once_cell::unsync::OnceCell<CssHostIndex<'s>>,
     index_text: Option<&'s str>,
+    markup_index: &once_cell::unsync::OnceCell<CssHostIndex<'s>>,
+    markup_text: Option<&'s str>,
 ) -> bool {
     let index = || index_text.filter(|_| !sass).map(|text| index.get_or_init(|| CssHostIndex::new(text)));
     let pos = source.offset(i, m.index);
@@ -1081,8 +1084,14 @@ pub fn side_tab_match_stands<'s>(
         return false;
     }
     let whole = m.whole();
-    let markup = TW_SIDE_TAB_WHOLE_RE.is_match(whole) || JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(source.line(i), m.index);
-    let statements: Vec<String> = if markup {
+    let line = source.line(i);
+    let markup = TW_SIDE_TAB_WHOLE_RE.is_match(whole) || JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(line, m.index);
+    let tag = markup.then(|| complete_markup_tag(line, m.index)).flatten();
+    // The declarations the bar sits among: its rule's own scope, or the
+    // markup tag's `style` attribute or style object.
+    let statements: Vec<String> = if let Some(tag) = tag {
+        tag_style_statements(tag)
+    } else if markup {
         Vec::new()
     } else if sass {
         sass_scope_statements(source, i).0.into_iter().next().unwrap_or_default()
@@ -1101,32 +1110,167 @@ pub fn side_tab_match_stands<'s>(
         return false;
     }
     let width = num(m.g(1));
-    // A hairline on one side of a framed box is part of the frame.
-    if width < 2.0
-        && (declared(&["border", "border-width", "border-top", "border-bottom", "border-block"], &|v| {
-            !v.is_empty() && !v.starts_with("none") && !v.starts_with("hidden") && !v.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
-        }) || index().is_some_and(|index| index.is_declaration_framed(pos)))
-    {
+    let side = side_tab_side(whole);
+    // The widest other side the declarations draw: a bar is a side drawn
+    // alone, or 2px or more beside hairlines or sides at most half its width.
+    let other = other_side_width(&statements, side).max(tag.map_or(0.0, |t| tailwind_other_side_width(t, side)));
+    if !(other == 0.0 || (width >= 2.0 && (other <= 1.0 || width >= other * 2.0))) {
+        return false;
+    }
+    // A hairline beside a frame another rule for the same element draws.
+    if width < 2.0 && index().is_some_and(|index| index.is_declaration_framed(pos)) {
         return false;
     }
     // A quote's rule or a code line's gutter on a square box is typography.
-    let typographic = if markup {
-        complete_markup_tag(source.line(i), m.index).is_some_and(|tag| {
-            re!(TAG_CLASS_RE, r#"(?:^|\s)class(?:Name)?\s*=\s*["'{`]*([^"'}`]*)"#.to_string());
-            let name: String = tag[1..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
-            let classes = TAG_CLASS_RE.captures(tag).map_or(String::new(), |c| c[1].to_string());
-            is_typographic_box(&classes, [name.as_str()])
-        })
+    let classes = tag.map(tag_classes).unwrap_or_default();
+    let typographic = if let Some(tag) = tag {
+        is_typographic_box(&classes.join(" "), [tag_name(tag).as_str()])
     } else {
-        selectors.iter().any(|h| is_typographic_selector(h))
+        !selectors.is_empty() && selectors.iter().all(|h| is_typographic_selector(h))
     };
-    side_bar_stands_on(width, false, typographic)
-        || side_bar_stands_on(
-            width,
-            side_tab_scope_corners(m, source, i, sass).rounds_any()
-                || index().is_some_and(|index| index.is_declaration_rounded(pos)),
-            typographic,
-        )
+    let rounded = || {
+        side_tab_scope_corners(m, source, i, sass).rounds_any()
+            || index().is_some_and(|index| index.is_declaration_rounded(pos))
+            || tag.is_some_and(|t| {
+                markup_text.is_some_and(|text| {
+                    markup_index.get_or_init(|| CssHostIndex::new(text)).is_element_rounded(Some(tag_name(t).as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase())), &classes)
+                })
+            })
+    };
+    side_bar_stands_on(width, false, typographic) || side_bar_stands_on(width, rounded(), typographic)
+}
+
+/// The stripe side of a `side-tab` match: `3` for left or start, else `1`.
+fn side_tab_side(whole: &str) -> usize {
+    if let Some(c) = TW_SIDE_TAB_WHOLE_RE.captures(whole) {
+        return if matches!(&c[1], "l" | "s") { 3 } else { 1 };
+    }
+    let lower = js::to_lower_case(whole);
+    if lower.contains("left") || lower.contains("start") { 3 } else { 1 }
+}
+
+/// A markup tag's element name (`div`, `Card`).
+fn tag_name(tag: &str) -> String {
+    tag.trim_start_matches('<').chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '.').collect()
+}
+
+/// The literal classes a markup tag carries.
+fn tag_classes(tag: &str) -> Vec<String> {
+    re!(TAG_CLASS_RE, r#"(?:^|\s)(?:class|className)\s*=\s*\{?\s*["'`]([^"'`]*)["'`]"#.to_string());
+    TAG_CLASS_RE.captures_iter(tag).flat_map(|c| c[1].split_whitespace().map(str::to_string).collect::<Vec<_>>()).collect()
+}
+
+/// The declarations of a markup tag's `style` attribute or style object, in
+/// CSS spelling (`borderLeft: '1px solid'` reads `border-left: 1px solid`).
+fn tag_style_statements(tag: &str) -> Vec<String> {
+    re!(STYLE_ATTR_RE, r#"(?i)\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\{(.*?)\}\})"#.to_string());
+    let Some(c) = STYLE_ATTR_RE.captures(tag) else { return Vec::new() };
+    if let Some(css) = c.get(1).or_else(|| c.get(2)) {
+        return css.as_str().split(';').map(|s| js::trim(s).to_string()).filter(|s| !s.is_empty()).collect();
+    }
+    let object = c.get(3).map_or("", |m| m.as_str());
+    split_commas_outside_parens(object)
+        .into_iter()
+        .filter_map(|entry| {
+            let (key, value) = entry.split_once(':')?;
+            let key = js::trim(key).trim_matches(|c| c == '"' || c == '\'');
+            let mut prop = String::new();
+            for ch in key.chars() {
+                if ch.is_ascii_uppercase() {
+                    prop.push('-');
+                    prop.push(ch.to_ascii_lowercase());
+                } else {
+                    prop.push(ch);
+                }
+            }
+            let value = js::trim(value).trim_matches(|c| c == '"' || c == '\'' || c == '`');
+            let value = if value.chars().all(|c| c.is_ascii_digit() || c == '.') { format!("{value}px") } else { value.to_string() };
+            Some(format!("{prop}: {value}"))
+        })
+        .collect()
+}
+
+/// The widest border the declarations give a side other than `side`
+/// (`[Top, Right, Bottom, Left]` index), in px: the shorthand, the box
+/// widths, and each side's own declarations. A style of `none` or a width of
+/// `0` draws nothing; a side named with no width is `medium`.
+fn other_side_width(statements: &[String], side: usize) -> f64 {
+    let width_of = |value: &str| -> f64 {
+        let v = js::to_lower_case(js::trim(value));
+        if v.contains("none") || v.contains("hidden") {
+            return 0.0;
+        }
+        v.split_whitespace()
+            .find_map(|t| match t {
+                "thin" => Some(1.0),
+                "medium" => Some(3.0),
+                "thick" => Some(5.0),
+                "0" => Some(0.0),
+                _ => css_length_to_px(t),
+            })
+            .unwrap_or(3.0)
+    };
+    let mut sides = [0.0f64; 4];
+    for st in statements {
+        let Some((prop, value)) = split_declaration(st) else { continue };
+        let prop = js::to_lower_case(&prop);
+        let targets: &[usize] = match prop.as_str() {
+            "border" => &[0, 1, 2, 3],
+            "border-top" | "border-block-start" => &[0],
+            "border-bottom" | "border-block-end" => &[2],
+            "border-block" => &[0, 2],
+            "border-right" | "border-inline-end" => &[1],
+            "border-left" | "border-inline-start" => &[3],
+            "border-width" => {
+                let w: Vec<f64> = value.split_whitespace().map(|t| css_length_to_px(t).unwrap_or(if t == "0" { 0.0 } else { 3.0 })).collect();
+                let at = |i: usize| match w.len() {
+                    0 => 0.0,
+                    1 => w[0],
+                    2 => w[i % 2],
+                    3 => w[if i == 3 { 1 } else { i }],
+                    _ => w[i],
+                };
+                for (i, s) in sides.iter_mut().enumerate() {
+                    *s = at(i);
+                }
+                continue;
+            }
+            "border-top-width" => &[0],
+            "border-bottom-width" => &[2],
+            "border-right-width" => &[1],
+            "border-left-width" => &[3],
+            _ => continue,
+        };
+        let w = width_of(&value);
+        for &t in targets {
+            sides[t] = w;
+        }
+    }
+    (0..4).filter(|&j| j != side).map(|j| sides[j]).fold(0.0, f64::max)
+}
+
+/// The widest border a tag's utility classes draw on a side other than
+/// `side`: `border` (1px all round), `border-2`, `border-t`, `border-y-4` and
+/// the like, variants included.
+fn tailwind_other_side_width(tag: &str, side: usize) -> f64 {
+    re!(TW_BORDER_RE, r"(?:^|[\s:])border(?:-([xytrblse]))?(?:-([0-9]+))?(?:$|\s)".to_string());
+    let mut max = 0.0f64;
+    for c in TW_BORDER_RE.captures_iter(&tag.replace(['"', '\'', '`', '{', '}'], " ")) {
+        let w = c.get(2).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(1.0);
+        let on: &[usize] = match c.get(1).map(|m| m.as_str()) {
+            None => &[0, 1, 2, 3],
+            Some("x") => &[1, 3],
+            Some("y") => &[0, 2],
+            Some("t") => &[0],
+            Some("b") => &[2],
+            Some("r") | Some("e") => &[1],
+            _ => &[3],
+        };
+        if on.iter().any(|&j| j != side) {
+            max = max.max(w);
+        }
+    }
+    max
 }
 
 /// Whether some statement declares a radius. A statement that might bring

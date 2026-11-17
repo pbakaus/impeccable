@@ -34,7 +34,7 @@ use impeccable_core::checks::css_scan::{side_stripe_index, CssHostIndex};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
 use impeccable_core::checks::side_bar::{
-    corners_round, is_inline_side_tab, is_typographic_selector, scan_css_text_for_side_bars, side_bar_stands_on,
+    corners_round, is_inline_side_tab, is_typographic_selector, scan_css_text_for_side_bars_with, side_bar_stands_on,
     side_bar_thickness,
 };
 use impeccable_core::checks::rules::{is_rounded_away_from_side, RuleHit, SafeTagTextSeen};
@@ -414,7 +414,7 @@ pub fn detect_html_source(
                 check_html_patterns(html, Some(&corpora))
                     .into_iter()
                     .filter(|item| item.id != "bounce-easing" && !is_inline_side_tab(&item.id, &item.snippet))
-                    .chain(scan_css_text_for_side_bars(&corpora.style_text))
+                    .chain(scan_css_text_for_side_bars_with(&corpora.style_text, true))
                     .collect()
             },
         );

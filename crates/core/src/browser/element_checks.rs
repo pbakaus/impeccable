@@ -667,12 +667,21 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
             .map_or(true, |c| c.alpha_or_one() < 0.1)
             && matches!(dom.style(el, "backgroundImage").as_str(), "" | "none");
         let flagged = state(el) || hosts.iter().any(|&e| state(e));
+        // A plain cell's edge between two cells is a column rule (`td + td`):
+        // only the row's own outer edge reads as its stripe.
+        let outer = |edge: &str| {
+            flagged || {
+                let cells = dom.parent(el).map(|p| dom.children(p)).unwrap_or_default();
+                if edge == "left" { cells.first() == Some(&el) } else { cells.last() == Some(&el) }
+            }
+        };
         (inset && (flagged || bare))
             .then(|| row_inset_detail(dom, el, &shadow))
             .flatten()
+            .filter(|d| outer(if d.contains("(left edge)") { "left" } else { "right" }))
             .or_else(|| {
                 let (thickness, edge, _) = row_border_stripe(dom, el, &tag)
-                    .filter(|&(_, _, alone)| flagged || (bare && alone))?;
+                    .filter(|&(_, edge, alone)| flagged || (bare && alone && outer(edge)))?;
                 Some(format!(
                     "{} — border-{edge} {}px stripe on a row or cell ({edge} edge)",
                     class_selector(dom, el),
@@ -6897,6 +6906,39 @@ mod tests {
         assert!(check_element_inset_stripe_dom(&d, plain).is_empty(), "a plain cell shaded with a gradient");
         d.set_attr(tr, "aria-selected", "true");
         assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1, "selected row");
+    }
+
+    /// A plain cell's border between two cells is a column rule; the row's
+    /// outer edge, or a state, is a stripe.
+    #[test]
+    fn a_column_rule_between_cells_is_not_a_row_stripe() {
+        let (mut d, body) = page();
+        let table = d.add(Some(body), "table");
+        let tr = d.add(Some(table), "tr");
+        let first = d.add(Some(tr), "td");
+        let second = d.add(Some(tr), "td");
+        for (el, w) in [(table, 600.0), (tr, 600.0), (first, 200.0), (second, 200.0)] {
+            visible(&mut d, el);
+            d.set_rect(el, 0.0, 0.0, w, 48.0);
+        }
+        let rule = [
+            ("boxShadow", "none"),
+            ("borderRadius", "0px"),
+            ("borderTopWidth", "0px"),
+            ("borderRightWidth", "0px"),
+            ("borderBottomWidth", "0px"),
+            ("borderLeftWidth", "2px"),
+            ("borderLeftStyle", "solid"),
+            ("borderLeftColor", "rgb(221, 221, 221)"),
+        ];
+        d.set_styles(second, &rule);
+        assert!(check_element_inset_stripe_dom(&d, second).is_empty());
+        d.set_styles(second, &[("borderLeftWidth", "0px"), ("boxShadow", "rgb(221, 221, 221) 2px 0px 0px 0px inset")]);
+        assert!(check_element_inset_stripe_dom(&d, second).is_empty());
+        d.set_styles(first, &rule);
+        assert_eq!(check_element_inset_stripe_dom(&d, first).len(), 1);
+        d.set_attr(tr, "class", "is-error");
+        assert_eq!(check_element_inset_stripe_dom(&d, second).len(), 1);
     }
 
     #[test]

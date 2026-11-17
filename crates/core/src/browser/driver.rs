@@ -1465,7 +1465,7 @@ fn html_pattern_items(
     let all = all
         .into_iter()
         .filter(|f| !crate::checks::side_bar::is_inline_side_tab(&f.id, &f.snippet))
-        .chain(crate::checks::side_bar::scan_css_text_for_side_bars(&corpora.style_text));
+        .chain(crate::checks::side_bar::scan_css_text_for_side_bars_with(&corpora.style_text, true));
     let mut out = Vec::new();
     // Computed lazily: the accent check below is the only caller and it is
     // rare, so an unrelated page never pays for the sweep.

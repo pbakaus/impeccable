@@ -1253,7 +1253,7 @@ struct RadiusRule {
     order: usize,
     decls: Vec<RadiusDecl>,
     /// The block draws a border across the top or bottom.
-    draws_frame: bool,
+    draws_frame: Option<bool>,
 }
 
 impl RadiusRule {
@@ -1514,21 +1514,29 @@ impl<'a> CssHostIndex<'a> {
                 ))
             })
             .collect();
-        // Whether the block draws a border across the top or bottom, the
-        // frame a one-sided hairline beside it belongs to.
-        let draws_frame = frame.direct.split(';').any(|part| {
-            let Some((prop, value)) = part.split_once(':') else { return false };
-            let prop = js::to_lower_case(js::trim(prop));
-            let value = js::to_lower_case(js::trim(value));
-            matches!(
-                prop.as_str(),
-                "border" | "border-width" | "border-top" | "border-bottom" | "border-block" | "border-top-width" | "border-bottom-width"
-            ) && !value.is_empty()
-                && !value.starts_with("none")
-                && !value.starts_with("hidden")
-                && !value.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
-        });
-        if decls.is_empty() && !draws_frame {
+        // Whether the block draws a border across the top or bottom (the
+        // frame a one-sided hairline beside it belongs to), takes one away
+        // (`border: 0`), or says nothing of it: its last such declaration.
+        let draws_frame = frame
+            .direct
+            .split(';')
+            .filter_map(|part| {
+                let (prop, value) = part.split_once(':')?;
+                let prop = js::to_lower_case(js::trim(prop));
+                let value = js::to_lower_case(js::trim(value));
+                matches!(
+                    prop.as_str(),
+                    "border" | "border-width" | "border-top" | "border-bottom" | "border-block" | "border-top-width" | "border-bottom-width" | "border-style"
+                )
+                .then(|| {
+                    !value.is_empty()
+                        && !value.starts_with("none")
+                        && !value.starts_with("hidden")
+                        && !value.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
+                })
+            })
+            .last();
+        if decls.is_empty() && draws_frame.is_none() {
             return;
         }
         let id = self.rules.len();
@@ -1922,7 +1930,24 @@ impl<'a> CssHostIndex<'a> {
     /// `.g .btn + .btn { border-left: 1px solid }`).
     pub fn is_declaration_framed(&self, pos: usize) -> bool {
         self.declaration_hosts(pos)
-            .is_some_and(|hosts| self.tied_rules(&hosts).iter().any(|id| self.rules[*id].draws_frame))
+            .is_some_and(|hosts| {
+                // The last tied rule that says anything of the frame wins.
+                self.tied_rules(&hosts).iter().filter_map(|id| self.rules[*id].draws_frame).last().unwrap_or(false)
+            })
+    }
+
+    /// Whether a rule whose subject could match a markup element (its tag,
+    /// its literal classes) rounds it to a radius known to be above zero:
+    /// what a hairline in a `style` attribute reads from the file's style
+    /// blocks.
+    pub fn is_element_rounded(&self, tag: Option<&str>, classes: &[String]) -> bool {
+        self.exact.iter().filter(|(selector, _)| selector_could_apply(selector, tag, false, classes)).any(|(_, ids)| {
+            ids.iter().any(|id| {
+                let mut corners = DeclaredCorners::default();
+                self.rules[*id].apply_to(&mut corners);
+                corners.rounds_any()
+            })
+        })
     }
 
     /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding

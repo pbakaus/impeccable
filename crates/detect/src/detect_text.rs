@@ -1917,6 +1917,7 @@ pub fn run_regex_matchers(
     // and the stylesheet index over it, built on the first accent it gates.
     let source = once_cell::unsync::OnceCell::new();
     let index = once_cell::unsync::OnceCell::new();
+    let markup_index = once_cell::unsync::OnceCell::new();
     for matcher in REGEX_MATCHERS.iter() {
         let run = || {
             let mut matches = Vec::new();
@@ -2013,7 +2014,16 @@ pub fn run_regex_matchers(
                             let index_text = sheet.and_then(|sheet| {
                                 style_index_text(block_context, source, i, m.index, sheet.style_text())
                             });
-                            side_tab_match_stands(&m, source, i, sass, &index, index_text)
+                            side_tab_match_stands(
+                                &m,
+                                source,
+                                i,
+                                sass,
+                                &index,
+                                index_text,
+                                &markup_index,
+                                sheet.map(|sheet| sheet.style_sources()),
+                            )
                         })
                     {
                         matches.push(finding(
@@ -2747,6 +2757,23 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         assert_eq!(
             side_tabs(tsx, "/x/a.tsx"),
             vec!["border-l-2".to_string(), "borderLeft: '1px solid".to_string()]
+        );
+        // Review round one: an equal frame, a rounded 1px markup frame, a
+        // reset frame beside a hairline, a markup hairline rounded by the
+        // file's style block, and a quote branch beside a card branch.
+        assert!(side_tabs(".x { border: 2px solid #ddd; border-left: 2px solid #ddd; }\n", "/x/f.css").is_empty());
+        assert!(side_tabs("export const A = () => <div style={{ border: '1px solid #ccc', borderLeft: '1px solid red', borderRadius: 6 }} />;\n", "/x/f.tsx").is_empty());
+        assert_eq!(
+            side_tabs(".btn { border: 1px solid #ddd; border-radius: 6px; }\n.btn.on { border: 0; border-left: 1px solid red; }\n", "/x/r.css"),
+            vec!["border-left: 1px solid red".to_string()]
+        );
+        assert_eq!(
+            side_tabs("<template>\n  <div class=\"card\" style=\"border-left: 1px solid #ddd;\">x</div>\n</template>\n<style>\n.card { border-radius: 6px; }\n</style>\n", "/x/m.vue"),
+            vec!["border-left: 1px solid #ddd".to_string()]
+        );
+        assert_eq!(
+            side_tabs("blockquote, .card { border-left: 3px solid #ddd; }\n.card:not(.quote) { box-shadow: inset 3px 0 0 #ddd; }\n", "/x/q.css").len(),
+            2
         );
         // A quote's rule or a code line's gutter is typography on a square
         // box and a tab on a rounded one.

@@ -378,9 +378,10 @@ fn cascade_decl_block(block: &str) -> DeclMap {
 /// `!important`, so a shared `border-style: none` after the side border
 /// hides it, and a reset before it does not. A box drawn top and bottom too
 /// is a frame.
-fn border_stripe(
+pub fn border_stripe_in(
     block: &str,
     lookup: &dyn Fn(&str) -> Option<String>,
+    band: std::ops::RangeInclusive<f64>,
 ) -> Option<(&'static str, f64, &'static str, bool)> {
     let mut sides = [BorderSide::initial(), BorderSide::initial(), BorderSide::initial(), BorderSide::initial()];
     for part in block.split(';') {
@@ -442,7 +443,7 @@ fn border_stripe(
     }
     for (side, edge, fallback) in [(3, "left", "border-left"), (1, "right", "border-right")] {
         let s = &sides[side];
-        if s.visible() && in_band(s.width) && colour_paints(&s.colour, lookup) {
+        if s.visible() && band.contains(&s.width) && colour_paints(&s.colour, lookup) {
             let alone = (0..4).all(|other| other == side || !sides[other].visible());
             return Some((s.named.unwrap_or(fallback), s.width, edge, alone));
         }
@@ -543,7 +544,7 @@ pub fn scan_css_text_for_row_stripe(content: &str, tokens: Option<&CustomProps>)
         {
             let only = decls.iter().all(|(p, v)| !paints(p, v) || p == "box-shadow" || p.starts_with("box-shadow-"));
             (format!("inset box-shadow {}px stripe on a row or cell ({edge} edge)", number_to_string(px)), only)
-        } else if let Some((prop, px, edge, alone)) = border_stripe(&m[2], &lookup) {
+        } else if let Some((prop, px, edge, alone)) = border_stripe_in(&m[2], &lookup, MIN_PX..=MAX_PX) {
             // Every side was resolved: a border declaration is part of the
             // stripe when no other side is drawn.
             let only = alone && decls.iter().all(|(p, v)| !paints(p, v) || p.starts_with("border"));

@@ -30,7 +30,7 @@ use crate::checks::css_scan::{
     collect_css_custom_props, css_length_to_px, is_zero_offset, parse_css_decl_block, resolve_var_refs,
     CustomProps, DeclMap, PatternFinding, CSS_RULE_BLOCK_SOURCE,
 };
-use crate::checks::row_stripe::{is_row_or_cell_part, is_table_or_aria_row_part};
+use crate::checks::row_stripe::{self, is_row_or_cell_part, is_table_or_aria_row_part};
 use crate::checks::rules::{
     check_borders, extract_shadow_lengths, find_shadow_color, is_circle, BorderOpts, Corners,
     RuleHit, Sides,
@@ -88,12 +88,33 @@ pub fn is_typographic_box<'a>(own_class: &str, tags: impl IntoIterator<Item = &'
         || tags.into_iter().take(12).any(|t| matches!(t, "blockquote" | "pre" | "code"))
 }
 
-/// [`is_typographic_box`] read off a selector: one that names a
+/// [`is_typographic_box`] read off a selector list: every branch names a
 /// `blockquote`, `pre` or `code`, or a quote, diff, gutter or line-number
-/// class, in any compound.
+/// class, on its subject or on an ancestor of it. A sibling (`blockquote +
+/// .card`) and anything inside a functional pseudo-class (`:not(.quote)`)
+/// do not describe the box.
 pub fn is_typographic_selector(selector: &str) -> bool {
-    TYPO_TAG_SELECTOR_RE.is_match(selector)
-        || SELECTOR_CLASS_RE.captures_iter(selector).any(|c| TYPO_CLASS_RE.is_match(&c[1]))
+    let branches: Vec<&str> = split_commas_outside_parens(selector).into_iter().map(js::trim).filter(|b| !b.is_empty()).collect();
+    !branches.is_empty() && branches.iter().all(|b| branch_is_typographic(b))
+}
+
+/// One selector of a list: its subject and the compounds it descends from,
+/// arguments dropped, up to the first sibling combinator.
+fn branch_is_typographic(branch: &str) -> bool {
+    let mut plain = String::with_capacity(branch.len());
+    let mut depth = 0i32;
+    for c in branch.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            _ if depth == 0 => plain.push(c),
+            _ => {}
+        }
+    }
+    // The box and its ancestors: everything right of the last `+` or `~`.
+    let own = plain.rsplit(['+', '~']).next().unwrap_or("");
+    let own = format!(" {own} ");
+    TYPO_TAG_SELECTOR_RE.is_match(&own) || SELECTOR_CLASS_RE.captures_iter(&own).any(|c| TYPO_CLASS_RE.is_match(&c[1]))
 }
 
 /// Whether corners round the box at all: any radius known to be above zero.
@@ -124,7 +145,7 @@ pub fn is_inline_side_tab(id: &str, snippet: &str) -> bool {
 /// The bar's thickness in px, read off a [`scan_css_text_for_side_bars`]
 /// snippet (`.x — inset box-shadow 2px stripe (left)`).
 pub fn side_bar_thickness(snippet: &str) -> Option<f64> {
-    re!(PX_RE, r" — (?:inset box-shadow|absolute) ([0-9.]+)px ".to_string());
+    re!(PX_RE, r" — (?:inset box-shadow|absolute|border-[a-z-]+) ([0-9.]+)px ".to_string());
     PX_RE.captures(snippet).and_then(|c| c[1].parse().ok())
 }
 
@@ -137,10 +158,26 @@ pub fn without_state_pseudos(selector: &str) -> String {
         STATE_RE,
         r"(?i):(?:hover|focus-visible|focus-within|focus|active|checked|target)(?:$|[^-_A-Za-z0-9(])".to_string()
     );
+    // A state inside a functional pseudo-class (`:not(:focus)`) is part of
+    // what the selector asks of the box and stays.
+    let depth_at = |text: &str, at: usize| {
+        text[..at].chars().fold(0i32, |d, c| match c {
+            '(' => d + 1,
+            ')' => d - 1,
+            _ => d,
+        })
+    };
     let mut out = selector.to_string();
-    while let Some(m) = STATE_RE.find(&out) {
-        let end = m.end() - if m.as_str().ends_with(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_') { 1 } else { 0 };
-        out.replace_range(m.start()..end, "");
+    let mut from = 0;
+    while let Some((start, end)) = STATE_RE.find_at(&out, from).map(|m| {
+        (m.start(), m.end() - usize::from(m.as_str().ends_with(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')))
+    }) {
+        if depth_at(&out, start) > 0 {
+            from = end;
+            continue;
+        }
+        out.replace_range(start..end, "");
+        from = start;
     }
     out
 }
@@ -242,6 +279,7 @@ fn colour_paints(value: &str) -> bool {
 /// An inset shadow layer that is a bar down the left or right edge:
 /// `(thickness, edge)`.
 fn inset_bar(value: &str) -> Option<(f64, &'static str)> {
+    let mut best: Option<(f64, &'static str)> = None;
     for layer in split_commas_outside_parens(value) {
         let layer = js::trim(layer);
         if !INSET_RE.is_match(layer) {
@@ -271,9 +309,11 @@ fn inset_bar(value: &str) -> Option<(f64, &'static str)> {
         if y != 0.0 || blur != 0.0 || spread != 0.0 || !(1.0..=SIDE_BAR_MAX_PX).contains(&x.abs()) {
             continue;
         }
-        return Some((x.abs(), if x > 0.0 { "left" } else { "right" }));
+        if best.map_or(true, |(px, _)| x.abs() > px) {
+            best = Some((x.abs(), if x > 0.0 { "left" } else { "right" }));
+        }
     }
-    None
+    best
 }
 
 /// The four insets a pseudo-element declares, `[top, right, bottom, left]`,
@@ -382,7 +422,15 @@ fn pseudo_bar(decls: &DeclMap, props: &CustomProps) -> Option<(f64, &'static str
 /// [`crate::checks::row_stripe`]'s, unless the rule rounds it (a row named
 /// only by class that is rounded is a card).
 pub fn scan_css_text_for_side_bars(content: &str) -> Vec<PatternFinding> {
-    if !content.contains("inset") && !content.contains("before") && !content.contains("after") {
+    scan_css_text_for_side_bars_with(content, false)
+}
+
+/// [`scan_css_text_for_side_bars`], and with `state_borders` the side borders
+/// of rules for a hover or focus state too (`.it:hover { border-left: 2px
+/// solid }`): an engine reading borders off the element at rest never sees
+/// them. The text engine reads every border declaration on its own.
+pub fn scan_css_text_for_side_bars_with(content: &str, state_borders: bool) -> Vec<PatternFinding> {
+    if !content.contains("inset") && !content.contains("before") && !content.contains("after") && !(state_borders && content.contains("border")) {
         return Vec::new();
     }
     // Comments blanked UTF-16 unit for unit, newlines kept, so a selector's
@@ -393,8 +441,10 @@ pub fn scan_css_text_for_side_bars(content: &str) -> Vec<PatternFinding> {
             .collect::<String>()
     });
     let props = collect_css_custom_props(&text);
-    let mut findings = Vec::new();
-    let mut seen: Vec<String> = Vec::new();
+    let mut findings: Vec<PatternFinding> = Vec::new();
+    // Each selector's bar, by its index in `findings` and its thickness: a
+    // thicker bar for the same selector replaces a thinner one.
+    let mut seen: Vec<(String, usize, f64)> = Vec::new();
     for m in RULE_RE.captures_iter(&text) {
         let raw = m.get(1).unwrap();
         let selector = js::trim(raw.as_str());
@@ -428,15 +478,31 @@ pub fn scan_css_text_for_side_bars(content: &str) -> Vec<PatternFinding> {
                 .filter(|_| !narrow)
                 .and_then(|v| inset_bar(&resolve_var_refs(v, &props)))
                 .map(|(px, edge)| format!("inset box-shadow {}px stripe ({edge})", number_to_string(px)))
+                .or_else(|| {
+                    let state = state_borders && without_state_pseudos(selector) != selector;
+                    let lookup = |name: &str| props.get(name).cloned();
+                    state
+                        .then(|| row_stripe::border_stripe_in(&m[2], &lookup, 1.0..=f64::MAX))
+                        .flatten()
+                        .filter(|&(_, px, _, alone)| alone || px >= SIDE_BAR_MIN_PX)
+                        .map(|(prop, px, edge, _)| format!("{prop} {}px stripe ({edge})", number_to_string(px)))
+                })
         };
         let Some(detail) = bar else { continue };
+        let thickness = side_bar_thickness(&format!(" — {detail}")).unwrap_or(0.0);
         let selector = parts.join(", ");
         let selector = selector.split_whitespace().collect::<Vec<_>>().join(" ");
         if !selector.contains('&') {
-            if seen.contains(&selector) {
+            if let Some(&(_, at, px)) = seen.iter().find(|(s, _, _)| *s == selector) {
+                if thickness > px {
+                    findings[at].snippet = format!("{selector} — {detail}");
+                    if let Some(entry) = seen.iter_mut().find(|(s, _, _)| *s == selector) {
+                        entry.2 = thickness;
+                    }
+                }
                 continue;
             }
-            seen.push(selector.clone());
+            seen.push((selector.clone(), findings.len(), thickness));
         }
         let leading = raw.as_str().len() - js::trim_start(raw.as_str()).len();
         let index = advance_utf16(content, 0, utf16_index(&text, raw.start() + leading));
@@ -511,6 +577,36 @@ mod tests {
     }
 
     #[test]
+    fn review_round_one() {
+        // A thicker bar later in the sheet, or in a later layer, is the one
+        // read for its selector.
+        assert_eq!(
+            snippets(".x { box-shadow: inset 1px 0 0 #ddd; } .x { box-shadow: inset 4px 0 0 red; }"),
+            vec![".x — inset box-shadow 4px stripe (left)"]
+        );
+        assert_eq!(
+            snippets(".x { box-shadow: inset 1px 0 0 #ddd, inset 4px 0 0 red; }"),
+            vec![".x — inset box-shadow 4px stripe (left)"]
+        );
+        // A state inside a functional pseudo-class stays.
+        assert_eq!(without_state_pseudos(".it:not(:focus)"), ".it:not(:focus)");
+        assert_eq!(without_state_pseudos(".it:hover:not(:focus)"), ".it:not(:focus)");
+        // Typography is read per branch, off the box and its ancestors only.
+        assert!(!is_typographic_selector("blockquote, .card"));
+        assert!(!is_typographic_selector(".card:not(.quote)"));
+        assert!(!is_typographic_selector("blockquote + .card"));
+        assert!(is_typographic_selector("blockquote, pre .line"));
+        // A side border in a hover state, for an engine that reads borders
+        // at rest; not in the plain scan, where the border matchers read it.
+        let hover = ".it:hover { border-left: 2px solid #ddd; }";
+        assert!(snippets(hover).is_empty());
+        let with: Vec<String> = scan_css_text_for_side_bars_with(hover, true).into_iter().map(|f| f.snippet).collect();
+        assert_eq!(with, vec![".it:hover — border-left 2px stripe (left)"]);
+        assert_eq!(side_bar_thickness(&with[0]), Some(2.0));
+        assert!(scan_css_text_for_side_bars_with(".it { border-left: 2px solid #ddd; }", true).is_empty());
+    }
+
+    #[test]
     fn a_quote_rule_or_code_gutter_is_typography_on_a_square_box() {
         assert!(is_typographic_box("", ["blockquote"]));
         assert!(is_typographic_box("line", ["span", "code", "pre"]));
@@ -560,7 +656,7 @@ mod tests {
         let caret = Sides { top: 6.0, right: 0.0, bottom: 6.0, left: 6.0 };
         let caret_colours = Sides { top: Some("rgba(0, 0, 0, 0)"), right: Some("rgba(0, 0, 0, 0)"), bottom: Some("rgba(0, 0, 0, 0)"), left: Some("rgb(51, 51, 51)") };
         assert!(check_borders_with_side_bars("span", &caret, &caret_colours, 0.0, &opts(0.0), false).is_empty());
-        assert_eq!(without_state_pseudos(".a:hover .b:focus-within, .c:not(:focus)"), ".a .b, .c:not()");
+        assert_eq!(without_state_pseudos(".a:hover .b:focus-within, .c:not(:focus)"), ".a .b, .c:not(:focus)");
         let mut ring = opts(20.0);
         ring.box_size = Some([40.0, 40.0]);
         assert!(check_borders_with_side_bars("div", &sides(3.0, 0.0), &grey, 20.0, &ring, false).is_empty());

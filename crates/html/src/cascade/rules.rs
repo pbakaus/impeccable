@@ -422,8 +422,13 @@ pub fn apply_static_declaration<K: Hash + Eq + Clone>(
     ] {
         if let Some(rest) = lower.strip_prefix(logical) {
             if matches!(rest, "" | "-width" | "-style" | "-color") {
-                for side in physical {
-                    apply_static_declaration(specified, node.clone(), &format!("{side}{rest}"), value, meta);
+                // `border-inline-width: 0 4px` gives start and end their own
+                // values; the shorthand gives both one.
+                let parts = split_css_tokens(value);
+                let pair = physical.len() == 2 && !rest.is_empty() && parts.len() == 2;
+                for (i, side) in physical.iter().enumerate() {
+                    let v = if pair { parts[i].as_str() } else { value };
+                    apply_static_declaration(specified, node.clone(), &format!("{side}{rest}"), v, meta);
                 }
                 return;
             }

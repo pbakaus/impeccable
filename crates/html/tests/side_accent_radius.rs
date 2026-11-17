@@ -228,3 +228,22 @@ fn a_square_quote_rule_or_code_gutter_is_typography() {
         vec!["border-left: 4px + border-radius: 8px"]
     );
 }
+
+/// Review round one: a two-value logical width, a bar only in a hover state,
+/// and a quote branch beside a card branch.
+#[test]
+fn logical_pairs_hover_borders_and_mixed_branches() {
+    let page = |css: &str, body: &str| side_tabs_on_page(&format!("<style>{css}</style>"), body);
+    assert_eq!(
+        page(".x{width:400px;height:120px;border-left:3px solid red;border-inline-width:0 4px}", "<div class=\"x\">x</div>"),
+        vec!["border-right: 4px"]
+    );
+    assert_eq!(
+        page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>"),
+        vec![".it:hover — border-left 2px stripe (left)"]
+    );
+    assert_eq!(
+        page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>"),
+        vec!["blockquote, .card — inset box-shadow 3px stripe (left)"]
+    );
+}
