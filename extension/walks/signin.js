@@ -71,64 +71,68 @@ export function lookInPage() {
   // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
   // a name or an email (signing in, signing up), is.
   // A password field, one marked as one when seen, one that says it takes a password or a one-time code whatever
-  // its type, or a text field whose name, id, placeholder and label read as a password and not as an email (a reset
-  // field): a "show password" toggle turns it to text, so each password field is marked at every look, before the
+  // its type, or a text field whose name or id reads as a password and not as an email, or whose placeholder or label
+  // does (an email field to reset one is plain): a "show password" toggle turns it to text, so each password field is marked at every look, before the
   // person can show it (the cover keeps it covered by the same mark); a code step is a text field. The marks stay once
   // the walk lets go of the tab: a later walk there still knows a password shown since, which it could not tell from text.
   const MARK = 'data-impeccable-secret-field';
   for (const root of roots) for (const field of root.querySelectorAll(`input[type="password" i]:not([${MARK}])`)) field.setAttribute(MARK, '');
   const NAMED = ['name', 'id', 'placeholder', 'aria-label'];
   const words = (input) => NAMED.map((name) => input.getAttribute?.(name) ?? '').join(' ');
-  const named = (input) => String(input.type).toLowerCase() === 'text' && /passw|pwd/i.test(words(input)) && !/mail/i.test(words(input));
+  const named = (input) => String(input.type).toLowerCase() === 'text' && [['name', 'id'], ['placeholder', 'aria-label']].some((keys) => ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(keys.map((name) => input.getAttribute?.(name) ?? '').join(' ')));
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => String(input.type).toLowerCase() === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token)) || named(input);
-  // A "show password" button that swaps in a new text field instead puts it where the password field was: the element
-  // round each password field (and the one above, when that element is the field's own wrapper) keeps how many children
-  // it has and which of them hold a password field (counted as the cover counts them), and whether each held one. At
-  // the next look, with as many children, a text field in such a place (or alone in it) that names no account is marked
-  // if it holds something, so the walk stays paused on this page; one still empty and named for nothing, where the
-  // password field was empty too, waits to be typed into. The element also keeps a short hash of its other fields (their
-  // type, names and autocomplete, never a value; other password places left out): a swap leaves them as they were. Anything
-  // else ends it: a field that was beside the password, or a next step drawn where it was (the sign-in's email gone), is plain.
+  // A "show password" button that swaps in a new text field instead puts it at the password field's place among the
+  // fields of the element round it (and of the one above, when that element holds no other field): that element keeps
+  // the place, whether the password field held something, a hash of each of its names, and a hash of its other fields
+  // (their type, names and autocomplete, never a value), as the cover keeps them. At the next look, with those other
+  // fields as they were, a text field at that place that names no account is marked if it holds something, so the walk
+  // stays paused on this page; one still empty waits to be typed into, while the password field was empty too and the
+  // new one keeps one of its names or has none. Anything else ends it: a field that was beside the password, or a next
+  // step drawn where it was (the sign-in's email gone, or a Company where a bare password stood), is plain. A button or
+  // note added beside it is not.
   const SPOT = 'data-impeccable-secret-spot';
   const passwordField = (f) => String(f.type).toLowerCase() === 'password' || f.getAttribute(MARK) !== null || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? '') || named(f);
   const account = (f) => {
     const said = `${words(f)} ${f.getAttribute('autocomplete') ?? ''}`;
     return ['email', 'tel'].includes(String(f.type).toLowerCase()) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
   };
-  const shape = (box, at) => {
+  const hash = (text) => {
     let h = 0;
-    [...box.children].forEach((child, k) => {
-      if (at.some((i) => parseInt(i, 10) === k)) return;
-      for (const f of child.tagName === 'INPUT' ? [child] : child.querySelectorAll('input')) {
-        for (const c of `${String(f.type).toLowerCase()} ${words(f)} ${f.getAttribute('autocomplete') ?? ''}|`) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
-      }
-    });
-    return `${box.children.length}.${(h >>> 0).toString(36)}`;
+    for (const c of text) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
+    return (h >>> 0).toString(36);
   };
+  const inputs = (box) => [...box.querySelectorAll('input')];
+  const shape = (box, at) => {
+    const all = inputs(box);
+    return `${all.length}.${hash(all.filter((_, k) => !at.some((e) => parseInt(e, 10) === k)).map((f) => `${String(f.type).toLowerCase()} ${words(f)} ${f.getAttribute('autocomplete') ?? ''}`).join('|'))}`;
+  };
+  const names = (f) => NAMED.map((name) => f.getAttribute(name) ?? '').map((v) => (v ? hash(v) : ''));
   for (const root of roots) {
     for (const f of root.querySelectorAll('input')) if (f.getAttribute(MARK) === null && passwordField(f)) f.setAttribute(MARK, '');
     for (const box of root.querySelectorAll(`[${SPOT}]`)) {
       const [was, ...at] = (box.getAttribute(SPOT) ?? '').split(' ');
-      const waits = was !== shape(box, at) ? [] : at.filter((i) => {
-        const el = box.children[parseInt(i, 10)];
-        const f = el?.tagName === 'INPUT' ? el : el?.querySelectorAll('input').length === 1 ? el.querySelectorAll('input')[0] : undefined;
+      const all = inputs(box);
+      const waits = was !== shape(box, at) ? [] : at.filter((e) => {
+        const [place = '', ...kept] = e.split('.');
+        const f = all[parseInt(place, 10)];
         if (!f || String(f.type).toLowerCase() !== 'text' || passwordField(f) || account(f)) return false;
-        if (f.value) f.setAttribute(MARK, '');
-        return !f.value && !i.endsWith('f') && !words(f).trim();
+        if (f.value) { f.setAttribute(MARK, ''); return false; }
+        const own = names(f);
+        return !place.endsWith('f') && (own.every((v) => !v) || own.some((v, k) => v !== '' && v === kept[k]));
       });
       if (waits.length) box.setAttribute(SPOT, [shape(box, waits), ...waits].join(' '));
       else box.removeAttribute(SPOT);
     }
-    // Its parent, and the one above when the parent is the field's own wrapper (a swap may replace the wrapper).
+    // Its parent, and the one above when the parent holds no other field (a swap may replace the field's own wrapper).
     for (const field of root.querySelectorAll('input')) {
       if (!passwordField(field)) continue;
-      for (let el = field, box = field.parentElement, up = 0; box && up < 2; el = box, box = box.parentElement, up++) {
-        const i = [...box.children].indexOf(el);
-        const [, ...at] = (box.getAttribute(SPOT) ?? '').split(' ').filter((t, n) => n === 0 || parseInt(t, 10) !== i);
-        at.push(`${i}${field.value ? 'f' : ''}`);
+      for (let box = field.parentElement, up = 0; box && up < 2; box = box.parentElement, up++) {
+        const place = inputs(box).indexOf(field);
+        const [, ...at] = (box.getAttribute(SPOT) ?? '').split(' ').filter((e, n) => n === 0 || parseInt(e, 10) !== place);
+        at.push([`${place}${field.value ? 'f' : ''}`, ...names(field)].join('.'));
         box.setAttribute(SPOT, [shape(box, at), ...at].join(' '));
-        if (box.querySelectorAll('input').length > 1) break;
+        if (inputs(box).length > 1) break;
       }
     }
   }

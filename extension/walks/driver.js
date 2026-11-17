@@ -717,7 +717,8 @@ function frameIndex() {
  */
 function boxFrames(covered) {
   const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes('--secret-cover') === true; } catch { return false; } };
-  const shadow = (el) => el.shadowRoot ?? globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
+  // Chrome opens only an HTML element's root, and throws on an SVG one.
+  const shadow = (el) => { try { return el.shadowRoot ?? globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; } };
   let seen = 0;
   const visit = (root) => {
     for (const el of Array.from(root.querySelectorAll('*'))) {
@@ -1296,7 +1297,7 @@ function secretField(node) {
   const attrs = node?.attributes ?? [];
   const attr = (name) => { for (let i = 0; i + 1 < attrs.length; i += 2) if (String(attrs[i]).toLowerCase() === name) return String(attrs[i + 1]).toLowerCase(); return ''; };
   const tokens = attr('autocomplete').split(/\s+/);
-  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && String(name).toLowerCase() === 'data-impeccable-secret-field') || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && /^(?:text)?$/.test(attr('type')) && ((said) => /passw|pwd/.test(said) && !/mail/.test(said))(['name', 'id', 'placeholder', 'aria-label'].map(attr).join(' ')));
+  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && String(name).toLowerCase() === 'data-impeccable-secret-field') || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && /^(?:text)?$/.test(attr('type')) && [['name', 'id'], ['placeholder', 'aria-label']].some((keys) => ((said) => /passw|pwd/.test(said) && !/mail/.test(said))(keys.map(attr).join(' '))));
 }
 
 /** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */
