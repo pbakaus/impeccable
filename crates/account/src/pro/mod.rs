@@ -693,16 +693,19 @@ pub const WHY_UNVERIFIED: &str =
 /// stays out of it, even on stderr.
 const MACHINE_OUTPUT: &[&str] = &["--json", "-json", "--github", "--quiet"];
 
-/// Whether this scan prints `why`. Paul's choice (REN-1553 decision 1, 10 Nov):
-/// an account without Pro hears "this account doesn't include them" on every
-/// scan a person runs, but never from the edit hooks and never when the output
-/// is for a program. The expired-access line (offline past the lease) follows
-/// the same rule (captain, 10 Nov). The other lines say something is wrong, so
-/// they always print.
+/// Whether this scan prints `why`. An account without Pro hears nothing about
+/// it while Pro isn't on sale (Paul, 17 Nov, replacing REN-1553 decision 1).
+/// The expired-access line (offline past the lease) is an expected state too:
+/// never from the edit hooks or when the output is for a program (captain,
+/// 10 Nov). The other lines say something is wrong, so they always print.
 fn say(why: &str, args: &[String]) -> bool {
     // Expected states, not faults: an account without Pro, and Pro access
     // lapsed while offline. The others say something is wrong, so they print.
-    if why != WHY_NOT_ENTITLED && why != WHY_EXPIRED {
+    // Pro isn't on sale yet, so an account without it hears nothing about it (Paul, 17 Nov).
+    if why == WHY_NOT_ENTITLED {
+        return false;
+    }
+    if why != WHY_EXPIRED {
         return true;
     }
     let hook = matches!(args.first().map(String::as_str), Some("hook" | "hook-before-edit"));
@@ -969,18 +972,12 @@ mod notice_tests {
     }
 
     #[test]
-    fn an_account_without_pro_hears_it_on_every_detect_but_never_from_hooks_or_machine_output() {
-        // Catches (REN-1553 decision 1, Paul 10 Nov): the line throttled to once a day, said from
-        // an edit hook, or mixed into output a program reads (--json, --github, --quiet).
+    fn an_account_without_pro_never_hears_about_it_and_expired_access_stays_out_of_hooks() {
+        // Catches (Paul, 17 Nov, replacing REN-1553 decision 1 until Pro is on sale): a scan
+        // pointing an account without Pro at it.
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook"])));
-        assert!(!say(WHY_NOT_ENTITLED, &args(&["hook-before-edit"])));
-        assert!(say(WHY_NOT_ENTITLED, &args(&["detect", "."])));
-        assert!(say(WHY_NOT_ENTITLED, &args(&["detect", "."])), "every run, not once a day");
-        assert!(say(WHY_NOT_ENTITLED, &args(&["src/"])));
-        for flag in ["--json", "-json", "--github", "--quiet"] {
-            assert!(!say(WHY_NOT_ENTITLED, &args(&["detect", flag, "."])), "{flag}");
-            assert!(!say(WHY_NOT_ENTITLED, &args(&["src/", flag])), "{flag}");
+        for a in [&["detect", "."][..], &["src/"], &["hook"], &["detect", "--json", "."]] {
+            assert!(!say(WHY_NOT_ENTITLED, &args(a)), "{a:?}");
         }
         // The expired-access line is an expected offline state, quiet the same way (captain, 10 Nov):
         // an offline Pro agent session must not see it on every edit hook.

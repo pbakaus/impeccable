@@ -90,7 +90,7 @@ pub fn lines(v: &Value) -> String {
             Some("on") => on.push(name),
             Some("quiet") => on.push(format!("{name} (quiet)")),
             Some("off") => off.push(name),
-            Some("needs-pro") => off.push(format!("{name} (Pro)")),
+            // Pro isn't on sale yet: what a plan doesn't include isn't listed (Paul, 17 Nov).
             _ => {}
         }
     }
@@ -105,7 +105,7 @@ pub fn lines(v: &Value) -> String {
     if let Some(line) = agent_fix(v) {
         out.push_str(&format!("{line}.\n"));
     }
-    if let Some(next) = v.get("next").filter(|n| n.is_object()).and_then(step_line) {
+    if let Some(next) = v.get("next").filter(|n| n.is_object() && n["id"] != "upgrade").and_then(step_line) {
         out.push_str(&format!("Next: {next}\n"));
     }
     out
@@ -255,10 +255,19 @@ mod tests {
         assert_eq!(
             lines(&example()),
             "Connected: Your agent, Loop (quiet), telepathy.\n\
-             Not connected yet: Agent tools, Chrome extension (Pro).\n\
+             Not connected yet: Agent tools.\n\
              Next: Add to GitHub:\n\
              https://github.com/apps/impeccable-critique/installations/new\n"
         );
+    }
+
+    #[test]
+    fn an_account_without_pro_is_never_pointed_at_it() {
+        // Catches (Paul, 17 Nov): setup lines steering an account toward Pro before it's on sale.
+        let mut v = example();
+        v["next"] = json!({ "id": "upgrade", "place": "extension", "label": "Get Pro", "url": "https://impeccable.style/pro", "command": null });
+        let text = lines(&v);
+        assert!(!text.contains("Pro") && !text.contains("Next"), "{text}");
     }
 
     #[test]
