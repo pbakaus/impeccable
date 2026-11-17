@@ -832,9 +832,10 @@ async function blank(on) {
 
 /**
  * The one still of a sign-in page, taken as the walk pauses there and before the person has it (control.js): as any
- * still is (`take`, the `screenshot` op), with every field drawn blank as well, so neither what the person types nor
- * what Chrome filled in shows. Once a document: undefined after the first. Null when there is nothing to picture (a
- * sign-in host still loading, a 401) or it could not be taken safely, while `still()` holds (the pause is the sign-in's).
+ * still is (`take`, the `screenshot` op, its `{ data, plain }`), with every field drawn blank as well, so neither what
+ * the person types nor what Chrome filled in shows. Once a document: undefined after the first. Null when there is
+ * nothing to picture (a sign-in host still loading, a 401) or it could not be taken safely, while `still()` holds (the
+ * pause is the sign-in's).
  */
 export async function signInStill(take, still) {
   const tab = walk;
@@ -845,8 +846,8 @@ export async function signInStill(take, still) {
   try {
     const blanked = await blank(true);
     if (Date.now() >= blanked || !still()) return null;
-    const data = (await take())?.value?.data;
-    return typeof data === 'string' && Date.now() < blanked && walk === tab && still() ? data : null;
+    const value = (await take())?.value;
+    return typeof value?.data === 'string' && Date.now() < blanked && walk === tab && still() ? value : null;
   } catch {
     return null;
   } finally {
@@ -1837,7 +1838,10 @@ export const ops = {
   // Never with Chrome's own `clip`: Chrome lays the tab out again around a clip for the moment of the picture, which
   // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
   // beyond the viewport is blank, as Chrome's own clip of it is.
-  async screenshot({ format, quality, clip }) {
+  //
+  // With `plain`, the picture as taken is sent beside one the persona's sight drew (`seenAs`): the same capture under the
+  // same cover, for a page that shows the screen as it is. None where nothing was drawn.
+  async screenshot({ format, quality, clip, plain }) {
     // Its secret fields covered for the picture alone (`cover`), until it is back: a page that could not be, tried
     // twice, is not pictured.
     let data;
@@ -1857,7 +1861,11 @@ export const ops = {
       if (!stills && !walk?.film) await cover(false);
     }
     const size = stillSize(walk);
-    if (!clip && !size) return { value: { data: await seenAs(data, format, quality) } };
+    const seen = async (taken) => {
+      const drawn = await seenAs(taken, format, quality);
+      return { value: { data: drawn, ...(plain === true && drawn !== taken ? { plain: taken } : {}) } };
+    };
+    if (!clip && !size) return seen(data);
     let shot;
     if (clip) {
       const { cssVisualViewport: css, visualViewport: device } = await cmd('Page.getLayoutMetrics');
@@ -1868,7 +1876,7 @@ export const ops = {
     } else {
       shot = await smaller(data, size.width, size.height, format, quality ?? 100, { keep: true });
     }
-    return { value: { data: await seenAs(shot, format, quality) } };
+    return seen(shot);
   },
 
   // Never while a film's picture is being taken (`pointer`).
