@@ -109,15 +109,57 @@ fn sidecar_entries(sidecar: &Value, at: &str, out: &mut Vec<Entry>) {
     }
 }
 
+/// `css` with its comments blanked to spaces (newlines kept, so every line number still points at the file); a `/*`
+/// inside a quoted string is text, not a comment.
+fn without_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let (mut quote, mut comment) = (None::<char>, false);
+    let mut chars = css.chars().peekable();
+    while let Some(c) = chars.next() {
+        if comment {
+            if c == '*' && chars.peek() == Some(&'/') {
+                chars.next();
+                out.push_str("  ");
+                comment = false;
+            } else {
+                out.push(if c == '\n' { '\n' } else { ' ' });
+            }
+            continue;
+        }
+        match quote {
+            Some(q) => {
+                if c == '\\' {
+                    out.push(c);
+                    if let Some(n) = chars.next() {
+                        out.push(n);
+                    }
+                    continue;
+                }
+                if c == q {
+                    quote = None;
+                }
+            }
+            None if c == '"' || c == '\'' => quote = Some(c),
+            None if c == '/' && chars.peek() == Some(&'*') => {
+                chars.next();
+                out.push_str("  ");
+                comment = true;
+                continue;
+            }
+            None => {}
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Each custom property a token file declares (`--name: value`, wherever it sits on a line and however many share one;
 /// a value over several lines joined), with the line it starts on. Commented-out declarations are not tokens. The value
 /// is kept whole, so a term deep in a long value still matches; only the printed line is clipped.
 fn custom_properties(css: &str, rel: &str, out: &mut Vec<Entry>) {
     static DECL: once_cell::sync::Lazy<regex::Regex> =
         once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?:^|[\s{;])--([A-Za-z0-9_-]+)\s*:").unwrap());
-    static COMMENT: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?s)/\*.*?\*/").unwrap());
-    // Comments blanked to spaces, newlines kept, so every line number still points at the file.
-    let css = COMMENT.replace_all(css, |c: &regex::Captures| c[0].chars().map(|ch| if ch == '\n' { '\n' } else { ' ' }).collect::<String>());
+    let css = without_comments(css);
     for c in DECL.captures_iter(&css) {
         let (name, whole) = (c.get(1).unwrap(), c.get(0).unwrap());
         let rest = &css[whole.end()..];
@@ -371,6 +413,9 @@ mod tests {
         let out = lookup(design, "DESIGN.md", &dir, &["needle".into()]);
         assert!(out.starts_with("--icon: url(") && out.contains("(styles/tokens.css:3)"), "{out}");
         assert!(lookup(design, "DESIGN.md", &dir, &["--old".into()]).starts_with("Nothing matches"));
+        // A comment marker inside a quoted value opens no comment.
+        let dir = dir_with("quoted", &[("styles/tokens.css", ":root { --comment-open: \"/*\"; --brand: red; /* palette */ }\n")]);
+        assert_eq!(lookup(design, "DESIGN.md", &dir, &["--brand".into()]), "--brand: red (styles/tokens.css:1)\n");
     }
 
     #[test]
