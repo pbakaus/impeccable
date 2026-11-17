@@ -1680,9 +1680,10 @@ function coverSecrets(on, forMs) {
         const all = inputs(box);
         if (fewer.some((other) => within(other.box, box)) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
           continue;
-        const clones = all.filter((f) => counts(f) && !shown(f) && f.value).map((f) => f.value);
+        const hidden = all.filter((f) => counts(f) && !shown(f));
+        const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || Boolean(h.value) && h.value === f.value);
         for (const f of all)
-          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clones.includes(f.value)))
+          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clone(f)))
             f.setAttribute(maybe, "");
       }
       for (const field of inputs(root)) {
@@ -1741,4 +1742,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '735aa4678d1dbc3c';
+export const HASH = '3dd7ef01a24f2bef';
