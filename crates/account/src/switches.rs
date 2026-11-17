@@ -40,7 +40,7 @@ pub struct Link {
 impl Link {
     pub fn open(io: &Io) -> Option<Link> {
         let account = Account::from_env(&io.env).ok()?;
-        let session = Session::load_for_upload(&account, std::time::Duration::from_secs(2))?;
+        let session = Session::load_for_upload_waiting(&account, std::time::Duration::from_secs(4))?;
         let login = session.state.login;
         Some(Link { account, session, login })
     }

@@ -2517,7 +2517,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `.cursor/rules` or the rule is a symlink, when a rule of that name without this header
   is already there, or when git wouldn't ignore it (a repository `.gitignore` re-including
   it). Being per repository, it is never read as an edit: the sync only brings it to the
-  page's set. The switch sync writes the same files. `impeccable switches
+  page's set. The switch sync writes the same files: the person's own set when they have
+  one (`me`), else the repository's team set (`team`). It waits up to 4 s for the sign-in
+  lock, so a refresh started beside another worker runs after it, never skips. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.

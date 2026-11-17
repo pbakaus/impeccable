@@ -104,6 +104,20 @@ impl Session {
         .flatten()
     }
 
+    /// `load_for_upload`, waiting up to `wait` for the sign-in lock instead of trying it once:
+    /// for a worker another worker may be starting beside (`context` starts the switch and
+    /// taste refreshes together), so the second waits its turn rather than skipping (REN-2056 walk).
+    pub(crate) fn load_for_upload_waiting(account: &Account, wait: std::time::Duration) -> Option<Session> {
+        let account = account.clone();
+        let lock_wait = wait.saturating_sub(std::time::Duration::from_millis(250));
+        read_within(wait, move || {
+            let store = Store::new(&account);
+            let _lock = store.lock_for(lock_wait).ok()?;
+            Self::load_for_upload_locked(&account)
+        })
+        .flatten()
+    }
+
     /// Renewal may advance the generation, but must retain this upload's login lineage.
     pub(crate) fn matches_upload(&self, original: &State) -> bool {
         self.state.signed_in

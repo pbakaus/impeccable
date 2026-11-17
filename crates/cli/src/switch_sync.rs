@@ -183,7 +183,10 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     };
     // What this refresh sent and the service took, if anything: Cursor's rule follows it.
     let mut pushed: Option<Vec<String>> = None;
-    let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
+    // The set the person's files follow: their own when they've set one, else the team's
+    // for this repository (an editor's own override wins; REN-2056).
+    let page: Option<Vec<String>> = remote.me.clone().or_else(|| remote.team.clone());
+    let synced: Option<Vec<String>> = match decide(page.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
             let first = remote.me.is_none();
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
@@ -201,13 +204,13 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         Step::Write(on) => {
             if write_all(&on, &link) { Some(on) } else { base.clone() }
         }
-        Step::Nothing => remote.me.clone().or(base.clone()),
+        Step::Nothing => page.clone().or(base.clone()),
     };
     // Cursor's rule in this repository ends at the set this refresh settled on (what it
     // just sent, or the page's), whatever the step; a repository that can't take it is
     // skipped without touching the shared state.
     // The retry base is never Cursor's target: a set just sent, else the page's.
-    let settled = pushed.or_else(|| remote.me.clone());
+    let settled = pushed.or_else(|| page.clone());
     if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
         if link.still_current() {
             let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();

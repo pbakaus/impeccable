@@ -420,6 +420,10 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     agents("[]");
     refresh();
     assert_eq!(std::fs::read_to_string(&claude_md).unwrap(), "# mine\n");
+    // A person with no set of their own follows the team's for this repository.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":["wide","a11y"],"me":null}"#);
+    refresh();
+    assert!(on().ends_with(": wide, a11y"), "{}", on());
 }
 
 #[test]
