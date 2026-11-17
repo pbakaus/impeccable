@@ -13,6 +13,8 @@ pub const MAP_BUDGET: usize = 1600;
 pub const MAP_SIZE: usize = 2400;
 const COLOR_LINE_BUDGET: usize = 240;
 const SCALE_LINE_BUDGET: usize = 200;
+/// The longest any one line of the map may be.
+const LINE_MAX: usize = 280;
 const MAX_MAP_PATHS: usize = 8;
 
 /// The map of `design`, whose file is `path`; mentioned files are checked under `root`.
@@ -109,7 +111,7 @@ pub fn map(design: &str, root: &Path, path: &str) -> String {
         if out.len() <= MAP_SIZE {
             return out;
         }
-        let Some(i) = [2, 0, 1].into_iter().find(|&i| lists[i].1.len() > 1) else { return out };
+        let Some(i) = [2, 0, 1].into_iter().find(|&i| lists[i].1.len() > 1) else { return capped(&out, &tail) };
         lists[i].1.pop();
         lists[i].2 += 1;
     }
@@ -134,14 +136,44 @@ impl Section {
     }
 }
 
+/// The map within `MAP_SIZE` whatever its entries: whole lines up to the cap, then the `Full:` pointer, so long
+/// single entries (a first rule, a font list) can never push what follows `context` past an output limit.
+fn capped(out: &str, tail: &[String]) -> String {
+    let pointer = tail.last().cloned().unwrap_or_default();
+    let mut kept = String::new();
+    for line in out.lines() {
+        if *line == *pointer {
+            break;
+        }
+        if kept.len() + line.len() + pointer.len() + 2 > MAP_SIZE {
+            break;
+        }
+        kept.push_str(line);
+        kept.push('\n');
+    }
+    format!("{kept}{pointer}")
+}
+
+/// One line as the map carries it: at most `LINE_MAX` bytes, cut at a character boundary with an ellipsis.
+fn short(line: String) -> String {
+    if line.len() <= LINE_MAX {
+        return line;
+    }
+    let mut cut = LINE_MAX - 3;
+    while !line.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    format!("{}...", &line[..cut])
+}
+
 fn render(head: &[String], lists: &[(&str, Vec<String>, usize)], tail: &[String]) -> String {
-    let mut lines: Vec<String> = head.to_vec();
+    let mut lines: Vec<String> = head.iter().cloned().map(short).collect();
     for (label, items, dropped) in lists {
         if items.is_empty() {
             continue;
         }
         lines.push(label.to_string());
-        lines.extend(items.iter().map(|i| format!("- {i}")));
+        lines.extend(items.iter().map(|i| short(format!("- {i}"))));
         if *dropped > 0 {
             lines.push(format!("- (+{dropped} more in the full file)"));
         }
@@ -259,6 +291,16 @@ mod tests {
         ] {
             assert!(out.contains(kept), "missing {kept:?}:\n{out}");
         }
+    }
+
+    #[test]
+    fn a_map_of_huge_entries_stays_within_its_cap() {
+        // Catches single long entries (a rule, a font list) pushing the map, and so `context`, past its cap.
+        let long = "x".repeat(5000);
+        let design = format!("---\nname: Big\n---\n\n**North Star: {long}**\n\n**The Only Rule.** {long}.\n\n## Don't\n\n- Don't {long}.\n\n## Do\n\n- Do {long}.\n");
+        let out = map(&design, Path::new("."), "DESIGN.md");
+        assert!(out.len() <= MAP_SIZE, "{}", out.len());
+        assert!(out.ends_with("Full: DESIGN.md (read a section when you need its detail)"), "{out}");
     }
 
     #[test]
