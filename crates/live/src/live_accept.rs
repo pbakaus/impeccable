@@ -148,6 +148,10 @@ fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::
 /// path (no origin, query or fragment), a `file:` page's file name only, and
 /// nothing for any other scheme.
 fn page_path(url: &str) -> Option<String> {
+    // The browser sends `location.pathname` (`/pricing`): already only a path. A `//host` one names a host, so not that.
+    if url.starts_with('/') && !url.starts_with("//") {
+        return url.split(['?', '#']).next().map(String::from);
+    }
     let (scheme, rest) = url.split_once(':')?;
     let rest = rest.split(['?', '#']).next().unwrap_or_default();
     match scheme.to_ascii_lowercase().as_str() {
@@ -1492,7 +1496,10 @@ mod page_path_tests {
             ("file:C:\\Users\\alice\\page.html", Some("page.html")),
             ("file:///home/alice/", None),
             ("about:blank", None),
-            ("/pricing", None),
+            // The browser's own payload, `location.pathname` (Greptile on #1542).
+            ("/pricing", Some("/pricing")),
+            ("/pricing?plan=pro#top", Some("/pricing")),
+            ("//evil.test/pricing", None),
             ("http:/pricing", None),
         ] {
             assert_eq!(page_path(url).as_deref(), want, "{url}");
