@@ -127,7 +127,7 @@ pub fn after_save(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bo
     }
 }
 
-const RELOGIN: &str = "sign in again with npx impeccable login";
+pub(crate) const RELOGIN: &str = "sign in again with npx impeccable login";
 
 fn not_saved(reason: impl std::fmt::Display) -> Option<String> {
     Some(format!("Not saved to Impeccable: {reason}\n"))
@@ -164,60 +164,63 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: R
     Some(format!("Keep this {}'s history: npx impeccable login\n", report.noun()))
 }
 
-fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> Option<String> {
-    let started = Instant::now();
+/// Why an upload stopped before an answer. Each caller words its own line.
+pub(crate) enum Stop {
+    /// Sync off, CI, an opt-out, or a sign-in the service would not widen: say nothing.
+    Silent,
+    SignedOut(Account),
+    NoAccount(String),
+    Slow,
+    Unreadable,
+    Expired,
+    Switched,
+    Busy,
+    /// This sign-in lacks `critiques:write` and signing in again would grant it.
+    NoScope,
+}
+
+/// The opt-outs and the sign-in an upload needs before it builds a body:
+/// sync on, not CI, no telemetry opt-out (here or at `root`), signed in.
+pub(crate) fn ready(io: &Io, root: Option<&std::path::Path>) -> Result<(Account, crate::store::State), Stop> {
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
         || impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
             .is_some()
     {
-        return None;
+        return Err(Stop::Silent);
     }
-    let account = match Account::from_env(&io.env) {
-        Ok(account) => account,
-        Err(e) => return not_saved(e),
-    };
-    // Also honor an opt-out at the report's project root.
-    let root = project_root(snapshot);
+    let account = Account::from_env(&io.env).map_err(Stop::NoAccount)?;
+    // Also honor an opt-out at the project root.
     if root.is_some_and(|root| {
         impeccable_context::telemetry::opt_out_reason(&io.env, &root.to_string_lossy()).is_some()
     }) {
-        return None;
+        return Err(Stop::Silent);
     }
-    let state = crate::store::Store::new(&account).state();
-    let Some(state) = state.filter(|s| s.signed_in) else {
-        return if quiet {
-            None
-        } else {
-            signed_out_nudge(&account, root, report)
-        };
-    };
-    let Some(mut body) = payload(snapshot, report) else {
-        return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
-    };
-    if let Some(root) = root {
-        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
-            body["repoKey"] = key.into();
-            if let Some(label) = label {
-                body["label"] = label.into();
-            }
-        }
+    match crate::store::Store::new(&account).state().filter(|s| s.signed_in) {
+        Some(state) => Ok((account, state)),
+        None => Err(Stop::SignedOut(account)),
     }
-    if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
-        return not_saved("the report is over 80 KB; save a shorter report");
-    }
+}
+
+/// Posts `body` to `path` on the account service within two seconds of
+/// `started`, the way every critique-scoped upload does: a readable session
+/// with `critiques:write`, renewed if it expired, the same sign-in it started
+/// with, and the upload lock. `quiet` keeps the shared scope notice owed.
+pub(crate) fn send(
+    io: &mut Io,
+    started: Instant,
+    (account, state): &(Account, crate::store::State),
+    path: &str,
+    body: Value,
+    quiet: bool,
+) -> Result<(Result<Value, crate::http::ApiError>, u64), Stop> {
     let left = || {
         Duration::from_secs(2)
             .checked_sub(started.elapsed())
             .filter(|d| !d.is_zero())
     };
-    const SLOW: &str = "the account service took too long; the report is saved locally and the next critique will upload";
-    let Some(wait) = left() else {
-        return not_saved(SLOW);
-    };
-    let Some(session) = Session::load_for_upload(&account, wait) else {
-        return not_saved(format!("your sign-in couldn't be read; {RELOGIN}"));
-    };
+    let wait = left().ok_or(Stop::Slow)?;
+    let session = Session::load_for_upload(&account, wait).ok_or(Stop::Unreadable)?;
     let has_scope =
         |s: &crate::store::State| s.scopes.iter().any(|s| s == crate::oauth::CRITIQUES_SCOPE);
     // A service that does not take critiques at all has nothing to sign in for.
@@ -243,53 +246,95 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         if say && !quiet {
             crate::stale_grant::mark_shown(&account, state.login);
         }
-        say.then(|| {
-            format!("Not saved to Impeccable: this sign-in can't save critiques; {RELOGIN}\n")
-        })
+        if say { Stop::NoScope } else { Stop::Silent }
     };
     if !has_scope(&state) {
-        return missing_scope(io);
+        return Err(missing_scope(io));
     }
     let session = if session.existing_access_token().is_none() {
         match crate::session::renew_for_upload(io, &account, started, "critiques-refresh") {
             Some(fresh) => fresh,
             // Out of time, the refresh carries on and may still succeed.
-            None if left().is_none() => return not_saved(SLOW),
-            None => return not_saved(format!("your sign-in expired; {RELOGIN}")),
+            None if left().is_none() => return Err(Stop::Slow),
+            None => return Err(Stop::Expired),
         }
     } else {
         session
     };
     if !session.matches_upload(&state) {
-        return not_saved("you signed in or out while it was saving; save the critique again");
+        return Err(Stop::Switched);
     }
-    let Some(token) = session.existing_access_token() else {
-        return not_saved(format!("your sign-in expired; {RELOGIN}"));
-    };
+    let token = session.existing_access_token().ok_or(Stop::Expired)?;
     let Ok(_admission) = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO)
     else {
-        return not_saved("another critique was uploading; save this one again to upload it");
+        return Err(Stop::Busy);
     };
     if !enabled(io) {
-        return None;
+        return Err(Stop::Silent);
     }
     if !has_scope(&session.state) {
-        return missing_scope(io);
+        return Err(missing_scope(io));
     }
-    let Some(wait) = left() else {
-        return not_saved(SLOW);
-    };
+    let wait = left().ok_or(Stop::Slow)?;
     let answer = Client::with_deadline(&account, wait).post_json(
-        &format!("{}/cli/v1/critiques", account.issuer),
+        &format!("{}{path}", account.issuer),
         token,
         body,
     );
+    Ok((answer, session.state.login))
+}
+
+fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> Option<String> {
+    let started = Instant::now();
+    let root = project_root(snapshot);
+    const SLOW: &str = "the account service took too long; the report is saved locally and the next critique will upload";
+    let stopped = |stop: Stop| match stop {
+        Stop::Silent => None,
+        Stop::SignedOut(account) => {
+            if quiet {
+                None
+            } else {
+                signed_out_nudge(&account, root, report)
+            }
+        }
+        Stop::NoAccount(e) => not_saved(e),
+        Stop::Slow => not_saved(SLOW),
+        Stop::Unreadable => not_saved(format!("your sign-in couldn't be read; {RELOGIN}")),
+        Stop::Expired => not_saved(format!("your sign-in expired; {RELOGIN}")),
+        Stop::Switched => not_saved("you signed in or out while it was saving; save the critique again"),
+        Stop::Busy => not_saved("another critique was uploading; save this one again to upload it"),
+        Stop::NoScope => {
+            Some(format!("Not saved to Impeccable: this sign-in can't save critiques; {RELOGIN}\n"))
+        }
+    };
+    let signed_in = match ready(io, root) {
+        Ok(signed_in) => signed_in,
+        Err(stop) => return stopped(stop),
+    };
+    let Some(mut body) = payload(snapshot, report) else {
+        return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
+    };
+    if let Some(root) = root {
+        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
+            body["repoKey"] = key.into();
+            if let Some(label) = label {
+                body["label"] = label.into();
+            }
+        }
+    }
+    if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
+        return not_saved("the report is over 80 KB; save a shorter report");
+    }
+    let (answer, login) = match send(io, started, &signed_in, "/cli/v1/critiques", body, quiet) {
+        Ok(sent) => sent,
+        Err(stop) => return stopped(stop),
+    };
     use crate::http::ApiError;
     match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
-                && crate::upload_notice::first(&account, session.state.login, if report == Report::Audit {
+                && crate::upload_notice::first(&signed_in.0, login, if report == Report::Audit {
                     crate::upload_notice::Kind::Audit
                 } else {
                     crate::upload_notice::Kind::Critique

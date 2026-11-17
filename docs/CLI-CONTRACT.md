@@ -3106,6 +3106,23 @@ including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only
 repos and invalid names omit `label`. No label is sent without a repo key.
 
+After a variant accept that succeeds (`live-accept --variant N`, directly or
+through `live-poll`, including a receipt replay; never `--discard`), the CLI
+records the prototyping session with one best-effort POST to
+`/cli/v1/prototypes` under the same preference, opt-outs, sign-in, scope,
+renewal, lock and two-second budget as a critique upload. Through `live-poll`
+it runs after the browser's reply and the printed event. The body is exactly
+`prototypeId`, `target`, `variants`, `createdAt` and optional `repoKey`:
+`prototypeId` is a UUID (version nibble 4) hashed from the app root and the
+session id, so a retry is a `repeat`; `target` is the session's page path
+(no origin, query or fragment; a `file:` page sends its file name);
+`variants` is the session's arrived variant count, else its requested count;
+`createdAt` is the accept time; `repoKey` is the critique key. A session with
+no page URL, no count in 1-24, or an invalid target sends nothing. Nothing of
+the variants is sent. It prints nothing on success or signed out, and at most
+one `Prototype not saved to Impeccable: <reason>` line on stderr, so the
+accept's stdout JSON is unchanged.
+
 ### Taste
 
 The CLI reads standing design preferences with

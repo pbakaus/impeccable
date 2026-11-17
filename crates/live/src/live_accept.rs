@@ -90,11 +90,52 @@ enum AcceptOutcome {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_accepted(args, io, &mut |_, _| {})
+}
+
+/// Hands a variant accept that succeeded (or replayed its receipt) to the CLI
+/// after the result is printed. Never a discard or a failure.
+pub fn run_with_accepted(args: &[String], io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
     if let Err(code) = enter_live_root(&mut argv, io) {
         return code;
     }
-    accept_cli(&argv, io)
+    let ok = std::cell::Cell::new(false);
+    let code = accept_cli(&argv, io, &ok);
+    if ok.get() {
+        let id = arg_val(&argv, "--id").unwrap_or_default();
+        let page_url = nonempty(arg_val(&argv, "--page-url"));
+        if let Some(session) = accepted_session(io, &id, page_url.as_deref()) {
+            accepted(io, session);
+        }
+    }
+    code
+}
+
+/// What the CLI records of an accepted session, from its journal: the page
+/// path (never origin, query or fragment) and how many variants it generated.
+fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::Accepted> {
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    let snapshot = crate::session::create_live_session_store(&cwd, &io.env, Some(id))
+        .read_state(id, true)
+        .ok()?
+        .snapshot;
+    let count = |k: &str| snapshot.get(k).and_then(Value::as_f64).filter(|n| *n >= 1.0);
+    let variants = count("arrivedVariants").or_else(|| count("expectedVariants"))? as u64;
+    let url = snapshot.get("pageUrl").and_then(Value::as_str).or(page_url)?;
+    Some(crate::Accepted { session_id: id.to_string(), root: io.cwd.clone(), target: page_path(url), variants })
+}
+
+fn page_path(url: &str) -> String {
+    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
+    let path = if scheme.is_empty() { rest } else { rest.find('/').map_or("/", |i| &rest[i..]) };
+    let path = path.split(['?', '#']).next().unwrap_or_default();
+    // A file page names its file, never the folders above it.
+    match scheme {
+        "file" => path.rsplit('/').next().unwrap_or_default().to_string(),
+        _ if path.is_empty() => "/".to_string(),
+        _ => path.to_string(),
+    }
 }
 
 fn nonempty(v: Option<String>) -> Option<String> {
@@ -181,7 +222,7 @@ fn write_accept_receipt(
     }
 }
 
-fn accept_cli(args: &[String], io: &mut Io) -> i32 {
+fn accept_cli(args: &[String], io: &mut Io, accepted: &std::cell::Cell<bool>) -> i32 {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println(io, HELP);
         return 0;
@@ -235,6 +276,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             };
             m.insert("handled".into(), Value::Bool(true));
             m.insert("alreadyApplied".into(), Value::Bool(true));
+            accepted.set(!is_discard);
             Value::Object(m)
         } else {
             json!({
@@ -252,6 +294,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     let emit_result = |io: &mut Io, raw: Value| {
         let result = mark_preview_failure(raw);
         if result.get("handled") != Some(&Value::Bool(false)) {
+            accepted.set(!is_discard);
             write_accept_receipt(
                 &cwd,
                 &env,

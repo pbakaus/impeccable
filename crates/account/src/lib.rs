@@ -17,6 +17,7 @@ pub mod health;
 pub mod http;
 pub mod oauth;
 pub mod plans;
+pub mod prototypes;
 pub mod pro;
 pub mod session;
 pub mod setup;
