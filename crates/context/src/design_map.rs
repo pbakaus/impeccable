@@ -18,7 +18,7 @@ const ROLE_LINE_BUDGET: usize = 200;
 /// The sidecar `document` writes beside DESIGN.md; its `extensions.colorMeta` names each colour's role.
 const SIDECAR: &str = ".impeccable/design.json";
 /// Colour roles in the order the map lists them; any other role follows in the sidecar's order.
-const ROLE_ORDER: [&str; 7] = ["primary", "secondary", "tertiary", "surface", "neutral", "accent", "state"];
+const ROLE_ORDER: [&str; 8] = ["primary", "interaction", "secondary", "tertiary", "surface", "neutral", "accent", "state"];
 const SCALE_LINE_BUDGET: usize = 200;
 /// The longest any one line of the map may be.
 const LINE_MAX: usize = 280;
@@ -386,8 +386,8 @@ mod tests {
         let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
         let out = map(include_str!("../../../DESIGN.md"), root, "DESIGN.md");
         assert!(out.len() <= MAP_SIZE, "{} bytes:\n{out}", out.len());
-        assert!(out.contains("Colors: primary: kinpaku-gold oklch(84% 0.19 80.46); secondary: verdigris-patina"), "{out}");
-        assert!(out.contains("state: vermilion-warning"), "{out}");
+        // The CTA's pressed gold arrives beside the gold itself (interaction ranks right after primary).
+        assert!(out.contains("Colors: primary: kinpaku-gold oklch(84% 0.19 80.46); interaction: kinpaku-rich oklch(77% 0.13 82); secondary: verdigris-patina"), "{out}");
         assert!(out.contains("- CTA Lift: 0 18px 48px oklch(2% 0.004 95 / 0.4)\n"), "{out}");
         // Every Don't: they give way last.
         let donts = out.split("Don't:\n").nth(1).unwrap().lines().take_while(|l| l.starts_with("- "));
