@@ -66,12 +66,32 @@ pub fn read(cwd: &Path, path: &str) -> Result<Local, String> {
         let known: Vec<&str> = TYPES.iter().map(|(e, _)| *e).collect();
         return Err(format!("{path} isn't a type an artifact can use. Use one of: {}.", known.join(", ")));
     };
-    let bytes = std::fs::read(&file).map_err(|e| format!("Couldn't read {path}: {e}."))?;
+    // Read through one handle, checked to be the file just looked at: a symlink swapped in between is refused, and
+    // a file that grows can't be read past the cap.
+    let mut handle = std::fs::File::open(&file).map_err(|e| format!("Couldn't read {path}: {e}."))?;
+    let opened = handle.metadata().map_err(|e| format!("Couldn't read {path}: {e}."))?;
+    if !opened.is_file() || !same_file(&meta, &opened) {
+        return Err(format!("{path} changed while it was read. Try again."));
+    }
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::Read::take(&mut handle, MAX_BYTES + 1), &mut bytes)
+        .map_err(|e| format!("Couldn't read {path}: {e}."))?;
     if bytes.len() as u64 != meta.len() {
         return Err(format!("{path} changed while it was read. Try again."));
     }
     let sha256 = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
     Ok(Local { bytes, sha256, content_type })
+}
+
+#[cfg(unix)]
+fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    (a.dev(), a.ino()) == (b.dev(), b.ino())
+}
+
+#[cfg(not(unix))]
+fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
+    a.len() == b.len() && a.modified().ok() == b.modified().ok()
 }
 
 /// The service's reservation answer, from its tool result: the key, and the upload address when the bytes are new.
@@ -80,9 +100,15 @@ pub fn reservation(result: &Value) -> Result<(String, Option<String>), String> {
     if result.get("isError") == Some(&Value::Bool(true)) {
         return Err(if text.is_empty() { "Impeccable refused that upload.".into() } else { text.to_string() });
     }
-    let v: Value = serde_json::from_str(text).map_err(|_| "Impeccable's answer couldn't be read. Try again.".to_string())?;
-    let key = v["key"].as_str().ok_or("Impeccable's answer had no key. Try again.")?.to_string();
-    Ok((key, v.pointer("/upload/url").and_then(Value::as_str).map(str::to_string)))
+    let unread = || "Impeccable's answer couldn't be read. Try again.".to_string();
+    let v: Value = serde_json::from_str(text).map_err(|_| unread())?;
+    let key = v["key"].as_str().filter(|k| !k.is_empty()).ok_or_else(unread)?.to_string();
+    // Either the workspace has it, or there's somewhere to send it: anything else is no answer.
+    match (v["exists"].as_bool(), v.pointer("/upload/url").and_then(Value::as_str)) {
+        (Some(true), _) => Ok((key, None)),
+        (_, Some(url)) => Ok((key, Some(url.to_string()))),
+        _ => Err(unread()),
+    }
 }
 
 /// The tool result the agent reads: its key, nothing else.
@@ -121,5 +147,8 @@ mod tests {
         assert_eq!(reservation(&text(json!({ "key": "k", "upload": { "url": "https://x/u", "expiresAt": "t" } }))).unwrap(), ("k".into(), Some("https://x/u".into())));
         let refused = json!({ "isError": true, "content": [{ "type": "text", "text": "Your plan's storage is full." }] });
         assert_eq!(reservation(&refused).unwrap_err(), "Your plan's storage is full.");
+        // An incomplete answer is never read as success.
+        assert!(reservation(&text(json!({ "key": "k", "exists": false }))).is_err());
+        assert!(reservation(&text(json!({ "key": "k", "upload": {} }))).is_err());
     }
 }

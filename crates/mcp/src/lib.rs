@@ -240,7 +240,11 @@ fn uploaded(
     if let Some(w) = args.get("workspace") {
         reserve["workspace"] = w.clone();
     }
-    let ask = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": asset::NAME, "arguments": reserve } });
+    let mut ask = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": asset::NAME, "arguments": reserve } });
+    // The caller's progress token, so a sign-in on the way still tells it to wait.
+    if let Some(meta) = request.pointer("/params/_meta") {
+        ask["params"]["_meta"] = meta.clone();
+    }
     let reply = held(&ask, out, err, upstream);
     let Some(result) = reply.get("result") else { return Some(reply) };
     Some(match asset::reservation(result) {

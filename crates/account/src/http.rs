@@ -332,6 +332,45 @@ mod tests {
         assert!(resolve_loopback("api.impeccable.style:443").is_err());
     }
 
+    // Catches an artifact asset's upload sent with a bearer (its token is in the URL), without its exact length or
+    // type, or to another origin; and its answer not read.
+    #[test]
+    fn put_bytes_sends_exactly_the_bytes_and_no_credential() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut head = Vec::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+                head.push(line.trim_end().to_ascii_lowercase());
+            }
+            let len: usize = head.iter().find_map(|h| h.strip_prefix("content-length: ")).unwrap().parse().unwrap();
+            let mut body = vec![0u8; len];
+            std::io::Read::read_exact(&mut reader, &mut body).unwrap();
+            let reply = "{\"key\":\"k\"}";
+            write!(&stream, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{reply}", reply.len()).unwrap();
+            (head, body)
+        });
+        let account = Account { issuer: format!("http://127.0.0.1:{port}"), home: std::env::temp_dir() };
+        let client = Client::new(&account);
+        let url = format!("http://127.0.0.1:{port}/api/artifacts/asset?token=t");
+        assert_eq!(client.put_bytes(&url, "image/png", b"12345").unwrap()["key"], "k");
+        let (head, body) = server.join().unwrap();
+        assert!(head[0].starts_with("put /api/artifacts/asset?token=t "), "{head:?}");
+        assert!(head.contains(&"content-type: image/png".to_string()) && head.contains(&"content-length: 5".to_string()), "{head:?}");
+        assert!(!head.iter().any(|h| h.starts_with("authorization")), "{head:?}");
+        assert_eq!(body, b"12345");
+        // Off the account's origin it never leaves.
+        assert!(client.put_bytes("https://elsewhere.example/u", "image/png", b"x").is_err());
+    }
+
     #[test]
     fn a_token_with_a_control_character_is_refused_without_quoting_it() {
         let err = bearer_header("abc.def\n").unwrap_err();
