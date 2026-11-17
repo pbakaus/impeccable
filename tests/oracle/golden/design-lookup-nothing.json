@@ -1,0 +1,7 @@
+{
+  "stdout": "Nothing matches patina in DESIGN.md (frontmatter and sections), .impeccable/design.json, styles/tokens.css.\nDESIGN.md names token files that are not there: styles/gone.css.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

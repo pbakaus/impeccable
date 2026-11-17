@@ -564,6 +564,22 @@ const cases = [
       { id: 'design-compact-write-archive-exists', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); write(ws, '.impeccable/design-full.md', 'An earlier original.\n'); }, args: ['--write'], env: env(), files },
     ];
   })(),
+  // `design-lookup` (REN-2129, S4): one token, component or section on demand, each with its file, instead of a whole
+  // file read; a term that finds nothing says where it looked and which named token files are gone.
+  ...(() => {
+    const DESIGN = '---\nname: Oracle\ncolors:\n  brand: "#c8552b"\n---\n\n# Oracle Design\n\nTokens: `styles/tokens.css`, `styles/gone.css`.\n\n## Elevation\n\nCards rest on borders.\n\n## Typography\n\nOne family.\n';
+    const setup = (ws) => {
+      write(ws, 'DESIGN.md', DESIGN);
+      write(ws, 'styles/tokens.css', ':root {\n  --brand: #c8552b;\n  --cap-lift:\n    inset 0 1px 0 white,\n    0 2px 3px black;\n}\n');
+      write(ws, '.impeccable/design.json', JSON.stringify({ extensions: { shadows: [{ name: 'CTA Lift', value: '0 18px 48px black', purpose: 'Hover lift.' }] } }));
+    };
+    return [
+      { id: 'design-lookup-token', verb: 'design-lookup', workspace: 'ctx-signals', setup, args: ['lift'], env: env() },
+      { id: 'design-lookup-value-and-section', verb: 'design-lookup', workspace: 'ctx-signals', setup, args: ['#C8552B', 'elevation'], env: env() },
+      { id: 'design-lookup-nothing', verb: 'design-lookup', workspace: 'ctx-signals', setup, args: ['patina'], env: env() },
+      { id: 'design-lookup-no-term', verb: 'design-lookup', workspace: 'ctx-signals', setup, env: env() },
+    ];
+  })(),
   { id: 'doctor-design-no-drift', verb: 'doctor', workspace: 'ctx-signals', setup: (ws) => { write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n'); gitInit(ws); }, args: ['--json'], env: env() },
 
   // ======================================================================

@@ -113,6 +113,15 @@ pub fn check_sprawl(design: Option<&str>, design_path: Option<&str>) -> Vec<crat
     )]
 }
 
+/// The context `--target` selects, a bare workspace name resolved to its workspace as `context` resolves it.
+pub(crate) fn context_for(args: &[String], cwd: &str, env: &crate::util::Env) -> Result<crate::context::Ctx, String> {
+    let mut target = parse_target_options(args, true)?;
+    if let Some(t) = target.target_path.as_deref() {
+        target.target_path = Some(crate::context::resolve_target_path(cwd, t, env));
+    }
+    Ok(load_context(cwd, &target, env))
+}
+
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     let mut write = false;
     let mut passthrough = Vec::new();
@@ -128,16 +137,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     // The workspace flag, as given, for the follow-up command this prints.
     let again = if passthrough.is_empty() { String::new() } else { format!(" {}", passthrough.join(" ")) };
-    let target = match parse_target_options(&passthrough, true) {
-        Ok(t) => t,
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    let ctx = match context_for(&passthrough, &cwd, &io.env) {
+        Ok(c) => c,
         Err(msg) => {
             io.err(&format!("{msg}\n"));
             return 1;
         }
     };
-    let cwd = io.cwd.to_string_lossy().into_owned();
-    let env = io.env.clone();
-    let ctx = load_context(&cwd, &target, &env);
     let Some(rel) = ctx.design_path.clone() else {
         io.out("No DESIGN.md here. `/impeccable document` writes one from the code.\n");
         return 0;
