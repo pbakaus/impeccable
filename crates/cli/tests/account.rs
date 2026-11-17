@@ -444,10 +444,10 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     assert!(on().ends_with(": wide, voice"), "{}", on());
     assert_eq!(said(&["switches-refresh", "--now"]), "unchanged\n");
     assert_eq!(said(&["switches-refresh", "--help"]), "Usage: impeccable switches-refresh [--now]\n");
-    // A repository's refresh sends its key; one outside any repository sends none.
+    // The user-level files hold the person's own set: no read ever names a repository, in
+    // one or outside it, so refreshes from different repositories never disagree.
     let reads = fake.record.lock().unwrap().agents_reads.clone();
-    assert!(reads.first().is_some_and(|q| q.starts_with("repo=") && q.len() == 5 + 64), "{reads:?}");
-    assert_eq!(reads.last().map(String::as_str), Some(""), "{reads:?}");
+    assert!(!reads.is_empty() && reads.iter().all(String::is_empty), "{reads:?}");
     // A notice arriving while another refresh runs waits its turn and still fetches.
     let lock = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]).join("switches.lock");
     std::fs::write(&lock, "").unwrap();

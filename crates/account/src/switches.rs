@@ -60,16 +60,10 @@ impl Link {
 
     /// `GET /cli/v1/agents?repo=<key>`, the repository key health uploads use; `None` on
     /// any failure.
-    /// Without a repository (a refresh Loop starts outside any working copy), the
-    /// service reads the person's own set over an all-on team.
-    pub fn fetch(&mut self, repo: Option<&str>) -> Option<Remote> {
-        let url = match repo {
-            Some(repo) => {
-                let query: String = url::form_urlencoded::Serializer::new(String::new()).append_pair("repo", repo).finish();
-                format!("{}/cli/v1/agents?{query}", self.account.issuer)
-            }
-            None => format!("{}/cli/v1/agents", self.account.issuer),
-        };
+    /// `GET /cli/v1/agents` with no repository: the person's own set, over an all-on team
+    /// (REN-2056; a team's set reaches agents through the repository's AGENTS.md).
+    pub fn fetch(&mut self) -> Option<Remote> {
+        let url = format!("{}/cli/v1/agents", self.account.issuer);
         let body = self.session.call(|c, token| c.get_json(&url, Some(token))).ok()?;
         parse(&body)
     }

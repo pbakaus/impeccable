@@ -2532,12 +2532,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `.cursor/rules` or the rule is a symlink, when a rule of that name without this header
   is already there, or when git wouldn't ignore it (a repository `.gitignore` re-including
   it). Being per repository, it is never read as an edit: the sync only brings it to the
-  page's set. The switch sync writes the same files with the set the page shows the person
-  (`me`, which the service already falls back to the team's switch by switch). Until they
+  page's set. The switch sync writes the same files with the person's own set: it reads
+  `GET /cli/v1/agents` with no repository, so `me` is their own choices over an all-on
+  team, wherever it runs. A team's switches reach agents through the repository's own
+  AGENTS.md block, never through these user-level files. Until they
   have set their own (`meSet: false`; an older service's `me: null`), a block this machine
   already holds is sent as their first set instead of overwritten. `context` starts it at most once
   a minute; `impeccable switches-refresh [--now]` started directly (as Loop does on a change
-  notice) always runs, and outside any repository reads the person's set with no repository.
+  notice) always runs, in a repository or not.
   It prints one line: `synced` (files written or a change sent), `unchanged`, or
   `skipped: <why>` (not signed in, Impeccable didn't answer, another refresh is running, a
   rule file can't be read or written, Impeccable didn't take the change), and exits 0. `--help` prints `Usage: impeccable switches-refresh [--now]`;

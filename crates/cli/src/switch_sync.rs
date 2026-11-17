@@ -85,18 +85,6 @@ pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[
     }
 }
 
-/// The repository's key, the one health uploads use: SHA-256 of its normalized
-/// `origin`, so the service learns no repository name it can't already see.
-fn repo(cwd: &Path) -> Option<String> {
-    use sha2::{Digest, Sha256};
-    let out = std::process::Command::new("git")
-        .args(["config", "--get", "remote.origin.url"])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
-    let url = impeccable_account::health::resolve_remote(String::from_utf8_lossy(&out.stdout).trim())?;
-    Some(Sha256::digest(url.as_bytes()).iter().map(|b| format!("{b:02x}")).collect())
-}
 
 /// One worker at a time: a lock file in the Impeccable home, stale after two minutes.
 /// `None` when another worker holds it.
@@ -160,9 +148,12 @@ fn refresh(args: &[String], io: &mut Io) -> &'static str {
             None => return "skipped: another refresh is running",
         }
     };
-    let repo = repo(&io.cwd);
+    // User-level files hold only the person's own set: read with no repository, the team
+    // set is all on, so `me` is their own choices. A team's switches reach agents through
+    // the repository's own AGENTS.md block instead (REN-2056), so refreshes from different
+    // repositories never rewrite these files back and forth.
     let Some(mut link) = impeccable_account::switches::Link::open(io) else { return "skipped: not signed in" };
-    let Some(remote) = link.fetch(repo.as_deref()) else { return "skipped: Impeccable didn't answer" };
+    let Some(remote) = link.fetch() else { return "skipped: Impeccable didn't answer" };
     let cache = read_cache(&account);
     let base: Option<Vec<String>> = cache
         .as_ref()
