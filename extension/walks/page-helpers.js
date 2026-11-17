@@ -1645,7 +1645,11 @@ function coverSecrets(on, forMs) {
       return null;
     }
   };
+  const wear = { filter: "brightness(0)", "background-color": "#000", "box-shadow": "inset 0 0 0 100vmax #000", "-webkit-text-fill-color": "transparent", "caret-color": "transparent", transition: "none" };
+  const kept = g[Symbol.for("secret-cover-kept")] ??= new Map;
+  const worn = (f) => f.style?.getPropertyValue("filter") === "brightness(0)" && f.style.getPropertyPriority("filter") === "important";
   let covered = 0;
+  let bare = 0;
   const visit = (root, Made, on) => {
     const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
     if (!on) {
@@ -1699,7 +1703,21 @@ function coverSecrets(on, forMs) {
           box.setAttribute(held, `${Math.max(Number(most) || 0, passwords(box, true))} ${Math.max(Number(mostShown) || 0, passwords(box, false))}${had || accounts.length ? " named" : ""}`);
         }
       }
-      covered += root.querySelectorAll(fields).length;
+      for (const f of Array.from(root.querySelectorAll(fields))) {
+        covered += 1;
+        if (f.style && (kept.has(f) || !worn(f))) {
+          const was = kept.get(f) ?? { styled: f.getAttribute("style") !== null, props: {} };
+          for (const [name, value] of Object.entries(wear)) {
+            if (!(name in was.props))
+              was.props[name] = [f.style.getPropertyValue(name), f.style.getPropertyPriority(name)];
+            f.style.setProperty(name, value, "important");
+          }
+          kept.set(f, was);
+        }
+        const view = f.ownerDocument?.defaultView;
+        if (view && !/brightness\(0\)/.test(view.getComputedStyle(f).filter))
+          bare += 1;
+      }
     }
     for (const el of Array.from(root.querySelectorAll("*"))) {
       const own = shadow(el);
@@ -1717,15 +1735,79 @@ function coverSecrets(on, forMs) {
         visit(inner, inner.defaultView.CSSStyleSheet, on);
     }
   };
-  visit(g.document, g.CSSStyleSheet, on);
+  const off = () => {
+    visit(g.document, g.CSSStyleSheet, false);
+    for (const [f, { styled, props }] of kept) {
+      for (const [name, [value, priority]] of Object.entries(props)) {
+        if (value)
+          f.style?.setProperty(name, value, priority);
+        else
+          f.style?.removeProperty(name);
+      }
+      if (!styled && f.getAttribute("style") === "")
+        f.removeAttribute?.("style");
+    }
+    kept.clear();
+  };
+  if (on)
+    visit(g.document, g.CSSStyleSheet, true);
+  else
+    off();
   const timer = Symbol.for("secret-cover");
   g.clearTimeout(g[timer]);
   if (on && forMs)
-    g[timer] = g.setTimeout(() => visit(g.document, g.CSSStyleSheet, false), forMs);
+    g[timer] = g.setTimeout(off, forMs);
+  if (bare)
+    throw new Error(`${bare} secret field${bare === 1 ? "" : "s"} not covered`);
   return covered;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, coverSecrets });
+function coverHolds() {
+  const g = globalThis;
+  let selector;
+  for (const sheet of Array.from(g.document.adoptedStyleSheets)) {
+    try {
+      if (sheet.cssRules[0]?.cssText.includes("--secret-cover"))
+        selector = sheet.cssRules[0].cssRules?.[0]?.selectorText;
+    } catch {}
+  }
+  if (!selector)
+    return -1;
+  let bare = 0;
+  const visit = (root) => {
+    for (const f of Array.from(root.querySelectorAll(selector))) {
+      const view = f.ownerDocument?.defaultView;
+      if (!view || !/brightness\(0\)/.test(view.getComputedStyle(f).filter))
+        bare += 1;
+    }
+    for (const el of Array.from(root.querySelectorAll("*"))) {
+      let own = el.shadowRoot ?? null;
+      if (!own && (!el.namespaceURI || el.namespaceURI === "http://www.w3.org/1999/xhtml")) {
+        try {
+          own = g.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
+        } catch {
+          own = null;
+        }
+      }
+      if (own)
+        visit(own);
+      if (el.tagName !== "IFRAME" && el.tagName !== "FRAME")
+        continue;
+      let inner = null;
+      try {
+        inner = el.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (inner)
+        visit(inner);
+    }
+  };
+  visit(g.document);
+  return bare;
+}
+
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, coverSecrets, coverHolds });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -1740,4 +1822,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '664efd13ee8732d6';
+export const HASH = '7bfd4848b7d98922';
