@@ -12,8 +12,8 @@
 // (driver.js `typable`), a secret field in any picture, scripts of its own (no `evaluate`, no `cdp`), files, and
 // downloads. The person's Allow comes from the side panel only, never from the page. How it ends: Stop, the tab
 // closing, `browser_end`, the agent going away, the host going away, ten minutes idle, or an hour in all.
-import { DEVICES, grant, ops, walk, hooks } from './driver.js';
-import { askSite, rearm } from './control.js';
+import { AGENT, DEVICES, ops, walk, hooks } from './driver.js';
+import { askSite } from './control.js';
 import { webOrigin, isOwnPage } from './guard.js';
 import { current, dispatch, onView } from './store.js';
 import { isLive } from './view.js';
@@ -36,6 +36,11 @@ let port = null;
  * person stopped it. One at a time: the relay admits one agent, and the walk one tab.
  */
 let session = null;
+/**
+ * Set by the person's Stop and by the hour running out: the next site is asked about in the panel even when it is
+ * always allowed, whichever agent or connection asks. Cleared by the person's own Allow.
+ */
+let askNext = false;
 /** Ends a session nobody has used for a while. */
 let idle = null;
 /** The refs of the last tree the agent read: its number for a control, to what that control is called. */
@@ -63,8 +68,9 @@ async function alwaysSites() {
  */
 async function mayUse(origin) {
   if (session.allowed.includes(origin)) return true;
-  if ((await alwaysSites()).includes(origin)) { session.allowed.push(origin); return true; }
+  if (!askNext && (await alwaysSites()).includes(origin)) { session.allowed.push(origin); return true; }
   const said = await askSite(new URL(origin).host);
+  if (said === 'once' || said === 'always') askNext = false;
   if (said === 'always') await chrome.storage.local.set({ [SITES_KEY]: [...new Set([...(await alwaysSites()), origin])] });
   if (said !== 'once' && said !== 'always') return false;
   session.allowed.push(origin);
@@ -142,14 +148,10 @@ async function open(url) {
   if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
   if (walk?.agent) return go(url);
   if (isLive(current())) return refused('A journey is using the browser right now. Try again when it has finished.');
-  if (!session.started) {
-    rearm();
-    dispatch({ type: 'agent', name: session.name, site: origin });
-  }
+  if (!session.started) dispatch({ type: 'agent', name: session.name, site: origin });
   try {
     if (!(await mayUse(origin))) { endWaiting(); return refused(`The person didn’t allow ${new URL(origin).host}.`); }
-    grant([...session.allowed]);
-    await ops.open({ url, name: session.name, allow: [...session.allowed], free: true, helpers: true, agent: true });
+    await ops.open({ url, name: session.name, allow: [...session.allowed], free: true, helpers: true, [AGENT]: true });
   } catch (err) {
     endWaiting();
     throw err;
@@ -162,7 +164,7 @@ async function open(url) {
 
 /** A wait for the person's Allow that ended without a tab: the panel goes back to how it was. */
 function endWaiting() {
-  if (current().state === 'waiting' && current().agent) dispatch({ type: 'stop' });
+  dispatch({ type: 'unwait' });
 }
 
 async function go(url) {
@@ -264,7 +266,10 @@ async function filmstrip(seconds) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   let binary = '';
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return { content: [{ type: 'text', text: `${FILM_FRAMES} stills over ${seconds}s, left to right then down.` }, { type: 'image', data: btoa(binary), mimeType: 'image/jpeg' }] };
+  // Chrome pauses motion in a tab nobody is looking at: said, so still frames aren't read as nothing moving.
+  const shown = (await chrome.tabs.get(walk.tabId).catch(() => null))?.active === true;
+  const said = `${FILM_FRAMES} stills over ${seconds}s, left to right then down.${shown ? '' : ' The tab is in the background, where Chrome pauses motion: ask the person to bring it to the front for a true filmstrip.'}`;
+  return { content: [{ type: 'text', text: said }, { type: 'image', data: btoa(binary), mimeType: 'image/jpeg' }] };
 }
 
 /** Ends the agent's walk: the debugger leaves, and the tab it opened stays as it left it. */
@@ -272,19 +277,25 @@ async function end() {
   clearTimeout(idle);
   if (walk?.agent) await ops.close();
   endWaiting();
+  over();
+}
+/** What a session's end takes with it: its Allow once sites and its log; a Stop stays. */
+function over() {
+  if (!session) return;
+  Object.assign(session, { allowed: [], n: 0, started: false, since: Date.now() });
 }
 
 /** One call, answered with what the agent reads. A pause (a sign-in, the person's own) answers at once. */
 async function call(frame) {
-  const name = agentName(frame.agent);
-  if (!session || session.name !== name) session = { name, allowed: [], n: 0, since: Date.now(), started: false, stopped: false };
+  // One session a connection: the relay says when its agent goes. A name it sends only labels the panel.
+  session ??= { name: agentName(frame.agent), allowed: [], n: 0, since: Date.now(), started: false, stopped: false };
   if (session.stopped) return refused('The person stopped your browser session.');
-  if (Date.now() - session.since > LEASE_MS) { await end(); session = { ...session, allowed: [], n: 0, since: Date.now(), started: false }; }
+  if (Date.now() - session.since > LEASE_MS) { await end(); askNext = true; }
   armIdle();
   const { tool, arguments: args = {} } = frame;
-  if (tool === 'browser_end') { await end(); session.started = false; return text('Ended. The tab is the person’s again.'); }
-  const state = current().state;
-  if (walk?.agent && (state === 'paused' || state === 'takeover')) return refused(state === 'takeover' ? 'The person has the tab. Try again when they hand it back.' : 'The person paused you. Try again when they continue.');
+  if (tool === 'browser_end') { await end(); return text('Ended. The tab is the person’s again.'); }
+  const { state } = current();
+  if (walk?.agent && (state === 'paused' || state === 'takeover')) return pausedLine();
   if (tool === 'browser_open') return open(String(args.url ?? ''));
   if (!walk?.agent) return refused('No page is open: call browser_open first.');
   if (tool === 'browser_act') return act(args);
@@ -293,13 +304,19 @@ async function call(frame) {
 }
 
 /** Answers with the call's own result, or, the moment a pause lands while it runs, with that. */
+const pausedLine = () => refused(current().held === 'sign-in' ? 'The page asks the person to sign in. They do it themselves; try again once they continue.' : current().state === 'takeover' ? 'The person has the tab. Try again when they hand it back.' : 'The person paused you. Try again when they continue.');
+/**
+ * Runs one call, answering with its result or, the moment a pause lands while it runs, with that. The call itself
+ * is refused once the pause ends (control.js), and resolves `run` only then: the next call waits for it.
+ */
 function answer(frame) {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = (out) => { if (!done) { done = true; resolve(out); } };
-    const off = onPause(() => finish(refused(current().held === 'sign-in' ? 'The page asks the person to sign in. They do it themselves; try again once they continue.' : 'The person paused you. Try again when they continue.')));
-    call(frame).then(finish, (err) => finish(refused(String(err?.message ?? err).slice(0, 300)))).finally(off);
-  });
+  let reply;
+  const replied = new Promise((resolve) => { reply = resolve; });
+  let done = false;
+  const finish = (out) => { if (!done) { done = true; reply(out); } };
+  const off = onPause(() => finish(pausedLine()));
+  const run = call(frame).then(finish, (err) => finish(refused(String(err?.message ?? err).slice(0, 300)))).finally(off);
+  return { replied, run };
 }
 
 const pauses = new Set();
@@ -311,19 +328,48 @@ function armIdle() {
   idle = setTimeout(() => { void end(); }, IDLE_MS);
 }
 
-// The person's Stop, or the tab closing, ends the session: what the agent asks after that is refused until it goes.
+// The person's Stop, or the tab closing, ends the agent's session (a persona's walk ending is not its): what the agent
+// asks after a Stop is refused until it goes, and its next one asks the person again.
 hooks.closed.push((why) => {
-  if (!session) return;
-  if (why === 'stopped' || why === 'canceled_by_user') session.stopped = true;
-  session.started = false;
+  if (!session?.started) return;
+  if (why === 'stopped' || why === 'canceled_by_user') stop();
+  clearTimeout(idle);
+  over();
 });
+function stop() {
+  askNext = true;
+  if (session) session.stopped = true;
+}
+// Stop pressed while the agent waited for its first Allow: no tab closed, so it is heard here.
+let waitingAgent = false;
+onView((view) => {
+  if (waitingAgent && view.state === 'stopped') stop();
+  waitingAgent = view.agent && view.state === 'waiting';
+});
+
+/** The agent left: its walk ends, and the next connection starts afresh (a Stop's ask stays, `askNext`). */
+async function gone() {
+  session = null;
+  await end().catch(() => undefined);
+}
 
 /** One call at a time, in the order they came. */
 let queue = Promise.resolve();
 function heard(frame) {
-  if (frame?.type === 'agent-gone') { queue = queue.then(() => end()).catch(() => undefined).then(() => { session = null; }); return; }
+  // At once, not behind a call a pause holds: the agent is gone.
+  if (frame?.type === 'agent-gone') { void gone(); return; }
   if (typeof frame?.id !== 'number' || typeof frame.tool !== 'string') return;
-  queue = queue.then(() => answer(frame)).then((result) => { port?.postMessage({ id: frame.id, result }); }).catch(() => undefined);
+  const from = port;
+  // Ending always ends, at once: not behind a call a pause holds.
+  if (frame.tool === 'browser_end') { void end().catch(() => undefined).then(() => from?.postMessage({ id: frame.id, result: text('Ended. The tab is the person’s again.') })); return; }
+  // Paused or taken over: answered at once, never queued to run after Continue.
+  const { state } = current();
+  if (walk?.agent && (state === 'paused' || state === 'takeover')) { from?.postMessage({ id: frame.id, result: pausedLine() }); return; }
+  queue = queue.then(async () => {
+    const { replied, run } = answer(frame);
+    void replied.then((result) => from?.postMessage({ id: frame.id, result }));
+    await run;
+  }).catch(() => undefined);
 }
 
 /**
@@ -340,7 +386,7 @@ export function connect() {
     if (port !== p) return;
     port = null;
     void chrome.runtime.lastError;
-    queue = queue.then(() => end()).catch(() => undefined).then(() => { session = null; });
+    void gone();
   });
 }
 

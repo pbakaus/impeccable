@@ -11,6 +11,12 @@ import { INSPECTS } from './inspect.js';
 /** What filming a wait needs, and nothing that closes or steers a target. */
 const CDP_METHODS = new Set(['Page.startScreencast', 'Page.stopScreencast', 'Page.screencastFrameAck']);
 
+/**
+ * Marks an `open` as the person's own agent's (agent.js): a key no socket message can carry, so a server's walk can
+ * never become one. Such a walk takes its allow-list from the op alone and never adopts the person's tab.
+ */
+export const AGENT = Symbol('agent');
+
 /** The one tab this worker walks, while it does. */
 export let walk = null;
 
@@ -1706,11 +1712,13 @@ export const ops = {
   // `helpers`: the server names this extension's own page helpers (`page-helpers.js`) and sends no code; an older
   // server never says it, and sends a function's source as ever.
   // `signInPage`: the server takes the one still of a sign-in page (`sign-in-page`); an older one never says it, and gets none.
-  // `agent`: the person's own agent drives (agent.js), not a server: it is asked nothing before a submit (control.js).
-  async open({ url, name, allow, free, helpers: named, signInPage, agent }) {
+  // `[AGENT]`: the person's own agent drives (agent.js), not a server: it is asked nothing before a submit (control.js).
+  async open(req) {
+    const { url, name, allow, free, helpers: named, signInPage } = req;
+    const agent = req[AGENT] === true;
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow, free, named, signInPage);
-    const site = admit(url, allowedFor(allow));
+    if (adopted && !agent) return adopt(name, allow, free, named, signInPage);
+    const site = admit(url, agent ? allow : allowedFor(allow));
     const me = { stopped: false };
     opening = me;
     // Stopped or let go at any point from here: the walk never starts, and the tab made for it goes.
@@ -1733,7 +1741,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, agent: agent === true, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, agent, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });

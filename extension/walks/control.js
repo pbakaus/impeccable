@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
-import { asWebp, drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
+import { AGENT, asWebp, drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { ON_TAB, detachAction, isLive } from './view.js';
 
@@ -82,7 +82,8 @@ async function clear(name) {
   let waited = false;
   for (;;) {
     const { state } = current();
-    if (stopped) throw fail('Stopped', 'the person stopped this journey');
+    // A stopped hand-off; the person's own agent's Stop is agent.js's.
+    if (stopped && !walk?.agent) throw fail('Stopped', 'the person stopped this journey');
     if (state === 'takeover') throw fail('TakenOver', 'the person is using the tab');
     // Over (the socket went, the tab closed, it failed): nothing is coming back to wait for.
     if (!ON_TAB.includes(state)) throw fail('OutingClosed', 'no tab is open');
@@ -210,13 +211,15 @@ for (const [name, run] of Object.entries(ops)) {
         if (at === fenced()) { if (failed) throw failed; return out; }
       }
       // Focus a screen reader moved is a key's: not done on a page the person has used since.
-      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus')) throw overtaken();
+      // So is any op of the person's own agent's: it was told it was paused, and asks again.
+      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus') || walk?.agent) throw overtaken();
     }
   };
 }
 const open = ops.open;
 ops.open = (req) => {
-  if (stopped) throw fail('Stopped', 'the person stopped this journey');
+  // The agent's own Stop is agent.js's: a stopped hand-off never blocks it, nor it a hand-off.
+  if (stopped && req?.[AGENT] !== true) throw fail('Stopped', 'the person stopped this journey');
   return open(req);
 };
 

@@ -208,7 +208,16 @@ describe('agent session', () => {
     assert.deepEqual((await chrome.storage.local.get('agentSites')).agentSites, ['https://linear.app']);
   });
 
-  it('ends on the person’s Stop: the debugger leaves, and the agent is refused until it goes away', async () => {
+  it('forgets an Allow once when the session ends', async () => {
+    const { current } = await loaded;
+    assert.equal(said(await call('browser_end')), 'Ended. The tab is the person’s again.');
+    const asked = call('browser_open', { url: 'https://github.com/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question again');
+    assert.deepEqual(await press('once'), { ok: true });
+    assert.equal((await asked).isError, undefined);
+  });
+
+  it('ends on the person’s Stop: the debugger leaves, the agent is refused until it goes, and its next start is asked even on an always-allowed site', async () => {
     const { current, driver } = await loaded;
     assert.deepEqual(await press('stop'), { ok: true });
     await until(() => !driver.walk, 'the walk to end');
@@ -216,13 +225,13 @@ describe('agent session', () => {
     const refused = await call('browser_look', { kind: 'tree' });
     assert.equal(refused.isError, true);
     assert.match(said(refused), /stopped/);
-    // The agent goes; its next session opens an always-allowed site with no question.
     toExtension({ type: 'agent-gone' });
     await turn();
-    const again = await call('browser_open', { url: 'https://linear.app/acme' });
-    assert.equal(again.isError, undefined, said(again));
-    assert.equal(current().ask, null);
-    assert.equal(tabs.created, 2);
+    const again = call('browser_open', { url: 'https://linear.app/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question after a Stop');
+    assert.deepEqual(await press('once'), { ok: true });
+    const reopened = await again;
+    assert.equal(reopened.isError, undefined, said(reopened));
   });
 
   it('ends when the host goes away', async () => {
@@ -230,5 +239,15 @@ describe('agent session', () => {
     assert.ok(driver.walk?.agent);
     hostGone();
     await until(() => !driver.walk, 'the walk to end');
+  });
+
+  // A server's walk names its ops in JSON: none can make itself the agent's, and be asked nothing before a submit.
+  it('never takes an agent walk from a socket message', async () => {
+    const { driver } = await loaded;
+    // As a new hand-off does: the person's Stop above held this worker's walks.
+    (await import('../extension/walks/control.js')).rearm();
+    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira', agent: true });
+    assert.equal(driver.walk.agent, false);
+    await driver.ops.close();
   });
 });

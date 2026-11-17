@@ -75,6 +75,9 @@ function step(view, action) {
     case 'agent':
       if (live) return view;
       return { ...fresh(view), linked: view.linked, state: 'waiting', agent: true, who: whoOf({ name: action.name }), site: action.site ?? null };
+    // The agent's wait ended with no tab (Not now, or it could not open): back to before it.
+    case 'unwait':
+      return view.state === 'waiting' && view.agent ? emptyView(view.linked) : view;
     // The tab is open and the debugger is on it. Once the walk is over, the panel shows its end on that tab alone.
     case 'opened':
       if (onTab) return view;
