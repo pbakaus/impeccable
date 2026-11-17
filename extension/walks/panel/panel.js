@@ -1310,7 +1310,8 @@ async function start() {
       settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
     };
     chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; moved(); if (pre.screen === 'home' && !isLive(view)) render(); } });
+    // Scan names the tab's site: drawn again only when the site changes, as a redraw moves its box.
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
     const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (just === true) connect();
