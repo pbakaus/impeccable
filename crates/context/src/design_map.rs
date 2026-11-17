@@ -8,7 +8,11 @@ use std::path::Path;
 
 /// Bytes a document may take in `context` before it is carried as a map.
 pub const MAP_BUDGET: usize = 1600;
-const COLOR_LINE_BUDGET: usize = 360;
+/// Bytes the map itself may take (about 600 tokens): room for every rule of a large system, which the
+/// guardrails need more than the long tail of its palette (REN-2129 gate, 17 Nov).
+pub const MAP_SIZE: usize = 2400;
+const COLOR_LINE_BUDGET: usize = 240;
+const SCALE_LINE_BUDGET: usize = 200;
 const MAX_MAP_PATHS: usize = 8;
 
 /// The map of `design`, whose file is `path`; mentioned files are checked under `root`.
@@ -40,6 +44,16 @@ pub fn map(design: &str, root: &Path, path: &str) -> String {
         if !families.is_empty() {
             let fonts: Vec<String> = families.iter().map(|(f, roles)| format!("{f} ({})", roles.join(", "))).collect();
             head.push(format!("Fonts: {}", fonts.join("; ")));
+        }
+    }
+
+    // The spacing and radius scales: off-scale values are what an agent gets wrong without them.
+    for (key, label) in [("spacing", "Spacing: "), ("rounded", "Radius: ")] {
+        if let Some(scale) = fm.get(key).and_then(Value::as_object) {
+            let entries: Vec<String> = scale.iter().filter_map(|(k, v)| v.as_str().map(|v| format!("{k} {v}"))).collect();
+            if !entries.is_empty() {
+                head.push(capped_line(label, &entries, SCALE_LINE_BUDGET, "in the frontmatter"));
+            }
         }
     }
 
@@ -87,16 +101,15 @@ pub fn map(design: &str, root: &Path, path: &str) -> String {
 
     let mut tail: Vec<String> = paths.iter().map(|p| format!("Map: {p}")).collect();
     tail.push(format!("Full: {path} (read a section when you need its detail)"));
-    // Over the budget, the longest list loses its last item (Do bullets first on a tie,
-    // Don'ts last), so every list keeps its leads and names what it dropped.
+    // Over the cap, the Do bullets give way first (they mostly restate the rules), then the rules, and the Don'ts
+    // last: each list keeps at least its first item and names what it dropped.
     let mut lists = [("Rules:", rules, 0usize), ("Don't:", donts, 0), ("Do:", dos, 0)];
     loop {
         let out = render(&head, &lists, &tail);
-        if out.len() <= MAP_BUDGET {
+        if out.len() <= MAP_SIZE {
             return out;
         }
-        const TIE: [usize; 3] = [1, 0, 2];
-        let Some(i) = (0..3).filter(|&i| lists[i].1.len() > 1).max_by_key(|&i| (lists[i].1.len(), TIE[i])) else { return out };
+        let Some(i) = [2, 0, 1].into_iter().find(|&i| lists[i].1.len() > 1) else { return out };
         lists[i].1.pop();
         lists[i].2 += 1;
     }
@@ -232,7 +245,9 @@ mod tests {
     fn landing_demo_keeps_its_guardrails_in_budget() {
         let design = include_str!("../../../demos/landing-demo/DESIGN.md");
         let out = map(design, Path::new("/nonexistent"), "DESIGN.md");
-        assert!(out.len() <= MAP_BUDGET, "{} bytes:\n{out}", out.len());
+        assert!(out.len() <= MAP_SIZE, "{} bytes:\n{out}", out.len());
+        // The spacing and radius scales: off-scale values were the gate's one regression.
+        assert!(out.contains("Spacing: xs 8px, sm 16px, md 24px") && out.contains("Radius: card 20px"), "{out}");
         for kept in [
             "The 10% Accent Rule. The burnt orange covers no more than 10% of any rendered surface.",
             "Don't add box-shadows to surfaces.",
