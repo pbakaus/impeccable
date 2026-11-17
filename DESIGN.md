@@ -158,6 +158,7 @@ Flat by default. Depth exists only on instruments.
 - **--ks-cap-lift:** `inset 0 1px 0 oklch(100% 0 0 / 0.9), 0 1px 0 oklch(13% 0 0 / 0.14), 0 2px 3px oklch(13% 0 0 / 0.08)`: the raised cap on an instrument control, a hovered or held tool button, the switch knob.
 - **--ks-cap-press:** `inset 0 1px 2px oklch(13% 0 0 / 0.14)`: a cap while pressed.
 - **--ks-track-recess:** `inset 0 1px 3px oklch(13% 0 0 / 0.16), inset 0 -1px 0 oklch(100% 0 0 / 0.7)`: the sunk track under segmented caps and the switch.
+- **--ks-lift-1:** `0 1px 1px oklch(13% 0 0 / 0.05), 0 2px 3px oklch(13% 0 0 / 0.04), 0 6px 12px oklch(13% 0 0 / 0.05)`: a surface lifted off the paper (a hovered map tile, a kit panel); a control takes the cap instead.
 - **--ks-led:** `0 0 0 1px oklch(13% 0 0 / 0.12), 0 0 4px oklch(84% 0.19 80 / 0.6)`: a lit gold dot, and only that.
 
 ## Shapes
