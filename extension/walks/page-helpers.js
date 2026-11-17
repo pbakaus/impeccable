@@ -1658,8 +1658,7 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const textual = (f) => !other.includes(kind(f));
-      const counts = (f) => f.getAttribute(seen) !== null || textual(f) && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
       const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
@@ -1674,7 +1673,7 @@ function coverSecrets(on, forMs) {
         const hidden = all.filter((f) => counts(f) && !shown(f));
         const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || Boolean(h.value) && h.value === f.value);
         for (const f of all)
-          if (textual(f) && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clone(f)))
+          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clone(f)))
             f.setAttribute(maybe, "");
       }
       for (const field of inputs(root)) {
@@ -1733,4 +1732,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '629bbf371a82e4f1';
+export const HASH = '3be36667c52b2db1';
