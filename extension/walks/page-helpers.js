@@ -1657,8 +1657,7 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const words = (f) => named.map((a) => f.getAttribute(a) ?? "").join(" ");
-      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && /passw|pwd/i.test(words(f)) && !/reset|forgot|recover|passwordless/i.test(words(f));
+      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
       const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
@@ -1732,4 +1731,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'a6252091ccd1e539';
+export const HASH = '27c151c4b1c45b44';
