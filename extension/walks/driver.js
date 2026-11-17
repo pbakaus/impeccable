@@ -681,8 +681,11 @@ const COVER_RETRY_MS = 150;
 async function coverFrames(on) {
   const tabId = walk?.tabId;
   const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null);
-  if (frames?.length === 1) return true;
+  // A page left with one frame still has its top document's own timer from this script (`framesCovered`) put on again
+  // or cleared: it would otherwise take the cover off before `cover` says.
+  if (frames?.length === 1 && !framesCovered) return true;
   const target = { tabId, allFrames: true };
+  framesCovered = on;
   const ran = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverSecrets, args: [on, COVER_MS] }).catch(() => []);
   if (!on) return true;
   if (!frames) return false;
@@ -699,6 +702,9 @@ async function coverFrames(on) {
   }
   return true;
 }
+
+/** Whether `coverFrames` last put covers on with its own script, its timer in the top document among them. */
+let framesCovered = false;
 
 /** Run by the extension in a frame: its place among the frames around it (`window.frames`), -1 at the top or unlisted. */
 function frameIndex() {
