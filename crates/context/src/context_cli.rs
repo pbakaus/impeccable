@@ -935,7 +935,7 @@ pub fn run_with_hook_repair(
         };
         let mut parts = Parts(lines.into_iter().map(Part::Text).collect());
         if ctx.has_design {
-            append_design(&mut parts, &ctx, &provider);
+            append_design(&mut parts, &ctx, &provider, resolved_target_path.as_deref());
         }
         append_seeded_world_directive(&mut parts, &ctx);
         append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -960,7 +960,7 @@ pub fn run_with_hook_repair(
     let mut parts = Parts::default();
     append_product(&mut parts, &ctx);
     if ctx.has_design {
-        append_design(&mut parts, &ctx, &provider);
+        append_design(&mut parts, &ctx, &provider, resolved_target_path.as_deref());
     }
     append_seeded_world_directive(&mut parts, &ctx);
     append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -1002,14 +1002,16 @@ pub fn run_with_hook_repair(
 
 /// DESIGN.md as written, or past the map budget, its map with the path to the full file and the lookup that answers
 /// what the map leaves out.
-fn append_design(parts: &mut Parts, ctx: &Ctx, provider: &Provider) {
+fn append_design(parts: &mut Parts, ctx: &Ctx, provider: &Provider, target: Option<&str>) {
     let path = ctx.design_path.as_deref().unwrap_or_default();
     let design = ctx.design.as_deref().unwrap_or_default();
     if js_trim(design).len() <= MAP_BUDGET {
         parts.doc("# DESIGN.md".to_string(), path, design);
         return;
     }
-    let lookup = format!("Lookup: `{} <term>` prints one token, component or section, with its file.", provider.verb_cmd("design-lookup"));
+    // The workspace `context` was given goes with it, or the lookup would read another DESIGN.md.
+    let workspace = target.map(|t| format!(" --target {}", shell_arg(t))).unwrap_or_default();
+    let lookup = format!("Lookup: `{}{workspace} <term>` prints one token, component or section, with its file.", provider.verb_cmd("design-lookup"));
     // Already its map (`design-compact`): the body as written, within the map's own cap; mapping it again would lose
     // its rules and the pointer to the original.
     if let Some(at) = design.find(design_map::MAP_MARKER) {

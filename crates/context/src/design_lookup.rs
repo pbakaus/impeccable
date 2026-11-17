@@ -5,12 +5,10 @@
 //! properties of the token files DESIGN.md names, and its sections (in `.impeccable/design-full.md` once compacted), and
 //! prints only what matches, each with where it lives.
 
-use crate::context::load_context;
 use crate::design_compact::ARCHIVE;
 use crate::design_map::{path_mentions, is_relative_path, MAP_MARKER};
 use crate::design_parser::parse_design_md;
 use crate::jsp;
-use crate::target_args::parse_target_options;
 use crate::util::safe_read;
 use impeccable_common::Io;
 use serde_json::Value;
@@ -111,26 +109,17 @@ fn sidecar_entries(sidecar: &Value, at: &str, out: &mut Vec<Entry>) {
     }
 }
 
-/// Each custom property a token file declares (`--name: value;`, a value over several lines joined), with its line.
+/// Each custom property a token file declares (`--name: value`, wherever it sits on a line and however many share one;
+/// a value over several lines joined), with the line it starts on.
 fn custom_properties(css: &str, rel: &str, out: &mut Vec<Entry>) {
-    let lines: Vec<&str> = css.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        let t = line.trim_start();
-        let Some(rest) = t.strip_prefix("--") else { continue };
-        let Some(colon) = rest.find(':') else { continue };
-        let name = &rest[..colon];
-        if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-            continue;
-        }
-        let mut value = rest[colon + 1..].to_string();
-        let mut j = i;
-        while !value.contains(';') && !value.contains('}') && j + 1 < lines.len() && j < i + 12 {
-            j += 1;
-            value.push(' ');
-            value.push_str(lines[j].trim());
-        }
-        let value = value.split([';', '}']).next().unwrap_or("").trim().to_string();
-        out.push(Entry { name: format!("--{name}"), text: value, at: format!("{rel}:{}", i + 1) });
+    static DECL: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?:^|[\s{;])--([A-Za-z0-9_-]+)\s*:").unwrap());
+    for c in DECL.captures_iter(css) {
+        let (name, whole) = (c.get(1).unwrap(), c.get(0).unwrap());
+        let rest = &css[whole.end()..];
+        let value = &rest[..rest.find([';', '}']).unwrap_or(rest.len()).min(ENTRY_SIZE * 2)];
+        let line = css[..name.start()].matches('\n').count() + 1;
+        out.push(Entry { name: format!("--{}", name.as_str()), text: clip(value.trim(), ENTRY_SIZE), at: format!("{rel}:{line}") });
     }
 }
 
@@ -148,7 +137,16 @@ fn sections(doc: &str, rel: &str, term: &str) -> Vec<String> {
         if fence || depth == 0 || !line[depth..].starts_with(' ') || !line.to_lowercase().contains(term) {
             continue;
         }
-        let end = (i + 1..lines.len()).find(|&j| (1..=depth).contains(&level(lines[j])) && lines[j][level(lines[j])..].starts_with(' ')).unwrap_or(lines.len());
+        // The section ends at the next heading as deep or shallower, outside a code fence.
+        let mut inner = false;
+        let end = (i + 1..lines.len())
+            .find(|&j| {
+                if lines[j].trim_start().starts_with("```") {
+                    inner = !inner;
+                }
+                !inner && (1..=depth).contains(&level(lines[j])) && lines[j][level(lines[j])..].starts_with(' ')
+            })
+            .unwrap_or(lines.len());
         let mut body = lines[i..end].join("\n").trim_end().to_string();
         if body.len() > SECTION_SIZE {
             let mut cut = SECTION_SIZE;
@@ -176,7 +174,12 @@ pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
         Some(full) => (full.as_str(), ARCHIVE),
         None => (design, rel),
     };
-    let mut files: Vec<String> = [design, doc].iter().flat_map(|d| d.lines().flat_map(path_mentions)).collect();
+    // A link's `#fragment` or `?query` is not part of the file's name.
+    let mut files: Vec<String> = [design, doc]
+        .iter()
+        .flat_map(|d| d.lines().flat_map(path_mentions))
+        .map(|p| p.split(['#', '?']).next().unwrap_or("").to_string())
+        .collect();
     files.retain(|p| is_relative_path(p) && crate::staleness_deep::is_token_file(p));
     files.sort();
     files.dedup();
@@ -196,8 +199,13 @@ pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
         })
         .collect();
     hits.sort_by_key(|(rank, _)| *rank);
-    let mut found_sections: Vec<String> = terms.iter().flat_map(|t| sections(doc, doc_rel, t)).collect();
-    found_sections.dedup();
+    // A section two terms both find prints once.
+    let mut found_sections: Vec<String> = Vec::new();
+    for s in terms.iter().flat_map(|t| sections(doc, doc_rel, t)) {
+        if !found_sections.contains(&s) {
+            found_sections.push(s);
+        }
+    }
 
     let mut out = String::new();
     let mut left = 0;
@@ -232,6 +240,9 @@ pub fn lookup(design: &str, rel: &str, dir: &Path, terms: &[String]) -> String {
         if !gone.is_empty() {
             out.push_str(&format!("DESIGN.md names token files that are not there: {}.\n", gone.join(", ")));
         }
+        if out.len() > OUT_SIZE {
+            out = format!("{}\n", clip(&out, OUT_SIZE));
+        }
     }
     out
 }
@@ -249,7 +260,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 passthrough.push(a.clone());
                 passthrough.extend(it.next().cloned());
             }
-            _ if a.starts_with("--") => passthrough.push(a.clone()),
+            _ if a.starts_with("--target=") => passthrough.push(a.clone()),
+            // Anything else is a term, a custom property's name (`--brand`) included.
             _ => terms.push(a.clone()),
         }
     }
@@ -257,16 +269,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         io.err(&format!("{}\n", usage()));
         return 1;
     }
-    let target = match parse_target_options(&passthrough, true) {
-        Ok(t) => t,
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    let ctx = match crate::design_compact::context_for(&passthrough, &cwd, &io.env) {
+        Ok(c) => c,
         Err(msg) => {
             io.err(&format!("{msg}\n"));
             return 1;
         }
     };
-    let cwd = io.cwd.to_string_lossy().into_owned();
-    let env = io.env.clone();
-    let ctx = load_context(&cwd, &target, &env);
     let Some(rel) = ctx.design_path.clone() else {
         io.out("No DESIGN.md here. `/impeccable document` writes one from the code.\n");
         return 0;
@@ -329,6 +339,23 @@ mod tests {
         // The archive's section, and the token file only the archive names.
         assert!(out.contains(&format!("({ARCHIVE}:12)")), "{out}");
         assert!(lookup(&compacted, "DESIGN.md", &dir, &["--brand".into()]).contains("(src/tokens.css:1)"));
+    }
+
+    #[test]
+    fn inline_declarations_linked_files_and_a_full_property_name_all_count() {
+        let design = "# D\n\nTokens: [colors](styles/tokens.css#colors).\n";
+        let dir = dir_with("inline", &[("styles/tokens.css", ":root { --paper: white; --ink: black; }\n")]);
+        assert_eq!(lookup(design, "DESIGN.md", &dir, &["--ink".into()]), "--ink: black (styles/tokens.css:1)\n");
+        assert!(lookup(design, "DESIGN.md", &dir, &["paper".into()]).contains("--paper: white (styles/tokens.css:1)"));
+    }
+
+    #[test]
+    fn a_fenced_heading_never_ends_a_section_and_two_terms_print_it_once() {
+        let design = "# D\n\n## Elevation shadows\n\n```md\n# example\n```\nAfter the fence.\n\n## Next\n";
+        let dir = dir_with("fence", &[]);
+        let out = lookup(design, "DESIGN.md", &dir, &["elevation".into(), "shadows".into()]);
+        assert!(out.contains("```\nAfter the fence.\n(DESIGN.md:3)"), "{out}");
+        assert_eq!(out.matches("## Elevation shadows").count(), 1, "{out}");
     }
 
     #[test]
