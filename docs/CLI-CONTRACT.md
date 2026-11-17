@@ -3284,6 +3284,40 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   extension: `{"id","agent","tool","arguments"}`; answers:
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
+- **Registering the host with Chrome** (macOS and Linux). After a successful
+  `install` (or `skills install`), and not for `-h`/`--help` or when `CI` is
+  set, and once `<home>/bin` holds an engine the launcher would run (a bundled
+  engine fills no cache, so that install registers nothing until one does), the
+  CLI writes `<IMPECCABLE_HOME>/browser/host`
+  (0700, its folder 0700): a `sh` launcher with the home folder written in
+  (Chrome starts hosts with a bare environment). Each time it runs it picks the
+  highest `x.y.z` folder under `<home>/bin` whose `impeccable` is executable
+  and has an `impeccable.verified` stamp whose size field matches the binary
+  and that isn't older than it, and execs it with its arguments and `IMPECCABLE_HOME` set to that home. With none, it
+  prints `Impeccable: no verified engine in <home>/bin. Run npx impeccable
+  install.` to stderr and exits 1. It names no version, so `update` never
+  touches it. Then, for each of Chrome, Chrome Beta, Chrome Canary (macOS),
+  Chromium, Edge and Brave whose profile folder exists (on Linux under
+  `$XDG_CONFIG_HOME` when set, else `~/.config`), it writes
+  `NativeMessagingHosts/style.impeccable.browser.json` atomically
+  (`type: stdio`, `path` the launcher, `allowed_origins` the store build's
+  origin). A file of that name naming another path or origins is left alone,
+  with one line saying so. Snap and Flatpak Chromium builds are named and
+  skipped, since they can't start a program outside their sandbox. The CLI
+  prints one line naming the browsers it registered with, and nothing when all
+  was already in place. Failures are named and never fail install or update.
+  Nothing is written on Windows.
+- **`artifact.asset` is answered locally** (REN-2123). In `tools/list`, the
+  service's `artifact.asset` (which takes `sha256`, `bytes`, `contentType`) is
+  replaced by one taking `{path, workspace?}`: a file absolute or relative to the
+  working folder, a regular file (never a symlink), 1 byte to 50 MB, typed by its
+  extension (png, jpg, jpeg, webp, gif, avif, svg, mp4, webm, mp3, woff2, woff,
+  css, js, mjs, json). The process hashes it (SHA-256) and calls the service's
+  `artifact.asset`. On `{key, exists: true}` it answers `{key}`; on
+  `{key, upload: {url}}` it PUTs the bytes to `url` (on the account service's own
+  origin, exact `Content-Length`, the type as `Content-Type`, no bearer), then
+  answers `{key}`. Any refusal is the tool's error text. The bytes never pass
+  through the agent.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
   write, personas, Taste, journeys, `artifacts:write`) only when the service's
   metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in
