@@ -686,7 +686,9 @@ async function coverFrames(on) {
   if (!on) return true;
   if (!frames) return false;
   const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
-  // The top document's closed roots are opened only by this script (`chrome.dom`): without it, no still.
+  // The top document's closed roots are opened only by this script (`chrome.dom`): without it, no still. But for
+  // Chrome's own error page (a load that failed), which takes no script and holds no page: the walk's own world covered it.
+  if (frames.find((f) => f.frameId === 0)?.errorOccurred) done.add(0);
   if (!done.has(0)) return false;
   const missed = frames.filter((f) => f.frameId !== 0 && !done.has(f.frameId));
   if (!missed.length) return true;
@@ -1295,12 +1297,12 @@ const FIELDS_CHECKED = 200;
 const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'switch', 'slider', 'spinbutton', 'listbox']);
 const isFrameNode = (n) => (n.role?.value === 'Iframe' || n.role?.value === 'IframePresentational') && Number.isInteger(n.backendDOMNodeId);
 
-/** A password, payment card or one-time-code field, by its element's own attributes: the rule `lookInPage` (signin.js) keeps typing out by. */
+/** A field that may hold a password, payment card or one-time code, by its element's own attributes: the broad rule the picture cover keeps (`coverSecrets`). */
 function secretField(node) {
   const attrs = node?.attributes ?? [];
   const attr = (name) => { for (let i = 0; i + 1 < attrs.length; i += 2) if (String(attrs[i]).toLowerCase() === name) return String(attrs[i + 1]).toLowerCase(); return ''; };
   const tokens = attr('autocomplete').split(/\s+/);
-  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && String(name).toLowerCase() === 'data-impeccable-secret-field') || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && /^(?:text)?$/.test(attr('type')) && [['name', 'id'], ['placeholder', 'aria-label']].some((keys) => ((said) => /passw|pwd/.test(said) && !/mail/.test(said))(keys.map(attr).join(' '))));
+  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && ['data-impeccable-secret-field', 'data-impeccable-secret-maybe'].includes(String(name).toLowerCase())) || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && /^(?:text)?$/.test(attr('type')) && ['name', 'id', 'placeholder', 'aria-label'].some((name) => /passw|pwd/.test(attr(name))));
 }
 
 /** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */

@@ -287,7 +287,7 @@ describe('walk lookout', () => {
   // A selector of password fields, read as Chrome would: by `type`, by the mark a field seen as one keeps, or by an
   // `autocomplete` token.
   const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-impeccable-secret-field]' && f.getAttribute('data-impeccable-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
-  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs.filter((f) => f.tagName === 'INPUT') : sel === '[data-impeccable-secret-spot]' ? [...new Set(inputs.map((f) => f.parentElement))].filter((own) => own?.getAttribute('data-impeccable-secret-spot') != null) : passwords.filter((f) => picks(sel, f))) });
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs.filter((f) => f.tagName === 'INPUT') : sel === '[data-impeccable-secret-form]' ? [...new Set(inputs.map((f) => f.parentElement))].filter((own) => own?.getAttribute('data-impeccable-secret-form') != null) : passwords.filter((f) => picks(sel, f))) });
   // A form of these fields, in this order: each knows it (`field.form`, its `parentElement`), and the page holds them all.
   const form = (...fields) => {
     const attrs = {};
@@ -315,17 +315,18 @@ describe('walk lookout', () => {
     ['settings signed in, Chrome’s autofill in the change of password', page(form(field({ type: 'password', autofill: true }), field({ type: 'password' }))), { password: true, filled: true, focus: null }],
     ['a shown password: a text field for the current password, holding one', doc({ passwords: [field({ autocomplete: 'current-password', value: 'x' })] }), { password: true, filled: true, focus: null }],
     ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
-    // Catches a walk started with the password already shown as text: no look saw it as a password field.
-    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, filled: true, focus: null }],
+    // Catches a walk started with the password already shown as text: no look saw it as a password field. A text field
+    // named for one pauses the walk until Continue, and no longer: it may be a Company or a reset email.
+    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, focus: null }],
     // Catches a field named password let through because its label names an email.
-    ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, filled: true, focus: null }],
+    ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
-    // Catches an email field that names a password taken for one: the walk would pause there and never type the email.
-    ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: false, focus: null }],
+    // Catches an email field that names a password held past Continue: the walk would never type the email.
+    ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: true, focus: null }],
     ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
     ['a disabled placeholder holding dots', page(form(field({ type: 'email' })), form(field({ type: 'password', value: '••••••', disabled: true }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
-    ['focus on a password shown from the start (a text field whose placeholder asks for one)', doc({ active: field({ placeholder: 'Password' }) }), { password: false, focus: 'password' }],
+    ['focus on a text field whose placeholder asks for a password, typed into', doc({ active: field({ placeholder: 'Password' }) }), { password: false, focus: null }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
     ['focus in a frame on another origin', doc({ active: frame(null) }), { password: false, focus: 'frame' }],
@@ -346,22 +347,22 @@ describe('walk lookout', () => {
   });
 
   // Catches a "show password" button that swaps in a new, unmarked text field holding the password, before or after
-  // it is typed: the walk went on and pictured it; and one named for a password left unmarked, which a guard that reads
-  // only the mark (the page helpers' `clickByText`) reads. And, the other way, a Company field the walk types beside a
-  // password it never replaced, once that password field went (a checkout's account unticked), or in the next step
-  // drawn in the sign-in's form, taken for one: the walk would pause on every page with it filled.
+  // it is typed: the walk went on and pictured it, and a guard that reads only the marks (the page helpers'
+  // `clickByText`) read it. It is marked as a field that may hold a secret: covered and unread, and never a stop, so a
+  // Company once a password field beside it went (a checkout's account unticked) costs a black box only. And, the other
+  // way, a Company typed beside a password it never replaced, or in the next step drawn in the sign-in's form, is plain.
   for (const [label, swap, typed, expected, attrs = {}, kept = {}] of [
-    ['a password a button swapped for a new text field', true, true, { filled: true, marked: true }],
-    ['a password field a button swapped while empty, then typed into', true, false, { filled: true, marked: true }],
-    ['a password a button swapped for a new text field named for one', true, true, { filled: true, marked: true }, { placeholder: 'Password' }],
+    ['a password a button swapped for a new text field', true, true, { filled: false, marked: true }],
+    ['a password field a button swapped while empty, then typed into', true, false, { filled: false, marked: true }],
+    ['a password a button swapped for a new text field named for one', true, true, { filled: false, marked: true }, { placeholder: 'Password' }],
     ['a sign-up’s company typed beside its password', false, true, { filled: false, marked: false }, { name: 'company' }],
-    ['a company typed once the password field beside it went', 'gone', true, { filled: false, marked: false }, { name: 'company' }],
+    ['a company typed once the password field beside it went', 'gone', true, { filled: false, marked: true }, { name: 'company' }],
     ['a company typed in the next step, drawn in the sign-in’s form', 'step', true, { filled: false, marked: false }, { name: 'company' }],
     ['a company filled in the next step, drawn in the sign-in’s form with as many fields', 'next', true, { filled: false, marked: false }, { name: 'company' }],
     // Catches a new field that keeps the password field's placeholder, shown before typing, and a Show that also adds a
     // line beside it: each was let go.
-    ['a password a button swapped while empty for a field with its placeholder, then typed into', true, false, { filled: true, marked: true }, { placeholder: '••••••••' }, { placeholder: '••••••••' }],
-    ['a password a button swapped for a new text field and a line beside it', 'line', true, { filled: true, marked: true }],
+    ['a password a button swapped while empty for a field with its placeholder, then typed into', true, false, { filled: false, marked: true }, { placeholder: '••••••••' }, { placeholder: '••••••••' }],
+    ['a password a button swapped for a new text field and a line beside it', 'line', true, { filled: false, marked: true }],
   ]) {
     it(`sees ${label}`, () => {
       const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password', ...kept }));
@@ -378,7 +379,7 @@ describe('walk lookout', () => {
       if (typed) text.value = 'x';
       else { seen(page); text.value = 'x'; }
       const now = seen(page);
-      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-impeccable-secret-field') !== null }, expected);
+      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-impeccable-secret-maybe') !== null }, expected);
     });
   }
 
@@ -1220,7 +1221,7 @@ describe('walk worker', () => {
       answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
         const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
-        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-impeccable-secret-spot]' ? [] : [field]), elementFromPoint: () => field };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-impeccable-secret-form]' ? [] : [field]), elementFromPoint: () => field };
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
@@ -1248,10 +1249,17 @@ describe('walk worker', () => {
       const own = chrome.scripting.executeScript, pass = [];
       chrome.scripting.executeScript = async ({ target, func }) => { pass.push(target.allFrames === true && func === helpers.coverSecrets); return []; };
       await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
+      // Chrome's own page for a load that failed takes no script and holds no page: its still is taken, so a journey
+      // that meets a dead link goes on.
+      const listed = chrome.webNavigation.frames;
+      chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1, errorOccurred: true }];
+      chrome.scripting.executeScript = async () => { throw new Error('Frame with ID 0 is showing error page'); };
+      assert.ok((await ops.screenshot({ format: 'png' })).value.data, 'an error page pictured');
+      chrome.webNavigation.frames = listed;
       chrome.scripting.executeScript = own;
       assert.ok(pass.includes(true), 'a one-frame page’s top document covered by the extension’s own script');
       const field = { tagName: 'INPUT', type: 'text', value: '123', getAttribute: (n) => (n === 'autocomplete' ? 'cc-csc' : null), setAttribute() {}, removeAttribute() {}, children: [] };
-      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-impeccable-secret-spot]' ? [] : [field]) };
+      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-impeccable-secret-form]' ? [] : [field]) };
       const payment = { tagName: 'PAY-CARD', shadowRoot: null };
       // Chrome opens only an HTML element's root: it throws on an icon's SVG ahead of the card, and here on one host too.
       const icon = { tagName: 'svg', namespaceURI: 'http://www.w3.org/2000/svg', shadowRoot: null };
@@ -1260,7 +1268,7 @@ describe('walk worker', () => {
       const content = vm.createContext({ CSSStyleSheet: world.CSSStyleSheet, setTimeout: () => 0, clearTimeout() {}, document: { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [icon, odd, payment] : []) }, chrome: { dom } });
       assert.equal(typeof vm.runInContext(`(${helpers.coverSecrets})(true)`, content), 'number');
       assert.equal(closed.adoptedStyleSheets.length, 1, 'a card field in a closed shadow root covered');
-      assert.deepEqual(odd.marks, ['data-impeccable-secret-field'], 'a host whose root can’t be opened drawn as one box');
+      assert.deepEqual(odd.marks, ['data-impeccable-secret-maybe'], 'a host whose root can’t be opened drawn as one box');
       // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
       // enter is drawn as a solid box by the frame around it (black behind a transparent frame, inside a closed shadow
       // root too), and one inside that box needs nothing more.
@@ -1271,7 +1279,7 @@ describe('walk worker', () => {
       frame.parentNode = inPay;
       world.chrome = { dom };
       dom.openOrClosedShadowRoot = (el) => { if (el === icon) throw new Error('Error in invocation of dom.openOrClosedShadowRoot(HTMLElement element)'); return el === pay ? inPay : null; };
-      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [icon, pay] : sel === '[data-impeccable-secret-spot]' ? [] : [card]), elementFromPoint: () => card };
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [icon, pay] : sel === '[data-impeccable-secret-form]' ? [] : [card]), elementFromPoint: () => card };
       // Chrome's list of the top document's frames: the card box first, then the one no script enters.
       Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
       const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;

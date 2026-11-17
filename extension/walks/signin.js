@@ -4,12 +4,14 @@
 //
 // The signs, each enough on its own:
 //   - the top-level document is going to, or is on, one of SIGN_IN_PAGES;
-//   - a password field (or one for a password or a one-time code by its `autocomplete`) is visible in the top
-//     document, a frame on its origin, or an open shadow root in either (a closed one is not seen), unless its form
+//   - a password field (or one for a password or a one-time code by its `autocomplete`, or a text field named for a
+//     password) is visible in the top document, a frame on its origin, or an open shadow root in either (a closed one
+//     is not seen), unless its form
 //     only changes a password (`lookInPage`); and not on a page the person already pressed Continue on at a sign-in
 //     (driver.js `signInShows`);
-//   - any such field, shown or hidden, holds a value or Chrome's autofill: always, Continue or not; a password field
-//     a "show password" button made text still counts, by the mark `lookInPage` gave it when it saw it;
+//   - a password field (not one only named for a password), shown or hidden, holds a value or Chrome's autofill:
+//     always, Continue or not; one a "show password" button made text still counts, by the mark `lookInPage` gave it
+//     when it saw it;
 //   - the top document answered 401 and asked for a password (`WWW-Authenticate`), or is that 401's page.
 // A passkey prompt is not one of them: Chrome tells an extension nothing of a real one. The debugger's WebAuthn domain
 // would swap the person's own authenticators for virtual ones, and wrapping `navigator.credentials` means running in
@@ -70,82 +72,64 @@ export function lookInPage() {
   // A form of two or more password fields and nothing to name an account by (no text, email or phone field) changes
   // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
   // a name or an email (signing in, signing up), is.
-  // A password field, one marked as one when seen, one that says it takes a password or a one-time code whatever
-  // its type, or a text field whose name or id reads as a password and not as an email, or whose placeholder or label
-  // does (an email field to reset one is plain): a "show password" toggle turns it to text, so each password field is marked at every look, before the
-  // person can show it (the cover keeps it covered by the same mark); a code step is a text field. The marks stay once
-  // the walk lets go of the tab: a later walk there still knows a password shown since, which it could not tell from text.
+  // Two rules, as the picture cover keeps them: a password field (`type=password`, one marked as one when seen,
+  // or one whose `autocomplete` takes a password or a one-time code) is never typed into and, filled, holds the walk
+  // paused past Continue; a text field named for one (by name, id, placeholder or label) pauses the walk too, which
+  // Continue lets go. A "show password" toggle turns a password field to text, so each is marked at every look, before
+  // the person can show it. The marks stay once the walk lets go of the tab: a later walk there still knows a password
+  // shown since, which it could not tell from text.
   const MARK = 'data-impeccable-secret-field';
-  for (const root of roots) for (const field of root.querySelectorAll(`input[type="password" i]:not([${MARK}])`)) field.setAttribute(MARK, '');
   const NAMED = ['name', 'id', 'placeholder', 'aria-label'];
-  const words = (input) => NAMED.map((name) => input.getAttribute?.(name) ?? '').join(' ');
-  const named = (input) => String(input.type).toLowerCase() === 'text' && [['name', 'id'], ['placeholder', 'aria-label']].some((keys) => ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(keys.map((name) => input.getAttribute?.(name) ?? '').join(' ')));
+  const kind = (f) => String(f.type).toLowerCase();
+  const named = (input) => kind(input) === 'text' && NAMED.some((name) => /passw|pwd/i.test(input.getAttribute?.(name) ?? ''));
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
-  const secret = (input) => String(input.type).toLowerCase() === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token)) || named(input);
-  // A "show password" button that swaps in a new text field instead puts it at the password field's place among the
-  // fields of the element round it (and of the one above, when that element holds no other field): that element keeps
-  // the place, whether the password field held something, a hash of each of its names, and a hash of its other fields
-  // (their type, names and autocomplete, never a value), as the cover keeps them. At the next look, with those other
-  // fields as they were, a text field at that place that names no account is marked if it holds something, so the walk
-  // stays paused on this page; one still empty waits to be typed into, while the password field was empty too and the
-  // new one keeps one of its names or has none. Anything else ends it: a field that was beside the password, or a next
-  // step drawn where it was (the sign-in's email gone, or a Company where a bare password stood), is plain. A button or
-  // note added beside it is not.
-  const SPOT = 'data-impeccable-secret-spot';
-  const passwordField = (f) => String(f.type).toLowerCase() === 'password' || f.getAttribute(MARK) !== null || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? '') || named(f);
-  const account = (f) => {
-    const said = `${words(f)} ${f.getAttribute('autocomplete') ?? ''}`;
-    return ['email', 'tel'].includes(String(f.type).toLowerCase()) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
-  };
-  const hash = (text) => {
-    let h = 0;
-    for (const c of text) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0;
-    return (h >>> 0).toString(36);
-  };
+  const secret = (input) => kind(input) === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
+  // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round a shown
+  // password field (its form, or the elements round it up to the first that holds an account field, two when none
+  // does) keep how many they held, and whether one held an account field. While a box shows fewer and a marked account
+  // field is still shown, or it never held one, each filled, shown text field in it that names no account is marked as
+  // one that may hold a secret: covered and never read, but no pause. It counts from then.
+  const MAYBE = 'data-impeccable-secret-maybe';
+  const HELD = 'data-impeccable-secret-form';
   const inputs = (box) => [...box.querySelectorAll('input')];
-  const shape = (box, at) => {
-    const all = inputs(box);
-    return `${all.length}.${hash(all.filter((_, k) => !at.some((e) => parseInt(e, 10) === k)).map((f) => `${String(f.type).toLowerCase()} ${words(f)} ${f.getAttribute('autocomplete') ?? ''}`).join('|'))}`;
+  const shown = (f) => { const size = f.getBoundingClientRect(); return size.width > 0 && size.height > 0; };
+  const passwords = (box) => inputs(box).filter((f) => (f.getAttribute(MARK) !== null || f.getAttribute(MAYBE) !== null) && shown(f)).length;
+  const account = (f) => {
+    const said = [...NAMED, 'autocomplete'].map((name) => f.getAttribute(name) ?? '').join(' ');
+    return ['email', 'tel'].includes(kind(f)) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
   };
-  const names = (f) => NAMED.map((name) => f.getAttribute(name) ?? '').map((v) => (v ? hash(v) : ''));
   for (const root of roots) {
-    for (const f of root.querySelectorAll('input')) if (f.getAttribute(MARK) === null && passwordField(f)) f.setAttribute(MARK, '');
-    for (const box of root.querySelectorAll(`[${SPOT}]`)) {
-      const [was, ...at] = (box.getAttribute(SPOT) ?? '').split(' ');
+    for (const f of inputs(root)) if (f.getAttribute(MARK) === null && (kind(f) === 'password' || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? ''))) f.setAttribute(MARK, '');
+    for (const box of root.querySelectorAll(`[${HELD}]`)) {
+      const [most, had] = (box.getAttribute(HELD) ?? '').split(' ');
       const all = inputs(box);
-      const waits = was !== shape(box, at) ? [] : at.filter((e) => {
-        const [place = '', ...kept] = e.split('.');
-        const f = all[parseInt(place, 10)];
-        if (!f || String(f.type).toLowerCase() !== 'text' || passwordField(f) || account(f)) return false;
-        if (f.value) { f.setAttribute(MARK, ''); return false; }
-        const own = names(f);
-        return !place.endsWith('f') && (own.every((v) => !v) || own.some((v, k) => v !== '' && v === kept[k]));
-      });
-      if (waits.length) box.setAttribute(SPOT, [shape(box, waits), ...waits].join(' '));
-      else box.removeAttribute(SPOT);
+      if (passwords(box) >= Number(most) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null && shown(f)))) continue;
+      for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null) f.setAttribute(MAYBE, '');
     }
-    // Its parent, and the one above when the parent holds no other field (a swap may replace the field's own wrapper).
-    for (const field of root.querySelectorAll('input')) {
-      if (!passwordField(field)) continue;
-      for (let box = field.parentElement, up = 0; box && up < 2; box = box.parentElement, up++) {
-        const place = inputs(box).indexOf(field);
-        const [, ...at] = (box.getAttribute(SPOT) ?? '').split(' ').filter((e, n) => n === 0 || parseInt(e, 10) !== place);
-        at.push([`${place}${field.value ? 'f' : ''}`, ...names(field)].join('.'));
-        box.setAttribute(SPOT, [shape(box, at), ...at].join(' '));
-        if (inputs(box).length > 1) break;
+    for (const field of inputs(root)) {
+      if (field.getAttribute(MARK) === null || !shown(field)) continue;
+      const round = [];
+      for (let box = field.form ? null : field.parentElement; box; box = box.parentElement) round.push(box);
+      const upTo = round.findIndex((box) => inputs(box).some(account));
+      for (const box of field.form ? [field.form] : round.slice(0, upTo < 0 ? 2 : upTo + 1)) {
+        const accounts = inputs(box).filter(account);
+        for (const f of accounts) f.setAttribute(`${HELD}-name`, '');
+        const [most, had] = (box.getAttribute(HELD) ?? '').split(' ');
+        box.setAttribute(HELD, `${Math.max(Number(most) || 0, passwords(box))}${had || accounts.length ? ' named' : ''}`);
       }
     }
   }
+  const pw = (input) => secret(input) || named(input);
   const changing = (field, root) => {
     const inputs = [...(field.form ?? root).querySelectorAll('input')].filter(visible);
-    return inputs.filter(secret).length >= 2 && !inputs.some((input) => !secret(input) && ['text', 'email', 'tel'].includes(String(input.type).toLowerCase()));
+    return inputs.filter(pw).length >= 2 && !inputs.some((input) => !pw(input) && ['text', 'email', 'tel'].includes(String(input.type).toLowerCase()));
   };
   // Chrome keeps an autofilled value from scripts (`value` is empty) until the person acts: the filled look counts too.
   const autofilled = (field) => ['autofill', '-webkit-autofill'].some((state) => { try { return field.matches(`:${state}`); } catch { return false; } });
-  const fields = roots.flatMap((root) => [...root.querySelectorAll('input')].filter(secret).map((field) => ({ field, root })));
-  // A password in a field, typed or filled, shown or hidden, always pauses the walk: nothing it runs may read it.
+  const fields = roots.flatMap((root) => [...root.querySelectorAll('input')].filter(pw).map((field) => ({ field, root })));
+  // A password in a password field, typed or filled, shown or hidden, always pauses the walk: nothing it runs may read it.
   // A disabled or read-only field holds no password the person typed or had filled (a "••••••" placeholder).
-  const filled = fields.some(({ field }) => !field.disabled && !field.readOnly && (Boolean(field.value) || autofilled(field)));
+  const filled = fields.some(({ field }) => secret(field) && !field.disabled && !field.readOnly && (Boolean(field.value) || autofilled(field)));
   const password = filled || fields.some(({ field, root }) => visible(field) && !field.disabled && !changing(field, root));
 
   let focus = null;
@@ -163,7 +147,7 @@ export function lookInPage() {
   }
   if (!focus && el) {
     const tokens = String(el.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/);
-    if (el.tagName === 'INPUT' && (String(el.type).toLowerCase() === 'password' || el.getAttribute?.(MARK) != null || tokens.some((token) => token === 'current-password' || token === 'new-password') || named(el))) focus = 'password';
+    if (el.tagName === 'INPUT' && (String(el.type).toLowerCase() === 'password' || el.getAttribute?.(MARK) != null || tokens.some((token) => token === 'current-password' || token === 'new-password'))) focus = 'password';
     else if (tokens.some((token) => token.startsWith('cc-'))) focus = 'card';
     else if (tokens.includes('one-time-code')) focus = 'code';
   }
