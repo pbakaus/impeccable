@@ -183,12 +183,14 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     };
     // What this refresh sent and the service took, if anything: Cursor's rule follows it.
     let mut pushed: Option<Vec<String>> = None;
-    // The set the person's files follow: their own when they've set one, else the team's
-    // for this repository (an editor's own override wins; REN-2056).
-    let page: Option<Vec<String>> = remote.me.clone().or_else(|| remote.team.clone());
+    // The page's set for this person (the service already falls back to the team's,
+    // switch by switch). Until they've set their own, a block this machine already holds
+    // (from `loop connect` or `install`) is sent as their first set instead of overwritten.
+    let holds_block = sets.iter().any(|s| s.as_ref().is_some_and(|v| !v.is_empty()));
+    let page: Option<Vec<String>> = if remote.me_set || !holds_block { remote.me.clone() } else { None };
     let synced: Option<Vec<String>> = match decide(page.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
-            let first = remote.me.is_none();
+            let first = !remote.me_set;
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
             let sent = link.push(&catalog, &refs, first);
             if sent.is_some() {

@@ -6,13 +6,16 @@ use crate::session::Session;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 
-/// What the service holds for this person and repository. `None` for a set means
-/// nobody has written it yet: the files stand as they are.
+/// What the service holds for this person and repository. `me` is the set the page shows
+/// them (their own switches, falling back to the team's one by one); `None` only from a
+/// service that predates that. `me_set`: whether they have set their own yet, which
+/// decides the one-time migration of a machine's existing block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Remote {
     pub rev: u64,
     pub team: Option<Vec<String>>,
     pub me: Option<Vec<String>>,
+    pub me_set: bool,
 }
 
 fn ids(v: &Value) -> Option<Option<Vec<String>>> {
@@ -25,7 +28,10 @@ fn ids(v: &Value) -> Option<Option<Vec<String>>> {
 }
 
 pub(crate) fn parse(body: &Value) -> Option<Remote> {
-    Some(Remote { rev: body["rev"].as_u64()?, team: ids(body.get("team")?)?, me: ids(body.get("me")?)? })
+    let me = ids(body.get("me")?)?;
+    // An older service sends `me: null` for "never set" and no `meSet`.
+    let me_set = body.get("meSet").and_then(Value::as_bool).unwrap_or(me.is_some());
+    Some(Remote { rev: body["rev"].as_u64()?, team: ids(body.get("team")?)?, me, me_set })
 }
 
 /// One sign-in, carried through a whole refresh: the read, any push, and the check
@@ -86,7 +92,12 @@ mod tests {
     #[test]
     fn a_set_nobody_wrote_reads_as_none_and_junk_reads_as_nothing() {
         let r = parse(&json!({ "rev": 3, "team": null, "me": ["taste", "loop"] })).unwrap();
-        assert_eq!(r, Remote { rev: 3, team: None, me: Some(vec!["taste".into(), "loop".into()]) });
+        assert_eq!(r, Remote { rev: 3, team: None, me: Some(vec!["taste".into(), "loop".into()]), me_set: true });
+        // The current shape: both sets always arrays, and whether the person set their own.
+        let r = parse(&json!({ "rev": 4, "team": ["wide"], "me": ["wide"], "teamSet": false, "meSet": false })).unwrap();
+        assert_eq!((r.me.as_deref(), r.me_set), (Some(&["wide".to_string()][..]), false));
+        // An older service's `me: null` is "never set".
+        assert!(!parse(&json!({ "rev": 1, "team": null, "me": null })).unwrap().me_set);
         assert!(parse(&json!({ "rev": "3", "team": null, "me": [] })).is_none());
         assert!(parse(&json!({ "rev": 3, "team": null, "me": [1] })).is_none());
         assert!(parse(&json!({ "rev": 3, "team": null })).is_none());
