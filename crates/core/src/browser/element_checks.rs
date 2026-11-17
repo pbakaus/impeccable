@@ -669,8 +669,11 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
         let flagged = state(el) || hosts.iter().any(|&e| state(e));
         // A plain cell's edge between two cells is a column rule (`td + td`):
         // only the row's own outer edge reads as its stripe.
+        // A whole row is its own outer edge; only a cell sits between cells.
+        let whole_row = matches_or_false(dom, el, "tr, [role=\"row\"]")
+            || class_attr(dom, el).split_whitespace().any(crate::checks::row_stripe::class_names_only_a_row);
         let outer = |edge: &str| {
-            flagged || {
+            flagged || whole_row || {
                 // Its sibling cells, by tag, role or a cell-named class.
                 let cells: Vec<ElId> = dom
                     .parent(el)
@@ -6950,6 +6953,25 @@ mod tests {
         d.set_styles(first, &rule);
         assert_eq!(check_element_inset_stripe_dom(&d, first).len(), 1);
         d.set_attr(tr, "class", "is-error");
+        assert_eq!(check_element_inset_stripe_dom(&d, second).len(), 1);
+    }
+
+    /// A row after another row is still its own outer edge.
+    #[test]
+    fn a_row_after_another_row_keeps_its_stripe() {
+        let (mut d, body) = page();
+        let grid = d.add(Some(body), "div");
+        let first = d.add(Some(grid), "div");
+        let second = d.add(Some(grid), "div");
+        for el in [grid, first, second] {
+            visible(&mut d, el);
+            d.set_rect(el, 0.0, 0.0, 600.0, 48.0);
+        }
+        for row in [first, second] {
+            d.set_attr(row, "role", "row");
+            d.add_selector(row, "[role=\"row\"]");
+        }
+        d.set_styles(second, &[("boxShadow", "rgb(220, 38, 38) 3px 0px 0px 0px inset"), ("borderRadius", "0px")]);
         assert_eq!(check_element_inset_stripe_dom(&d, second).len(), 1);
     }
 

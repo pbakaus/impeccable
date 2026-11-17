@@ -117,6 +117,13 @@ fn branch_is_typographic(branch: &str) -> bool {
     TYPO_TAG_SELECTOR_RE.is_match(&own) || SELECTOR_CLASS_RE.captures_iter(&own).any(|c| TYPO_CLASS_RE.is_match(&c[1]))
 }
 
+/// Whether a side `px` wide is a bar beside other sides at most `other` px:
+/// drawn alone, or 2px or more beside hairlines or sides at most half its
+/// width. Equal sides are a frame.
+pub fn is_bar_beside(px: f64, other: f64) -> bool {
+    other == 0.0 || (px >= SIDE_BAR_MIN_PX && (other <= 1.0 || px >= other * 2.0))
+}
+
 /// Whether corners round the box at all: any radius known to be above zero.
 /// Corners the caller could not read (`None`: a radius that does not
 /// resolve, a stylesheet the engine could not load) are not known to round
@@ -220,7 +227,7 @@ pub fn check_borders_with_side_bars(
             .filter(|&j| j != i && visible(j))
             .map(|j| widths.get(j))
             .fold(0.0f64, f64::max);
-        let bar = max_other == 0.0 || (w >= SIDE_BAR_MIN_PX && (max_other <= 1.0 || w >= max_other * 2.0));
+        let bar = is_bar_beside(w, max_other);
         if !bar || !side_bar_stands_on(w, rounded, typographic) {
             continue;
         }
@@ -484,7 +491,7 @@ pub fn scan_css_text_for_side_bars_with(content: &str, state_borders: bool) -> V
                     state
                         .then(|| row_stripe::border_stripe_in(&m[2], &lookup, 1.0..=f64::MAX))
                         .flatten()
-                        .filter(|&(_, px, _, alone)| alone || px >= SIDE_BAR_MIN_PX)
+                        .filter(|&(_, px, _, other)| is_bar_beside(px, other))
                         .map(|(prop, px, edge, _)| format!("{prop} {}px stripe ({edge})", number_to_string(px)))
                 })
         };
@@ -492,10 +499,15 @@ pub fn scan_css_text_for_side_bars_with(content: &str, state_borders: bool) -> V
         let thickness = side_bar_thickness(&format!(" — {detail}")).unwrap_or(0.0);
         let selector = parts.join(", ");
         let selector = selector.split_whitespace().collect::<Vec<_>>().join(" ");
+        let leading = raw.as_str().len() - js::trim_start(raw.as_str()).len();
+        let index = advance_utf16(content, 0, utf16_index(&text, raw.start() + leading));
         if !selector.contains('&') {
             if let Some(&(_, at, px)) = seen.iter().find(|(s, _, _)| *s == selector) {
+                // The thicker bar replaces the thinner one, its rule's
+                // position with it.
                 if thickness > px {
                     findings[at].snippet = format!("{selector} — {detail}");
+                    findings[at].index = Some(index);
                     if let Some(entry) = seen.iter_mut().find(|(s, _, _)| *s == selector) {
                         entry.2 = thickness;
                     }
@@ -504,8 +516,6 @@ pub fn scan_css_text_for_side_bars_with(content: &str, state_borders: bool) -> V
             }
             seen.push((selector.clone(), findings.len(), thickness));
         }
-        let leading = raw.as_str().len() - js::trim_start(raw.as_str()).len();
-        let index = advance_utf16(content, 0, utf16_index(&text, raw.start() + leading));
         findings.push(PatternFinding {
             id: "side-tab".to_string(),
             snippet: format!("{selector} — {detail}"),
@@ -604,6 +614,18 @@ mod tests {
         assert_eq!(with, vec![".it:hover — border-left 2px stripe (left)"]);
         assert_eq!(side_bar_thickness(&with[0]), Some(2.0));
         assert!(scan_css_text_for_side_bars_with(".it { border-left: 2px solid #ddd; }", true).is_empty());
+    }
+
+    #[test]
+    fn review_round_two() {
+        // The replacing bar carries its own rule's position.
+        let css = ".x { box-shadow: inset 1px 0 0 #ddd; }\n.x { box-shadow: inset 4px 0 0 red; }";
+        let found = scan_css_text_for_side_bars(css);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].index, Some(css.find(".x { box-shadow: inset 4px").unwrap()));
+        // Equal borders on both inline sides in a hover state are a frame.
+        assert!(scan_css_text_for_side_bars_with(".it:hover { border-left: 2px solid #ddd; border-right: 2px solid #ddd; }", true).is_empty());
+        assert_eq!(scan_css_text_for_side_bars_with(".it:hover { border-left: 4px solid #ddd; border-right: 1px solid #ddd; }", true).len(), 1);
     }
 
     #[test]

@@ -1936,18 +1936,26 @@ impl<'a> CssHostIndex<'a> {
             })
     }
 
-    /// Whether a rule whose subject could match a markup element (its tag,
-    /// its literal classes) rounds it to a radius known to be above zero:
-    /// what a hairline in a `style` attribute reads from the file's style
-    /// blocks.
+    /// Whether the rules whose subject could match a markup element (its tag,
+    /// its literal classes), applied in source order, leave it rounded to a
+    /// radius known to be above zero: what a hairline in a `style` attribute
+    /// reads from the file's style blocks.
     pub fn is_element_rounded(&self, tag: Option<&str>, classes: &[String]) -> bool {
-        self.exact.iter().filter(|(selector, _)| selector_could_apply(selector, tag, false, classes)).any(|(_, ids)| {
-            ids.iter().any(|id| {
-                let mut corners = DeclaredCorners::default();
-                self.rules[*id].apply_to(&mut corners);
-                corners.rounds_any()
-            })
-        })
+        // Every matching rule's radius declarations, applied together in
+        // source order: a later square radius undoes an earlier round one.
+        let mut ids: Vec<usize> = self
+            .exact
+            .iter()
+            .filter(|(selector, _)| selector_could_apply(selector, tag, false, classes))
+            .flat_map(|(_, ids)| ids.iter().copied())
+            .collect();
+        ids.sort_unstable_by_key(|id| (self.rules[*id].order, *id));
+        ids.dedup();
+        let mut corners = DeclaredCorners::default();
+        for id in ids {
+            self.rules[id].apply_to(&mut corners);
+        }
+        corners.rounds_any()
     }
 
     /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding

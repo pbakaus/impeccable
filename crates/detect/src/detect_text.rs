@@ -2775,6 +2775,15 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
             side_tabs("blockquote, .card { border-left: 3px solid #ddd; }\n.card:not(.quote) { box-shadow: inset 3px 0 0 #ddd; }\n", "/x/q.css").len(),
             2
         );
+        // Review round two: a side its style turns off, a later square
+        // radius, and an inline square radius.
+        assert_eq!(
+            side_tabs(".x { border-right: 2px solid #ddd; border-right-style: none; border-left: 3px solid red; }\n", "/x/o.css"),
+            vec!["border-left: 3px solid red".to_string()]
+        );
+        let card = |css: &str, style: &str| format!("<template>\n  <div class=\"card\" style=\"{style}\">x</div>\n</template>\n<style>\n{css}\n</style>\n");
+        assert!(side_tabs(&card(".card { border-radius: 8px; }\n.card { border-radius: 0; }", "border-left: 1px solid #ddd;"), "/x/s.vue").is_empty());
+        assert!(side_tabs(&card(".card { border-radius: 8px; }", "border-left: 1px solid #ddd; border-radius: 0;"), "/x/i.vue").is_empty());
         // A quote's rule or a code line's gutter is typography on a square
         // box and a tab on a rounded one.
         let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";

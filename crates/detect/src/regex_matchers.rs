@@ -1132,7 +1132,9 @@ pub fn side_tab_match_stands<'s>(
         side_tab_scope_corners(m, source, i, sass).rounds_any()
             || index().is_some_and(|index| index.is_declaration_rounded(pos))
             || tag.is_some_and(|t| {
-                markup_text.is_some_and(|text| {
+                // A radius the tag declares itself wins over the stylesheet's.
+                !statements.iter().any(|st| split_declaration(st).is_some_and(|(p, _)| is_radius_property(&p)))
+                    && markup_text.is_some_and(|text| {
                     markup_index.get_or_init(|| CssHostIndex::new(text)).is_element_rounded(Some(tag_name(t).as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase())), &classes)
                 })
             })
@@ -1211,6 +1213,9 @@ fn other_side_width(statements: &[String], side: usize) -> f64 {
             .unwrap_or(3.0)
     };
     let mut sides = [0.0f64; 4];
+    // Whether each side's style draws it: a shorthand that names a width
+    // or style draws it, `border-*-style: none` turns it off again.
+    let mut drawn = [true; 4];
     for st in statements {
         let Some((prop, value)) = split_declaration(st) else { continue };
         let prop = js::to_lower_case(&prop);
@@ -1235,6 +1240,33 @@ fn other_side_width(statements: &[String], side: usize) -> f64 {
                 }
                 continue;
             }
+            "border-style" | "border-top-style" | "border-right-style" | "border-bottom-style" | "border-left-style"
+            | "border-inline-start-style" | "border-inline-end-style" => {
+                let v = js::to_lower_case(js::trim(&value));
+                let on: Vec<bool> = v.split_whitespace().map(|t| !matches!(t, "none" | "hidden")).collect();
+                let targets: Vec<usize> = match prop.as_str() {
+                    "border-style" => vec![0, 1, 2, 3],
+                    "border-top-style" => vec![0],
+                    "border-bottom-style" => vec![2],
+                    "border-right-style" | "border-inline-end-style" => vec![1],
+                    _ => vec![3],
+                };
+                for &t in &targets {
+                    let at = if prop == "border-style" {
+                        match on.len() {
+                            0 => continue,
+                            1 => 0,
+                            2 => t % 2,
+                            3 => if t == 3 { 1 } else { t },
+                            _ => t,
+                        }
+                    } else {
+                        0
+                    };
+                    drawn[t] = on.get(at).copied().unwrap_or(true);
+                }
+                continue;
+            }
             "border-top-width" => &[0],
             "border-bottom-width" => &[2],
             "border-right-width" => &[1],
@@ -1244,9 +1276,12 @@ fn other_side_width(statements: &[String], side: usize) -> f64 {
         let w = width_of(&value);
         for &t in targets {
             sides[t] = w;
+            if !prop.ends_with("-width") {
+                drawn[t] = w > 0.0;
+            }
         }
     }
-    (0..4).filter(|&j| j != side).map(|j| sides[j]).fold(0.0, f64::max)
+    (0..4).filter(|&j| j != side && drawn[j]).map(|j| sides[j]).fold(0.0, f64::max)
 }
 
 /// The widest border a tag's utility classes draw on a side other than
