@@ -98,7 +98,8 @@ async function watchNetwork() {
 }
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
 // `answered`: a pause during a question settles it, and the other end waits on that answer. `note`: a code, never the page.
-const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered', 'note']);
+// `sign-in-page`: the one still of a sign-in page, taken as the walk paused there (`signInStill`).
+const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered', 'note', 'sign-in-page']);
 
 /** Tells the other end, and whoever in here listens. */
 export function say(message) {
@@ -487,7 +488,8 @@ let heldAtSignIn = false;
 
 /**
  * The walk is paused: from here nothing is taken or told of the page, and the network is not heard, until
- * {@link unhold}. `signIn` when it is held at a sign-in.
+ * {@link unhold}, but for the one still of a sign-in page taken as it pauses (`signInStill`). `signIn` when it is held
+ * at a sign-in.
  */
 export async function hold(signIn = false) {
   heldAtSignIn = signIn;
@@ -756,6 +758,101 @@ function boxFrames(covered) {
 }
 /** Stills being taken: the cover comes off only once none is, and no film keeps it on. */
 let stills = 0;
+
+/**
+ * Run by the extension in a frame, for the one still of a sign-in page: what every field one types in holds drawn
+ * blank, and a field already filled (typed, remembered, or filled in by Chrome, which shows a value no script reads) a
+ * solid box, through shadow roots, closed ones too. Its placeholder still shows. `on` false takes it off, as it comes off
+ * by itself after `forMs`. How many fields it saw.
+ */
+function blankFields(on, forMs) {
+  const mark = '--still-blank';
+  const filled = 'data-impeccable-still-filled';
+  const typed = 'input:not([type="hidden" i], [type="checkbox" i], [type="radio" i], [type="submit" i], [type="button" i], [type="reset" i], [type="image" i], [type="file" i], [type="range" i], [type="color" i]), textarea, [contenteditable]:not([contenteditable="false" i])';
+  const rules = [
+    `:is(${typed}) { ${mark}: 1; color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }`,
+    `:is(${typed})::placeholder { -webkit-text-fill-color: currentcolor !important; }`,
+    `:is(${typed})[${filled}] { filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; }`,
+    `:is(${typed}):-webkit-autofill { filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; }`,
+  ];
+  const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes(mark) === true; } catch { return false; } };
+  const shadow = (el) => {
+    if (el.shadowRoot || (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) return el.shadowRoot ?? null;
+    try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
+  };
+  let seen = 0;
+  const visit = (root, on, Made = CSSStyleSheet) => {
+    const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
+    if (!on) {
+      if (others.length !== root.adoptedStyleSheets.length) root.adoptedStyleSheets = others;
+      for (const field of root.querySelectorAll(`[${filled}]`)) field.removeAttribute(filled);
+    } else {
+      if (others.length === root.adoptedStyleSheets.length) {
+        const sheet = new Made();
+        for (const rule of rules) { try { sheet.insertRule(rule, sheet.cssRules.length); } catch { /* a selector this Chrome lacks */ } }
+        root.adoptedStyleSheets = [...others, sheet];
+      }
+      for (const field of root.querySelectorAll(typed)) {
+        seen += 1;
+        if (field.isContentEditable ? field.textContent.trim() : field.value) field.setAttribute(filled, '');
+      }
+    }
+    for (const el of root.querySelectorAll('*')) {
+      const own = shadow(el);
+      if (own) visit(own, on, Made);
+      if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
+      // A frame of this one's site, as a frame Chrome gives no script of its own (`about:blank`) is: from here.
+      let inner = null;
+      try { inner = el.contentDocument ?? null; } catch { inner = null; }
+      if (inner?.defaultView) visit(inner, on, inner.defaultView.CSSStyleSheet);
+    }
+  };
+  visit(document, on);
+  const timer = Symbol.for('still-blank');
+  clearTimeout(globalThis[timer]);
+  if (on && forMs) globalThis[timer] = setTimeout(() => visit(document, false), forMs);
+  return seen;
+}
+
+/**
+ * Every frame's fields drawn blank for a picture (`blankFields`), or put back. Put on, the time until which it surely
+ * stays, as `cover` says it; 0 when the page or a frame of a website could not be reached, and then no picture is
+ * taken. A frame no script reaches (another extension's, a password manager's) is drawn as one solid box by the
+ * picture's own cover (`coverFrames`), or the picture is not taken.
+ */
+async function blank(on) {
+  const from = Date.now();
+  const tabId = walk?.tabId;
+  const frames = on ? await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null) : [];
+  const ran = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, injectImmediately: true, func: blankFields, args: [on, COVER_MS] }).catch(() => []);
+  if (!on) return 0;
+  const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
+  return frames?.length && frames.every((f) => f.errorOccurred || done.has(f.frameId) || (f.frameId !== 0 && !/^https?:/i.test(f.url ?? ''))) ? from + COVER_MS : 0;
+}
+
+/**
+ * The one still of a sign-in page, taken as the walk pauses there and before the person has it (control.js): as any
+ * still is (`take`, the `screenshot` op), with every field drawn blank as well, so neither what the person types nor
+ * what Chrome filled in shows. Once a document: undefined after the first. Null when there is nothing to picture (a
+ * sign-in host still loading, a 401) or it could not be taken safely, while `still()` holds (the pause is the sign-in's).
+ */
+export async function signInStill(take, still) {
+  const tab = walk;
+  if (!tab || tab.signInStill === tab.loader) return undefined;
+  tab.signInStill = tab.loader;
+  const seen = await look();
+  if (walk !== tab || !(seen?.password || seen?.filled) || !still()) return null;
+  try {
+    const blanked = await blank(true);
+    if (Date.now() >= blanked || !still()) return null;
+    const data = (await take())?.value?.data;
+    return typeof data === 'string' && Date.now() < blanked && walk === tab && still() ? data : null;
+  } catch {
+    return null;
+  } finally {
+    if (walk === tab) await blank(false);
+  }
+}
 
 /** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
 async function inLookout(expression) {

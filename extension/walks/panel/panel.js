@@ -785,7 +785,7 @@ function held() {
   const why = (go) => (Object.hasOwn(COPY.refused, pre.refused ?? '') ? el('p', { class: 'status', role: 'status', 'data-refused': pre.refused, text: COPY.refused[pre.refused](go) }) : null);
   if (view.state === 'paused') {
     const go = view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume;
-    return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }),
+    return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? (view.pictured ? COPY.signInPictured : COPY.signIn) : COPY.paused.line(name()) }),
       view.withheld ? el('p', { class: 'status', role: 'status', 'data-hint': 'stop-and-restart', text: COPY.signInHeld }) : null,
       why(go), button('resume', go, 'gold'));
   }
