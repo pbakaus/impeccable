@@ -647,8 +647,8 @@ describe('walk worker', () => {
       { nodeId: '6', role: { value: 'Iframe' }, backendDOMNodeId: 60, childIds: [] },
       { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
     ];
-    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 90, childIds: [] }];
-    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] } };
+    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '3'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }, { nodeId: '3', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 91, childIds: [] }];
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-secret-field', ''] } };
     const was = { ...answers };
     Object.assign(answers, {
       'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
@@ -660,7 +660,7 @@ describe('walk worker', () => {
       const { value } = await ops.hear({ what: 'tree' });
       const byId = new Map(value.nodes.map((n) => [n.nodeId, n]));
       assert.deepEqual([byId.get('2').value, byId.get('2').name.value, byId.has('3'), byId.get('4').value.value, byId.has('5')], [undefined, 'Card number', false, 'milk', true], 'the card field keeps its label, not its number');
-      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes?.find((n) => n.nodeId === '2')?.value ?? (nodes ? 'read' : null)]), [[60, 'read'], [70, null]], 'the same site’s frame is read, its password shown as text blank; another site’s is not');
+      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes ? nodes.filter((n) => n.nodeId !== '1').map((n) => n.value ?? 'blank') : null]), [[60, ['blank', 'blank']], [70, null]], 'the same site’s frame is read, its code field and its password shown as text blank; another site’s is not');
       assert.deepEqual(args.slice(at).filter((_, i) => sent[at + i] === 'Accessibility.getFullAXTree').map((p) => p?.frameId ?? 'top'), ['top', 'own']);
       // One node by its number: its box, in view, focused. Nothing for another tab, a node by no number, or a method by name.
       answers['DOM.getBoxModel'] = () => ({ model: { border: [1, 2, 3, 2, 3, 4, 1, 4] } });
