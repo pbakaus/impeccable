@@ -291,7 +291,7 @@ describe('walk lookout', () => {
   // A form of these fields, in this order: each knows it (`field.form`, its `parentElement`), and the page holds them all.
   const form = (...fields) => {
     const attrs = {};
-    const own = { children: fields, getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, removeAttribute: (name) => { delete attrs[name]; }, querySelectorAll: (sel) => (sel === 'input' ? fields.filter((f) => f.tagName === 'INPUT') : fields.filter((f) => f.type === 'password')) };
+    const own = { tagName: 'FORM', children: fields, getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, removeAttribute: (name) => { delete attrs[name]; }, querySelectorAll: (sel) => (sel === 'input' ? fields.filter((f) => f.tagName === 'INPUT') : fields.filter((f) => f.type === 'password')) };
     for (const f of fields) f.form = f.parentElement = own;
     return fields;
   };
@@ -317,12 +317,12 @@ describe('walk lookout', () => {
     ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
     // Catches a walk started with the password already shown as text: no look saw it as a password field. A text field
     // named for one pauses the walk until Continue, and no longer: it may be a Company or a reset email.
-    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, focus: null }],
+    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, maybe: true, focus: null }],
     // Catches a field named password let through because its label names an email.
-    ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, focus: null }],
+    ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, maybe: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
     // Catches an email field that names a password held past Continue: the walk would never type the email.
-    ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: true, focus: null }],
+    ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: true, maybe: true, focus: null }],
     ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
     ['a disabled placeholder holding dots', page(form(field({ type: 'email' })), form(field({ type: 'password', value: '••••••', disabled: true }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
@@ -333,7 +333,7 @@ describe('walk lookout', () => {
     ['focus on a password field in a frame on its origin', doc({ active: frame(doc({ active: field({ type: 'password' }) })) }), { password: false, focus: 'password' }],
     ['focus on a plain field', doc({ active: field({ autocomplete: 'email' }) }), { password: false, focus: null }],
   ]) {
-    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, ...expected, status: 200 }); });
+    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, maybe: expected.filled === true, ...expected, status: 200 }); });
   }
 
   // Catches a password the person shows with the site's "show password" button, at a sign-in pause, let past by their
@@ -341,9 +341,9 @@ describe('walk lookout', () => {
   it('sees a password field it saw as one once a button shows it as text', () => {
     const shown = field({ type: 'password' });
     const page = doc({ passwords: [shown], active: shown });
-    assert.deepEqual(seen(page), { password: true, filled: false, focus: 'password', status: 200 });
+    assert.deepEqual(seen(page), { password: true, filled: false, maybe: false, focus: 'password', status: 200 });
     Object.assign(shown, { type: 'text', value: 'x' });
-    assert.deepEqual(seen(page), { password: true, filled: true, focus: 'password', status: 200 });
+    assert.deepEqual(seen(page), { password: true, filled: true, maybe: true, focus: 'password', status: 200 });
   });
 
   // Catches a "show password" button that swaps in a new, unmarked text field holding the password, before or after
@@ -354,7 +354,7 @@ describe('walk lookout', () => {
   for (const [label, swap, typed, expected, attrs = {}, kept = {}] of [
     ['a password a button swapped for a new text field', true, true, { filled: false, marked: true }],
     ['a password field a button swapped while empty, then typed into', true, false, { filled: false, marked: true }],
-    ['a password a button swapped for a new text field named for one', true, true, { filled: false, marked: true }, { placeholder: 'Password' }],
+    ['a password a button swapped for a new text field named for one', true, true, { filled: false, maybe: true, marked: false }, { placeholder: 'Password' }],
     ['a sign-up’s company typed beside its password', false, true, { filled: false, marked: false }, { name: 'company' }],
     ['a company typed once the password field beside it went', 'gone', true, { filled: false, marked: true }, { name: 'company' }],
     ['a company typed in the next step, drawn in the sign-in’s form', 'step', true, { filled: false, marked: false }, { name: 'company' }],
@@ -363,9 +363,15 @@ describe('walk lookout', () => {
     // line beside it: each was let go.
     ['a password a button swapped while empty for a field with its placeholder, then typed into', true, false, { filled: false, marked: true }, { placeholder: '••••••••' }, { placeholder: '••••••••' }],
     ['a password a button swapped for a new text field and a line beside it', 'line', true, { filled: false, marked: true }],
+    // Catches a filled name beside the password taking the mark at a Show before typing, and a text field named for a
+    // password swapped for a bare one: the password typed in the new field was pictured and read. And a checkout whose
+    // account section was hidden, not removed: its filled fields went black.
+    ['a password a button swapped while empty beside a filled name, then typed into', 'beside', false, { filled: false, marked: true }],
+    ['a text field named for a password a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password' }],
+    ['a company typed once the password field beside it was hidden', 'hide', true, { filled: false, marked: false }, { name: 'company' }],
   ]) {
     it(`sees ${label}`, () => {
-      const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password', ...kept }));
+      const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password', ...kept }), ...(swap === 'beside' ? [field({ name: 'fullname', value: 'Dana Ray' })] : []));
       const page = doc({ inputs: fields, passwords: fields });
       seen(page);
       const text = field({ ...attrs, value: typed ? 'x' : '' });
@@ -374,12 +380,13 @@ describe('walk lookout', () => {
       else if (swap === 'next') fields.splice(0, 2, field({ name: 'first-name' }), text);
       else if (swap === 'line') fields.splice(1, 1, text, { tagName: 'SMALL' });
       else if (swap === 'gone') fields.splice(1, 1) && fields.unshift(text);
+      else if (swap === 'hide') (fields[1] = Object.assign(field({ type: 'password', 'data-impeccable-secret-field': '' }, 0), { form: text.form })) && fields.push(text);
       else if (swap) fields[1] = text;
       else fields.push(text);
       if (typed) text.value = 'x';
       else { seen(page); text.value = 'x'; }
       const now = seen(page);
-      assert.deepEqual({ filled: now.filled, marked: text.getAttribute('data-impeccable-secret-maybe') !== null }, expected);
+      assert.deepEqual({ filled: now.filled, maybe: now.maybe, marked: text.getAttribute('data-impeccable-secret-maybe') !== null }, { maybe: expected.marked, ...expected });
     });
   }
 
@@ -1358,21 +1365,44 @@ describe('walk worker', () => {
     }
   });
 
-  // Catches: a script run while the password is in its field, or refused where the server waits out a pause.
-  it('holds a script while a password is in a field, and runs it after Continue on the same page', async () => {
-    const { ops, command, current, walk } = await walked();
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
-    page.seen = { password: true, filled: true };
-    const at = sent.length;
-    const inRead = () => args.slice(at).filter((p, i) => sent[at + i] === 'Runtime.evaluate' && p.contextId !== undefined && p.contextId === worlds['impeccable-walk-read']).length;
-    const read = ops.evaluate({ fn: '() => 1', args: [] });
-    await settle(20);
-    assert.deepEqual([current().state, current().held, inRead()], ['paused', 'sign-in', 0], 'not run while it is filled');
-    page.seen = {};
-    assert.equal(await command('resume'), true);
-    await read;
-    assert.deepEqual([inRead(), since(at, 'Page.navigate') + since(at, 'Page.reload'), walk.loader], [1, 0, 'filled']);
-    moveOff();
+  // Catches: a script run while the password is in its field, or refused where the server waits out a pause. And an
+  // older server's own script run while a field that may hold a password (a "show password" swap) is filled: only the
+  // named helpers keep it unread, so a walk that runs the server's code holds there past Continue.
+  for (const [label, seen] of [
+    ['a password is in a field', { password: true, filled: true }],
+    ['a field that may hold a password is filled, on an older server', { password: false, filled: false, maybe: true }],
+  ]) {
+    it(`holds a script while ${label}, and runs it after Continue on the same page`, async () => {
+      const { ops, command, current, walk } = await walked();
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
+      page.seen = seen;
+      const at = sent.length;
+      const inRead = () => args.slice(at).filter((p, i) => sent[at + i] === 'Runtime.evaluate' && p.contextId !== undefined && p.contextId === worlds['impeccable-walk-read']).length;
+      const read = ops.evaluate({ fn: '() => 1', args: [] });
+      await settle(20);
+      assert.deepEqual([current().state, current().held, inRead()], ['paused', 'sign-in', 0], 'not run while it is filled');
+      assert.equal(await command('resume'), false, 'and Continue waits while it is filled');
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      await read;
+      assert.deepEqual([inRead(), since(at, 'Page.navigate') + since(at, 'Page.reload'), walk.loader], [1, 0, 'filled']);
+      moveOff();
+    });
+  }
+
+  it('runs a named helper while a field that may hold a password is filled', async () => {
+    const { ops, current, walk } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'maybe', url: 'http://localhost:3000/join' } });
+    page.seen = { password: false, filled: false, maybe: true };
+    walk.named = true;
+    try {
+      await ops.evaluate({ helper: 'documentLang', args: [] });
+      assert.equal(current().state, 'walking');
+    } finally {
+      walk.named = false;
+      page.seen = {};
+      moveOff();
+    }
   });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it
