@@ -1,0 +1,7 @@
+{
+  "stdout": "colors.brand: #c8552b (DESIGN.md frontmatter)\n--brand: #c8552b (styles/tokens.css:2)\n\n## Elevation\n\nCards rest on borders.\n(DESIGN.md:11)\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

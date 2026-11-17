@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable design-lookup <term>... [--target <path>]\n\nPrint the design tokens, components and DESIGN.md sections whose name or value\ncontains a term (case-insensitive), each with the file it lives in: DESIGN.md's\nfrontmatter, .impeccable/design.json, the token files DESIGN.md names, and its\nsections. Use it for a detail the DESIGN.md map in `context` leaves out instead\nof reading a whole file.\n\n--target <path>  Select a workspace in a monorepo.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

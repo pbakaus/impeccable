@@ -7506,3 +7506,10 @@ files, so only `doctor` runs it.
 
 - `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
   `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.
+
+## Recorded 2026-11-17: the DESIGN.md map names `design-lookup` (REN-2129, S4)
+
+`context` follows a mapped DESIGN.md with one `Lookup:` line naming `design-lookup`, which prints one token,
+component or section with its file, so an agent never reads a whole file for one detail.
+
+- `context-compacted-design`: gains that line after the map's body.

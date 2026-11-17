@@ -935,7 +935,7 @@ pub fn run_with_hook_repair(
         };
         let mut parts = Parts(lines.into_iter().map(Part::Text).collect());
         if ctx.has_design {
-            append_design(&mut parts, &ctx);
+            append_design(&mut parts, &ctx, &provider);
         }
         append_seeded_world_directive(&mut parts, &ctx);
         append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -960,7 +960,7 @@ pub fn run_with_hook_repair(
     let mut parts = Parts::default();
     append_product(&mut parts, &ctx);
     if ctx.has_design {
-        append_design(&mut parts, &ctx);
+        append_design(&mut parts, &ctx, &provider);
     }
     append_seeded_world_directive(&mut parts, &ctx);
     append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -1000,24 +1000,26 @@ pub fn run_with_hook_repair(
     0
 }
 
-/// DESIGN.md as written, or past the map budget, its map with the path to the full file.
-fn append_design(parts: &mut Parts, ctx: &Ctx) {
+/// DESIGN.md as written, or past the map budget, its map with the path to the full file and the lookup that answers
+/// what the map leaves out.
+fn append_design(parts: &mut Parts, ctx: &Ctx, provider: &Provider) {
     let path = ctx.design_path.as_deref().unwrap_or_default();
     let design = ctx.design.as_deref().unwrap_or_default();
     if js_trim(design).len() <= MAP_BUDGET {
         parts.doc("# DESIGN.md".to_string(), path, design);
         return;
     }
+    let lookup = format!("Lookup: `{} <term>` prints one token, component or section, with its file.", provider.verb_cmd("design-lookup"));
     // Already its map (`design-compact`): the body as written, within the map's own cap; mapping it again would lose
     // its rules and the pointer to the original.
     if let Some(at) = design.find(design_map::MAP_MARKER) {
         let body = design[at + design_map::MAP_MARKER.len()..].trim();
         let body: String = body.chars().take(design_map::MAP_SIZE).collect();
-        parts.push(format!("# DESIGN.md (map; {path})\n\n{body}"));
+        parts.push(format!("# DESIGN.md (map; {path})\n\n{body}\n{lookup}"));
         return;
     }
     let root = std::path::Path::new(ctx.design_context_dir.as_deref().unwrap_or("."));
-    parts.push(format!("# DESIGN.md (map; full file: {path})\n\n{}", design_map::map(design, root, path)));
+    parts.push(format!("# DESIGN.md (map; full file: {path})\n\n{}\n{lookup}", design_map::map(design, root, path)));
 }
 
 /// PRODUCT.md as written, or past the map budget, whole sections up to it: the title and first section, then the
