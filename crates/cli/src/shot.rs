@@ -20,7 +20,6 @@ use crate::first_viewport::{file_url, full_page_png, launch, parse_viewport, set
 const USAGE: &str = "Usage: impeccable shot <page or url> [--viewport WxH[,WxH...]] [--full] [--out <dir>]\n";
 const NAV_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CAPTURE_HEIGHT: f64 = 20000.0;
-const DEFAULT_OUT: &str = ".impeccable/shots";
 
 fn capture(browser: &mut Browser, url: &str, vp: Viewport, full: bool) -> Result<Vec<u8>, String> {
     let mut page = browser.new_page().map_err(|e| e.message)?;
@@ -114,7 +113,7 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
     let dir: PathBuf = match &out {
         Some(o) => io.cwd.join(o),
         None => {
-            let d = io.cwd.join(DEFAULT_OUT);
+            let d = io.cwd.join(".impeccable").join("shots");
             impeccable_common::git::ensure_dir_ignored(&d.to_string_lossy(), &["*"]);
             d
         }

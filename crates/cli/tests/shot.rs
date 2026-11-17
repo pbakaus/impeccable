@@ -60,12 +60,14 @@ fn each_viewport_is_one_png_at_its_size() {
     let out = run(&dir, &["index.html"]);
     let text = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "{text}{}", String::from_utf8_lossy(&out.stderr));
-    assert_eq!(text, ".impeccable/shots/1440x900.png\n.impeccable/shots/390x844.png\n");
+    let shots = Path::new(".impeccable").join("shots");
+    let expected = format!("{}\n{}\n", shots.join("1440x900.png").display(), shots.join("390x844.png").display());
+    assert_eq!(text, expected);
     assert_eq!(png_size(&std::fs::read(dir.join(".impeccable/shots/390x844.png")).unwrap()), (390, 844));
     assert!(std::fs::read_to_string(dir.join(".impeccable/shots/.gitignore")).unwrap().ends_with("\n*\n"));
 
     let out = run(&dir, &["index.html", "--viewport", "800x600", "--full", "--out", "looks"]);
-    assert_eq!(String::from_utf8_lossy(&out.stdout), "looks/800x600-full.png\n");
+    assert_eq!(String::from_utf8_lossy(&out.stdout), format!("{}\n", Path::new("looks").join("800x600-full.png").display()));
     let (w, h) = png_size(&std::fs::read(dir.join("looks/800x600-full.png")).unwrap());
     assert!(w == 800 && h > 3000, "{w}x{h}");
 }
