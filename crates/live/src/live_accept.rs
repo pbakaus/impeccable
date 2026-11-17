@@ -137,7 +137,7 @@ fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::
     Some(crate::Accepted {
         session_id: id.to_string(),
         root: io.cwd.clone(),
-        target: page_path(url)?,
+        target: local_page_name(io, url).or_else(|| page_path(url))?,
         variants,
         accepted_at,
         accepted_ms,
@@ -147,6 +147,25 @@ fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::
 /// What a page URL names, without the person's machine: an http(s) page's
 /// path (no origin, query or fragment), a `file:` page's file name only, and
 /// nothing for any other scheme.
+/// A bare path the browser sent for a page opened from disk (`file:` pages send
+/// `location.pathname`, the whole local path): one that is a file here, or lies in
+/// the person's home or the project. Only its file name leaves the machine
+/// (Greptile on #1542); a served path like `/pricing` is none of these.
+fn local_page_name(io: &Io, url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next()?;
+    if !path.starts_with('/') || path.starts_with("//") {
+        return None;
+    }
+    let under = |dir: &str| !dir.is_empty() && dir != "/" && path.starts_with(dir.trim_end_matches('/'));
+    let local = std::path::Path::new(path).is_file()
+        || io.env.get("HOME").is_some_and(|h| under(h))
+        || under(&io.cwd.to_string_lossy());
+    if !local {
+        return None;
+    }
+    Some(path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("page").to_string())
+}
+
 fn page_path(url: &str) -> Option<String> {
     // The browser sends `location.pathname` (`/pricing`): already only a path. A `//host` one names a host, so not that.
     if url.starts_with('/') && !url.starts_with("//") {
@@ -1483,7 +1502,28 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
 
 #[cfg(test)]
 mod page_path_tests {
-    use super::page_path;
+    use super::{local_page_name, page_path};
+
+    // A `file:` page's browser path is the whole local path: only its name may leave (Greptile on #1542).
+    #[test]
+    fn a_page_opened_from_disk_sends_only_its_name() {
+        let dir = std::env::temp_dir().join(format!("impeccable-local-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("page.html");
+        std::fs::write(&file, "<p>x</p>").unwrap();
+        let env = std::collections::HashMap::from([("HOME".to_string(), "/home/alice".to_string())]);
+        let (io, _) = impeccable_common::Io::captured_reader(Box::new(std::io::empty()), dir.clone(), env);
+        let on_disk = file.to_string_lossy().into_owned();
+        for (url, want) in [
+            (on_disk.as_str(), Some("page.html")),
+            ("/home/alice/site/gone.html?x", Some("gone.html")),
+            ("/pricing", None),
+            ("//evil.test/pricing", None),
+        ] {
+            assert_eq!(local_page_name(&io, url).as_deref(), want, "{url}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn only_a_page_path_or_a_file_name_leaves_the_machine() {
