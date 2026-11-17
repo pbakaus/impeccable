@@ -474,7 +474,7 @@ pub struct BootFindingGroups {
     pub product: Vec<Finding>,
     pub native_platform: Vec<Finding>,
     pub design_sidecar: Vec<Finding>,
-    /// What DESIGN.md names that the repository no longer has (staleness_deep.rs `check_design_drift`).
+    /// Files DESIGN.md names that are gone (staleness_deep.rs `check_design_dead_paths`): existence checks only.
     pub design_drift: Vec<Finding>,
     pub config: Vec<Finding>,
     pub build_path: Vec<Finding>,
@@ -500,7 +500,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
             Vec::new()
         },
         design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), &extras.sidecar_candidates, &project_root),
-        design_drift: crate::staleness_deep::check_design_drift(extras.abs_design_path.as_deref(), &project_root),
+        design_drift: crate::staleness_deep::check_design_dead_paths(ctx.design.as_deref(), extras.abs_design_path.as_deref(), &project_root),
         config: check_config(&project_root, Some(&ctx.repo_root)),
         build_path: check_build_path_unset(&project_root, Some(&ctx.repo_root), ctx.product.as_deref()),
         surface_briefs: check_surface_briefs(&ctx.surface_brief_candidates, &project_root),

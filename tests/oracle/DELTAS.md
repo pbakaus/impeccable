@@ -7500,8 +7500,9 @@ A quote's rule (a `blockquote`, a box whose class names a quote) and a code line
 
 `design-md-drift` counted commits under the visual source directories since DESIGN.md last changed; a count is a
 suspicion, not a contradiction. Two structural findings replace it: `design-md-dead-path` (a file DESIGN.md names is
-gone) and `design-md-color-drift` (a frontmatter colour none of the token files it names still contains). They also
-reach `context`'s CONTEXT_STALE through the boot findings.
+gone) and `design-md-color-drift` (a frontmatter colour none of the token files it names still contains). Dead paths also
+reach `context`'s CONTEXT_STALE through the boot findings (existence checks only); colour drift reads the token
+files, so only `doctor` runs it.
 
 - `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
   `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.

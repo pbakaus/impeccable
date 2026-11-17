@@ -24,47 +24,70 @@ fn is_token_file(p: &str) -> bool {
     STYLE_EXTENSIONS.contains(&ext) || (TOKEN_SCRIPT_EXTENSIONS.contains(&ext) && TOKEN_NAMES.iter().any(|t| name.contains(t)))
 }
 
-/// A colour value as written either way: lower case, no spaces, no leading zero (`oklch(14% 0.018 95)` is `oklch(14%.018 95)`).
+/// A colour value as written either way: lower case, no spaces, no leading zero (`oklch(14% 0.018 95)` is
+/// `oklch(14%.018 95)`), and short hex spelled out (`#fff` is `#ffffff`).
 fn colour_key(v: &str) -> String {
     static LEADING_ZERO: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^|[^0-9])0\.").unwrap());
+    static SHORT_HEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"#([0-9a-f])([0-9a-f])([0-9a-f])([0-9a-f])?\b").unwrap());
     let lower = v.to_ascii_lowercase();
-    LEADING_ZERO.replace_all(&lower, "$1.").chars().filter(|c| !c.is_whitespace()).collect()
+    let long = SHORT_HEX.replace_all(&lower, |c: &regex::Captures| {
+        let a = c.get(4).map(|m| m.as_str().repeat(2)).unwrap_or_default();
+        format!("#{0}{0}{1}{1}{2}{2}{a}", &c[1], &c[2], &c[3])
+    });
+    LEADING_ZERO.replace_all(&long, "$1.").chars().filter(|c| !c.is_whitespace()).collect()
 }
 /// At most this many names per finding; the rest are counted.
 const NAMED: usize = 5;
 
-/// What DESIGN.md says that the repository no longer has (REN-2129): files it names that are gone, and colours its
-/// frontmatter declares that none of the token files it names still contain. Structural, so it is a contradiction,
-/// not a suspicion. A colour is checked only when DESIGN.md names at least one token file that exists.
-pub fn check_design_drift(design_path: Option<&str>, project_root: &str) -> Vec<Finding> {
-    let Some(design_path) = design_path else { return vec![] };
-    if project_root.is_empty() {
-        return vec![];
-    }
-    let Some(design) = safe_read(design_path) else { return vec![] };
-    let rel_design = to_relative(Some(design_path), project_root).unwrap_or_else(|| "DESIGN.md".to_string());
-    // Paths resolve beside DESIGN.md, as the map that `context` prints resolves them (design_map.rs `map`).
-    let root = std::path::Path::new(design_path).parent().unwrap_or(std::path::Path::new(project_root));
+/// The files DESIGN.md names (backticked paths and link targets with a `/`, not globs; a link's `#…` or `?…` cut off),
+/// resolved beside DESIGN.md as the map that `context` prints resolves them (design_map.rs `map`): (live, dead).
+fn named_files(design: &str, design_path: &str) -> (std::path::PathBuf, Vec<String>, Vec<String>) {
+    let root = std::path::Path::new(design_path).parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let mut named: Vec<String> = Vec::new();
     for line in design.lines() {
         for p in crate::design_map::path_mentions(line) {
+            let p = p.split(['#', '?']).next().unwrap_or_default().to_string();
             if p.contains('/') && crate::design_map::is_relative_path(&p) && !p.contains('*') && !named.contains(&p) {
                 named.push(p);
             }
         }
     }
-    let (live, dead): (Vec<String>, Vec<String>) = named.into_iter().partition(|p| root.join(p).exists());
-    let mut out = Vec::new();
-    if !dead.is_empty() {
-        out.push(finding(
-            "design-md-dead-path",
-            "DESIGN.md",
-            Some(rel_design.clone()),
-            "route",
-            format!("{} names {} that no longer {}: {}.", rel_design, if dead.len() == 1 { "a file" } else { "files" }, if dead.len() == 1 { "exists" } else { "exist" }, listed(&dead)),
-            "Point each line at where its file lives now, or drop it. `document` regenerates DESIGN.md from the code.".to_string(),
-        ));
+    let (live, dead) = named.into_iter().partition(|p| root.join(p).exists());
+    (root, live, dead)
+}
+
+/// Files DESIGN.md names that are gone (REN-2129): a contradiction, not a suspicion. Cheap enough for every boot: it
+/// reads nothing but checks that paths exist, on the DESIGN.md text already loaded.
+pub fn check_design_dead_paths(design: Option<&str>, design_path: Option<&str>, project_root: &str) -> Vec<Finding> {
+    let (Some(design), Some(design_path)) = (design, design_path) else { return vec![] };
+    if project_root.is_empty() {
+        return vec![];
     }
+    let rel_design = to_relative(Some(design_path), project_root).unwrap_or_else(|| "DESIGN.md".to_string());
+    let (_, _, dead) = named_files(design, design_path);
+    if dead.is_empty() {
+        return vec![];
+    }
+    vec![finding(
+        "design-md-dead-path",
+        "DESIGN.md",
+        Some(rel_design.clone()),
+        "route",
+        format!("{} names {} that no longer {}: {}.", rel_design, if dead.len() == 1 { "a file" } else { "files" }, if dead.len() == 1 { "exists" } else { "exist" }, listed(&dead)),
+        "Point each line at where its file lives now, or drop it. `document` regenerates DESIGN.md from the code.".to_string(),
+    )]
+}
+
+/// Colours DESIGN.md's frontmatter declares that none of the token files it names still contain (doctor only: it reads
+/// those files). Said only when at least one declared colour is found, so a palette written in another notation
+/// (hex over `rgb()`) is silent rather than flagged whole.
+pub fn check_design_colour_drift(design: Option<&str>, design_path: Option<&str>, project_root: &str) -> Vec<Finding> {
+    let (Some(design), Some(design_path)) = (design, design_path) else { return vec![] };
+    if project_root.is_empty() {
+        return vec![];
+    }
+    let rel_design = to_relative(Some(design_path), project_root).unwrap_or_else(|| "DESIGN.md".to_string());
+    let (root, live, _) = named_files(design, design_path);
     let tokens: String = live
         .iter()
         .filter(|p| is_token_file(p))
@@ -72,29 +95,28 @@ pub fn check_design_drift(design_path: Option<&str>, project_root: &str) -> Vec<
         .map(|t| colour_key(&t))
         .collect::<Vec<_>>()
         .join("\n");
-    if !tokens.is_empty() {
-        let fm = parse_design_md(&design).frontmatter.unwrap_or_default();
-        let declared: Vec<(&String, &str)> = fm
-            .get("colors")
-            .and_then(Value::as_object)
-            .map(|colors| colors.iter().filter_map(|(name, v)| v.as_str().map(|v| (name, v.trim()))).filter(|(_, v)| !v.is_empty()).collect())
-            .unwrap_or_default();
-        let (found, missing): (Vec<_>, Vec<_>) = declared.iter().partition(|(_, v)| tokens.contains(&colour_key(v)));
-        let missing: Vec<String> = missing.iter().map(|(name, v)| format!("{name} {v}")).collect();
-        // Not one declared colour found means the two are written differently (hex over rgb(), #fff over #ffffff), not
-        // that every colour drifted: say nothing rather than flag them all on every boot.
-        if !found.is_empty() && !missing.is_empty() {
-            out.push(finding(
-                "design-md-color-drift",
-                "DESIGN.md",
-                Some(rel_design.clone()),
-                "route",
-                format!("{} declares {} the token files it names no longer contain: {}.", rel_design, if missing.len() == 1 { "a colour" } else { "colours" }, listed(&missing)),
-                "If the palette moved, `document` regenerates DESIGN.md from the code; if DESIGN.md is right, the code has drifted from it.".to_string(),
-            ));
-        }
+    if tokens.is_empty() {
+        return vec![];
     }
-    out
+    let fm = parse_design_md(design).frontmatter.unwrap_or_default();
+    let declared: Vec<(&String, &str)> = fm
+        .get("colors")
+        .and_then(Value::as_object)
+        .map(|colors| colors.iter().filter_map(|(name, v)| v.as_str().map(|v| (name, v.trim()))).filter(|(_, v)| !v.is_empty()).collect())
+        .unwrap_or_default();
+    let (found, missing): (Vec<_>, Vec<_>) = declared.iter().partition(|(_, v)| tokens.contains(&colour_key(v)));
+    if found.is_empty() || missing.is_empty() {
+        return vec![];
+    }
+    let missing: Vec<String> = missing.iter().map(|(name, v)| format!("{name} {v}")).collect();
+    vec![finding(
+        "design-md-color-drift",
+        "DESIGN.md",
+        Some(rel_design.clone()),
+        "route",
+        format!("{} declares {} the token files it names no longer contain: {}.", rel_design.clone(), if missing.len() == 1 { "a colour" } else { "colours" }, listed(&missing)),
+        "If the palette moved, `document` regenerates DESIGN.md from the code; if DESIGN.md is right, the code has drifted from it.".to_string(),
+    )]
 }
 
 /// Names in backticks, the first few, then how many more.
@@ -556,7 +578,7 @@ pub fn load_known_rule_ids() -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_design_drift, check_hook_installation, check_spent_build_artifacts};
+    use super::{check_hook_installation, check_spent_build_artifacts};
 
     static TMP_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -584,32 +606,32 @@ mod tests {
         std::fs::write(p, body).unwrap();
     }
 
-    /// Catches drift reported from a count of commits instead of what DESIGN.md contradicts: a named file that is gone, a
-    /// declared colour no named token file still contains, and nothing at all when the map still holds.
+    /// Catches drift reported from a count of commits instead of what DESIGN.md contradicts: a named file that is gone
+    /// (a link's fragment is not part of its name), a declared colour no named token file still contains (short hex is
+    /// the same colour), silence when the palette is written in another notation throughout, and none once it holds.
     #[test]
     fn design_drift_names_dead_paths_and_colours_the_token_files_lost() {
+        use super::{check_design_colour_drift, check_design_dead_paths};
         let root = tmp();
-        write(&root, "styles/tokens.css", ":root { --brand: #C8552B; --ink: oklch(20% 0 0); --mist: oklch(96%  .012 95); }\n");
+        write(&root, "styles/tokens.css", ":root { --brand: #C8552B; --paper: #fff; --ink: oklch(20% 0 0); --mist: oklch(96%  .012 95); }\n");
+        write(&root, "src/Button.tsx", "export {};\n");
         // A script named for something else is no token file: its values are never searched.
         write(&root, "src/live.js", "const gold = '#d4af37';\n");
-        write(&root, "src/Button.tsx", "export {};\n");
-        let design = "---\ncolors:\n  brand: \"#c8552b\"\n  ink: \"oklch(20% 0 0)\"\n  mist: \"oklch(96% 0.012 95)\"\n  gold: \"#d4af37\"\n---\n# D\n\nTokens live in `styles/tokens.css`; buttons in `src/Button.tsx`; the overlay in `src/live.js`.\nCards were in `src/Card.tsx` and [the nav](src/nav/Nav.astro).\nGlobs like `src/**/*.tsx` and words like `e.g.` are not files.\n";
-        write(&root, "DESIGN.md", design);
+        let design = "---\ncolors:\n  brand: \"#c8552b\"\n  paper: \"#FFFFFF\"\n  ink: \"oklch(20% 0 0)\"\n  mist: \"oklch(96% 0.012 95)\"\n  gold: \"#d4af37\"\n---\n# D\n\nTokens live in `styles/tokens.css` ([colours](styles/tokens.css#colors)); buttons in `src/Button.tsx`; the overlay in `src/live.js`.\nCards were in `src/Card.tsx` and [the nav](src/nav/Nav.astro).\nGlobs like `src/**/*.tsx` and words like `e.g.` are not files.\n";
         let path = format!("{root}/DESIGN.md");
-        let found = check_design_drift(Some(&path), &root);
-        let ids: Vec<&str> = found.iter().map(|f| f.id.as_str()).collect();
-        assert_eq!(ids, ["design-md-dead-path", "design-md-color-drift"]);
-        assert_eq!(found[0].summary, "DESIGN.md names files that no longer exist: `src/Card.tsx`, `src/nav/Nav.astro`.");
-        assert_eq!(found[1].summary, "DESIGN.md declares a colour the token files it names no longer contain: `gold #d4af37`.");
-        // Written another way throughout (hex declared, rgb() in the tokens): no colour is found, so nothing is said.
-        write(&root, "styles/tokens.css", ":root { --brand: rgb(200 85 43); --ink: lab(20 0 0); --mist: lab(96 1 2); }\n");
-        let ids: Vec<String> = check_design_drift(Some(&path), &root).into_iter().map(|f| f.id).collect();
-        assert_eq!(ids, ["design-md-dead-path"]);
+        let dead = check_design_dead_paths(Some(design), Some(&path), &root);
+        assert_eq!(dead.iter().map(|f| f.summary.as_str()).collect::<Vec<_>>(), ["DESIGN.md names files that no longer exist: `src/Card.tsx`, `src/nav/Nav.astro`."]);
+        let colours = check_design_colour_drift(Some(design), Some(&path), &root);
+        assert_eq!(colours.iter().map(|f| f.summary.as_str()).collect::<Vec<_>>(), ["DESIGN.md declares a colour the token files it names no longer contain: `gold #d4af37`."]);
+        // Written another way throughout (hex declared, rgb() and lab() in the tokens): no colour is found, so nothing is said.
+        write(&root, "styles/tokens.css", ":root { --brand: rgb(200 85 43); --paper: rgb(255 255 255); --ink: lab(20 0 0); --mist: lab(96 1 2); }\n");
+        assert!(check_design_colour_drift(Some(design), Some(&path), &root).is_empty());
         // The map holds: no finding.
         write(&root, "src/Card.tsx", "export {};\n");
         write(&root, "src/nav/Nav.astro", "");
-        write(&root, "styles/tokens.css", ":root { --brand: #c8552b; --ink: oklch(20% 0 0); --mist: oklch(96% .012 95); --gold: #D4AF37; }\n");
-        assert!(check_design_drift(Some(&path), &root).is_empty());
+        write(&root, "styles/tokens.css", ":root { --brand: #c8552b; --paper: #fff; --ink: oklch(20% 0 0); --mist: oklch(96% .012 95); --gold: #D4AF37; }\n");
+        assert!(check_design_dead_paths(Some(design), Some(&path), &root).is_empty());
+        assert!(check_design_colour_drift(Some(design), Some(&path), &root).is_empty());
     }
 
     #[test]
