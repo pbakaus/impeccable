@@ -1706,17 +1706,23 @@ function coverSecrets(on, forMs) {
       for (const f of Array.from(root.querySelectorAll(fields))) {
         covered += 1;
         if (f.style && (kept.has(f) || !worn(f))) {
-          const was = kept.get(f) ?? { styled: f.getAttribute("style") !== null, props: {} };
+          const was = kept.get(f) ?? { style: f.getAttribute("style"), after: null, props: {} };
           for (const [name, value] of Object.entries(wear)) {
             if (!(name in was.props))
               was.props[name] = [f.style.getPropertyValue(name), f.style.getPropertyPriority(name)];
             f.style.setProperty(name, value, "important");
           }
+          was.after = f.getAttribute("style");
           kept.set(f, was);
         }
-        const view = f.ownerDocument?.defaultView;
-        if (view && !/brightness\(0\)/.test(view.getComputedStyle(f).filter))
-          bare += 1;
+        try {
+          const look = f.ownerDocument?.defaultView?.getComputedStyle(f);
+          const drawn = Boolean(look?.display) && look.display !== "none" && (f.getClientRects?.().length ?? 1) > 0;
+          if (drawn && (!/brightness\(0\)/.test(look.filter) || look.backgroundColor !== "rgb(0, 0, 0)" || !/^(?:transparent|rgba\(0, 0, 0, 0\))$/.test(look.webkitTextFillColor ?? "transparent")))
+            bare += 1;
+        } catch {
+          f.getRootNode?.()?.host?.setAttribute(maybe, "");
+        }
       }
     }
     for (const el of Array.from(root.querySelectorAll("*"))) {
@@ -1737,14 +1743,21 @@ function coverSecrets(on, forMs) {
   };
   const off = () => {
     visit(g.document, g.CSSStyleSheet, false);
-    for (const [f, { styled, props }] of kept) {
+    for (const [f, { style, after, props }] of kept) {
+      if (f.getAttribute("style") === after) {
+        if (style === null)
+          f.removeAttribute?.("style");
+        else
+          f.setAttribute("style", style);
+        continue;
+      }
       for (const [name, [value, priority]] of Object.entries(props)) {
         if (value)
           f.style?.setProperty(name, value, priority);
         else
           f.style?.removeProperty(name);
       }
-      if (!styled && f.getAttribute("style") === "")
+      if (style === null && f.getAttribute("style") === "")
         f.removeAttribute?.("style");
     }
     kept.clear();
@@ -1776,8 +1789,15 @@ function coverHolds() {
   let bare = 0;
   const visit = (root) => {
     for (const f of Array.from(root.querySelectorAll(selector))) {
-      const view = f.ownerDocument?.defaultView;
-      if (!view || !/brightness\(0\)/.test(view.getComputedStyle(f).filter))
+      let look;
+      try {
+        look = f.ownerDocument?.defaultView?.getComputedStyle(f);
+      } catch {
+        look = undefined;
+      }
+      if (!look?.display || look.display === "none" || !((f.getClientRects?.().length ?? 1) > 0))
+        continue;
+      if (!/brightness\(0\)/.test(look.filter) || look.backgroundColor !== "rgb(0, 0, 0)" || !/^(?:transparent|rgba\(0, 0, 0, 0\))$/.test(look.webkitTextFillColor ?? "transparent"))
         bare += 1;
     }
     for (const el of Array.from(root.querySelectorAll("*"))) {
@@ -1822,4 +1842,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '7bfd4848b7d98922';
+export const HASH = '74b6b6b28e674075';
