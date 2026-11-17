@@ -15,8 +15,26 @@
   <h1>Legitimate Border Patterns</h1>
   <p style="color: #6b7280; margin-bottom: 2rem;">Every border here is a well-established web pattern. None should be flagged.</p>
 
-  <!-- A bar down one side of a quote, a nav link, an input, a timeline or a
-       code line is a side tab (side-tab-every-variant.html); these are not. -->
+  <!-- 1. BLOCKQUOTE — the classic border-left usage -->
+  <h2>Blockquotes</h2>
+  <div class="demo">
+    <blockquote style="border-left: 4px solid #d1d5db; padding-left: 1rem; margin: 0; color: #4b5563; font-style: italic;">
+      "Design is not just what it looks like and feels like. Design is how it works."
+    </blockquote>
+  </div>
+
+  <!-- A bar down one side of a nav link, an input or a timeline is a side
+       tab (side-tab-every-variant.html); a square quote rule and a code
+       line's gutter are typography. -->
+
+  <!-- 5. CODE BLOCK — diff highlighting -->
+  <h2>Code Diff Highlighting</h2>
+  <div class="demo">
+    <pre style="background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 8px; font-size: 0.8125rem; overflow-x: auto; margin: 0;">
+<code><span style="display: block; border-left: 3px solid #ef4444; padding-left: 0.75rem; background: rgba(239,68,68,0.1);">- const old = getValue();</span>
+<span style="display: block; border-left: 3px solid #22c55e; padding-left: 0.75rem; background: rgba(34,197,94,0.1);">+ const value = getNewValue();</span>
+<span style="display: block; padding-left: calc(3px + 0.75rem);">  return value;</span></code></pre>
+  </div>
 
   <!-- 6. TAB ACTIVE STATE — bottom border -->
   <h2>Tab Navigation</h2>

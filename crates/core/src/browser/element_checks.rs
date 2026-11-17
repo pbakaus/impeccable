@@ -167,6 +167,7 @@ pub fn check_element_borders_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
             // elliptical corner (`50% / 4px`) leaves the circle test unread.
             box_size: (!radius_value.contains('/')).then_some([rect.width, rect.height]),
         },
+        element_is_typographic(dom, el),
     );
     // A side-tab is a card of text with a coloured edge; a card a visitor
     // cannot see (in a tab pane at opacity 0, a slide parked off its track)
@@ -431,6 +432,19 @@ fn element_rounds(dom: &dyn Dom, el: ElId, width: f64) -> bool {
     crate::checks::side_bar::corners_round(parse_radius_corners(Some(&dom.style(el, "borderRadius")), width).as_ref())
 }
 
+/// Whether the element is a quote or a code line
+/// ([`crate::checks::side_bar::is_typographic_box`]), off its tag, its
+/// ancestors' tags and its class.
+pub fn element_is_typographic(dom: &dyn Dom, el: ElId) -> bool {
+    let mut tags = Vec::new();
+    let mut at = Some(el);
+    while let Some(e) = at.filter(|_| tags.len() < 12) {
+        tags.push(tag_lower(dom, e));
+        at = dom.parent(e);
+    }
+    crate::checks::side_bar::is_typographic_box(&class_attr(dom, el), tags.iter().map(String::as_str))
+}
+
 /// JS: checks.mjs#checkElementPseudoStripeDOM(el). A bar down the left or
 /// right edge is read on any tag in any state ([`crate::checks::side_bar`]);
 /// a band across the top or bottom keeps the rounded-card gate.
@@ -489,7 +503,7 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
                 None
             };
             thickness = w;
-            if edge.is_some() && !crate::checks::side_bar::side_bar_stands(w, element_rounds(dom, el, rect.width)) {
+            if edge.is_some() && !crate::checks::side_bar::side_bar_stands_on(w, element_rounds(dom, el, rect.width), element_is_typographic(dom, el)) {
                 continue;
             }
         }
@@ -711,7 +725,7 @@ fn inset_stripe_detail(dom: &dyn Dom, el: ElId, tag: &str, shadow: &str, width: 
             (true, false) => {
                 if !visible
                     || ax > crate::checks::side_bar::SIDE_BAR_MAX_PX
-                    || !crate::checks::side_bar::side_bar_stands(ax, element_rounds(dom, el, width))
+                    || !crate::checks::side_bar::side_bar_stands_on(ax, element_rounds(dom, el, width), element_is_typographic(dom, el))
                 {
                     continue;
                 }
@@ -6925,7 +6939,7 @@ mod tests {
         let (mut d, body) = page();
         let quote = d.add(Some(body), "div");
         visible(&mut d, quote);
-        d.set_attr(quote, "class", "pullquote");
+        d.set_attr(quote, "class", "note");
         d.set_rect(quote, 0.0, 0.0, 300.0, 120.0);
         d.set_styles(quote, &[("borderRadius", "0px")]);
         for (p, v) in [
@@ -6948,6 +6962,12 @@ mod tests {
         assert!(check_element_pseudo_stripe_dom(&d, quote).is_empty());
         d.set_style(quote, "borderRadius", "4px");
         assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
+        // A square pull quote's rule is typography; rounded, it is a tab.
+        d.set_attr(quote, "class", "pullquote");
+        assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
+        d.set_style(quote, "borderRadius", "0px");
+        d.set_pseudo_style(quote, "::before", "width", "4px");
+        assert!(check_element_pseudo_stripe_dom(&d, quote).is_empty());
     }
 
     /// A side border is a side tab on any box from 2px, and at any width on

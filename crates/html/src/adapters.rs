@@ -657,7 +657,20 @@ pub fn check_element_borders(
             // radius only, so it leaves the circle test unread.
             box_size,
         },
+        static_is_typographic(el),
     )
+}
+
+/// Whether a static element is a quote or a code line
+/// ([`impeccable_core::checks::side_bar::is_typographic_box`]).
+pub fn static_is_typographic(el: &StaticElement<'_>) -> bool {
+    let mut tags = Vec::new();
+    let mut at = Some(*el);
+    while let Some(e) = at.filter(|_| tags.len() < 12) {
+        tags.push(e.tag_lower());
+        at = e.parent_element();
+    }
+    impeccable_core::checks::side_bar::is_typographic_box(el.class_name(), tags.iter().map(String::as_str))
 }
 
 /// The element's `color`, custom properties resolved first as the colour

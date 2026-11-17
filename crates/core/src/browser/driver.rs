@@ -1237,9 +1237,10 @@ fn pattern_finding_stands(
         let stands = if side % 2 == 1 {
             let thickness = crate::checks::side_bar::side_bar_thickness(&f.snippet).unwrap_or(0.0);
             matches.iter().any(|&el| {
-                crate::checks::side_bar::side_bar_stands(
+                crate::checks::side_bar::side_bar_stands_on(
                     thickness,
                     crate::checks::side_bar::corners_round(corners(el).as_ref()),
+                    super::element_checks::element_is_typographic(dom, el),
                 )
             })
         } else {

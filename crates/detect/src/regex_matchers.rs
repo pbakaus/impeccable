@@ -11,7 +11,7 @@ use impeccable_core::checks::rules::{
     DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
 };
 use impeccable_core::checks::row_stripe::is_row_or_cell_selector;
-use impeccable_core::checks::side_bar::side_bar_stands;
+use impeccable_core::checks::side_bar::{is_typographic_box, is_typographic_selector, side_bar_stands_on};
 use impeccable_core::color::{is_neutral_color, parse_any_color};
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
 use impeccable_core::findings::{finding, Finding};
@@ -1059,19 +1059,24 @@ pub fn side_tab_match_stands<'s>(
 ) -> bool {
     let index = || index_text.filter(|_| !sass).map(|text| index.get_or_init(|| CssHostIndex::new(text)));
     let pos = source.offset(i, m.index);
-    let row_rule = match index().and_then(|index| index.declaration_hosts(pos)) {
-        Some(hosts) => !hosts.is_empty() && hosts.iter().all(|h| is_row_or_cell_selector(h)),
-        // A CSS-in-JS template outside the file's style index: the selector
-        // written before the block's brace.
+    // The selectors of the rule the declaration sits in: the file's style
+    // index, or for a CSS-in-JS template outside it the selector written
+    // before the block's brace.
+    let selectors: Vec<String> = match index().and_then(|index| index.declaration_hosts(pos)) {
+        Some(hosts) => hosts,
         None => {
             let b = source.text().as_bytes();
-            block_bounds(b, pos).2.is_some_and(|open| {
-                let head = &source.text()[..open];
-                let from = head.rfind(|c| matches!(c, '{' | '}' | ';' | '`')).map_or(0, |p| p + 1);
-                is_row_or_cell_selector(js::trim(&head[from..]))
-            })
+            block_bounds(b, pos)
+                .2
+                .map(|open| {
+                    let head = &source.text()[..open];
+                    let from = head.rfind(|c| matches!(c, '{' | '}' | ';' | '`')).map_or(0, |p| p + 1);
+                    vec![js::trim(&head[from..]).to_string()]
+                })
+                .unwrap_or_default()
         }
     };
+    let row_rule = !selectors.is_empty() && selectors.iter().all(|h| is_row_or_cell_selector(h));
     if row_rule {
         return false;
     }
@@ -1104,11 +1109,23 @@ pub fn side_tab_match_stands<'s>(
     {
         return false;
     }
-    side_bar_stands(num(m.g(1)), false)
-        || side_bar_stands(
-            num(m.g(1)),
+    // A quote's rule or a code line's gutter on a square box is typography.
+    let typographic = if markup {
+        complete_markup_tag(source.line(i), m.index).is_some_and(|tag| {
+            re!(TAG_CLASS_RE, r#"(?:^|\s)class(?:Name)?\s*=\s*["'{`]*([^"'}`]*)"#.to_string());
+            let name: String = tag[1..].chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+            let classes = TAG_CLASS_RE.captures(tag).map_or(String::new(), |c| c[1].to_string());
+            is_typographic_box(&classes, [name.as_str()])
+        })
+    } else {
+        selectors.iter().any(|h| is_typographic_selector(h))
+    };
+    side_bar_stands_on(width, false, typographic)
+        || side_bar_stands_on(
+            width,
             side_tab_scope_corners(m, source, i, sass).rounds_any()
                 || index().is_some_and(|index| index.is_declaration_rounded(pos)),
+            typographic,
         )
 }
 

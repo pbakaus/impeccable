@@ -8,7 +8,9 @@ use impeccable_core::checks::css_scan::{
     CssHostIndex, CustomProps,
 };
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
-use impeccable_core::checks::side_bar::{scan_css_text_for_side_bars, side_bar_stands, side_bar_thickness};
+use impeccable_core::checks::side_bar::{
+    is_typographic_selector, scan_css_text_for_side_bars, side_bar_stands_on, side_bar_thickness,
+};
 use impeccable_core::checks::rules::DeclaredCorners;
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
@@ -2131,17 +2133,20 @@ fn pseudo_stripe_findings(
 
 /// Every side bar a stylesheet's text paints with an inset box-shadow or a
 /// pseudo-element ([`scan_css_text_for_side_bars`]): at 2px or more on any
-/// box, thinner where the rules tied to its host round it.
+/// box, thinner where the rules tied to its host round it. A square quote or
+/// code line is typography.
 fn side_bar_findings(text: &str, file_path: &str, line_offset: usize) -> Vec<Finding> {
     let host_index = once_cell::unsync::OnceCell::new();
     scan_css_text_for_side_bars(text)
         .into_iter()
         .filter(|hit| {
             let thickness = side_bar_thickness(&hit.snippet).unwrap_or(0.0);
-            side_bar_stands(thickness, false)
-                || side_bar_stands(
+            let typographic = is_typographic_selector(hit.selector.as_deref().unwrap_or(""));
+            side_bar_stands_on(thickness, false, typographic)
+                || side_bar_stands_on(
                     thickness,
                     host_index.get_or_init(|| CssHostIndex::new(text)).side_bar_on_rounded_host(hit),
+                    typographic,
                 )
         })
         .map(|hit| {
@@ -2743,6 +2748,10 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
             side_tabs(tsx, "/x/a.tsx"),
             vec!["border-l-2".to_string(), "borderLeft: '1px solid".to_string()]
         );
+        // A quote's rule or a code line's gutter is typography on a square
+        // box and a tab on a rounded one.
+        let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";
+        assert_eq!(side_tabs(typography, "/x/t.css"), vec!["border-left: 3px solid #ddd".to_string()]);
         // Not side bars: a frame (a hairline of another colour on one side of
         // it too), a transparent edge, a table's grid line, a caret.
         let not = ".frame { border: 2px solid #ddd; }\n.t { border-left: 3px solid transparent; }\ntd + td { border-left: 2px solid #ddd; background: #fff; }\n\

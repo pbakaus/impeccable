@@ -216,3 +216,15 @@ fn a_row_stripe_reports_only_where_its_selector_matches_a_cell() {
     let square = side_tabs_on_page(&format!("<style>{stripe}</style>"), row_card);
     assert_eq!(square.len(), 1, "{square:?}");
 }
+
+/// A square quote's rule and a code line's gutter are typography; rounded,
+/// the same rule is a tab.
+#[test]
+fn a_square_quote_rule_or_code_gutter_is_typography() {
+    let css = "blockquote{border-left:4px solid #ddd}.r{border-radius:8px}pre .add{display:block;border-left:3px solid #2a2}";
+    assert!(side_tabs_on_page(&format!("<style>{css}</style>"), "<blockquote>Quote</blockquote><pre><code><span class=\"add\">+ a</span></code></pre>").is_empty());
+    assert_eq!(
+        side_tabs_on_page(&format!("<style>{css}</style>"), "<blockquote class=\"r\">Quote</blockquote>"),
+        vec!["border-left: 4px + border-radius: 8px"]
+    );
+}

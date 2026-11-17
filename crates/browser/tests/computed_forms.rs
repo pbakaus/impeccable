@@ -142,8 +142,8 @@ fn a_side_border_on_a_status_row_or_cell_is_a_side_tab() {
 /// `side-tab-every-variant.html`: every side bar form reads off the rendered
 /// box, square at 2px and up, rounded at 1px, in any state and colour; a
 /// square hairline, a frame (with a hairline of another colour on one side),
-/// a transparent edge, a caret, a square band, a focus ring and a table's
-/// grid line pass.
+/// a square quote's rule, a code line's gutter, a transparent edge, a caret,
+/// a square band, a focus ring and a table's grid line pass.
 #[test]
 fn every_side_bar_variant_is_a_side_tab() {
     let Some(engine) = engine() else { return };
@@ -159,7 +159,7 @@ fn every_side_bar_variant_is_a_side_tab() {
         "#flag-after",
         "#flag-split",
         "#flag-text-colour",
-        "#flag-quote",
+        "#flag-quote-rounded",
         "#flag-input",
         "#flag-pressed",
     ] {
@@ -177,6 +177,8 @@ fn every_side_bar_variant_is_a_side_tab() {
         "#pass-transparent",
         "#pass-band-square",
         "#pass-focus",
+        "#pass-quote",
+        "#pass-diff-line",
         "#pass-caret",
         "#pass-framed",
         "#pass-grid",

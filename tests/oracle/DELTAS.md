@@ -7486,3 +7486,12 @@ A left or right bar (a one-sided border, an x-only inset box-shadow, a full-heig
 - `detect-fixture-{json,text}-side-tab-stylesheet-forms-html`: square stylesheet forms report.
 - `detect-fixture-{json,text}-side-tab-every-variant-{html,css,svelte}` (new): every variant flags (a hover-only and a focus-within bar among them) and every control passes (a square hairline, a frame with a hairline of another colour on one side, a transparent edge, a CSS caret, a square band, a focus outline, a `td + td` grid line), including the pressed nav button whose radius sits on its base rule.
 - `legitimate-borders.html` lost the quote, nav, input, timeline and code-diff sections (they are side bars now and live in `side-tab-every-variant.html`); `should-pass.html`'s thin right border is 1px. Neither golden moved.
+
+## Recorded 2026-11-16: a square quote rule or code gutter is typography; the side-tab description names the fix
+
+A quote's rule (a `blockquote`, a box whose class names a quote) and a code line's gutter (inside a `pre`, `code` or `blockquote`, or a class naming a diff, a gutter or line numbers) on a square box are typography, not a side tab; rounded, they still report at any width (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). The `side-tab` description now reads "A bar down one side of a box. Use a full border, a background tint, or a leading icon or label instead." in place of the old "use a subtler accent" text. The description was replaced in place in every golden that carried it; replayed against the binary, every one of those cases matched except the six below, which were re-recorded from the binary and reviewed by hand (only these `side-tab` findings move):
+
+- `detect-fixture-{json,text}-pseudo-stripe-html`: `blockquote::before` (a 4px rule on a square quote) no longer reports.
+- `detect-fixture-{json,text}-side-tab-every-variant-html`: the square quote moved to the passing controls (with a square diff gutter inside `pre`); the new rounded quote reports `border-left: 3px + border-radius: 8px`.
+- `detect-fixture-{json,text}-side-tab-every-variant-css`: a rounded `.f-quote-rounded` reports; a square `blockquote` rule and `pre .diff-add` gutter pass; the pressed nav item moves down a line.
+- `legitimate-borders.html` has its blockquote and code-diff sections back; its golden did not move (still no findings).

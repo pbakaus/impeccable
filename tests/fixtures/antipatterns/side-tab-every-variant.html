@@ -13,7 +13,8 @@
 
   Not side bars: a 1px hairline on a square box (a column divider), a border
   on every side (with a hairline of another colour on one side too), a
-  transparent edge, a CSS caret, a table's grid lines, a focus outline, and a
+  square quote's rule and a code line's gutter (typography; rounded, they
+  are tabs), a transparent edge, a CSS caret, a table's grid lines, a focus outline, and a
   top or bottom band on a square box (the band keeps its older rule).
 -->
 <style>
@@ -35,7 +36,7 @@
   .f-split { border-radius: 6px; }
   .f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
   .f-text-colour { border-left: 2px solid var(--text); }
-  .f-quote { border-left: 4px solid #d1d5db; padding-left: 16px; }
+  .f-quote-rounded { border-left: 3px solid #d1d5db; border-radius: 8px; padding-left: 16px; }
   .f-input { width: 400px; height: 40px; border: 1px solid #fca5a5; border-left: 3px solid #b91c1c; border-radius: 6px; }
 
   .it { display: grid; width: 400px; height: 40px; padding: 7px 12px; border: 0; border-radius: 6px; background: none; }
@@ -48,6 +49,9 @@
   .p-transparent { border-left: 3px solid transparent; border-radius: 8px; }
   .p-band-square { border-bottom: 3px solid #2563eb; }
   .p-focus:focus-visible { outline: 2px solid #2563eb; }
+  .p-quote { border-left: 4px solid #d1d5db; padding-left: 16px; }
+  .p-code { width: 400px; padding: 8px; background: #f6f6f6; }
+  .p-code .diff-add { display: block; border-left: 3px solid #22c55e; padding-left: 8px; }
   .p-grid { width: 400px; border-collapse: collapse; }
   .p-grid td { width: 200px; height: 32px; padding: 4px; }
   .p-grid td + td { border-left: 2px solid #e5e7eb; }
@@ -70,7 +74,7 @@
   <div class="card f-after" id="flag-after">An ::after bar on the right</div>
   <div class="card f-split is-active" id="flag-split">Hairline bar, radius in another rule</div>
   <div class="card f-text-colour" id="flag-text-colour">Bar in the text colour</div>
-  <blockquote class="card f-quote" id="flag-quote">A quote with a 4px rule</blockquote>
+  <blockquote class="card f-quote-rounded" id="flag-quote-rounded">A rounded quote with a 3px rule</blockquote>
   <input class="f-input" id="flag-input" value="not-an-email" aria-invalid="true">
   <nav><button class="it" id="flag-pressed" aria-pressed="true">Pressed nav item</button></nav>
 </div>
@@ -82,6 +86,8 @@
   <div class="card p-transparent" id="pass-transparent">A transparent left edge</div>
   <div class="card p-band-square" id="pass-band-square">A bottom band on a square box</div>
   <button class="card p-focus" id="pass-focus">A focus outline</button>
+  <blockquote class="card p-quote" id="pass-quote">A square quote with a 4px rule</blockquote>
+  <pre class="p-code"><code><span class="diff-add" id="pass-diff-line">+ const value = next();</span></code></pre>
   <span class="p-caret" id="pass-caret"></span>
   <div class="card p-framed is-on" id="pass-framed">A framed card with a hairline of another colour on one side</div>
   <table class="p-grid" id="pass-grid"><tr><td>Name</td><td>Value</td></tr></table>
