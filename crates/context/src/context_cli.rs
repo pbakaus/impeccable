@@ -1053,6 +1053,25 @@ fn append_product(parts: &mut Parts, ctx: &Ctx) {
         }
     }
     let mut text = js_trim(&(0..sections.len()).filter(|&i| kept[i]).map(|i| sections[i].as_str()).collect::<String>()).to_string();
+    // A title or first section that is itself long is cut at a line within the budget, so no PRODUCT.md can push the
+    // directives after it past an agent's output limit.
+    if text.len() > MAP_BUDGET * 2 {
+        let mut cut = 0;
+        for (at, _) in text.match_indices('\n') {
+            if at > MAP_BUDGET * 2 {
+                break;
+            }
+            cut = at;
+        }
+        if cut == 0 {
+            cut = MAP_BUDGET * 2;
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+        }
+        text.truncate(cut);
+        text.push_str("\n(cut here; the rest is in the full file)");
+    }
     if !left.is_empty() {
         text.push_str(&format!("\n\nMore sections: {}.", left.join(", ")));
     }
@@ -1930,6 +1949,16 @@ mod seeded_world_tests {
             // The no-PRODUCT.md boot must not also call the starter CSS the incumbent authority.
             assert!(!out.contains("code and assets are incumbent design authority"), "product={product}: {out}");
         }
+    }
+
+    #[test]
+    fn a_long_first_product_section_is_cut_within_the_budget() {
+        // Catches a PRODUCT.md whose opening section is itself huge pushing the directives past output limits.
+        let product = format!("# Big\n\n## Platform\n\n{}\n## Users\n\nsomeone\n", "A long line of product prose.\n".repeat(1000));
+        let out = boot_with(SEED, Some(&product), false);
+        let part = out.split("# PRODUCT.md (sections; full file: PRODUCT.md)").nth(1).unwrap().split("\n---\n").next().unwrap();
+        assert!(part.contains("(cut here; the rest is in the full file)"), "{part}");
+        assert!(part.len() < super::MAP_BUDGET * 2 + 300, "{}", part.len());
     }
 
     #[test]
