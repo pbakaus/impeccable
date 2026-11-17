@@ -312,7 +312,12 @@ describe('account worker', () => {
     sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); }, async setOptions({ enabled }) { offered.push(enabled); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
-  const loaded = import('../extension/account/worker.js');
+  // The worker's start asks the server whether sign-in is on offer: told no here, before any test, so its start never
+  // checks in on a later test's server (nor reaches a real one).
+  let probed;
+  const started = new Promise((resolve) => { probed = resolve; });
+  globalThis.fetch = async (url) => { if (String(url).endsWith('/me?probe=1')) probed(); return json(404, {}); };
+  const loaded = import('../extension/account/worker.js').then(() => started);
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
