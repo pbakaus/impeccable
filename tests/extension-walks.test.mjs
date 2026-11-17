@@ -464,8 +464,8 @@ describe('walk worker', () => {
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
     // The walked tab's frames: the top document alone, unless a test gives it more.
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
-    // The extension's own cover runs in the top document (frame 0); nothing else answers.
-    scripting: { async executeScript({ func }) { return func?.name === 'coverSecrets' ? [{ frameId: 0, result: 0 }] : []; } },
+    // The extension's own cover, and its blank fields for a sign-in's still, run in the top document (frame 0); nothing else answers.
+    scripting: { async executeScript({ func }) { return ['coverSecrets', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
     // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
     declarativeNetRequest: {
       rules: [{ id: 20541 }, { id: 20542 }],
@@ -837,11 +837,16 @@ describe('walk worker', () => {
     });
   }
 
+  // Each sign on a document of its own, as Chrome commits it: the still is taken once a document.
+  const fresh = (loaderId) => fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url: `http://localhost:3000/${loaderId}` } });
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while a 401 holds.
-  for (const [sign, show] of [
-    ['a visible password field', () => { page.seen = { password: true }; }],
-    ['a move to a sign-in host', () => fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } })],
-    ['a 401 asking for a password', () => { page.seen = { status: 401 }; fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }],
+  // The page is pictured once as it pauses, every field blank, where it shows one to sign in with (`pictured`), and
+  // never where a frame of it could not be drawn blank (`unblank`): a field Chrome filled would show.
+  for (const [sign, show, pictured, unblank = false] of [
+    ['a visible password field', () => { fresh('s1'); page.seen = { password: true }; }, true],
+    ['a move to a sign-in host', () => { fresh('s2'); fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } }); }, false],
+    ['a 401 asking for a password', () => { page.seen = { status: 401 }; fresh('l2'); fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }, false],
+    ['a password field Chrome filled, on a page a frame of which can’t be drawn blank', () => { fresh('s4'); page.seen = { password: true, filled: true }; }, false, true],
   ]) {
     it(`pauses itself at ${sign}, until the sign-in is gone`, async () => {
       const { ops, command, current, COPY } = await walked();
@@ -849,11 +854,17 @@ describe('walk worker', () => {
       const { sendCommand } = chrome.debugger;
       let answeredWhile;
       chrome.debugger.sendCommand = async (target, method, params) => { if (method.startsWith('Fetch.')) answeredWhile ??= current().state; return sendCommand(target, method, params); };
+      const { executeScript } = chrome.scripting, blanks = [];
+      chrome.scripting.executeScript = async (call) => { if (call.func?.name === 'blankFields') { blanks.push(call.args[0]); if (unblank && call.args[0]) return []; } else if (call.func?.name === 'coverSecrets' && call.args[0]) blanks.push('cover'); return executeScript(call); };
+      const shots = sent.length, heard = told.length;
       try { show(); } finally { setTimeout(() => { chrome.debugger.sendCommand = sendCommand; }, 10); }
       let answered = false;
       const asked = ops.url().then(() => { answered = true; });
-      await settle(20);
+      for (let turn = 0; turn < 40 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
+      chrome.scripting.executeScript = executeScript;
       assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
+      // Fields blank, then secrets covered, the one picture, and both off again; none at all where nothing shows to sign in with.
+      assert.deepEqual([told.slice(heard).filter((m) => m.event === 'sign-in-page').map((m) => typeof m.still), since(shots, 'Page.captureScreenshot'), blanks], pictured ? [['string'], 1, [true, 'cover', false]] : [['undefined'], 0, unblank ? [true, false] : []]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
       if (sign === 'a move to a sign-in host') assert.equal(answeredWhile, 'paused', 'paused before the guard answered');
       else if (sign === 'a 401 asking for a password') {

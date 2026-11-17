@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { ON_TAB, detachAction, isLive } from './view.js';
 
@@ -41,9 +41,21 @@ function pauseFor(why) {
   const was = current();
   if (!dispatch({ type: 'pause', why })) return false;
   if (was.state !== 'paused' || was.held !== current().held) say({ event: 'paused', why: current().held });
+  // The walk itself reached a sign-in: its page pictured once, before the person has it.
+  if (why === 'sign-in' && was.state === 'walking') void stillAtSignIn();
   return true;
 }
 onSignIn(() => { pauseFor('sign-in'); });
+
+/** A still taken as any is (the `screenshot` op, without the badge), for the sign-in page alone: kept before the ops below wrap it. */
+const shot = unseen('screenshot', ops.screenshot);
+/** The sign-in page the walk paused at, as it was before the person had it: its still, or none where it could not be taken safely. */
+async function stillAtSignIn() {
+  const still = await signInStill(() => shot({ format: 'png' }), () => current().state === 'paused' && current().held === 'sign-in');
+  if (still === undefined) return;
+  const title = walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
+  say({ event: 'sign-in-page', ...(still ? { still } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
+}
 
 /** The ops that take something of the page: none runs on a page the walk could not check. */
 const LOOKING = new Set(['screenshot', 'evaluate', 'hear']);
