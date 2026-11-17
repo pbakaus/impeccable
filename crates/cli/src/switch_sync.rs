@@ -129,15 +129,18 @@ fn worker_lock(account: &Account) -> Option<impl Drop> {
 
 /// Hidden detached worker: silent and best effort. Anything it can't read or check
 /// leaves the files, the page and the base as they were.
+/// The sync itself. `context` throttles it to once a minute (`schedule`); started
+/// directly it always runs. `--now` is how Loop starts it on a change notice (REN-2056):
+/// accepted, and the same as no flag.
 pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
-    if !args.is_empty() {
+    if args.iter().any(|a| a != "--now") {
         return 0;
     }
     let Ok(account) = Account::from_env(&io.env) else { return 0 };
     let Some(_worker) = worker_lock(&account) else { return 0 };
-    let Some(repo) = repo(&io.cwd) else { return 0 };
+    let repo = repo(&io.cwd);
     let Some(mut link) = impeccable_account::switches::Link::open(io) else { return 0 };
-    let Some(remote) = link.fetch(&repo) else { return 0 };
+    let Some(remote) = link.fetch(repo.as_deref()) else { return 0 };
     let cache = read_cache(&account);
     let base: Option<Vec<String>> = cache
         .as_ref()

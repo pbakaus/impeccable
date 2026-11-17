@@ -433,6 +433,13 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     refresh();
     assert!(on().ends_with(": wide"), "{}", on());
     assert_eq!(fake.hits("/cli/v1/agents/me"), sent);
+    // Loop starts it with `--now` from outside any working copy: it still runs, unthrottled,
+    // and writes the person's set.
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":5,"team":["wide","voice"],"me":["wide","voice"],"teamSet":false,"meSet":false}"#);
+    let outside = home.join("not-a-repo");
+    std::fs::create_dir_all(&outside).unwrap();
+    assert!(impeccable(&env, &["switches-refresh", "--now"]).current_dir(&outside).status().unwrap().success());
+    assert!(on().ends_with(": wide, voice"), "{}", on());
 }
 
 #[test]
