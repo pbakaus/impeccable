@@ -322,27 +322,22 @@ fn no_preference_keeps_recording_dot_animation() {
 }
 
 #[test]
-fn inactive_unread_stylesheets_do_not_make_card_corners_unknown() {
+fn only_active_links_count_as_unread_stylesheets() {
+    use impeccable_html::{cascade::has_unread_stylesheet, dom::StaticDocument};
     for href in ["missing.css", "https://example.invalid/theme.css"] {
         for (attributes, expected) in [
-            ("media='print'", 0),
-            ("media='screen'", 1),
-            ("media='print' onload=\"this.media='all'\"", 1),
-            ("media='all' onload=\"this.media='print'\"", 0),
+            ("media='print'", false),
+            ("media='screen'", true),
+            ("media='print' onload=\"this.media='all'\"", true),
+            ("media='all' onload=\"this.media='print'\"", false),
         ] {
-            let html = format!("<html><head><link rel='stylesheet' href='{href}' {attributes}><style>.card{{width:400px;height:120px;padding:16px;background:#fdfdfd;border-left:4px solid #6366f1}}</style></head><body><div class='card'><h3>Card</h3><p>Body copy.</p></div></body></html>");
-            let findings = detect_html_source(
-                &html,
-                Path::new("/nonexistent/media-card/page.html"),
-                &DetectHtmlOptions::default(),
-            );
+            let doc = StaticDocument::parse(&format!(
+                "<link rel='stylesheet' href='{href}' {attributes}>"
+            ));
             assert_eq!(
-                findings
-                    .iter()
-                    .filter(|f| f.antipattern == "side-tab")
-                    .count(),
+                has_unread_stylesheet(&doc, Path::new("/nonexistent/media-card")),
                 expected,
-                "{href} {attributes}: {findings:?}"
+                "{href} {attributes}"
             );
         }
     }

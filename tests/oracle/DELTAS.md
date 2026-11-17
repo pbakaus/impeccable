@@ -7536,3 +7536,26 @@ files, so only `doctor` runs it.
 
 - `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
   `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.
+
+
+## Recorded 2026-11-17: rendered media defaults and async CSS (#1079 review)
+
+Static HTML now matches the desktop browser defaults for reduced motion and
+contrast (`no-preference`), hover/any-hover (`hover`), pointer/any-pointer
+(`fine`), and forced colors (`none`). Boolean forms treat `none` and
+`no-preference` as false. Simple literal `this.media` onload assignments also
+supply the effective media for local linked CSS; no page JavaScript is run.
+
+The source-built binary restores exactly the `.rec-mark` pulsing-dot finding
+in the JSON/text `pulsing-dot.html` goldens (four to five findings, exit 2).
+The new `static-media-browser-defaults.html` JSON/text goldens contain eight
+contrast findings: one for each requested media feature and one for async CSS.
+Its eight controls remain silent. Chrome independently verified all 16 rows,
+and the rendered engine returned the same eight contrast findings.
+The async and print companion CSS files produce no standalone findings.
+
+The five aggregate goldens retain `next`'s historical snapshots, which already
+have accepted deltas. They are not re-recorded to absorb unrelated upstream
+side-bar, image-contrast, and fixture changes during this merge. The individual
+fixture goldens pin the media changes. No new accepted-delta exemption and no
+frozen function vector was added or changed.
