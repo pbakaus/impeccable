@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable font-fetch \"<Family>\" [--weights 400,700] [--italic] [--out assets/fonts]\n\nDownload a Google font's WOFF2 files (latin and latin-ext) into the project and\nprint the @font-face rules for them, paths relative to the project root.\n\n--weights <list>  Comma-separated weights (default 400,700).\n--italic          Also fetch the italics.\n--out <dir>       Where the files go, relative to here (default assets/fonts).\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

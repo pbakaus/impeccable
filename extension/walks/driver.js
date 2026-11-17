@@ -3,6 +3,7 @@
 // guard.js says where the tab may be and what it may start.
 import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
+import { helpers, newDocument, noSecrets, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
 
@@ -97,7 +98,8 @@ async function watchNetwork() {
 }
 const overtaken = (at) => { if (fences !== at) throw fail('Paused', 'the journey was paused before this was done'); };
 // `answered`: a pause during a question settles it, and the other end waits on that answer. `note`: a code, never the page.
-const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered', 'note']);
+// `sign-in-page`: the one still of a sign-in page, taken as the walk paused there (`signInStill`).
+const TOLD_WHILE_HUSHED = new Set(['paused', 'resumed', 'takeover', 'handback', 'stopped', 'detached', 'answered', 'note', 'sign-in-page']);
 
 /** Tells the other end, and whoever in here listens. */
 export function say(message) {
@@ -403,7 +405,10 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         const seen = await look();
         if (signInShows(tab, seen)) { spotted(); continue; }
         if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
-        // Not while the pointer acts (`pointer`).
+        // Its secret fields covered first, and kept so from frame to frame (`cover`); one that could not be is not filmed.
+        const covered = await cover(true);
+        if (Date.now() >= covered) { await sleep(FILM_RETRY_MS); continue; }
+        // Not while the pointer acts (`pointer`): nothing awaited between this and the picture.
         if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
@@ -411,7 +416,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         capturing = taking;
         void taking.then(() => { if (capturing === taking) capturing = null; });
         const shot = await Promise.race([asked, sleep(FILM_SHOT_MS).then(() => null)]);
-        if (!shot) continue;
+        // Nor one back after its cover may have come off.
+        if (!shot || Date.now() >= covered) continue;
         // Seen as its still is: at the still's size (`stillSize`), then made smaller.
         const frame = await smaller(await seenAs(shot.data, 'jpeg', 80, stillSize(tab)), Math.round(size.width * scale), Math.round(size.height * scale), format, quality);
         if (!film.on || walk !== tab) break;
@@ -463,6 +469,14 @@ async function smaller(data, width, height, format, quality, { from, keep } = {}
   return btoa(text);
 }
 
+/** A picture (base64) again as WebP at `quality`, its own size: as a step's small copy is. */
+export async function asWebp(data, quality = 80) {
+  const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0))]));
+  const { width, height } = picture;
+  picture.close();
+  return smaller(data, width, height, 'webp', quality);
+}
+
 /** Ends the film under way, if there is one: no frame of it is sent once this has returned. */
 async function cut() {
   const film = walk?.film;
@@ -470,6 +484,7 @@ async function cut() {
   film.on = false;
   walk.film = null;
   await film.done;
+  if (!stills) await cover(false);
 }
 
 /**
@@ -481,7 +496,8 @@ let heldAtSignIn = false;
 
 /**
  * The walk is paused: from here nothing is taken or told of the page, and the network is not heard, until
- * {@link unhold}. `signIn` when it is held at a sign-in.
+ * {@link unhold}, but for the one still of a sign-in page taken as it pauses (`signInStill`). `signIn` when it is held
+ * at a sign-in.
  */
 export async function hold(signIn = false) {
   heldAtSignIn = signIn;
@@ -611,8 +627,14 @@ async function scriptsOn(tab, seals) {
   return true;
 }
 
-/** Whether a password-like field on the page holds a value (signin.js `lookInPage`): no script runs then. */
-export const passwordIn = async () => (await look())?.filled === true;
+/**
+ * Whether a filled field on the page may hold a password that a script could read (signin.js `lookInPage`): a password
+ * field, or, on a walk whose server names no helpers and so runs its own code, any field that may hold one.
+ */
+const mayRead = (tab, seen) => seen?.filled === true || (tab?.named !== true && seen?.maybe === true);
+
+/** Whether a password-like field on the page holds a value: no script runs then, until Continue lets a soft hold go. */
+export const passwordIn = async () => mayRead(walk, await look());
 
 /**
  * The world the server's page reads run in: one of their own, not the page's, nor the walk's lookout (whose binding
@@ -621,9 +643,9 @@ export const passwordIn = async () => (await look())?.filled === true;
  */
 const READER = 'impeccable-walk-read';
 /**
- * The one read that needs the page's own world: the consent rules the server loads into each document
- * (the server's consent store, `loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and
- * `markConsentSeen` read it.
+ * The one read that needs the page's own world, from an older server that sends code: the consent rules it loads into
+ * each document (`loadConsent`) keep their state there, and `readConsentState`, `consentSeen` and `markConsentSeen`
+ * read it. A server that names helpers names those too, and `pageWorld` says where they run.
  */
 const PAGE_WORLD = /__impeccableConsent/;
 
@@ -646,6 +668,241 @@ export async function look() {
     tab.lookout = null;
   }
   return null;
+}
+
+/**
+ * How long a cover stays without another: the person's own tab gets its fields back by itself, should the walk lose it
+ * with one on.
+ */
+const COVER_MS = 2000;
+/**
+ * Every password, card and one-time-code field on the page drawn as a solid box (`coverSecrets`), in the walk's own
+ * world, or taken off again: put on just before each picture, so none shows what one holds, typed or filled in by
+ * Chrome. Put on, the time until which every part of it surely stays (`COVER_MS` from before the first was put on), or
+ * 0 when it could not be; a picture not back by then may show a part whose cover came off by itself.
+ */
+async function cover(on) {
+  const from = Date.now();
+  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null && (await coverFrames(on)) ? from + COVER_MS : 0;
+}
+/** How long a still whose page could not be covered waits before it is tried once more, its world made again. */
+const COVER_RETRY_MS = 150;
+
+/**
+ * The page's frames covered as its top document is, by the extension's own copy of `coverSecrets` run in each, the top
+ * one too: the walk's own world reaches only the top document, its open shadow roots and its same-site frames, not a
+ * closed root (which `chrome.dom` opens here) or another site's frame, such as a hosted card box. A frame not even that reaches (a page that failed to load, another extension's) is drawn as one solid box
+ * by the frame around it (`boxFrames`); one inside it is under that box. Whether every frame was, the top one by this script.
+ */
+async function coverFrames(on) {
+  const tabId = walk?.tabId;
+  const frames = await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null);
+  const target = { tabId, allFrames: true };
+  const ran = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverSecrets, args: [on, COVER_MS] }).catch(() => []);
+  if (!on) return true;
+  if (!frames) return false;
+  // Then checked as drawn, in a run of its own right before the picture (`coverHolds`): a frame whose page put a field
+  // back since, or whose fields a site's own style kept uncovered, counts as not covered.
+  const held = await chrome.scripting.executeScript({ target, injectImmediately: true, func: helpers.coverHolds }).catch(() => []);
+  const holds = new Set(held.filter((r) => r.result === 0).map((r) => r.frameId));
+  const done = new Set(ran.filter((r) => typeof r.result === 'number' && holds.has(r.frameId)).map((r) => r.frameId));
+  // The top document's closed roots are opened only by this script (`chrome.dom`): without it, no still. But for
+  // Chrome's own error page (a load that failed), which takes no script and holds no page: the walk's own world covered it.
+  if (frames.find((f) => f.frameId === 0)?.errorOccurred) done.add(0);
+  if (!done.has(0)) return false;
+  const missed = frames.filter((f) => f.frameId !== 0 && !done.has(f.frameId));
+  if (!missed.length) return true;
+  const at = new Map((await chrome.scripting.executeScript({ target, injectImmediately: true, func: frameIndex }).catch(() => [])).map((r) => [r.frameId, r.result]));
+  for (const parent of new Set(missed.map((f) => f.parentFrameId))) {
+    if (parent !== 0 && !done.has(parent)) continue;
+    const children = frames.filter((f) => f.parentFrameId === parent);
+    const covered = children.filter((f) => done.has(f.frameId)).map((f) => at.get(f.frameId)).filter(Number.isInteger);
+    const told = await chrome.scripting.executeScript({ target: { tabId, frameIds: [parent] }, injectImmediately: true, func: boxFrames, args: [covered] }).catch(() => null);
+    if (!(told?.[0]?.result >= children.length - covered.length)) return false;
+  }
+  return true;
+}
+
+/** Run by the extension in a frame: its place among the frames around it (`window.frames`), -1 at the top or unlisted. */
+function frameIndex() {
+  if (window === window.top) return -1;
+  for (let at = 0; at < parent.length; at++) if (parent[at] === window) return at;
+  return -1;
+}
+
+/**
+ * Run by the extension in a frame: each frame in it, but those at the places `covered` (`frameIndex`), drawn as one
+ * solid box by a rule added to the cover's own sheet in its root (`coverSecrets`), so it comes off with the cover; one
+ * of this frame's own site is covered from here already. Through shadow roots, closed ones too (`chrome.dom`, as the
+ * cover opens them). The box is black behind the frame too, and in the cover's own layer, so neither a transparent frame
+ * nor a site's own `!important` rule shows through. How many frames it saw to.
+ */
+function boxFrames(covered) {
+  const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes('--secret-cover') === true; } catch { return false; } };
+  // Chrome opens only an HTML element's root, and throws on an SVG one.
+  const shadow = (el) => {
+    if (el.shadowRoot || (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) return el.shadowRoot ?? null;
+    try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
+  };
+  let seen = 0;
+  const visit = (root) => {
+    for (const el of Array.from(root.querySelectorAll('*'))) {
+      const own = shadow(el);
+      if (own) visit(own);
+      if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
+      let place = -1;
+      for (let at = 0; at < window.length; at++) if (window[at] === el.contentWindow) place = at;
+      if (covered.includes(place)) continue;
+      let inner = null;
+      try { inner = el.contentDocument ?? null; } catch { inner = null; }
+      const sheet = root.adoptedStyleSheets.find(ours);
+      if (!inner && !sheet) continue;
+      seen += 1;
+      if (inner) continue;
+      const steps = [];
+      for (let at = el; at && at.nodeType === 1; at = at.parentNode) steps.unshift(at.parentNode?.nodeType === 1 ? `${at.localName}:nth-child(${Array.prototype.indexOf.call(at.parentNode.children, at) + 1})` : at.localName);
+      const selector = steps.join(' > ');
+      if (!Array.from(sheet.cssRules).some((r) => r.cssText.includes(` ${selector} {`))) sheet.insertRule(`@layer secret-cover { ${selector} { --secret-cover: 1; filter: brightness(0) !important; background-color: #000 !important; } }`, sheet.cssRules.length);
+    }
+  };
+  visit(document);
+  return seen;
+}
+/** Stills being taken: the cover comes off only once none is, and no film keeps it on. */
+let stills = 0;
+
+/**
+ * Run by the extension in a frame, for the one still of a sign-in page: what every field one types in holds drawn
+ * blank, and a field already filled (typed, remembered, or filled in by Chrome, which shows a value no script reads) a
+ * solid box, through shadow roots, closed ones too. Set on each field's own style as important, which no rule of the
+ * site's, layered or not, outweighs, and in a sheet beside it for a field that comes or a style the page rewrites
+ * meanwhile; its placeholder still shows. A field another world of this page already blanked (a frame's own run, and
+ * the run of the page round it) is that one's to put back. `on` false puts each field's own style back, as it comes off
+ * by itself after `forMs`. How many fields it saw.
+ */
+function blankFields(on, forMs) {
+  const mark = '--still-blank';
+  const typed = 'input:not([type="hidden" i], [type="checkbox" i], [type="radio" i], [type="submit" i], [type="button" i], [type="reset" i], [type="image" i], [type="file" i], [type="range" i], [type="color" i]), textarea, [contenteditable]:not([contenteditable="false" i])';
+  const blanked = 'data-impeccable-still-blank';
+  const text = { color: 'transparent', '-webkit-text-fill-color': 'transparent', 'text-shadow': 'none', 'caret-color': 'transparent' };
+  const box = { filter: 'brightness(0)', 'box-shadow': 'inset 0 0 0 100vmax #000' };
+  const css = (props) => Object.entries(props).map(([prop, value]) => `${prop}: ${value} !important;`).join(' ');
+  const rules = [
+    `:is(${typed}) { ${mark}: 1; ${css(text)} }`,
+    // A placeholder is drawn in its own colour, never the field's: a pseudo-element no field's own style reaches.
+    `:is(${typed})::placeholder { -webkit-text-fill-color: currentcolor !important; }`,
+    `:is(${typed})[${blanked}="filled"] { ${css(box)} }`,
+    `:is(${typed}):-webkit-autofill { ${css(box)} }`,
+  ];
+  // Each field's own style as it was, to put back: kept in this frame's world between the two runs.
+  const kept = (globalThis[Symbol.for('still-blank-kept')] ??= new Map());
+  const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes(mark) === true; } catch { return false; } };
+  const shadow = (el) => {
+    if (el.shadowRoot || (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) return el.shadowRoot ?? null;
+    try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
+  };
+  const autofilled = (field) => { try { return field.matches(':-webkit-autofill'); } catch { return false; } };
+  let seen = 0;
+  const visit = (root, on, Made = CSSStyleSheet) => {
+    const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
+    if (on) {
+      if (others.length === root.adoptedStyleSheets.length) {
+        const sheet = new Made();
+        for (const rule of rules) { try { sheet.insertRule(rule, sheet.cssRules.length); } catch { /* a selector this Chrome lacks */ } }
+        root.adoptedStyleSheets = [...others, sheet];
+      }
+      for (const field of root.querySelectorAll(typed)) {
+        seen += 1;
+        if (!kept.has(field) && field.hasAttribute(blanked)) continue;
+        const filled = field.isContentEditable ? field.textContent.trim() : field.value || autofilled(field);
+        const props = filled ? { ...text, ...box } : text;
+        const was = kept.get(field) ?? { styled: field.hasAttribute('style'), props: {} };
+        field.setAttribute(blanked, filled ? 'filled' : '');
+        for (const [prop, value] of Object.entries(props)) {
+          if (!(prop in was.props)) was.props[prop] = [field.style.getPropertyValue(prop), field.style.getPropertyPriority(prop)];
+          field.style.setProperty(prop, value, 'important');
+        }
+        kept.set(field, was);
+      }
+    } else if (others.length !== root.adoptedStyleSheets.length) root.adoptedStyleSheets = others;
+    for (const el of root.querySelectorAll('*')) {
+      const own = shadow(el);
+      if (own) visit(own, on, Made);
+      if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
+      // A frame of this one's site, as a frame Chrome gives no script of its own (`about:blank`) is: from here.
+      let inner = null;
+      try { inner = el.contentDocument ?? null; } catch { inner = null; }
+      if (inner?.defaultView) visit(inner, on, inner.defaultView.CSSStyleSheet);
+    }
+  };
+  const off = () => {
+    visit(document, false);
+    for (const [field, { styled, props }] of kept) {
+      for (const [prop, [value, priority]] of Object.entries(props)) {
+        if (value) field.style.setProperty(prop, value, priority);
+        else field.style.removeProperty(prop);
+      }
+      if (!styled && field.getAttribute('style') === '') field.removeAttribute('style');
+      field.removeAttribute(blanked);
+    }
+    kept.clear();
+  };
+  if (on) visit(document, true);
+  else off();
+  const timer = Symbol.for('still-blank');
+  clearTimeout(globalThis[timer]);
+  if (on && forMs) globalThis[timer] = setTimeout(off, forMs);
+  return seen;
+}
+
+/**
+ * Every frame's fields drawn blank for a picture (`blankFields`), or put back. Put on, the time until which it surely
+ * stays, as `cover` says it; 0 when the page or a frame of a website could not be reached, and then no picture is
+ * taken. A frame no script reaches (another extension's, a password manager's) is drawn as one solid box by the
+ * picture's own cover (`coverFrames`), or the picture is not taken.
+ */
+async function blank(on) {
+  const from = Date.now();
+  const tabId = walk?.tabId;
+  const frames = on ? await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null) : [];
+  const ran = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, injectImmediately: true, func: blankFields, args: [on, COVER_MS] }).catch(() => []);
+  if (!on) return 0;
+  const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
+  return frames?.length && frames.every((f) => f.errorOccurred || done.has(f.frameId) || (f.frameId !== 0 && !/^https?:/i.test(f.url ?? ''))) ? from + COVER_MS : 0;
+}
+
+/**
+ * The one still of a sign-in page, taken as the walk pauses there and before the person has it (control.js): as any
+ * still is (`take`, the `screenshot` op, its `{ data, plain }`), with every field drawn blank as well, so neither what
+ * the person types nor what Chrome filled in shows. Once a document: undefined after the first. Null when there is
+ * nothing to picture (a sign-in host still loading, a 401) or it could not be taken safely, while `still()` holds (the
+ * pause is the sign-in's).
+ */
+export async function signInStill(take, still) {
+  const tab = walk;
+  if (!tab || tab.signInStill === tab.loader) return undefined;
+  // Marked before it is tried: one dropped (a frame too slow to blank, a move) is not tried again on this document.
+  tab.signInStill = tab.loader;
+  // The page it paused on, and none after it: a sign-in done, or a move, while the picture is under way drops it.
+  const on = samePage();
+  const seen = await look();
+  if (!on() || !(seen?.password || seen?.filled) || !still()) return null;
+  try {
+    const blanked = await blank(true);
+    if (Date.now() >= blanked || !on() || !still()) return null;
+    const value = (await take())?.value;
+    return typeof value?.data === 'string' && Date.now() < blanked && on() && still() ? value : null;
+  } catch {
+    return null;
+  } finally {
+    if (walk === tab) await blank(false);
+  }
+}
+
+/** Whether the walked tab is still on the document and address it is on now: the check a sign-in's still is held to. */
+export function samePage() {
+  const tab = walk, loader = tab?.loader, url = tab?.url;
+  return () => Boolean(tab) && walk === tab && tab.loader === loader && tab.url === url;
 }
 
 /** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
@@ -678,6 +935,19 @@ function submitsAt(at, enter) {
   const changes = /\b(?:approve|reject|decline|deny|submit|save|delete|remove|send|pay|confirm|publish|archive|revoke|withdraw|transfer)\b|\bcancel [a-z]/;
   const shops = /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe)\b/;
   let el = at ? document.elementFromPoint(at.x, at.y) : document.activeElement;
+  // A key goes to the control focus is on, through shadow roots and same-site frames, as signin.js `lookInPage` follows
+  // it; in another site's frame it can't be named, as a button with none can't: the server asks about that one.
+  for (; !at;) {
+    if (el?.shadowRoot?.activeElement) { el = el.shadowRoot.activeElement; continue; }
+    if (el && (el.tagName === 'IFRAME' || el.tagName === 'FRAME')) {
+      let inner = null;
+      try { inner = el.contentDocument; } catch { /* another origin's */ }
+      if (!inner) return null;
+      el = inner.activeElement;
+      continue;
+    }
+    break;
+  }
   while (el) {
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute('type') ?? '').toLowerCase();
@@ -704,15 +974,16 @@ function submitsAt(at, enter) {
 /**
  * What a free walk asks the person before: the control a click, Enter or Space, or a typed new line would
  * press that sends something, unless the server marked it or has opened writes for a deed its plan approved. Its name, or null.
+ * `around` runs the look (the badge hides for it).
  */
-export async function submitIn(name, req) {
+export async function submitIn(name, req, around = (look) => look()) {
   const tab = walk;
   if (!tab?.free || tab.writesOpen) return null;
   const clicks = name === 'mouse' && (req.action === 'click' || req.action === 'down');
   const keys = name === 'keyboard' && ((req.action === 'press' && ['Enter', ' ', 'Space'].includes(req.key)) || (req.action === 'type' && /[\r\n]/.test(String(req.text ?? ''))));
   if (!clicks && !keys) return null;
   const at = clicks ? (req.action === 'click' ? { x: Number(req.x), y: Number(req.y) } : { x: tab.mouse.x, y: tab.mouse.y }) : null;
-  const found = await inLookout(`(${submitsAt})(${JSON.stringify(at)}, ${keys && req.key !== ' ' && req.key !== 'Space'})`);
+  const found = await around(() => inLookout(`(${submitsAt})(${JSON.stringify(at)}, ${keys && req.key !== ' ' && req.key !== 'Space'})`));
   return typeof found?.value === 'string' && found.value ? found.value : null;
 }
 
@@ -754,7 +1025,9 @@ function stepList(key, change) {
 export function letPast(on = true) { if (walk) walk.past = on && walk.url ? walk.url : null; }
 
 /** Whether what {@link lookInPage} saw on the walked tab is a sign-in the walk pauses at. */
-const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || (signingIn(seen) && (!tab.past || tab.past !== tab.url || seen.filled === true));
+// A filled password field holds it past Continue; a field that may hold one (a server's own code could read it) until
+// Continue, as a false alarm there must not hold a walk for the page's life.
+const signInShows = (tab, seen) => isSignInPage(tab.url) || seen?.status === 401 || seen?.filled === true || ((signingIn(seen) || mayRead(tab, seen)) && (!tab.past || tab.past !== tab.url));
 
 /** Whom to tell of a sign-in (control.js pauses the walk). Told synchronously, so the pause holds before anything else is done. */
 let spotted = () => undefined;
@@ -1138,10 +1411,110 @@ async function idle(idleTime, timeout) {
   }
 }
 
+/** The consent rules this extension carries (`consent-rules.js`), read from its own package once. */
+let consentScript = null;
+function consentRules() {
+  consentScript ??= fetch(chrome.runtime.getURL('walks/consent-rules.js')).then((res) => (res.ok ? res.text() : Promise.reject(new Error(String(res.status)))));
+  return consentScript.catch(() => { consentScript = null; throw fail('Error', 'the consent rules could not be read'); });
+}
+
+/**
+ * What a server's `evaluate` (or, `onNew`, `evaluateOnNewDocument`) runs: one of this extension's page helpers for that
+ * op, by name, called with its arguments, or the consent rules it carries (`loadConsent`, whose address argument is
+ * never loaded). A helper that types or reads a field always gets its `noSecrets` argument, whatever the server sent, so
+ * no password, card or one-time-code field is typed into or read, as `type` refuses. Code from the server only on a walk
+ * whose server named no helpers (an older one): its function's source, or an expression.
+ */
+async function serverExpression({ helper, fn, args, undef }, onNew = false) {
+  if (helper !== undefined) {
+    if (newDocument.includes(helper) !== onNew || (helper !== 'loadConsent' && !Object.hasOwn(helpers, helper))) throw fail('NotSupported', `this extension has no page helper named ${String(helper).slice(0, 80)} for this`);
+    if (helper === 'loadConsent') return consentRules();
+    const given = Array.isArray(args) ? args : [];
+    const at = Object.hasOwn(noSecrets, helper) ? noSecrets[helper] : -1;
+    const sent = at < 0 ? given : [...Array.from({ length: at }, (_, i) => (i < given.length ? given[i] : null)), true];
+    return expression({ fn: String(helpers[helper]), args: sent, undef: undef?.filter((i) => i !== at) });
+  }
+  if (walk?.named) throw fail('NotAllowed', 'a journey runs only the page helpers this extension carries');
+  return expression({ fn, args, undef });
+}
+
 /** A function's source called with its arguments, or an expression as it is. */
 function expression({ fn, args, undef }) {
   if (!Array.isArray(args)) return fn;
   return `(${fn}\n)(${args.map((arg, i) => (undef?.includes(i) ? 'undefined' : JSON.stringify(arg))).join(',')})`;
+}
+
+/* ------------------------------ what a screen reader hears ------------------------------ */
+
+/** Frames read with the page's own tree, nested ones too: each costs two more reads. */
+const FRAMES_MAX = 5;
+/** Fields checked for a secret one: past it, every field's value and the text inside it are left out. */
+const FIELDS_CHECKED = 200;
+const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'switch', 'slider', 'spinbutton', 'listbox']);
+const isFrameNode = (n) => (n.role?.value === 'Iframe' || n.role?.value === 'IframePresentational') && Number.isInteger(n.backendDOMNodeId);
+
+/** A field that may hold a password, payment card or one-time code, by its element's own attributes: the broad rule the picture cover keeps (`coverSecrets`). */
+function secretField(node) {
+  const attrs = node?.attributes ?? [];
+  const attr = (name) => { for (let i = 0; i + 1 < attrs.length; i += 2) if (String(attrs[i]).toLowerCase() === name) return String(attrs[i + 1]).toLowerCase(); return ''; };
+  const tokens = attr('autocomplete').split(/\s+/);
+  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && ['data-impeccable-secret-field', 'data-impeccable-secret-maybe'].includes(String(name).toLowerCase())) || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/.test(attr('type')) && ['name', 'id', 'placeholder', 'aria-label'].some((name) => /passw|pwd/.test(attr(name))));
+}
+
+/** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */
+async function withoutSecrets(nodes) {
+  // An editable region by its focusable root only: what is inside a rich-text editor is editable too, and no field.
+  const editable = (n) => n.properties?.some((p) => p.name === 'editable') && n.properties?.some((p) => p.name === 'focusable' && p.value?.value === true);
+  const fields = nodes.filter((n) => FIELD_ROLES.has(n.role?.value) || editable(n));
+  const secret = new Set();
+  await Promise.all(fields.map(async (n, i) => {
+    const node = i < FIELDS_CHECKED && Number.isInteger(n.backendDOMNodeId) ? (await cmd('DOM.describeNode', { backendNodeId: n.backendDOMNodeId }).catch(() => null))?.node : null;
+    if (!node || secretField(node)) secret.add(n.nodeId);
+  }));
+  if (!secret.size) return nodes;
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const drop = new Set();
+  const under = (id) => { for (const c of byId.get(id)?.childIds ?? []) if (!drop.has(c)) { drop.add(c); under(c); } };
+  for (const id of secret) under(id);
+  return nodes.filter((n) => !drop.has(n.nodeId)).map((n) => (secret.has(n.nodeId) ? { ...n, value: undefined, childIds: [] } : n));
+}
+
+/**
+ * The walked tab's accessibility tree, as a screen reader starts from it: the top document's, and each frame's of the
+ * same site by its frame element (another site's is listed as null, never read), with no secret field's value or text.
+ */
+async function hearTree() {
+  const { frameTree } = await cmd('Page.getFrameTree');
+  const urls = new Map();
+  const list = (t) => { urls.set(t.frame.id, t.frame.url); for (const c of t.childFrames ?? []) list(c); };
+  list(frameTree);
+  const home = webOrigin(frameTree.frame.url);
+  const ours = (url) => typeof url === 'string' && (url === 'about:blank' || url === 'about:srcdoc' || (home !== null && webOrigin(url) === home));
+  const nodes = (await cmd('Accessibility.getFullAXTree'))?.nodes ?? [];
+  const frames = [];
+  const queue = nodes.filter(isFrameNode);
+  while (queue.length && frames.length < FRAMES_MAX) {
+    const el = queue.shift().backendDOMNodeId;
+    const frameId = (await cmd('DOM.describeNode', { backendNodeId: el }).catch(() => null))?.node?.frameId;
+    const inner = frameId && ours(urls.get(frameId)) ? (await cmd('Accessibility.getFullAXTree', { frameId }).catch(() => null))?.nodes ?? null : null;
+    frames.push([el, inner && (await withoutSecrets(inner))]);
+    for (const n of inner ?? []) if (isFrameNode(n)) queue.push(n);
+  }
+  return { nodes: await withoutSecrets(nodes), frames };
+}
+
+/** The top document's element that has focus, by number (a frame, where focus is inside one), or null. Read in the walk's own reading world. */
+async function focusedNode() {
+  const tab = walk;
+  if (tab.reader?.loader !== tab.loader) {
+    const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
+    tab.reader = { loader: tab.loader, context: executionContextId };
+  }
+  const { result } = await cmd('Runtime.evaluate', { expression: 'document.activeElement', contextId: tab.reader.context }).catch(() => ({}));
+  if (!result?.objectId) return null;
+  const id = (await cmd('DOM.describeNode', { objectId: result.objectId }).catch(() => null))?.node?.backendNodeId ?? null;
+  await cmd('Runtime.releaseObject', { objectId: result.objectId }).catch(() => undefined);
+  return id;
 }
 
 /** The one picture a walk ever attaches: a plain square, drawn here. Nothing from the person's computer, nothing fetched. */
@@ -1226,6 +1599,7 @@ function attach(x, y, data, name, type) {
 const KEYS = {
   Enter: { code: 'Enter', vk: 13, text: '\r' },
   Tab: { code: 'Tab', vk: 9 },
+  'Shift+Tab': { key: 'Tab', code: 'Tab', vk: 9, modifiers: 8 },
   Escape: { code: 'Escape', vk: 27 },
   Backspace: { code: 'Backspace', vk: 8 },
   Delete: { code: 'Delete', vk: 46 },
@@ -1242,7 +1616,7 @@ const KEYS = {
 
 function keyOf(name) {
   const named = KEYS[name];
-  if (named) return { key: named.key ?? name, code: named.code, windowsVirtualKeyCode: named.vk, ...(named.text ? { text: named.text } : {}) };
+  if (named) return { key: named.key ?? name, code: named.code, windowsVirtualKeyCode: named.vk, ...(named.text ? { text: named.text } : {}), ...(named.modifiers ? { modifiers: named.modifiers } : {}) };
   if ([...name].length !== 1) throw fail('Error', `Unknown key: "${name}"`);
   const upper = name.toUpperCase();
   const code = /^[A-Z]$/.test(upper) ? `Key${upper}` : /^[0-9]$/.test(name) ? `Digit${name}` : undefined;
@@ -1252,24 +1626,27 @@ function keyOf(name) {
 /** What typing must never reach, by what has focus (signin.js `lookInPage`). */
 const UNTYPABLE = { password: 'a password field', card: 'a payment card field', code: 'a one-time code field', frame: 'a frame on another origin' };
 
-/** Throws `NotAllowed` unless a key may go where focus is now. A page that cannot be read is not typed into. */
-async function typable() {
+/** Keys that only move focus or close something: no text goes in and none comes out, so they leave any field, or a frame on another origin. */
+const MOVES = new Set(['Tab', 'Shift+Tab', 'Escape']);
+
+/** Throws `NotAllowed` unless a key may go where focus is now (a press names its `key`). A page that cannot be read is not typed into. */
+async function typable(key) {
   const seen = await look();
   if (!seen) throw fail('NotAllowed', 'a journey types only where it can see the focus');
-  if (seen.focus) throw fail('NotAllowed', `a journey does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
+  if (seen.focus && !MOVES.has(key)) throw fail('NotAllowed', `a journey does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
 }
 
 async function press(name) {
   const key = keyOf(name);
   await cmd('Input.dispatchKeyEvent', { type: key.text ? 'keyDown' : 'rawKeyDown', ...key });
-  await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, ...(key.code ? { code: key.code, windowsVirtualKeyCode: key.windowsVirtualKeyCode } : {}) });
+  await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, ...(key.code ? { code: key.code, windowsVirtualKeyCode: key.windowsVirtualKeyCode } : {}), ...(key.modifiers ? { modifiers: key.modifiers } : {}) });
 }
 
 /**
  * `open` for a walk of the person's own tab: the debugger goes on the tab the account worker named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
-async function adopt(name, allow, free) {
+async function adopt(name, allow, free, named, signInPage) {
   const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
@@ -1296,7 +1673,7 @@ async function adopt(name, allow, free) {
     still();
     // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
     const writable = [...new Set([site, ...allowedFor(allow)])];
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, named: named === true, signInPage: signInPage === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1325,9 +1702,12 @@ async function adopt(name, allow, free) {
 export const ops = {
   // The tab is this walk's own, opened empty: the guard is on it before it asks for anything.
   // `free`: its writes are not held; an older server never says it, so its walks are held as ever.
-  async open({ url, name, allow, free }) {
+  // `helpers`: the server names this extension's own page helpers (`page-helpers.js`) and sends no code; an older
+  // server never says it, and sends a function's source as ever.
+  // `signInPage`: the server takes the one still of a sign-in page (`sign-in-page`); an older one never says it, and gets none.
+  async open({ url, name, allow, free, helpers: named, signInPage }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow, free);
+    if (adopted) return adopt(name, allow, free, named, signInPage);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -1351,7 +1731,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1447,12 +1827,13 @@ export const ops = {
 
   // In the server's own world (`READER`), made once a document, so what one read leaves (a listener) the next can find.
   async evaluate(req) {
-    const source = expression(req);
     const tab = walk;
     if (!tab) throw fail('OutingClosed', 'no tab is open');
+    const source = await serverExpression(req);
     const run = async () => {
       let world = {};
-      if (!PAGE_WORLD.test(source)) {
+      // A helper names its world; an older server's code is matched for the consent rules' mark.
+      if (req.helper !== undefined ? !pageWorld.includes(req.helper) : !PAGE_WORLD.test(source)) {
         if (tab.reader?.loader !== tab.loader) {
           const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
           tab.reader = { loader: tab.loader, context: executionContextId };
@@ -1478,7 +1859,7 @@ export const ops = {
 
   // In the page's own world, as the server's own browser runs them (its system face, its consent rules).
   async evaluateOnNewDocument(req) {
-    const source = expression(req);
+    const source = await serverExpression(req, true);
     const tab = walk;
     const seals = tab.seals;
     const added = await cmd('Page.addScriptToEvaluateOnNewDocument', { source });
@@ -1508,10 +1889,34 @@ export const ops = {
   // Never with Chrome's own `clip`: Chrome lays the tab out again around a clip for the moment of the picture, which
   // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
   // beyond the viewport is blank, as Chrome's own clip of it is.
-  async screenshot({ format, quality, clip }) {
-    const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false });
+  //
+  // With `plain`, the picture as taken is sent beside one the persona's sight drew (`seenAs`): the same capture under the
+  // same cover, for a page that shows the screen as it is. None where nothing was drawn.
+  async screenshot({ format, quality, clip, plain }) {
+    // Its secret fields covered for the picture alone (`cover`), until it is back: a page that could not be, tried
+    // twice, is not pictured.
+    let data;
+    stills += 1;
+    try {
+      for (let tries = 0; ; tries++) {
+        const covered = await cover(true);
+        if (Date.now() < covered) {
+          ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
+          if (Date.now() < covered) break;
+        }
+        if (tries) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
+        await sleep(COVER_RETRY_MS);
+      }
+    } finally {
+      stills -= 1;
+      if (!stills && !walk?.film) await cover(false);
+    }
     const size = stillSize(walk);
-    if (!clip && !size) return { value: { data: await seenAs(data, format, quality) } };
+    const seen = async (taken) => {
+      const drawn = await seenAs(taken, format, quality);
+      return { value: { data: drawn, ...(plain === true && drawn !== taken ? { plain: taken } : {}) } };
+    };
+    if (!clip && !size) return seen(data);
     let shot;
     if (clip) {
       const { cssVisualViewport: css, visualViewport: device } = await cmd('Page.getLayoutMetrics');
@@ -1522,7 +1927,7 @@ export const ops = {
     } else {
       shot = await smaller(data, size.width, size.height, format, quality ?? 100, { keep: true });
     }
-    return { value: { data: await seenAs(shot, format, quality) } };
+    return seen(shot);
   },
 
   // Never while a film's picture is being taken (`pointer`).
@@ -1552,12 +1957,13 @@ export const ops = {
     });
   },
 
-  // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.
+  // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin, but
+  // Tab, Shift+Tab and Escape, which only leave it.
   async keyboard({ action, key, text }) {
     const at = fences;
     walk.lastInputAt = Date.now();
     if (action === 'press') {
-      await typable();
+      await typable(String(key));
       overtaken(at);
       // On a focused native list, its choice steps (`stepList`); on another site, where the walk only looks, it stays.
       const listed = await inLookout(`(${stepList})(${JSON.stringify(String(key))}, ${!lookOnly()})`);
@@ -1595,6 +2001,18 @@ export const ops = {
 
   async waitForNetworkIdle({ idleTime, timeout }) {
     await idle(idleTime, timeout);
+    return {};
+  },
+
+  // A screen reader's reads, on this tab only and by number: never a protocol method or code from the server.
+  async hear({ what, node }) {
+    if (what === 'tree') return { value: await hearTree() };
+    if (what === 'focused') return { value: await focusedNode() };
+    if (!Number.isInteger(node) || node <= 0) throw fail('Error', 'hear needs a node by its number');
+    if (what === 'box') return { value: (await cmd('DOM.getBoxModel', { backendNodeId: node }).catch(() => null))?.model?.border ?? null };
+    if (what === 'show') await cmd('DOM.scrollIntoViewIfNeeded', { backendNodeId: node });
+    else if (what === 'focus') await cmd('DOM.focus', { backendNodeId: node });
+    else throw fail('NotSupported', `hear has no ${String(what).slice(0, 40)}`);
     return {};
   },
 

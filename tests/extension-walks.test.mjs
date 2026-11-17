@@ -1,4 +1,5 @@
 import { after, describe, it } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -51,7 +52,7 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
-    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears', 'cover']"],
     ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
@@ -281,15 +282,17 @@ describe('walk guard', () => {
 // What the walk reads of the page for itself, on a stand-in document: the signs of a sign-in, and where typing lands.
 describe('walk lookout', () => {
   // `autofill`: Chrome filled it, which a script sees only as the `:autofill` state (its value reads empty).
-  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', disabled: attrs.disabled === true, readOnly: attrs.readOnly === true, matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
+  const field = (attrs = {}, size = 10) => ({ tagName: 'INPUT', type: attrs.type ?? 'text', value: attrs.value ?? '', disabled: attrs.disabled === true, readOnly: attrs.readOnly === true, matches: (sel) => attrs.autofill === true && /autofill/.test(sel), getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, getBoundingClientRect: () => ({ width: size, height: size }), checkVisibility: () => size > 0 });
   // `inputs`: every field of the page (`input`), the passwords among them unless given.
-  // A selector of password fields, read as Chrome would: by `type`, or by an `autocomplete` token.
-  const picks = (sel, f) => (/type="password"/.test(sel) && f.type === 'password') || [...sel.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token));
-  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs : passwords.filter((f) => picks(sel, f))) });
-  // A form of these fields: each knows it (`field.form`), and the page holds them all.
+  // A selector of password fields, read as Chrome would: by `type`, by the mark a field seen as one keeps, or by an
+  // `autocomplete` token.
+  const picks = (sel, f) => sel.split(', ').some((part) => (/type="password"/.test(part) && f.type === 'password') || (part === 'input[data-impeccable-secret-field]' && f.getAttribute('data-impeccable-secret-field') !== null) || [...part.matchAll(/autocomplete~="([\w-]+)"/g)].some(([, token]) => String(f.getAttribute('autocomplete') ?? '').split(/\s+/).includes(token)));
+  const doc = ({ passwords = [], inputs = passwords, frames = [], hosts = [], active = null } = {}) => ({ activeElement: active, querySelectorAll: (sel) => (sel === '*' ? [...frames, ...hosts] : sel === 'input' ? inputs.filter((f) => f.tagName === 'INPUT') : sel === '[data-impeccable-secret-form]' ? [...new Set(inputs.map((f) => f.parentElement))].filter((own) => own?.getAttribute('data-impeccable-secret-form') != null) : passwords.filter((f) => picks(sel, f))) });
+  // A form of these fields, in this order: each knows it (`field.form`, its `parentElement`), and the page holds them all.
   const form = (...fields) => {
-    const own = { querySelectorAll: (sel) => (sel === 'input' ? fields : fields.filter((f) => f.type === 'password')) };
-    for (const f of fields) f.form = own;
+    const attrs = {};
+    const own = { tagName: 'FORM', children: fields, getAttribute: (name) => attrs[name] ?? null, setAttribute: (name, value) => { attrs[name] = value; }, removeAttribute: (name) => { delete attrs[name]; }, querySelectorAll: (sel) => (sel === 'input' ? fields.filter((f) => f.tagName === 'INPUT') : fields.filter((f) => f.type === 'password')) };
+    for (const f of fields) f.form = f.parentElement = own;
     return fields;
   };
   const page = (...forms) => doc({ inputs: forms.flat(), passwords: forms.flat().filter((f) => f.type === 'password') });
@@ -312,17 +315,86 @@ describe('walk lookout', () => {
     ['settings signed in, Chrome’s autofill in the change of password', page(form(field({ type: 'password', autofill: true }), field({ type: 'password' }))), { password: true, filled: true, focus: null }],
     ['a shown password: a text field for the current password, holding one', doc({ passwords: [field({ autocomplete: 'current-password', value: 'x' })] }), { password: true, filled: true, focus: null }],
     ['a one-time code step', doc({ passwords: [field({ autocomplete: 'one-time-code' })] }), { password: true, focus: null }],
+    // Catches a walk started with the password already shown as text: no look saw it as a password field. A text field
+    // named for one pauses the walk until Continue, and no longer: it may be a Company or a reset email.
+    ['a password shown from the start: a text field named for one, holding one', doc({ passwords: [field({ name: 'user[password]', value: 'x' })] }), { password: true, maybe: true, focus: null }],
+    // Catches a field named password let through because its label names an email.
+    ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, maybe: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
+    // Catches an ordinary page paused as a sign-in: a number field named for a password (a generator's length).
+    ['a number field named for a password, holding a length', doc({ passwords: [field({ type: 'number', name: 'password_length', value: '20' })] }), { password: false, focus: null }],
+    // Catches an email field that names a password held past Continue: the walk would never type the email.
+    ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: true, maybe: true, focus: null }],
     ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
     ['a disabled placeholder holding dots', page(form(field({ type: 'email' })), form(field({ type: 'password', value: '••••••', disabled: true }))), { password: false, focus: null }],
     ['focus on a password field', doc({ active: field({ type: 'password' }) }), { password: false, focus: 'password' }],
+    ['focus on a text field whose placeholder asks for a password, typed into', doc({ active: field({ placeholder: 'Password' }) }), { password: false, focus: null }],
     ['focus on a card number', doc({ active: field({ autocomplete: 'shipping cc-number' }) }), { password: false, focus: 'card' }],
     ['focus on a one-time code', doc({ active: field({ autocomplete: 'one-time-code' }) }), { password: false, focus: 'code' }],
     ['focus in a frame on another origin', doc({ active: frame(null) }), { password: false, focus: 'frame' }],
     ['focus on a password field in a frame on its origin', doc({ active: frame(doc({ active: field({ type: 'password' }) })) }), { password: false, focus: 'password' }],
     ['focus on a plain field', doc({ active: field({ autocomplete: 'email' }) }), { password: false, focus: null }],
   ]) {
-    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, ...expected, status: 200 }); });
+    it(`sees ${label}`, () => { assert.deepEqual(seen(document), { filled: false, maybe: expected.filled === true, ...expected, status: 200 }); });
+  }
+
+  // Catches a password the person shows with the site's "show password" button, at a sign-in pause, let past by their
+  // Continue as a plain text field, and typed into: a field seen as a password stays one.
+  it('sees a password field it saw as one once a button shows it as text', () => {
+    const shown = field({ type: 'password' });
+    const page = doc({ passwords: [shown], active: shown });
+    assert.deepEqual(seen(page), { password: true, filled: false, maybe: false, focus: 'password', status: 200 });
+    Object.assign(shown, { type: 'text', value: 'x' });
+    assert.deepEqual(seen(page), { password: true, filled: true, maybe: true, focus: 'password', status: 200 });
+  });
+
+  // Catches a "show password" button that swaps in a new, unmarked text field holding the password, before or after
+  // it is typed: the walk went on and pictured it, and a guard that reads only the marks (the page helpers'
+  // `clickByText`) read it. It is marked as a field that may hold a secret: covered and unread, and never a stop, so a
+  // Company once a password field beside it went (a checkout's account unticked) costs a black box only. And, the other
+  // way, a Company typed beside a password it never replaced, or in the next step drawn in the sign-in's form, is plain.
+  for (const [label, swap, typed, expected, attrs = {}, kept = {}] of [
+    ['a password a button swapped for a new text field', true, true, { filled: false, marked: true }],
+    ['a password field a button swapped while empty, then typed into', true, false, { filled: false, marked: true }],
+    ['a password a button swapped for a new text field named for one', true, true, { filled: false, maybe: true, marked: false }, { placeholder: 'Password' }],
+    ['a sign-up’s company typed beside its password', false, true, { filled: false, marked: false }, { name: 'company' }],
+    ['a company typed once the password field beside it went', 'gone', true, { filled: false, marked: true }, { name: 'company' }],
+    ['a company typed in the next step, drawn in the sign-in’s form', 'step', true, { filled: false, marked: false }, { name: 'company' }],
+    ['a company filled in the next step, drawn in the sign-in’s form with as many fields', 'next', true, { filled: false, marked: false }, { name: 'company' }],
+    // Catches a new field that keeps the password field's placeholder, shown before typing, and a Show that also adds a
+    // line beside it: each was let go.
+    ['a password a button swapped while empty for a field with its placeholder, then typed into', true, false, { filled: false, marked: true }, { placeholder: '••••••••' }, { placeholder: '••••••••' }],
+    ['a password a button swapped for a new text field and a line beside it', 'line', true, { filled: false, marked: true }],
+    // Catches a filled name beside the password taking the mark at a Show before typing, and a text field named for a
+    // password swapped for a bare one: the password typed in the new field was pictured and read. And a checkout whose
+    // account section was hidden, not removed: its filled fields went black.
+    ['a password a button swapped while empty beside a filled name, then typed into', 'beside', false, { filled: false, marked: true }],
+    ['a text field named for a password a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password' }],
+    ['a text field named user[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'user[password]' }],
+    // Catches a swap hidden by an email field named for a password mounted with it (Forgot password?): no fewer fields.
+    ['a password a button swapped while a reset email field mounts beside it', 'forgot', true, { filled: false, marked: true }],
+    ['a text field named password_reset[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password_reset[password]' }],
+    ['a company typed once the password field beside it was hidden', 'hide', true, { filled: false, marked: false }, { name: 'company' }],
+  ]) {
+    it(`sees ${label}`, () => {
+      const fields = form(field({ type: 'email', value: 'dana@example.com' }), field({ type: 'password', ...kept }), ...(swap === 'beside' ? [field({ name: 'fullname', value: 'Dana Ray' })] : []));
+      const page = doc({ inputs: fields, passwords: fields });
+      seen(page);
+      const text = field({ ...attrs, value: typed ? 'x' : '' });
+      text.form = text.parentElement = fields[0].form;
+      if (swap === 'step') fields.splice(0, 2, text);
+      else if (swap === 'next') fields.splice(0, 2, field({ name: 'first-name' }), text);
+      else if (swap === 'line') fields.splice(1, 1, text, { tagName: 'SMALL' });
+      else if (swap === 'gone') fields.splice(1, 1) && fields.unshift(text);
+      else if (swap === 'forgot') (fields[1] = text) && fields.push(Object.assign(field({ type: 'email', placeholder: 'Email to reset your password' }), { form: text.form, parentElement: text.form }));
+      else if (swap === 'hide') (fields[1] = Object.assign(field({ type: 'password', 'data-impeccable-secret-field': '' }, 0), { form: text.form })) && fields.push(text);
+      else if (swap) fields[1] = text;
+      else fields.push(text);
+      if (typed) text.value = 'x';
+      else { seen(page); text.value = 'x'; }
+      const now = seen(page);
+      assert.deepEqual({ filled: now.filled, maybe: now.maybe, marked: text.getAttribute('data-impeccable-secret-maybe') !== null }, { maybe: expected.marked, ...expected });
+    });
   }
 
   it('sees a 401 page', () => { assert.equal(seen(doc(), 401).status, 401); });
@@ -336,6 +408,22 @@ describe('walk lookout', () => {
     ['http://localhost:3000/login', false],
   ]) {
     it(`takes ${url} ${expected ? 'for' : 'not for'} a sign-in page`, () => { assert.equal(isSignInPage(url), expected); });
+  }
+});
+
+// The generated page helpers as carried: a regenerate that drops one of these fixes fails here.
+describe('walk page helpers', () => {
+  // Catches what a card code holds hashed into the page signature the server gets, which it could brute-force back.
+  for (const [label, attrs, changes] of [
+    ['a card security code', { autocomplete: 'cc-csc' }, false],
+    ['a search', { placeholder: 'Search' }, true],
+  ]) {
+    it(`signs the page ${changes ? 'anew' : 'the same'} whatever ${label} field holds`, async () => {
+      const { helpers } = await import('../extension/walks/page-helpers.js');
+      const field = { tagName: 'INPUT', value: '', getAttribute: (n) => attrs[n] ?? null };
+      const signed = (value) => { field.value = value; return vm.runInNewContext(`(${helpers.pageSignature})()`, { location: { href: 'https://shop.example/pay' }, document: { body: { innerText: 'Pay' }, querySelectorAll: () => [field] } }); };
+      assert.equal(signed('123') !== signed('456'), changes);
+    });
   }
 });
 
@@ -381,6 +469,10 @@ describe('walk worker', () => {
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } } },
     tabs: { onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {} },
     sidePanel: { async open() {}, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); } },
+    // The walked tab's frames: the top document alone, unless a test gives it more.
+    webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
+    // The extension's own cover, and its blank fields for a sign-in's still, run in the top document (frame 0); nothing else answers.
+    scripting: { async executeScript({ func }) { return ['coverSecrets', 'coverHolds', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
     // Chrome's session rules (net-hold.js), with the two a walk left before this worker restarted.
     declarativeNetRequest: {
       rules: [{ id: 20541 }, { id: 20542 }],
@@ -420,7 +512,7 @@ describe('walk worker', () => {
   });
 
   // The server walks the person's Chrome only with a helper that says it holds every write.
-  it('says in its hello that it holds the tab’s writes', async () => {
+  it('says in its hello that it holds the tab’s writes, and which page helpers it carries', async () => {
     await loaded;
     const ws = sockets.at(-1);
     const heard = [];
@@ -428,6 +520,10 @@ describe('walk worker', () => {
     ws.onopen();
     assert.ok(heard[0].hello.can.includes('hold'));
     assert.equal(heard[0].hello.version, MANIFEST.version);
+    // Which page helpers it carries: the hash of the two files as they are, so a server can tell an older set.
+    const [helperFile, consentFile] = ['page-helpers.js', 'consent-rules.js'].map((f) => readFileSync(path.join(ROOT, 'extension/walks', f), 'utf8'));
+    const hashed = createHash('sha256').update(helperFile.slice(0, helperFile.indexOf('\n/** This file'))).update(consentFile).digest('hex').slice(0, 16);
+    assert.equal(heard[0].hello.helpers, hashed);
   });
 
   it('points the toolbar icon at the walk panel while a walk is under way, and back at the popup after', async () => {
@@ -565,7 +661,7 @@ describe('walk worker', () => {
     const { current, dispatch } = await import('../extension/walks/store.js');
     const { COPY } = await import('../extension/walks/panel/copy.js');
     driver.speak((message) => told.push(message));
-    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira', signInPage: true });
     return { ...driver, ...control, current, dispatch, COPY };
   })());
 
@@ -612,6 +708,49 @@ describe('walk worker', () => {
       assert.equal(keys(at), 2, 'anywhere else a key is pressed');
     } finally {
       answers['Runtime.evaluate'] = was;
+    }
+  });
+
+  // A screen reader's reads: Chrome's tree of the walked tab and its same-site frames, never a secret field's value or
+  // text, never another site's frame, never another tab, and never a protocol method the server names.
+  it('hears the walked tab’s accessibility tree and its same-site frames, with no secret field’s value, and nothing else', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const text = (id, name, parent) => ({ nodeId: id, role: { value: 'StaticText' }, name: { value: name }, childIds: [], parent });
+    const top = [
+      { nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '4', '6', '7'] },
+      { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Card number' }, value: { value: '4242 4242 4242 4242' }, backendDOMNodeId: 20, childIds: ['3'] }, text('3', '4242 4242 4242 4242'),
+      { nodeId: '4', role: { value: 'searchbox' }, name: { value: 'Search' }, value: { value: 'milk' }, backendDOMNodeId: 40, childIds: ['5'] }, text('5', 'milk'),
+      { nodeId: '6', role: { value: 'Iframe' }, backendDOMNodeId: 60, childIds: [] },
+      { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
+    ];
+    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '3', '4'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }, { nodeId: '3', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 91, childIds: [] }, { nodeId: '4', role: { value: 'textbox' }, name: { value: 'Password' }, value: { value: 'hunter22' }, backendDOMNodeId: 92, childIds: [] }];
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] }, 91: { nodeName: 'INPUT', attributes: ['type', 'text', 'data-impeccable-secret-field', ''] }, 92: { nodeName: 'INPUT', attributes: ['type', 'text', 'placeholder', 'Password'] } };
+    const was = { ...answers };
+    Object.assign(answers, {
+      'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
+      'Accessibility.getFullAXTree': (params) => ({ nodes: params?.frameId === 'own' ? inner : params?.frameId ? [text('1', 'another site')] : top }),
+      'DOM.describeNode': (params) => ({ node: elements[params.backendNodeId] }),
+    });
+    try {
+      const at = sent.length;
+      const { value } = await ops.hear({ what: 'tree' });
+      const byId = new Map(value.nodes.map((n) => [n.nodeId, n]));
+      assert.deepEqual([byId.get('2').value, byId.get('2').name.value, byId.has('3'), byId.get('4').value.value, byId.has('5')], [undefined, 'Card number', false, 'milk', true], 'the card field keeps its label, not its number');
+      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes ? nodes.filter((n) => n.nodeId !== '1').map((n) => n.value ?? 'blank') : null]), [[60, ['blank', 'blank', 'blank']], [70, null]], 'the same site’s frame is read, its code field and its passwords shown as text (marked, or a new field a button swapped in) blank; another site’s is not');
+      assert.deepEqual(args.slice(at).filter((_, i) => sent[at + i] === 'Accessibility.getFullAXTree').map((p) => p?.frameId ?? 'top'), ['top', 'own']);
+      // One node by its number: its box, in view, focused. Nothing for another tab, a node by no number, or a method by name.
+      answers['DOM.getBoxModel'] = () => ({ model: { border: [1, 2, 3, 2, 3, 4, 1, 4] } });
+      assert.deepEqual(await ops.hear({ what: 'box', node: 40 }), { value: [1, 2, 3, 2, 3, 4, 1, 4] });
+      const moved = sent.length;
+      await ops.hear({ what: 'focus', node: 40 });
+      assert.deepEqual(args.slice(moved).filter((_, i) => sent[moved + i] === 'DOM.focus'), [{ backendNodeId: 40 }]);
+      await assert.rejects(async () => ops.hear({ what: 'tree', tabId: 3 }), { name: 'NotAllowed' });
+      await assert.rejects(async () => ops.hear({ what: 'focus', node: '#pay' }), { name: 'Error' });
+      await assert.rejects(async () => ops.hear({ what: 'Runtime.evaluate', node: 40, params: { expression: '1' } }), { name: 'NotSupported' });
+    } finally {
+      Object.assign(answers, was);
+      for (const key of ['Accessibility.getFullAXTree', 'DOM.describeNode', 'DOM.getBoxModel']) if (!(key in was)) delete answers[key];
     }
   });
 
@@ -705,23 +844,94 @@ describe('walk worker', () => {
     });
   }
 
+  // Each sign on a document of its own, as Chrome commits it: the still is taken once a document.
+  const fresh = (loaderId) => fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url: `http://localhost:3000/${loaderId}` } });
+  // A sign-in page drawn for a persona's sight goes with the picture as taken, as WebP, while the message fits what the
+  // server rejoins (16 Mi characters); past that without it, the walk going on. A 10M-character still at a screen's density.
+  for (const [label, webpBytes, kept] of [['beside it as WebP', 600_000, true], ['without it where both would not fit', 6_000_000, false]]) {
+    it(`sends a sign-in page seen with older eyes with the picture as taken ${label}`, async () => {
+      const { ops, command, current } = await walked();
+      const { handoff } = await chrome.storage.session.get('handoff');
+      const was = { shot: answers['Page.captureScreenshot'], bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+      answers['Page.captureScreenshot'] = () => ({ data: 'Q'.repeat(10_000_000) });
+      globalThis.createImageBitmap = async () => ({ width: 2, height: 1, close() {} });
+      globalThis.OffscreenCanvas = class {
+        getContext() { const px = new Uint8ClampedArray(8); return { drawImage() {}, getImageData: () => ({ data: px }), putImageData() {} }; }
+        async convertToBlob({ type }) { return type === 'image/webp' ? new Blob(['RIFF', new Uint8Array(webpBytes)]) : new Blob([new Uint8Array(7_500_000)]); }
+      };
+      await chrome.storage.session.set({ handoff: { ...handoff, sees: 'older' } });
+      const heard = told.length;
+      let asked;
+      try {
+        fresh(`s9-${webpBytes}`);
+        page.seen = { password: true };
+        asked = ops.url();
+        for (let turn = 0; turn < 400 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
+      } finally {
+        await chrome.storage.session.set({ handoff });
+        answers['Page.captureScreenshot'] = was.shot;
+        Object.assign(globalThis, { createImageBitmap: was.bitmap, OffscreenCanvas: was.canvas });
+      }
+      const message = told.slice(heard).find((m) => m.event === 'sign-in-page');
+      assert.deepEqual([current().state, message.still.length, message.plain === undefined ? null : atob(message.plain.slice(0, 8)).slice(0, 4), JSON.stringify(message).length < 16 * 1024 * 1024], ['paused', 10_000_000, kept ? 'RIFF' : null, true]);
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      await asked;
+    });
+  }
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while a 401 holds.
-  for (const [sign, show] of [
-    ['a visible password field', () => { page.seen = { password: true }; }],
-    ['a move to a sign-in host', () => fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } })],
-    ['a 401 asking for a password', () => { page.seen = { status: 401 }; fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }],
+  // The page is pictured once as it pauses, every field blank, where it shows one to sign in with (`pictured`), and
+  // never where a frame of it could not be drawn blank (`unblank`): a field Chrome filled would show, nor where the tab
+  // moved on while it was taken or its title read (`moved`): the picture and the title would be of the next page. Its
+  // title goes with its picture only, and neither to a server that never said it takes them (`older`).
+  let blankFields;
+  for (const [sign, show, pictured, unblank = false, older = false] of [
+    ['a visible password field', () => { fresh('s1'); page.seen = { password: true }; }, true],
+    ['a move to a sign-in host', () => { fresh('s2'); fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } }); }, false],
+    ['a 401 asking for a password', () => { page.seen = { status: 401 }; fresh('l2'); fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }, false],
+    ['a password field Chrome filled, on a page a frame of which can’t be drawn blank', () => { fresh('s4'); page.seen = { password: true, filled: true }; }, false, true],
+    ['a visible password field, the tab moving on as it is pictured', () => {
+      fresh('s5'); page.seen = { password: true };
+      const was = answers['Page.captureScreenshot'];
+      answers['Page.captureScreenshot'] = (params) => { answers['Page.captureScreenshot'] = was; fresh('s6'); return was(params); };
+    }, false, 'moved'],
+    ['a visible password field, the tab moving on as its title is read', () => {
+      fresh('s7'); page.seen = { password: true };
+      const at = sent.length, was = chrome.tabs.get;
+      chrome.tabs.get = async (id) => {
+        const tab = await was(id);
+        if (!sent.slice(at).includes('Page.captureScreenshot')) return tab;
+        chrome.tabs.get = was;
+        fresh('s8');
+        return { ...tab, title: 'Inbox (3)' };
+      };
+    }, false, 'moved'],
+    ['a visible password field, for a server that never said it takes its picture', () => { fresh('s9'); page.seen = { password: true }; }, false, false, true],
   ]) {
     it(`pauses itself at ${sign}, until the sign-in is gone`, async () => {
-      const { ops, command, current, COPY } = await walked();
+      const { ops, command, current, COPY, walk } = await walked();
+      const { get } = chrome.tabs;
+      chrome.tabs.get = async (id) => ({ ...(await get(id)), title: 'Sign in' });
+      walk.signInPage = !older;
       // What the walk was doing as the guard first answered the tab.
       const { sendCommand } = chrome.debugger;
       let answeredWhile;
       chrome.debugger.sendCommand = async (target, method, params) => { if (method.startsWith('Fetch.')) answeredWhile ??= current().state; return sendCommand(target, method, params); };
+      const { executeScript } = chrome.scripting, blanks = [];
+      chrome.scripting.executeScript = async (call) => { if (call.func?.name === 'blankFields') { blankFields = call.func; blanks.push(call.args[0]); if (unblank === true && call.args[0]) return []; } else if (call.func?.name === 'coverSecrets' && call.args[0]) blanks.push('cover'); return executeScript(call); };
+      const shots = sent.length, heard = told.length;
       try { show(); } finally { setTimeout(() => { chrome.debugger.sendCommand = sendCommand; }, 10); }
       let answered = false;
       const asked = ops.url().then(() => { answered = true; });
-      await settle(20);
-      assert.deepEqual([current().state, current().held, titles.at(-1), answered], ['paused', 'sign-in', COPY.signIn, false]);
+      for (let turn = 0; turn < 40 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
+      Object.assign(chrome.scripting, { executeScript });
+      Object.assign(chrome.tabs, { get });
+      walk.signInPage = true;
+      // The pause says it kept a picture only where it did.
+      assert.deepEqual([current().state, current().held, current().pictured, titles.at(-1), answered], ['paused', 'sign-in', pictured, pictured ? COPY.signInPictured : COPY.signIn, false]);
+      // Fields blank, then secrets covered, the one picture, and both off again; none at all where nothing shows to sign in with.
+      const pages = told.slice(heard).filter((m) => m.event === 'sign-in-page');
+      assert.deepEqual([pages.map((m) => [typeof m.still, m.title]), since(shots, 'Page.captureScreenshot'), blanks], older ? [[], 0, []] : pictured || unblank === 'moved' ? [[pictured ? ['string', 'Sign in'] : ['undefined', undefined]], 1, [true, 'cover', false]] : [[['undefined', undefined]], 0, unblank ? [true, false] : []]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
       if (sign === 'a move to a sign-in host') assert.equal(answeredWhile, 'paused', 'paused before the guard answered');
       else if (sign === 'a 401 asking for a password') {
@@ -739,6 +949,28 @@ describe('walk worker', () => {
       assert.deepEqual([answered, current().state, current().held, titles.at(-1)], [true, 'walking', null, MANIFEST.name]);
     });
   }
+
+  // The page's own `!important` rules can't show a filled field: each field's own style says it, important, and is put
+  // back as it was, also where a frame's run and the run of the page round it both reach it.
+  it('blanks a sign-in page’s fields through their own style, and puts it back', () => {
+    const style = (init) => {
+      const props = new Map(Object.entries(init));
+      return { props, setProperty(prop, value, priority = '') { props.set(prop, [value, priority]); }, removeProperty(prop) { props.delete(prop); }, getPropertyValue: (prop) => props.get(prop)?.[0] ?? '', getPropertyPriority: (prop) => props.get(prop)?.[1] ?? '' };
+    };
+    const field = (value, init = {}, autofill = false) => {
+      const attrs = new Map([['style', 'x']]);
+      return { value, isContentEditable: false, style: style(init), hasAttribute: (n) => attrs.has(n), getAttribute: (n) => attrs.get(n) ?? null, setAttribute: (n, v) => attrs.set(n, String(v)), removeAttribute: (n) => attrs.delete(n), matches: (sel) => autofill && sel === ':-webkit-autofill' };
+    };
+    const [typed, empty, autofilled] = [field('dana@example.com'), field('', { color: ['red', ''] }), field('', {}, true)];
+    class Sheet { cssRules = []; insertRule(rule) { this.cssRules.push({ cssText: rule }); } }
+    const document = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [] : [typed, empty, autofilled]) };
+    const [page, frame] = [0, 1].map(() => vm.createContext({ CSSStyleSheet: Sheet, setTimeout: () => 0, clearTimeout() {}, document }));
+    const of = (f) => Object.fromEntries([...f.style.props].map(([prop, [value, priority]]) => [prop, `${value}${priority ? ' !' : ''}`]));
+    for (const world of [page, frame]) assert.equal(vm.runInContext(`(${blankFields})(true, 0)`, world), 3);
+    assert.deepEqual([of(typed).filter, of(typed)['-webkit-text-fill-color'], of(empty).filter, of(empty).color, of(autofilled).filter], ['brightness(0) !', 'transparent !', undefined, 'transparent !', 'brightness(0) !']);
+    for (const world of [page, frame]) vm.runInContext(`(${blankFields})(false)`, world);
+    assert.deepEqual([of(typed), of(empty), of(autofilled), [typed, empty, autofilled].some((f) => f.hasAttribute('data-impeccable-still-blank')), document.adoptedStyleSheets.length], [{}, { color: 'red' }, {}, false, 0]);
+  });
 
   it('tells the other end again when the person’s pause becomes a sign-in pause', async () => {
     const { command, current } = await walked();
@@ -1021,21 +1253,276 @@ describe('walk worker', () => {
     assert.deepEqual(await worldsOf('function readConsentState() { return globalThis.__impeccableConsent; }'), [undefined], 'the page’s own world');
   });
 
-  // Catches: a script run while the password is in its field, or refused where the server waits out a pause.
-  it('holds a script while a password is in a field, and runs it after Continue on the same page', async () => {
-    const { ops, command, current, walk } = await walked();
-    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
-    page.seen = { password: true, filled: true };
-    const at = sent.length;
-    const inRead = () => args.slice(at).filter((p, i) => sent[at + i] === 'Runtime.evaluate' && p.contextId !== undefined && p.contextId === worlds['impeccable-walk-read']).length;
-    const read = ops.evaluate({ fn: '() => 1', args: [] });
-    await settle(20);
-    assert.deepEqual([current().state, current().held, inRead()], ['paused', 'sign-in', 0], 'not run while it is filled');
+  // The store bars running code a server sent: a server that names helpers gets only this extension's own run, and no code.
+  it('on a walk whose server names helpers, runs each of its own page helpers by name for its op and in its world, its own consent rules, and refuses code', async (t) => {
+    const { ops, walk } = await walked();
+    const { helpers, pageWorld, newDocument } = await import('../extension/walks/page-helpers.js');
+    const consentRules = readFileSync(path.join(ROOT, 'extension/walks/consent-rules.js'), 'utf8');
     page.seen = {};
-    assert.equal(await command('resume'), true);
-    await read;
-    assert.deepEqual([inRead(), since(at, 'Page.navigate') + since(at, 'Page.reload'), walk.loader], [1, 0, 'filled']);
-    moveOff();
+    const href = 'http://localhost:3000/list';
+    const world = vm.createContext({ URL, setTimeout, clearTimeout, location: { href }, scrollTo(x, y) { world.scrolled = [x, y]; }, document: { documentElement: { lang: 'de' }, body: null, activeElement: null, querySelectorAll: (sel) => (sel === 'a[href]' ? [{ href: `${href}#1` }, { href: '' }] : []) } });
+    world.globalThis = world;
+    const was = answers['Runtime.evaluate'];
+    const shot = answers['Page.captureScreenshot'];
+    const fetched = globalThis.fetch;
+    // The extension's own package, as Chrome serves it to its worker.
+    globalThis.fetch = async (url) => (url === 'chrome-extension://ext/walks/consent-rules.js' ? new Response(consentRules) : new Response('', { status: 404 }));
+    const ran = [];
+    answers['Runtime.evaluate'] = (params) => {
+      // The badge's own world (hidden while a helper looks at a point) runs no helper.
+      if (params.contextId === worlds['impeccable-walk-lookout'] || params.expression.includes('__impeccableWalkBadge')) return was(params);
+      ran.push(params);
+      // By value, as Chrome hands it back. A helper may throw on a stub page, never reach for a name it does not have.
+      try { const value = vm.runInContext(params.expression, world); return { result: value === undefined ? {} : { value: JSON.parse(JSON.stringify(value)) } }; } catch (err) { if (err?.name === 'ReferenceError' || err?.name === 'SyntaxError') throw err; return { result: {} }; }
+    };
+    walk.named = true;
+    try {
+      for (const [helper, args, value] of [
+        ['pageAddress', [], href],
+        ['currentUrlOf', [], href],
+        ['documentLang', [], 'de'],
+        ['pageLinks', [], [`${href}#1`]],
+        ['relativeStylesMissedInPage', [], false],
+        ['focusedText', [], null],
+        ['scrollPageTo', [40], undefined],
+      ]) assert.deepEqual((await ops.evaluate({ helper, args })).value, value, helper);
+      assert.deepEqual(world.scrolled, [0, 40]);
+      // Every read is called by its own name, with what the server gave: each one a script that runs.
+      const reads = Object.keys(helpers).filter((h) => !newDocument.includes(h));
+      for (const helper of reads) await ops.evaluate({ helper, args: [null] });
+      assert.equal(ran.length, 7 + reads.length);
+      // The reads' own world, but for the consent rules' readers: they read what the rules left in the page's.
+      assert.deepEqual(ran.slice(7).map((p) => p.contextId), reads.map((h) => (pageWorld.includes(h) ? undefined : worlds['impeccable-walk-read'])));
+      assert.deepEqual(ran.slice(0, 7).map((p) => p.contextId), Array(7).fill(worlds['impeccable-walk-read']));
+      for (const req of [{ fn: '() => 1', args: [] }, { fn: 'document.title' }, { fn: 'function readConsentState() { return 1; }', args: [] }]) {
+        await assert.rejects(ops.evaluate(req), { name: 'NotAllowed' });
+        await assert.rejects(ops.evaluateOnNewDocument(req), { name: 'NotAllowed' });
+      }
+      // Each op its own helpers: a read never on every new document, a new document's script never as a read.
+      for (const helper of ['nope', 'constructor', '__proto__', 'toString', 'browserLanguage', 'loadConsent']) await assert.rejects(ops.evaluate({ helper, args: [] }), { name: 'NotSupported' }, helper);
+      for (const helper of ['clickByText', 'nope']) await assert.rejects(ops.evaluateOnNewDocument({ helper, args: [] }), { name: 'NotSupported' }, helper);
+      assert.equal(ran.length, 7 + reads.length, 'nothing refused reached the page');
+      const at = sent.length;
+      await ops.evaluateOnNewDocument({ helper: 'browserLanguage', args: ['de'] });
+      // The consent rules are the ones it carries: the address the server names is never loaded.
+      await ops.evaluateOnNewDocument({ helper: 'loadConsent', args: ['https://elsewhere.example/consent.js'] });
+      const added = args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument');
+      assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`, consentRules]);
+      assert.match(consentRules, /autoconsent/);
+      // A cookie banner with no decline button is never accepted: the rules' engine is told to press only a reject.
+      const told = [];
+      const consentPage = { autoconsentReceiveMessage: (m) => told.push(m) };
+      try { vm.runInNewContext(consentRules, consentPage); } catch { /* the engine after the bridge needs a real page */ }
+      await consentPage.autoconsentSendMessage({ type: 'init' });
+      assert.equal(told[0]?.config?.heuristicMode, 'reject');
+      // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`,
+      // nor pictured: a still or a film's frame is taken with it covered (`coverSecrets`, in the walk's own world).
+      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } insertRule(text, at) { this.cssRules.splice(at, 0, { cssText: text, selectorText: text.slice(0, text.indexOf(' {')) }); } };
+      const lookout = answers['Runtime.evaluate'];
+      answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
+      // The screen as Chrome draws it: the field's value, unless a rule of a sheet on it picks the field out, read as
+      // Chrome reads the cover's selectors (by `type`, by the mark, by part of `autocomplete`).
+      const picked = (el, part) => (part === 'input[type="password" i]' ? el.type === 'password' : part === '[data-impeccable-secret-field]' ? el.getAttribute('data-impeccable-secret-field') !== null : String(el.getAttribute('autocomplete') ?? '').includes(/^\[autocomplete\*="([\w-]+)" i\]$/.exec(part)?.[1] ?? '\0'));
+      const covers = (el) => world.document.adoptedStyleSheets.some((sheet) => [...sheet.cssRules].some((r) => { const text = r.cssText.replace(/^@layer [\w-]+ \{ /, ''); return text.slice(0, text.indexOf(' {')).split(', ').some((part) => picked(el, part)); }));
+      const drawn = [];
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(covers(world.document.activeElement) ? 'covered' : world.document.activeElement.value) - 1]) });
+      for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
+        const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: (sel) => ((/^input\[type="password" i\]:not/.test(sel) && field.type !== 'password') || sel === '[data-impeccable-secret-form]' ? [] : [field]), elementFromPoint: () => field };
+        field.value = '4242 4242 4242 4242';
+        assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
+        assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
+        // Drawn for a persona's sight, the picture as taken goes beside it: the same capture, so under the same cover.
+        const sight = { bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas, handoff: (await chrome.storage.session.get('handoff')).handoff };
+        globalThis.createImageBitmap = async (blob) => ({ width: 2, height: 1, px: new Uint8ClampedArray(await blob.arrayBuffer()), close() {} });
+        globalThis.OffscreenCanvas = class { getContext() { const canvas = this; return { drawImage(bitmap) { canvas.px = bitmap.px; }, getImageData: () => ({ data: canvas.px }), putImageData({ data }) { canvas.px = data; } }; } async convertToBlob() { return new Blob([this.px]); } };
+        await chrome.storage.session.set({ handoff: { ...sight.handoff, sees: 'older' } });
+        try {
+          const { data, plain } = (await ops.screenshot({ format: 'png', plain: true })).value;
+          assert.deepEqual([atob(plain), data !== plain], ['covered', true], `${kind}: the plain still`);
+        } finally {
+          await chrome.storage.session.set({ handoff: sight.handoff });
+          Object.assign(globalThis, { createImageBitmap: sight.bitmap, OffscreenCanvas: sight.canvas });
+        }
+        // A password field a "show password" button makes text after a still stays covered, unread and untyped.
+        if (kind === 'password') {
+          field.type = attrs.type = 'text';
+          assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'a password shown as text');
+        }
+        const from = drawn.length;
+        await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
+        await settle(40);
+        await ops.cdp({ method: 'Page.stopScreencast' });
+        assert.ok(drawn.length > from && drawn.slice(from).every((d) => d === 'covered'), 'no film frame shows it');
+        assert.equal(world.document.adoptedStyleSheets.length, 0, 'nor once the film ends');
+        field.value = 'kept';
+        for (const [helper, args] of [['typeInto', ['Secret', 'hunter2', false]], ['typeInto', ['Secret', 'hunter2', true, false]], ['fieldReads', [{ x: 1, y: 1 }]], ['fieldReads', [null, false]]]) {
+          assert.equal((await ops.evaluate({ helper, args })).value, null, `${helper} ${JSON.stringify(attrs)}`);
+        }
+        assert.deepEqual([field.value, field.focused], ['kept', false]);
+        // A screen reader's keys never go there either: the server asks first, by name.
+        assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
+      }
+      // A page of one frame is covered by the extension's own script too: only there does `chrome.dom` open a closed
+      // root. Where that script can't run in the top document, no still is taken.
+      const own = chrome.scripting.executeScript, pass = [];
+      chrome.scripting.executeScript = async ({ target, func }) => { pass.push(target.allFrames === true && func === helpers.coverSecrets); return []; };
+      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
+      // Catches a still of a field a site's own style kept uncovered (an inline `all: revert`, an earlier layer's
+      // `!important`), or put back since the cover ran: checked as drawn right before the picture, it is not taken.
+      chrome.scripting.executeScript = async ({ func }) => [{ frameId: 0, result: func === helpers.coverHolds ? 1 : 0 }];
+      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' });
+      // Chrome's own page for a load that failed takes no script and holds no page: its still is taken, so a journey
+      // that meets a dead link goes on.
+      const listed = chrome.webNavigation.frames;
+      chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1, errorOccurred: true }];
+      chrome.scripting.executeScript = async () => { throw new Error('Frame with ID 0 is showing error page'); };
+      assert.ok((await ops.screenshot({ format: 'png' })).value.data, 'an error page pictured');
+      chrome.webNavigation.frames = listed;
+      chrome.scripting.executeScript = own;
+      assert.ok(pass.includes(true), 'a one-frame page’s top document covered by the extension’s own script');
+      const field = { tagName: 'INPUT', type: 'text', value: '123', getAttribute: (n) => (n === 'autocomplete' ? 'cc-csc' : null), setAttribute() {}, removeAttribute() {}, children: [] };
+      const closed = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' || sel === '[data-impeccable-secret-form]' ? [] : [field]) };
+      const payment = { tagName: 'PAY-CARD', shadowRoot: null };
+      // Chrome opens only an HTML element's root: it throws on an icon's SVG ahead of the card, and here on one host too.
+      const icon = { tagName: 'svg', namespaceURI: 'http://www.w3.org/2000/svg', shadowRoot: null };
+      const odd = { tagName: 'ODD-CARD', namespaceURI: 'http://www.w3.org/1999/xhtml', shadowRoot: null, marks: [], setAttribute(n) { this.marks.push(n); } };
+      const dom = { openOrClosedShadowRoot: (el) => { if (el === icon || el === odd) throw new Error('Error in invocation of dom.openOrClosedShadowRoot(HTMLElement element)'); return el === payment ? closed : null; } };
+      const content = vm.createContext({ CSSStyleSheet: world.CSSStyleSheet, setTimeout: () => 0, clearTimeout() {}, document: { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [icon, odd, payment] : []) }, chrome: { dom } });
+      assert.equal(typeof vm.runInContext(`(${helpers.coverSecrets})(true)`, content), 'number');
+      assert.equal(closed.adoptedStyleSheets.length, 1, 'a card field in a closed shadow root covered');
+      assert.deepEqual(odd.marks, ['data-impeccable-secret-maybe'], 'a host whose root can’t be opened drawn as one box');
+      // Another site's frame (a hosted card box) is covered by the extension's own script in it; one that script can't
+      // enter is drawn as a solid box by the frame around it (black behind a transparent frame, inside a closed shadow
+      // root too), and one inside that box needs nothing more.
+      const card = world.document.activeElement;
+      const frame = { localName: 'iframe', tagName: 'IFRAME', nodeType: 1, contentDocument: null, contentWindow: { at: 1 } };
+      const inPay = { nodeType: 11, adoptedStyleSheets: [], children: [frame], querySelectorAll: (sel) => (sel === '*' ? [frame] : []) };
+      const pay = { localName: 'pay-frame', tagName: 'PAY-FRAME', nodeType: 1, shadowRoot: null };
+      frame.parentNode = inPay;
+      world.chrome = { dom };
+      dom.openOrClosedShadowRoot = (el) => { if (el === icon) throw new Error('Error in invocation of dom.openOrClosedShadowRoot(HTMLElement element)'); return el === pay ? inPay : null; };
+      world.document = { activeElement: card, adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [icon, pay] : sel === '[data-impeccable-secret-form]' ? [] : [card]), elementFromPoint: () => card };
+      // Chrome's list of the top document's frames: the card box first, then the one no script enters.
+      Object.assign(world, { window: world, length: 2, 0: { at: 0 }, 1: frame.contentWindow });
+      const tabs = chrome.webNavigation.frames, scripted = chrome.scripting.executeScript;
+      let [cardBox, slow, passes] = [false, 0, 0];
+      chrome.webNavigation.frames = [{ frameId: 0, parentFrameId: -1 }, { frameId: 7, parentFrameId: 0 }, { frameId: 9, parentFrameId: 0 }, { frameId: 11, parentFrameId: 9 }];
+      chrome.scripting.executeScript = async ({ target, func, args }) => {
+        if (func === helpers.coverSecrets) {
+          passes += args[0] === true;
+          if (args[0] && slow > 0) { slow -= 1; await new Promise((resolve) => setTimeout(resolve, 2500)); }
+          cardBox = args[0];
+          return [{ frameId: 0, result: 1 }, { frameId: 7, result: 1 }]; }
+        if (func.name === 'frameIndex') return [{ frameId: 0, result: -1 }, { frameId: 7, result: 0 }];
+        if (func === helpers.coverHolds) return [{ frameId: 0, result: 0 }, { frameId: 7, result: 0 }];
+        assert.deepEqual(target.frameIds, [0]);
+        return [{ frameId: 0, result: vm.runInContext(`(${func})(${JSON.stringify(args[0])})`, world) }];
+      };
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && inPay.adoptedStyleSheets[0]?.cssRules.some((r) => /^@layer [\w-]+ \{ iframe \{.*filter: brightness\(0\) !important; background-color: #000 !important;/.test(r.cssText)) ? 'covered' : 'shown') });
+      try {
+        assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', 'frames from other sites');
+        assert.deepEqual([cardBox, world.document.adoptedStyleSheets.length], [false, 0], 'each frame as it was once the still is taken');
+        // A frame slower to cover than a cover lasts by itself: never pictured with the top document's cover gone. Tried
+        // once more, then not pictured.
+        const frames = chrome.webNavigation.frames, pictured = answers['Page.captureScreenshot'];
+        chrome.webNavigation.frames = frames.slice(0, 2);
+        answers['Page.captureScreenshot'] = () => ({ data: btoa(cardBox && world.document.adoptedStyleSheets.length ? 'covered' : 'shown') });
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+        Object.assign(world, { setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+        try {
+          for (const [times, seen] of [[1, 'covered'], [2, 'NotAllowed']]) {
+            [slow, passes] = [times, 0];
+            let got;
+            ops.screenshot({ format: 'png' }).then((r) => { got = atob(r.value.data); }, (err) => { got = err.name; });
+            for (let turn = 0; turn < 400 && got === undefined; turn++) {
+              for (let flush = 0; flush < 10; flush++) await new Promise((resolve) => setImmediate(resolve));
+              t.mock.timers.tick(50);
+            }
+            assert.deepEqual([got, passes], [seen, 2], `a frame slow to cover ${times === 1 ? 'once' : 'twice'}`);
+          }
+        } finally {
+          t.mock.timers.reset();
+          Object.assign(world, { setTimeout, clearTimeout });
+          chrome.webNavigation.frames = frames;
+          answers['Page.captureScreenshot'] = pictured;
+        }
+        // One whose box nothing could draw (its element not found) is not pictured, after a second try.
+        chrome.webNavigation.frames = [...chrome.webNavigation.frames, { frameId: 13, parentFrameId: 0 }];
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const refused = assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' }, 'a frame neither covered nor boxed');
+        for (let turn = 0; turn < 50; turn++) await new Promise((resolve) => setImmediate(resolve));
+        t.mock.timers.tick(1000);
+        await refused;
+      } finally {
+        t.mock.timers.reset();
+        chrome.webNavigation.frames = tabs;
+        chrome.scripting.executeScript = scripted;
+      }
+      // A page it could not cover once is tried again, its world made again; one it could not cover twice is not pictured.
+      answers['Page.captureScreenshot'] = () => ({ data: btoa('taken') });
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      try {
+        for (const [fails, pictured] of [[1, true], [2, false]]) {
+          let tries = 0;
+          answers['Runtime.evaluate'] = (params) => (params.expression.includes('coverSecrets') && /\)\(true, \d+\)$/.test(params.expression) && ++tries <= fails * 2 ? { exceptionDetails: {} } : params.expression.includes('coverSecrets') ? { result: { value: 0 } } : lookout(params));
+          const taken = ops.screenshot({ format: 'png' }).then(() => true, (err) => (err.name === 'NotAllowed' ? false : Promise.reject(err)));
+          for (let turn = 0; turn < 50; turn++) await new Promise((resolve) => setImmediate(resolve));
+          t.mock.timers.tick(1000);
+          assert.equal(await taken, pictured, `a page it could not cover ${fails === 1 ? 'once' : 'twice'}`);
+        }
+      } finally {
+        t.mock.timers.reset();
+      }
+    } finally {
+      walk.named = false;
+      answers['Runtime.evaluate'] = was;
+      answers['Page.captureScreenshot'] = shot;
+      globalThis.fetch = fetched;
+    }
+  });
+
+  // Catches: a script run while the password is in its field, or refused where the server waits out a pause. And an
+  // older server's own script run while a field that may hold a password (a "show password" swap) is filled: only the
+  // named helpers keep it unread, so a walk that runs the server's code pauses there, and the person's Continue lets go
+  // (a false alarm must not hold the walk for the page's life); a password field holds past it.
+  for (const [label, seen, held] of [
+    ['a password is in a field', { password: true, filled: true }, true],
+    ['a field that may hold a password is filled, on an older server', { password: false, filled: false, maybe: true }, false],
+  ]) {
+    it(`holds a script while ${label}, and runs it after Continue on the same page`, async () => {
+      const { ops, command, current, walk } = await walked();
+      fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'filled', url: 'http://localhost:3000/join' } });
+      page.seen = seen;
+      const at = sent.length;
+      const inRead = () => args.slice(at).filter((p, i) => sent[at + i] === 'Runtime.evaluate' && p.contextId !== undefined && p.contextId === worlds['impeccable-walk-read']).length;
+      const read = ops.evaluate({ fn: '() => 1', args: [] });
+      await settle(20);
+      assert.deepEqual([current().state, current().held, inRead()], ['paused', 'sign-in', 0], 'not run while it is filled');
+      if (held) {
+        assert.equal(await command('resume'), false, 'and Continue waits while it is filled');
+        page.seen = {};
+      }
+      assert.equal(await command('resume'), true);
+      await read;
+      assert.deepEqual([inRead(), since(at, 'Page.navigate') + since(at, 'Page.reload'), walk.loader], [1, 0, 'filled']);
+      moveOff();
+    });
+  }
+
+  it('runs a named helper while a field that may hold a password is filled', async () => {
+    const { ops, current, walk } = await walked();
+    fire('Page.frameNavigated', { frame: { id: 'main', loaderId: 'maybe', url: 'http://localhost:3000/join' } });
+    page.seen = { password: false, filled: false, maybe: true };
+    walk.named = true;
+    try {
+      await ops.evaluate({ helper: 'documentLang', args: [] });
+      assert.equal(current().state, 'walking');
+    } finally {
+      walk.named = false;
+      page.seen = {};
+      moveOff();
+    }
   });
 
   // The pause's one barrier: what was under way when it landed answers nothing of then, and nothing decided before it
@@ -1087,15 +1574,16 @@ describe('walk worker', () => {
     // `sight`: the panel's pick for this journey; `card`: the persona card's own.
     const seen = async (sight, card) => {
       await chrome.storage.session.set({ handoff: { ...was, ...(sight ? { sees: sight } : {}), persona: { name: 'Mira', role: '', ...(card ? { sees: card } : {}) } } });
-      const { data } = (await ops.screenshot({ format: 'png' })).value;
+      const { data, plain } = (await ops.screenshot({ format: 'png', plain: true })).value;
       const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
-      return { data, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
+      return { data, plain, px: PIXELS.map((_, i) => [...bytes.subarray(i * 4, i * 4 + 3)]) };
     };
     try {
-      assert.equal((await seen(null)).data, taken, 'none chosen: the picture as taken');
+      assert.deepEqual(await seen(null).then(({ data, plain }) => [data, plain]), [taken, undefined], 'none chosen: the picture as taken, and no second');
       assert.equal((await seen('normal', 'older-eyes')).data, taken, 'Normal picked for a persona with older eyes: the picture as taken');
       const card = await seen(null, 'colour-blind');
       assert.ok(card.data !== taken && card.data === (await seen('colour-blind')).data, 'none picked: the card’s own');
+      assert.equal(card.plain, taken, 'and the picture as taken beside it');
       const [red, green, blue] = (await seen('colour-blind')).px;
       assert.ok(Math.abs(red[0] - red[1]) < 40 && Math.abs(green[0] - green[1]) < 40, `red and green both turn olive: ${red} ${green}`);
       assert.ok(blue[2] > blue[0] + 100, `blue stays blue: ${blue}`);
@@ -1400,6 +1888,13 @@ describe('walk worker', () => {
       assert.deepEqual(await tried('keyboard', { action: 'press', key: 'Enter' }), NOT_ASKED, 'Enter in a search');
       dom.document.activeElement = node('input', '', { type: 'email', 'aria-label': 'Email' }, post);
       assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Enter' })).asked, ['send', true], 'Enter in a form that posts');
+      // A key reaches the control inside a shadow root or a same-site frame, not their host.
+      dom.document.activeElement = Object.assign(node('div', 'Settings', {}, null, false), { shadowRoot: { activeElement: node('button', 'Delete account', { type: 'button' }) } });
+      assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Space' })).asked, ['send', true], 'Space on a delete in a shadow root');
+      dom.document.activeElement = Object.assign(node('iframe', '', {}, null, false), { contentDocument: { activeElement: node('button', 'Pay now', {}, post) } });
+      assert.deepEqual((await tried('keyboard', { action: 'press', key: 'Enter' })).asked, ['send', true], 'Enter on a pay in a same-site frame');
+      dom.document.activeElement = Object.assign(node('div', 'Delete account', {}, null, false), { shadowRoot: { activeElement: node('button', 'Show more', { type: 'button' }) } });
+      assert.deepEqual(await tried('keyboard', { action: 'press', key: 'Enter' }), NOT_ASKED, 'a harmless button in a shadow root');
       assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1, ask: { kind: 'send', what: 'Add the lamp' } }, 'yes'), { asked: ['send', false], told: [], done: true, pressed: true }, 'the server’s own ask, unannounced');
       await ops.writes({ open: false });
       await ops.writes({ open: true });
@@ -1408,6 +1903,43 @@ describe('walk worker', () => {
       assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1 }), NOT_ASKED, 'an older server: held, never asked');
     } finally {
       answers['Runtime.evaluate'] = was;
+      await reopen(undefined);
+    }
+  });
+
+  // The badge sits over the page's corner, where a shop's toast put its "Go to shopping bag": the walk found that button
+  // covered by the badge, twice, and a press there would have landed on Stop.
+  it('hides the badge while it presses or looks at a point, and only then', async () => {
+    const { ops, rearm, dispatch } = await walked();
+    const badgeIn = async () => { fire('Runtime.executionContextCreated', { context: { id: 77, name: 'impeccable-walk-badge', auxData: { frameId: 'main' } } }); await settle(5); };
+    const seenSince = (at) => args.slice(at).flatMap((p, i) => {
+      if (sent[at + i] === 'Input.dispatchMouseEvent') return [p.type];
+      if (sent[at + i] !== 'Runtime.evaluate') return [];
+      if (p.contextId === 77) return /veil\((true|false)\)/.test(p.expression) ? [p.expression.includes('veil(true)') ? 'hide' : 'show'] : [];
+      if (p.expression.includes('submitsAt')) return ['submitsAt'];
+      return p.contextId === worlds['impeccable-walk-read'] ? [p.expression.includes('clickByText') ? 'clickByText' : 'read'] : [];
+    });
+    await badgeIn();
+    let at = sent.length;
+    await ops.mouse({ action: 'click', x: 700, y: 560 });
+    await ops.evaluate({ helper: 'clickByText', args: ['Go to shopping bag', { locateOnly: true }] });
+    await ops.evaluate({ helper: 'pageAddress', args: [] });
+    assert.deepEqual(seenSince(at), ['hide', 'mouseMoved', 'mousePressed', 'mouseReleased', 'show', 'hide', 'clickByText', 'show', 'read']);
+    // On a free walk the press is first looked at for a submit: there too, or a "Place order" under the badge goes unasked.
+    const reopen = async (free) => {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira', ...(free ? { free } : {}) });
+      await settle(5);
+    };
+    try {
+      await reopen(true);
+      await badgeIn();
+      at = sent.length;
+      await ops.mouse({ action: 'click', x: 700, y: 560 });
+      assert.deepEqual(seenSince(at), ['hide', 'submitsAt', 'show', 'hide', 'mouseMoved', 'mousePressed', 'mouseReleased', 'show']);
+    } finally {
       await reopen(undefined);
     }
   });
@@ -1500,11 +2032,25 @@ describe('walk worker', () => {
       await assert.rejects(ops.keyboard({ action: 'type', text: 'hunter2' }), { name: 'NotAllowed' });
       await assert.rejects(ops.keyboard({ action: 'press', key: 'Enter' }), { name: 'NotAllowed' });
       assert.equal(sent.slice(before).filter((m) => m.startsWith('Input.')).length, 0);
+      // Tab, Shift+Tab and Escape only leave it: a screen reader's way out of another site's frame or a code field.
+      for (const key of ['Tab', 'Shift+Tab', 'Escape']) await ops.keyboard({ action: 'press', key });
+      const keys = args.slice(before).filter((p) => p?.type === 'rawKeyDown').map((p) => [p.key, p.modifiers ?? 0]);
+      assert.deepEqual(keys, [['Tab', 0], ['Tab', 8], ['Escape', 0]]);
       page.seen = {};
+      const typed = sent.length;
       await ops.keyboard({ action: 'type', text: 'ok' });
-      assert.equal(sent.slice(before).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
+      assert.equal(sent.slice(typed).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
     });
   }
+
+  it('presses not even Tab where it cannot see the focus', async () => {
+    const { ops } = await walked();
+    page.seen = null;
+    const before = sent.length;
+    await assert.rejects(ops.keyboard({ action: 'press', key: 'Tab' }), { name: 'NotAllowed' });
+    assert.equal(sent.slice(before).filter((m) => m.startsWith('Input.')).length, 0);
+    page.seen = {};
+  });
 
   // The op says where, never what. Whatever else it carries, the page gets the plain picture the driver draws.
   it('attaches only the plain picture drawn in code, whatever file, path or address the op names', async () => {

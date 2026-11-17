@@ -10,10 +10,10 @@ const SUBPROTOCOL = 'impeccable-outing';
 const PART_CHARS = 256 * 1024;
 /**
  * What this extension can do beyond the protocol: walk the person's own tab, ask the person before a deed, go to
- * another site on their Yes, attach a plain picture, and hold every write the tab sends until the server opens them
- * (driver.js `holding`).
+ * another site on their Yes, attach a plain picture, hold every write the tab sends until the server opens them
+ * (driver.js `holding`), and read and act on the page with its own helpers only, named by the server (page-helpers.js).
  */
-const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask'];
+const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears', 'cover'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */
 const BOOT = crypto.randomUUID();
 
@@ -50,6 +50,7 @@ import { fail, hushed, ops, speak, walk } from './driver.js';
 import { needsNoTab } from './control.js';
 import { dial, linked, unlinked, whereTo } from './link.js';
 import { isStartPage } from './handoff.js';
+import { HASH as HELPERS } from './page-helpers.js';
 import './toolbar.js';
 import './net-hold.js';
 
@@ -86,7 +87,7 @@ async function connect() {
   const ws = new WebSocket(to.socket, to.ticket ? [SUBPROTOCOL, to.ticket] : []);
   socket = ws;
   let opened = false;
-  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN, version: chrome.runtime.getManifest().version } }); void linked(); };
+  ws.onopen = () => { opened = true; say({ hello: { protocol: PROTOCOL, boot: BOOT, agent: navigator.userAgent, can: CAN, helpers: HELPERS, version: chrome.runtime.getManifest().version } }); void linked(); };
   ws.onmessage = (event) => { void handle(event.data, ws); };
   ws.onclose = (event) => {
     if (socket !== ws) return;

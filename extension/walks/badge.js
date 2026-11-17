@@ -14,6 +14,7 @@
 // walking, and goes with the badge at the end. Should the debugger leave without a word (nothing can reach the page
 // then), it goes by itself when its heartbeat stops: within GLOW_LIFE_MS.
 import { hooks, send, walk } from './driver.js';
+import { atAPoint } from './page-helpers.js';
 import { COPY } from './panel/copy.js';
 import { current, onView } from './store.js';
 import { ON_TAB } from './view.js';
@@ -189,13 +190,14 @@ export function badgeState(view) {
 }
 
 let badge = null;
-/** Why the badge is out of sight right now: a film under way, and pictures being taken. A new one for each walk. */
+/** Why the badge is out of sight right now: a film under way, and pictures being taken or points pressed. A new one for each walk. */
 let veil = { film: false, shots: 0 };
 /**
- * Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see.
+ * Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see,
+ * but for the moment of the one still of a sign-in page the walk takes as it pauses there (control.js `stillAtSignIn`).
  * So is a question, film or not: a walk from the terminal films its steps, and the panel may not be open.
  */
-const hidden = () => (veil.film || veil.shots > 0) && current().state === 'walking' && !current().ask;
+const hidden = () => (veil.film || veil.shots > 0) && (current().state === 'walking' || (veil.shots > 0 && current().state === 'paused' && current().held === 'sign-in')) && !current().ask;
 let pressed = () => undefined;
 /** What a press on the badge does: it names the control, `stop` or `resume`. */
 export function whenPressed(act) { pressed = act; }
@@ -249,18 +251,32 @@ hooks.closing.push(async () => { await call('remove()'); });
 hooks.closed.push(drop);
 onView(() => { void push(); });
 
+/** The page helpers that find what lies at a point: the badge, over the page's corner, must never be what they find. */
+const AT_A_POINT = new Set(atAPoint);
+
+const draw = () => call(`veil(${hidden()})`);
+
+/** `run` with the badge out of sight, as a picture is taken: what it finds or presses on the page is never the badge. */
+export async function withoutBadge(run) {
+  const mine = veil;
+  mine.shots += 1;
+  await draw();
+  try { return await run(); } finally { mine.shots -= 1; await draw(); }
+}
+
 /**
  * An op as the persona must see the page: without the badge. A picture is taken with it hidden; a film hides it from
- * its first frame to its last, across any page it loads on the way.
+ * its first frame to its last, across any page it loads on the way. A press, and a look for what lies at a point, are
+ * made with it hidden too: a page's own button under it ("Go to shopping bag" in a corner toast) is then pressed, and
+ * never the badge's Stop.
  */
 export function unseen(name, run) {
-  const draw = () => call(`veil(${hidden()})`);
-  if (name === 'screenshot') {
+  // A screen reader's tree is read without the badge too: its words are not the page's.
+  if (name === 'screenshot' || name === 'hear' || name === 'mouse' || name === 'upload' || name === 'evaluate') {
     return async (req) => {
-      const mine = veil;
-      mine.shots += 1;
-      await draw();
-      try { return await run(req); } finally { mine.shots -= 1; await draw(); }
+      if (name === 'hear' && req?.what !== 'tree') return run(req);
+      if (name === 'evaluate' && !AT_A_POINT.has(req?.helper)) return run(req);
+      return withoutBadge(() => run(req));
     };
   }
   if (name === 'cdp') {

@@ -132,14 +132,18 @@ const walkerOf = (who) => (typeof who?.name === 'string' && who.name ? { name: w
 
 /** The width the side panel picked, as the server names it (walks/driver.js `DEVICES`); none is the tab as it is. */
 const SERVER_DEVICE = { phone: 'mobile', tablet: 'tablet' };
+/** A persona's own device, as the server names it: a computer is said too, where a walk's width leaves it out. */
+const MAKE_DEVICE = { desktop: 'desktop', ...SERVER_DEVICE };
 
 /**
- * Whether the server in use takes a walk's width (`widths` on /me): its answer now, else the last it gave,
- * kept per server; null when it never answered. A walk then runs at Desktop rather than at a width it could not file.
+ * Whether the server in use takes a walk's width (`widths` on /me), an app persona's app (`ownApp`), or a new persona's
+ * device and disability (`ownTraits`): its answer now, else the last it gave, kept per server; null when it never
+ * answered. A walk then runs at Desktop rather than at a width it could not file.
  */
+const TAKES = ['widths', 'ownApp', 'ownTraits'];
 async function takes(field) {
   const me = await session.me().catch(() => null);
-  if (me) { await chrome.storage.local.set({ [`widths:${issuer}`]: me.widths, [`ownApp:${issuer}`]: me.ownApp }).catch(() => undefined); return me[field]; }
+  if (me) { await chrome.storage.local.set(Object.fromEntries(TAKES.map((one) => [`${one}:${issuer}`, me[one]]))).catch(() => undefined); return me[field]; }
   const kept = (await chrome.storage.local.get(`${field}:${issuer}`).catch(() => ({})))[`${field}:${issuer}`];
   return typeof kept === 'boolean' ? kept : null;
 }
@@ -179,21 +183,28 @@ async function walk({ plan: approved, walker, ...message }, panel = Promise.reso
  * Making a persona of the person's own: one at a time, in this worker, so a popup that closes does not stop it. Its
  * description and request id are kept in chrome.storage.session until the server makes it: a retry of the same
  * description, or a worker Chrome ended mid-way, sends the same id again, and the server answers with the persona it
- * made rather than a second. `open` marks one sent and not answered yet.
+ * made rather than a second. `open` marks one sent and not answered yet. The same words with another device or
+ * disability are another persona (`picked`).
  */
 let making = null;
 const kept = () => chrome.storage.session.get('personaCreate').then(({ personaCreate }) => personaCreate ?? null, () => null);
-async function create({ description }) {
+async function create({ description, device, disability }) {
   const text = typeof description === 'string' ? description.trim() : '';
   if (text.length < 8 || text.length > 1500) return { ok: false, why: 'short' };
-  if (making) return making.description === text ? making.done : { ok: false, why: 'busy' };
-  making = { description: text, done: (async () => {
+  // The device and disability picked in the panel; the server holds the disability to its own list.
+  const picked = { ...(Object.hasOwn(MAKE_DEVICE, device) ? { device: MAKE_DEVICE[device] } : {}), ...(typeof disability === 'string' && /^[a-z-]{1,24}$/.test(disability) ? { disability } : {}) };
+  const same = (one) => one?.description === text && JSON.stringify(one.picked ?? {}) === JSON.stringify(picked);
+  if (making) return same(making) ? making.done : { ok: false, why: 'busy' };
+  making = { description: text, picked, done: (async () => {
     try {
       const was = await kept();
-      const requestId = was?.description === text ? was.requestId : randomText();
-      await chrome.storage.session.set({ personaCreate: { description: text, requestId, open: true } });
-      const made = await session.createPersona({ description: text, requestId });
-      await chrome.storage.session.set({ personaCreate: made.ok ? null : { description: text, requestId, open: false } });
+      const requestId = same(was) ? was.requestId : randomText();
+      await chrome.storage.session.set({ personaCreate: { description: text, picked, requestId, open: true } });
+      // Told only to a server that says it takes them: an older one refuses a key it does not know, and makes the
+      // persona from the words alone. The panel still shows what was picked.
+      const traits = Object.keys(picked).length && await takes('ownTraits') === true ? picked : {};
+      const made = await session.createPersona({ description: text, ...traits, requestId });
+      await chrome.storage.session.set({ personaCreate: made.ok ? null : { description: text, picked, requestId, open: false } });
       return made;
     } finally {
       making = null;
