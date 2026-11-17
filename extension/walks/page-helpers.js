@@ -515,7 +515,7 @@ function fieldReads(point, noSecrets = false) {
   const read = (el) => {
     if (!el)
       return null;
-    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? ""))))
+    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => el.getAttribute(a) ?? "").join(" "))))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -590,7 +590,7 @@ function pageAddress() {
 function pageSignature() {
   const g = globalThis;
   const text = (g.document.body?.innerText ?? "").slice(0, 400000);
-  const states = Array.from(g.document.querySelectorAll("[aria-expanded],[aria-selected],[aria-checked],[aria-pressed],[aria-hidden],[aria-invalid],[aria-current],[hidden],[disabled],[open],[data-state],input,select,textarea,dialog,details")).slice(0, 4000).map((el) => `${el.tagName}|${["aria-expanded", "aria-selected", "aria-checked", "aria-pressed", "aria-hidden", "aria-invalid", "aria-current", "hidden", "disabled", "open", "data-state"].map((n) => el.getAttribute(n) ?? "␀").join(",")}|${typeof el.value === "string" ? el.value : ""}|${el.checked === true ? 1 : 0}|${el.open === true ? 1 : 0}`).join(`
+  const states = Array.from(g.document.querySelectorAll("[aria-expanded],[aria-selected],[aria-checked],[aria-pressed],[aria-hidden],[aria-invalid],[aria-current],[hidden],[disabled],[open],[data-state],input,select,textarea,dialog,details")).slice(0, 4000).map((el) => `${el.tagName}|${["aria-expanded", "aria-selected", "aria-checked", "aria-pressed", "aria-hidden", "aria-invalid", "aria-current", "hidden", "disabled", "open", "data-state"].map((n) => el.getAttribute(n) ?? "␀").join(",")}|${typeof el.value !== "string" ? "" : el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => el.getAttribute(a) ?? "").join(" ")) ? el.value ? "•" : "" : el.value}|${el.checked === true ? 1 : 0}|${el.open === true ? 1 : 0}`).join(`
 `);
   let h = 2166136261;
   for (const part of [text, states])
@@ -744,7 +744,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const focused = doc.activeElement;
   if (best.score === 0 && focused && fields.includes(focused))
     best = { el: focused, score: 0 };
-  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || best.el.tagName === "INPUT" && /^(?:text)?$/i.test(best.el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(best.el.getAttribute(a) ?? ""))))
+  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || best.el.tagName === "INPUT" && /^(?:text)?$/i.test(best.el.getAttribute("type") ?? "") && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => best.el.getAttribute(a) ?? "").join(" "))))
     return null;
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
@@ -1580,7 +1580,7 @@ function secretFocus() {
   if (!el)
     return null;
   const tokens = String(el.getAttribute?.("autocomplete") ?? "").toLowerCase().split(/\s+/);
-  if (el.tagName === "INPUT" && String(el.type).toLowerCase() === "password" || el.getAttribute?.("data-secret-field") != null || tokens.some((t) => t === "current-password" || t === "new-password") || el.tagName === "INPUT" && String(el.type).toLowerCase() === "text" && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute?.(a) ?? "")))
+  if (el.tagName === "INPUT" && String(el.type).toLowerCase() === "password" || el.getAttribute?.("data-secret-field") != null || tokens.some((t) => t === "current-password" || t === "new-password") || el.tagName === "INPUT" && String(el.type).toLowerCase() === "text" && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => el.getAttribute?.(a) ?? "").join(" ")))
     return "password";
   if (tokens.some((t) => t.startsWith("cc-")))
     return "card";
@@ -1592,9 +1592,9 @@ function secretFocus() {
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
   const seen = "data-secret-field";
-  const held = "data-secret-form";
+  const spot = "data-secret-spot";
   const named = ["name", "id", "placeholder", "aria-label"];
-  const fields = `input[type="password" i], [${seen}], input:is([type="text" i], :not([type])):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
+  const fields = `input[type="password" i], [${seen}], input:is([type="text" i], :not([type])):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}):not(${named.map((a) => `[${a}*="mail" i]`).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
   const rule = `${fields} { ${mark}: 1; filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }`;
   const g = globalThis;
   const ours = (sheet) => {
@@ -1604,6 +1604,7 @@ function coverSecrets(on, forMs) {
       return false;
     }
   };
+  const shadow = (el) => el.shadowRoot ?? g.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
   let covered = 0;
   const visit = (root, Made, on) => {
     const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
@@ -1618,43 +1619,49 @@ function coverSecrets(on, forMs) {
     if (on) {
       for (const field of Array.from(root.querySelectorAll(`input[type="password" i]:not([${seen}])`)))
         field.setAttribute(seen, "");
-      const passwordField = (f) => String(f.type).toLowerCase() === "password" || f.getAttribute(seen) !== null || /current-password|new-password/i.test(f.getAttribute("autocomplete") ?? "") || String(f.type).toLowerCase() === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      const text = (f) => String(f.type).toLowerCase() === "text";
+      const words = (f) => named.map((a) => f.getAttribute(a) ?? "").join(" ");
+      const passwordField = (f) => String(f.type).toLowerCase() === "password" || f.getAttribute(seen) !== null || /current-password|new-password/i.test(f.getAttribute("autocomplete") ?? "") || text(f) && /passw|pwd/i.test(words(f)) && !/mail/i.test(words(f));
+      const account = (f) => {
+        const said = `${words(f)} ${f.getAttribute("autocomplete") ?? ""}`;
+        return ["email", "tel"].includes(String(f.type).toLowerCase()) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
+      };
       for (const f of Array.from(root.querySelectorAll("input")))
         if (f.getAttribute(seen) === null && passwordField(f))
           f.setAttribute(seen, "");
-      const passwords = (box) => Array.from(box.querySelectorAll("input")).filter(passwordField).length;
-      const account = (f) => {
-        const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
-        return ["email", "tel"].includes(String(f.type).toLowerCase()) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
-      };
-      for (const box of Array.from(root.querySelectorAll(`[${held}]`))) {
-        const inputs = Array.from(box.querySelectorAll("input"));
-        if (passwords(box) >= Number(box.getAttribute(held)) || !inputs.some((f) => f.getAttribute(`${held}-name`) !== null))
-          continue;
-        for (const f of inputs) {
-          const size = f.getBoundingClientRect();
-          if (String(f.type).toLowerCase() === "text" && f.value && size.width > 0 && size.height > 0 && !account(f))
+      for (const box of Array.from(root.querySelectorAll(`[${spot}]`))) {
+        const [count, ...at] = (box.getAttribute(spot) ?? "").split(" ");
+        const waits = Number(count) !== box.children.length ? [] : at.filter((i) => {
+          const el = box.children[parseInt(i, 10)];
+          const f = el?.tagName === "INPUT" ? el : el?.querySelectorAll("input").length === 1 ? el.querySelectorAll("input")[0] : undefined;
+          if (!f || !text(f) || passwordField(f) || account(f))
+            return false;
+          if (f.value)
             f.setAttribute(seen, "");
-        }
+          return !f.value && !i.endsWith("f") && !words(f).trim();
+        });
+        if (waits.length)
+          box.setAttribute(spot, `${count} ${waits.join(" ")}`);
+        else
+          box.removeAttribute(spot);
       }
       for (const field of Array.from(root.querySelectorAll("input"))) {
         if (!passwordField(field))
           continue;
-        let box = field.form ?? field.parentElement;
-        while (!field.form && box?.parentElement && box.querySelectorAll("input, button").length < 2)
-          box = box.parentElement;
-        if (!box)
-          continue;
-        box.setAttribute(held, String(Math.max(Number(box.getAttribute(held)) || 0, passwords(box))));
-        for (const f of Array.from(box.querySelectorAll("input")))
-          if (account(f))
-            f.setAttribute(`${held}-name`, "");
+        for (let el = field, box = field.parentElement, up = 0;box && up < 2; el = box, box = box.parentElement, up++) {
+          const i = Array.from(box.children).indexOf(el);
+          const [, ...at] = (box.getAttribute(spot) ?? "").split(" ").filter((t, n) => n === 0 || parseInt(t, 10) !== i);
+          box.setAttribute(spot, [box.children.length, ...at, `${i}${field.value ? "f" : ""}`].join(" "));
+          if (box.querySelectorAll("input").length > 1)
+            break;
+        }
       }
       covered += root.querySelectorAll(fields).length;
     }
     for (const el of Array.from(root.querySelectorAll("*"))) {
-      if (el.shadowRoot)
-        visit(el.shadowRoot, Made, on);
+      const own = shadow(el);
+      if (own)
+        visit(own, Made, on);
       if (el.tagName !== "IFRAME" && el.tagName !== "FRAME")
         continue;
       let inner = null;
@@ -1687,4 +1694,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '19e63a579dd7b3ae';
+export const HASH = '8050ed92d9adae0f';
