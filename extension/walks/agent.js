@@ -344,11 +344,12 @@ function stop() {
   askNext = true;
   if (session) session.stopped = true;
 }
-// Stop pressed while the agent waited for its first Allow: no tab closed, so it is heard here.
-let waitingAgent = false;
+// The person's Stop on the agent's walk, heard as the panel shows it: before the debugger has left, and while the
+// agent waits for its first Allow, when no tab closes at all. An agent that leaves meanwhile can't undo it.
+let agentLive = false;
 onView((view) => {
-  if (waitingAgent && view.state === 'stopped') stop();
-  waitingAgent = view.agent && view.state === 'waiting';
+  if (agentLive && view.state === 'stopped') stop();
+  agentLive = view.agent && isLive(view);
 });
 
 /** The agent left: its walk ends, and the next connection starts afresh (a Stop's ask stays, `askNext`). */

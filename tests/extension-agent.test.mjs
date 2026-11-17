@@ -250,6 +250,25 @@ describe('agent session', () => {
     await until(() => !driver.walk, 'the walk to end');
   });
 
+  it('keeps a Stop the agent leaves during: its next start is still asked', async () => {
+    const { current, driver } = await loaded;
+    // The host went in the test above: the next minute's alarm connects again.
+    for (const listener of listeners.alarm) listener({ name: 'agent-host' });
+    assert.equal(ports.length, 2);
+    // Always allowed, and nothing since asked for a fresh Allow: it opens unasked.
+    const opening = await call('browser_open', { url: 'https://linear.app/acme' });
+    assert.equal(opening.isError, undefined, said(opening));
+    const stopping = press('stop');
+    toExtension({ type: 'agent-gone' });
+    await stopping;
+    await until(() => !driver.walk, 'the walk to end');
+    const again = call('browser_open', { url: 'https://linear.app/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question after a Stop it left during');
+    await press('no');
+    await again;
+    toExtension({ type: 'agent-gone' });
+  });
+
   // A server's walk names its ops in JSON: none can make itself the agent's, and be asked nothing before a submit.
   it('never takes an agent walk from a socket message', async () => {
     const { driver } = await loaded;
