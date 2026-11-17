@@ -1657,28 +1657,18 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      const words = (f) => named.map((a) => f.getAttribute(a) ?? "").join(" ");
+      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && /passw|pwd/i.test(words(f)) && !/e-?mail|user|login/i.test(words(f));
       const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
         return ["email", "tel"].includes(kind(f)) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
       };
-      const fewer = [];
       for (const box of Array.from(root.querySelectorAll(`[${held}]`))) {
         const [most, mostShown, had] = (box.getAttribute(held) ?? "").split(" ");
         const gone = passwords(box, true) < Number(most);
-        if (gone || passwords(box, false) < Number(mostShown))
-          fewer.push({ box, gone, had });
-      }
-      const within = (el, box) => {
-        for (let at = el.parentElement;at; at = at.parentElement)
-          if (at === box)
-            return true;
-        return false;
-      };
-      for (const { box, gone, had } of fewer) {
         const all = inputs(box);
-        if (fewer.some((other) => within(other.box, box)) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
+        if (!gone && passwords(box, false) >= Number(mostShown) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
           continue;
         const hidden = all.filter((f) => counts(f) && !shown(f));
         const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || Boolean(h.value) && h.value === f.value);
@@ -1742,4 +1732,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '3dd7ef01a24f2bef';
+export const HASH = 'ae48da31eba2c2a1';
