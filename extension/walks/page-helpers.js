@@ -1498,7 +1498,55 @@ function secretFocus() {
   return null;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus });
+function coverSecrets(on, forMs) {
+  const mark = "--secret-cover";
+  const fields = 'input[type="password" i], [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]';
+  const rule = `${fields} { ${mark}: 1; filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }`;
+  const g = globalThis;
+  const ours = (sheet) => {
+    try {
+      return sheet.cssRules[0]?.cssText.includes(mark) === true;
+    } catch {
+      return false;
+    }
+  };
+  let covered = 0;
+  const visit = (root, Made) => {
+    const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
+    if (!on) {
+      if (others.length !== root.adoptedStyleSheets.length)
+        root.adoptedStyleSheets = others;
+    } else if (others.length === root.adoptedStyleSheets.length) {
+      const sheet = new Made;
+      sheet.replaceSync(rule);
+      root.adoptedStyleSheets = [...others, sheet];
+    }
+    if (on)
+      covered += root.querySelectorAll(fields).length;
+    for (const el of Array.from(root.querySelectorAll("*"))) {
+      if (el.shadowRoot)
+        visit(el.shadowRoot, Made);
+      if (el.tagName !== "IFRAME" && el.tagName !== "FRAME")
+        continue;
+      let inner = null;
+      try {
+        inner = el.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (inner?.defaultView)
+        visit(inner, inner.defaultView.CSSStyleSheet);
+    }
+  };
+  visit(g.document, g.CSSStyleSheet);
+  const timer = Symbol.for("secret-cover");
+  g.clearTimeout(g[timer]);
+  if (on && forMs)
+    g[timer] = g.setTimeout(() => coverSecrets(false), forMs);
+  return covered;
+}
+
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, coverSecrets });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -1510,4 +1558,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'ff1513913d599ad9';
+export const HASH = '19f138d999ca3f63';

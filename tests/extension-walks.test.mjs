@@ -1079,6 +1079,7 @@ describe('walk worker', () => {
     const world = vm.createContext({ URL, setTimeout, clearTimeout, location: { href }, scrollTo(x, y) { world.scrolled = [x, y]; }, document: { documentElement: { lang: 'de' }, body: null, activeElement: null, querySelectorAll: (sel) => (sel === 'a[href]' ? [{ href: `${href}#1` }, { href: '' }] : []) } });
     world.globalThis = world;
     const was = answers['Runtime.evaluate'];
+    const shot = answers['Page.captureScreenshot'];
     const fetched = globalThis.fetch;
     // The extension's own package, as Chrome serves it to its worker.
     globalThis.fetch = async (url) => (url === 'chrome-extension://ext/walks/consent-rules.js' ? new Response(consentRules) : new Response('', { status: 404 }));
@@ -1123,10 +1124,27 @@ describe('walk worker', () => {
       const added = args.slice(at).filter((p, i) => sent[at + i] === 'Page.addScriptToEvaluateOnNewDocument');
       assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`, consentRules]);
       assert.match(consentRules, /autoconsent/);
-      // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`.
+      // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`,
+      // nor pictured: a still or a film's frame is taken with it covered (`coverSecrets`, in the walk's own world).
+      world.CSSStyleSheet = class { cssRules = []; replaceSync(text) { this.cssRules = [{ cssText: text }]; } };
+      const lookout = answers['Runtime.evaluate'];
+      answers['Runtime.evaluate'] = (params) => (params.contextId === worlds['impeccable-walk-lookout'] && params.expression.includes('coverSecrets') ? { result: { value: vm.runInContext(params.expression, world) } } : lookout(params));
+      // The screen as Chrome draws it: the field's value, unless a sheet covers it.
+      const drawn = [];
+      answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(world.document.adoptedStyleSheets.length ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
         const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
-        world.document = { activeElement: field, querySelectorAll: () => [field], elementFromPoint: () => field };
+        world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: () => [field], elementFromPoint: () => field };
+        field.value = '4242 4242 4242 4242';
+        assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
+        assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
+        const from = drawn.length;
+        await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
+        await settle(40);
+        await ops.cdp({ method: 'Page.stopScreencast' });
+        assert.ok(drawn.length > from && drawn.slice(from).every((d) => d === 'covered'), 'no film frame shows it');
+        assert.equal(world.document.adoptedStyleSheets.length, 0, 'nor once the film ends');
+        field.value = 'kept';
         for (const [helper, args] of [['typeInto', ['Secret', 'hunter2', false]], ['typeInto', ['Secret', 'hunter2', true, false]], ['fieldReads', [{ x: 1, y: 1 }]], ['fieldReads', [null, false]]]) {
           assert.equal((await ops.evaluate({ helper, args })).value, null, `${helper} ${JSON.stringify(attrs)}`);
         }
@@ -1134,9 +1152,12 @@ describe('walk worker', () => {
         // A screen reader's keys never go there either: the server asks first, by name.
         assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
       }
+      answers['Runtime.evaluate'] = (params) => (params.expression.includes('coverSecrets') ? { exceptionDetails: {} } : lookout(params));
+      await assert.rejects(ops.screenshot({ format: 'png' }), { name: 'NotAllowed' }, 'a page it could not cover is not pictured');
     } finally {
       walk.named = false;
       answers['Runtime.evaluate'] = was;
+      answers['Page.captureScreenshot'] = shot;
       globalThis.fetch = fetched;
     }
   });

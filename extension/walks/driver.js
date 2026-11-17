@@ -406,6 +406,8 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
         // Not while the pointer acts (`pointer`).
         if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
+        // Its secret fields covered first, and kept so from frame to frame (`cover`); one that could not be is not filmed.
+        if (!(await cover(true))) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
         const taking = asked.then(() => undefined, () => undefined);
@@ -471,6 +473,7 @@ async function cut() {
   film.on = false;
   walk.film = null;
   await film.done;
+  await cover(false);
 }
 
 /**
@@ -647,6 +650,20 @@ export async function look() {
     tab.lookout = null;
   }
   return null;
+}
+
+/**
+ * How long a cover stays without another: the person's own tab gets its fields back by itself, should the walk lose it
+ * with one on.
+ */
+const COVER_MS = 2000;
+/**
+ * Every password, card and one-time-code field on the page drawn as a solid box (`coverSecrets`), in the walk's own
+ * world, or taken off again: put on just before each picture, so none shows what one holds, typed or filled in by
+ * Chrome. Whether it could be.
+ */
+async function cover(on) {
+  return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null;
 }
 
 /** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
@@ -1617,7 +1634,14 @@ export const ops = {
   // the person saw as a flash. The viewport is taken whole and the clip (page coordinates) cut from it here; what lies
   // beyond the viewport is blank, as Chrome's own clip of it is.
   async screenshot({ format, quality, clip }) {
-    const { data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false });
+    // Its secret fields covered for the picture alone (`cover`): a page that could not be covered is not pictured.
+    if (!(await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
+    let data;
+    try {
+      ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
+    } finally {
+      await cover(false);
+    }
     const size = stillSize(walk);
     if (!clip && !size) return { value: { data: await seenAs(data, format, quality) } };
     let shot;
