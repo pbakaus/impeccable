@@ -1936,26 +1936,59 @@ impl<'a> CssHostIndex<'a> {
             })
     }
 
-    /// Whether the rules whose subject could match a markup element (its tag,
-    /// its literal classes), applied in source order, leave it rounded to a
-    /// radius known to be above zero: what a hairline in a `style` attribute
-    /// reads from the file's style blocks.
-    pub fn is_element_rounded(&self, tag: Option<&str>, classes: &[String]) -> bool {
-        // Every matching rule's radius declarations, applied together in
-        // source order: a later square radius undoes an earlier round one.
-        let mut ids: Vec<usize> = self
-            .exact
-            .iter()
-            .filter(|(selector, _)| selector_could_apply(selector, tag, false, classes))
-            .flat_map(|(_, ids)| ids.iter().copied())
-            .collect();
-        ids.sort_unstable_by_key(|id| (self.rules[*id].order, *id));
-        ids.dedup();
-        let mut corners = DeclaredCorners::default();
-        for id in ids {
-            self.rules[id].apply_to(&mut corners);
+    /// The corners the rules whose subject could match a markup element (its
+    /// tag, its literal classes) give it, with `inline` (the tag's own radius
+    /// declarations, `None` for a statement that may bring one in unseen,
+    /// such as a spread) over them: what a hairline in a `style` attribute reads
+    /// from the file's style blocks. Declarations apply the way the cascade
+    /// orders them: `!important` last, then inline, then by the specificity
+    /// of the subject's classes and type, then in source order. An ancestor
+    /// or state the reader cannot check against the element adds nothing.
+    pub fn element_corners(
+        &self,
+        tag: Option<&str>,
+        classes: &[String],
+        inline: &[Option<(String, String)>],
+    ) -> DeclaredCorners {
+        // (important, inline, [classes, types], source order, statement), each
+        // with the statement it applies.
+        type Rank = (bool, bool, [u32; 2], usize, usize);
+        let mut layered: Vec<(Rank, Option<(&str, &str)>)> = Vec::new();
+        for (selector, ids) in &self.exact {
+            if !selector_could_apply(selector, tag, false, classes) {
+                continue;
+            }
+            let specificity = subject_specificity(selector);
+            for &id in ids {
+                let rule = &self.rules[id];
+                for (k, decl) in rule.decls.iter().enumerate() {
+                    layered.push(match decl {
+                        RadiusDecl::Set(prop, value) => (
+                            (is_important(value), false, specificity, rule.order, k),
+                            Some((prop.as_str(), value.as_str())),
+                        ),
+                        RadiusDecl::Unseen => ((false, false, specificity, rule.order, k), None),
+                    });
+                }
+            }
         }
-        corners.rounds_any()
+        for (k, decl) in inline.iter().enumerate() {
+            layered.push(match decl {
+                Some((prop, value)) => ((is_important(value), true, [0, 0], 0, k), Some((prop.as_str(), value.as_str()))),
+                None => ((false, true, [0, 0], 0, k), None),
+            });
+        }
+        layered.sort_by_key(|(rank, _)| *rank);
+        let mut corners = DeclaredCorners::default();
+        for (_, decl) in layered {
+            match decl {
+                Some((prop, value)) => {
+                    corners.apply(prop, value, NOMINAL_CARD_WIDTH_PX);
+                }
+                None => corners.set_unknown(),
+            }
+        }
+        corners
     }
 
     /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding
@@ -1976,6 +2009,26 @@ impl<'a> CssHostIndex<'a> {
         let selector = finding.selector.as_deref().unwrap_or("");
         self.is_rule_rounded_away_from_side(pos, selector, side)
     }
+}
+
+/// Whether a declared value ends `!important`.
+fn is_important(value: &str) -> bool {
+    let v: String = value.chars().filter(|c| !c.is_whitespace()).collect();
+    v.to_ascii_lowercase().ends_with("!important")
+}
+
+/// The part of a selector's specificity [`selector_could_apply`] checks
+/// against an element: its subject's classes and type.
+fn subject_specificity(selector: &str) -> [u32; 2] {
+    let mut out = [0, 0];
+    for token in compound_tokens(last_compound(selector)) {
+        if token.starts_with('.') {
+            out[0] += 1;
+        } else if token.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            out[1] += 1;
+        }
+    }
+    out
 }
 
 /// Whether a class name can be written as a plain `.name` selector.

@@ -377,12 +377,21 @@ fn cascade_decl_block(block: &str) -> DeclMap {
 /// as written: a later declaration wins unless an earlier one is
 /// `!important`, so a shared `border-style: none` after the side border
 /// hides it, and a reset before it does not. A box drawn top and bottom too
-/// is a frame.
+/// is a frame. The left side is read first.
 pub fn border_stripe_in(
     block: &str,
     lookup: &dyn Fn(&str) -> Option<String>,
     band: std::ops::RangeInclusive<f64>,
 ) -> Option<(&'static str, f64, &'static str, f64)> {
+    border_stripes_in(block, lookup, band).into_iter().next()
+}
+
+/// Every side of [`border_stripe_in`] that is a stripe, left then right.
+pub fn border_stripes_in(
+    block: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+    band: std::ops::RangeInclusive<f64>,
+) -> Vec<(&'static str, f64, &'static str, f64)> {
     let mut sides = [BorderSide::initial(), BorderSide::initial(), BorderSide::initial(), BorderSide::initial()];
     for part in block.split(';') {
         let Some((prop, value)) = part.split_once(':') else { continue };
@@ -439,17 +448,19 @@ pub fn border_stripe_in(
         }
     }
     if sides[0].visible() && sides[2].visible() {
-        return None;
+        return Vec::new();
     }
-    for (side, edge, fallback) in [(3, "left", "border-left"), (1, "right", "border-right")] {
-        let s = &sides[side];
-        if s.visible() && band.contains(&s.width) && colour_paints(&s.colour, lookup) {
-            let others = (0..4).filter(|&other| other != side && sides[other].visible());
-            let max_other = others.map(|other| sides[other].width).fold(0.0f64, f64::max);
-            return Some((s.named.unwrap_or(fallback), s.width, edge, max_other));
-        }
-    }
-    None
+    [(3, "left", "border-left"), (1, "right", "border-right")]
+        .into_iter()
+        .filter_map(|(side, edge, fallback)| {
+            let s = &sides[side];
+            (s.visible() && band.contains(&s.width) && colour_paints(&s.colour, lookup)).then(|| {
+                let others = (0..4).filter(|&other| other != side && sides[other].visible());
+                let max_other = others.map(|other| sides[other].width).fold(0.0f64, f64::max);
+                (s.named.unwrap_or(fallback), s.width, edge, max_other)
+            })
+        })
+        .collect()
 }
 
 /// Whether a `border-radius` value rounds anything: every radius `0` is
