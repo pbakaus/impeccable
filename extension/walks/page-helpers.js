@@ -1626,12 +1626,14 @@ function coverSecrets(on, forMs) {
       return false;
     }
   };
+  const html = "http://www.w3.org/1999/xhtml";
   const shadow = (el) => {
+    if (el.shadowRoot || el.namespaceURI && el.namespaceURI !== html)
+      return el.shadowRoot ?? null;
     try {
-      return el.shadowRoot ?? g.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
+      return g.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null;
     } catch {
-      if (el.namespaceURI === "http://www.w3.org/1999/xhtml")
-        el.setAttribute(seen, "");
+      el.setAttribute(seen, "");
       return null;
     }
   };
@@ -1744,4 +1746,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'a5fce89aee5391b7';
+export const HASH = '1e6db8f23bae696a';
