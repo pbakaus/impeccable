@@ -1657,25 +1657,39 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const passwords = (box, all) => inputs(box).filter((f) => (f.getAttribute(seen) !== null || f.getAttribute(maybe) !== null) && (all || shown(f))).length;
+      const counts = (f) => f.getAttribute(seen) !== null || kind(f) === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      const passwords = (box, all) => inputs(box).filter((f) => counts(f) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
         return ["email", "tel"].includes(kind(f)) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
       };
+      const fewer = [];
       for (const box of Array.from(root.querySelectorAll(`[${held}]`))) {
         const [most, mostShown, had] = (box.getAttribute(held) ?? "").split(" ");
+        const gone = passwords(box, true) < Number(most);
+        if (gone || passwords(box, false) < Number(mostShown))
+          fewer.push({ box, gone, had });
+      }
+      const within = (el, box) => {
+        for (let at = el.parentElement;at; at = at.parentElement)
+          if (at === box)
+            return true;
+        return false;
+      };
+      for (const { box, gone, had } of fewer) {
         const all = inputs(box);
-        if (passwords(box, true) >= Number(most) && passwords(box, false) >= Number(mostShown) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
+        if (fewer.some((other) => within(other.box, box)) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
           continue;
+        const clones = all.filter((f) => counts(f) && !shown(f) && f.value).map((f) => f.value);
         for (const f of all)
-          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null)
+          if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null && (gone || clones.includes(f.value)))
             f.setAttribute(maybe, "");
       }
       for (const field of inputs(root)) {
-        if (field.getAttribute(seen) === null)
+        if (!counts(field))
           continue;
         const round = [];
-        for (let box = field.form ? null : field.parentElement;box; box = box.parentElement)
+        for (let box = field.form ? null : field.parentElement;box && box.tagName !== "HTML" && (box.tagName !== "BODY" || box === field.parentElement); box = box.parentElement)
           round.push(box);
         const upTo = round.findIndex((box) => inputs(box).some(account));
         for (const box of field.form ? [field.form] : round.slice(0, upTo < 0 ? 2 : upTo + 1)) {
@@ -1727,4 +1741,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '749ff53450a57c18';
+export const HASH = '735aa4678d1dbc3c';
