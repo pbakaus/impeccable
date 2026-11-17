@@ -1657,22 +1657,22 @@ function coverSecrets(on, forMs) {
         const size = f.getBoundingClientRect();
         return size.width > 0 && size.height > 0;
       };
-      const passwords = (box) => inputs(box).filter((f) => (f.getAttribute(seen) !== null || f.getAttribute(maybe) !== null) && shown(f)).length;
+      const passwords = (box, all) => inputs(box).filter((f) => (f.getAttribute(seen) !== null || f.getAttribute(maybe) !== null) && (all || shown(f))).length;
       const account = (f) => {
         const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
         return ["email", "tel"].includes(kind(f)) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
       };
       for (const box of Array.from(root.querySelectorAll(`[${held}]`))) {
-        const [most, had] = (box.getAttribute(held) ?? "").split(" ");
+        const [most, mostShown, had] = (box.getAttribute(held) ?? "").split(" ");
         const all = inputs(box);
-        if (passwords(box) >= Number(most) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null && shown(f)))
+        if (passwords(box, true) >= Number(most) && passwords(box, false) >= Number(mostShown) || had && !all.some((f) => f.getAttribute(`${held}-name`) !== null))
           continue;
         for (const f of all)
           if (kind(f) === "text" && f.value && shown(f) && !account(f) && f.getAttribute(seen) === null)
             f.setAttribute(maybe, "");
       }
       for (const field of inputs(root)) {
-        if (field.getAttribute(seen) === null || !shown(field))
+        if (field.getAttribute(seen) === null)
           continue;
         const round = [];
         for (let box = field.form ? null : field.parentElement;box; box = box.parentElement)
@@ -1682,8 +1682,8 @@ function coverSecrets(on, forMs) {
           const accounts = inputs(box).filter(account);
           for (const f of accounts)
             f.setAttribute(`${held}-name`, "");
-          const [most, had] = (box.getAttribute(held) ?? "").split(" ");
-          box.setAttribute(held, `${Math.max(Number(most) || 0, passwords(box))}${had || accounts.length ? " named" : ""}`);
+          const [most, mostShown, had] = (box.getAttribute(held) ?? "").split(" ");
+          box.setAttribute(held, `${Math.max(Number(most) || 0, passwords(box, true))} ${Math.max(Number(mostShown) || 0, passwords(box, false))}${had || accounts.length ? " named" : ""}`);
         }
       }
       covered += root.querySelectorAll(fields).length;
@@ -1727,4 +1727,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '2ab3425278294f20';
+export const HASH = '749ff53450a57c18';
