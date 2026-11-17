@@ -661,7 +661,7 @@ describe('walk worker', () => {
     const { current, dispatch } = await import('../extension/walks/store.js');
     const { COPY } = await import('../extension/walks/panel/copy.js');
     driver.speak((message) => told.push(message));
-    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira' });
+    await driver.ops.open({ url: 'http://localhost:3000/', name: 'Mira', signInPage: true });
     return { ...driver, ...control, current, dispatch, COPY };
   })());
 
@@ -882,8 +882,9 @@ describe('walk worker', () => {
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while a 401 holds.
   // The page is pictured once as it pauses, every field blank, where it shows one to sign in with (`pictured`), and
   // never where a frame of it could not be drawn blank (`unblank`): a field Chrome filled would show, nor where the tab
-  // moved on while it was taken (`moved`): the picture would be of the next page.
-  for (const [sign, show, pictured, unblank = false] of [
+  // moved on while it was taken or its title read (`moved`): the picture and the title would be of the next page. Its
+  // title goes with its picture only, and neither to a server that never said it takes them (`older`).
+  for (const [sign, show, pictured, unblank = false, older = false] of [
     ['a visible password field', () => { fresh('s1'); page.seen = { password: true }; }, true],
     ['a move to a sign-in host', () => { fresh('s2'); fire('Fetch.requestPaused', { requestId: 'r1', resourceType: 'Document', frameId: 'main', request: { url: 'https://accounts.google.com/signin' } }); }, false],
     ['a 401 asking for a password', () => { page.seen = { status: 401 }; fresh('l2'); fire('Network.responseReceived', { type: 'Document', frameId: 'main', loaderId: 'l2', requestId: 'r2', response: { status: 401, headers: { 'WWW-Authenticate': 'Basic realm="x"' } } }); }, false],
@@ -893,9 +894,24 @@ describe('walk worker', () => {
       const was = answers['Page.captureScreenshot'];
       answers['Page.captureScreenshot'] = (params) => { answers['Page.captureScreenshot'] = was; fresh('s6'); return was(params); };
     }, false, 'moved'],
+    ['a visible password field, the tab moving on as its title is read', () => {
+      fresh('s7'); page.seen = { password: true };
+      const at = sent.length, was = chrome.tabs.get;
+      chrome.tabs.get = async (id) => {
+        const tab = await was(id);
+        if (!sent.slice(at).includes('Page.captureScreenshot')) return tab;
+        chrome.tabs.get = was;
+        fresh('s8');
+        return { ...tab, title: 'Inbox (3)' };
+      };
+    }, false, 'moved'],
+    ['a visible password field, for a server that never said it takes its picture', () => { fresh('s9'); page.seen = { password: true }; }, false, false, true],
   ]) {
     it(`pauses itself at ${sign}, until the sign-in is gone`, async () => {
-      const { ops, command, current, COPY } = await walked();
+      const { ops, command, current, COPY, walk } = await walked();
+      const { get } = chrome.tabs;
+      chrome.tabs.get = async (id) => ({ ...(await get(id)), title: 'Sign in' });
+      walk.signInPage = !older;
       // What the walk was doing as the guard first answered the tab.
       const { sendCommand } = chrome.debugger;
       let answeredWhile;
@@ -907,11 +923,14 @@ describe('walk worker', () => {
       let answered = false;
       const asked = ops.url().then(() => { answered = true; });
       for (let turn = 0; turn < 40 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
-      chrome.scripting.executeScript = executeScript;
+      Object.assign(chrome.scripting, { executeScript });
+      Object.assign(chrome.tabs, { get });
+      walk.signInPage = true;
       // The pause says it kept a picture only where it did.
       assert.deepEqual([current().state, current().held, current().pictured, titles.at(-1), answered], ['paused', 'sign-in', pictured, pictured ? COPY.signInPictured : COPY.signIn, false]);
       // Fields blank, then secrets covered, the one picture, and both off again; none at all where nothing shows to sign in with.
-      assert.deepEqual([told.slice(heard).filter((m) => m.event === 'sign-in-page').map((m) => typeof m.still), since(shots, 'Page.captureScreenshot'), blanks], pictured || unblank === 'moved' ? [[pictured ? 'string' : 'undefined'], 1, [true, 'cover', false]] : [['undefined'], 0, unblank ? [true, false] : []]);
+      const pages = told.slice(heard).filter((m) => m.event === 'sign-in-page');
+      assert.deepEqual([pages.map((m) => [typeof m.still, m.title]), since(shots, 'Page.captureScreenshot'), blanks], older ? [[], 0, []] : pictured || unblank === 'moved' ? [[pictured ? ['string', 'Sign in'] : ['undefined', undefined]], 1, [true, 'cover', false]] : [[['undefined', undefined]], 0, unblank ? [true, false] : []]);
       assert.equal(told.filter((m) => m.event === 'paused').length, told.filter((m) => m.event === 'resumed').length + 1, 'the other end is told once');
       if (sign === 'a move to a sign-in host') assert.equal(answeredWhile, 'paused', 'paused before the guard answered');
       else if (sign === 'a 401 asking for a password') {

@@ -42,8 +42,8 @@ function pauseFor(why) {
   const was = current();
   if (!dispatch({ type: 'pause', why })) return false;
   if (was.state !== 'paused' || was.held !== current().held) say({ event: 'paused', why: current().held });
-  // The walk itself reached a sign-in: its page pictured once, before the person has it.
-  if (why === 'sign-in' && was.state === 'walking') void stillAtSignIn();
+  // The walk itself reached a sign-in: its page pictured once, before the person has it, for a server that takes it.
+  if (why === 'sign-in' && was.state === 'walking' && walk?.signInPage) void stillAtSignIn();
   return true;
 }
 onSignIn(() => { pauseFor('sign-in'); });
@@ -58,15 +58,17 @@ async function stillAtSignIn() {
   const taken = await signInStill(() => shot({ format: 'png', plain: true }), () => current().state === 'paused' && current().held === 'sign-in');
   if (taken === undefined) return;
   // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
-  const title = taken && on() ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
-  // Still the page it paused on as it is told: else the picture, and its title, may be of the next one.
-  const still = taken && on() ? taken : null;
+  const tab = taken && on() ? await chrome.tabs.get(walk.tabId).catch(() => null) : null;
   // The still as taken, where the persona's sight drew the other: as WebP, as a step's is, for the journey map.
-  const plain = still?.plain ? await asWebp(still.plain).catch(() => null) : null;
-  const message = { event: 'sign-in-page', ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) };
+  const plain = taken?.plain && on() ? await asWebp(taken.plain).catch(() => null) : null;
+  // After the last read, still the page it paused on as it is told: else the picture and its title may be of the next
+  // one, and neither goes.
+  const still = taken && on() ? taken : null;
+  const title = typeof tab?.title === 'string' && tab.title ? { title: tab.title.slice(0, 200) } : {};
+  const message = { event: 'sign-in-page' };
   // Each picture only while the message still fits what the server rejoins: past that the walk would end, without
   // them the page is a step all the same.
-  if (still && on() && JSON.stringify(message).length + still.data.length + 16 < MESSAGE_CHARS) message.still = still.data;
+  if (still && JSON.stringify({ ...message, ...title }).length + still.data.length + 16 < MESSAGE_CHARS) Object.assign(message, title, { still: still.data });
   if (message.still && plain && JSON.stringify(message).length + plain.length + 16 < MESSAGE_CHARS) message.plain = plain;
   if (message.still) dispatch({ type: 'pictured' });
   say(message);

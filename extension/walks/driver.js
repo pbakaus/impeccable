@@ -770,41 +770,46 @@ let stills = 0;
 /**
  * Run by the extension in a frame, for the one still of a sign-in page: what every field one types in holds drawn
  * blank, and a field already filled (typed, remembered, or filled in by Chrome, which shows a value no script reads) a
- * solid box, through shadow roots, closed ones too. Its placeholder still shows. `on` false takes it off, as it comes off
- * by itself after `forMs`. How many fields it saw.
+ * solid box, through shadow roots, closed ones too. Set on each field's own style as important, which no rule of the
+ * site's, layered or not, outweighs; its placeholder still shows. `on` false puts each field's own style back, as it
+ * comes off by itself after `forMs`. How many fields it saw.
  */
 function blankFields(on, forMs) {
   const mark = '--still-blank';
-  const filled = 'data-impeccable-still-filled';
   const typed = 'input:not([type="hidden" i], [type="checkbox" i], [type="radio" i], [type="submit" i], [type="button" i], [type="reset" i], [type="image" i], [type="file" i], [type="range" i], [type="color" i]), textarea, [contenteditable]:not([contenteditable="false" i])';
-  const rules = [
-    `:is(${typed}) { ${mark}: 1; color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; }`,
-    `:is(${typed})::placeholder { -webkit-text-fill-color: currentcolor !important; }`,
-    `:is(${typed})[${filled}] { filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; }`,
-    `:is(${typed}):-webkit-autofill { filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; }`,
-  ];
+  const text = { color: 'transparent', '-webkit-text-fill-color': 'transparent', 'text-shadow': 'none', 'caret-color': 'transparent' };
+  const box = { filter: 'brightness(0)', 'box-shadow': 'inset 0 0 0 100vmax #000' };
+  // A placeholder is drawn in its own colour, never the field's: a pseudo-element no field's own style reaches.
+  const placeholder = `:is(${typed})::placeholder { ${mark}: 1; -webkit-text-fill-color: currentcolor !important; }`;
+  // Each field's own style as it was, to put back: kept in this frame's world between the two runs.
+  const kept = (globalThis[Symbol.for('still-blank-kept')] ??= new Map());
   const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes(mark) === true; } catch { return false; } };
   const shadow = (el) => {
     if (el.shadowRoot || (el.namespaceURI && el.namespaceURI !== 'http://www.w3.org/1999/xhtml')) return el.shadowRoot ?? null;
     try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
   };
+  const autofilled = (field) => { try { return field.matches(':-webkit-autofill'); } catch { return false; } };
   let seen = 0;
   const visit = (root, on, Made = CSSStyleSheet) => {
     const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
-    if (!on) {
-      if (others.length !== root.adoptedStyleSheets.length) root.adoptedStyleSheets = others;
-      for (const field of root.querySelectorAll(`[${filled}]`)) field.removeAttribute(filled);
-    } else {
+    if (on) {
       if (others.length === root.adoptedStyleSheets.length) {
         const sheet = new Made();
-        for (const rule of rules) { try { sheet.insertRule(rule, sheet.cssRules.length); } catch { /* a selector this Chrome lacks */ } }
+        try { sheet.insertRule(placeholder); } catch { /* a selector this Chrome lacks */ }
         root.adoptedStyleSheets = [...others, sheet];
       }
       for (const field of root.querySelectorAll(typed)) {
         seen += 1;
-        if (field.isContentEditable ? field.textContent.trim() : field.value) field.setAttribute(filled, '');
+        const filled = field.isContentEditable ? field.textContent.trim() : field.value || autofilled(field);
+        const props = filled ? { ...text, ...box } : text;
+        const was = kept.get(field) ?? { styled: field.hasAttribute('style'), props: {} };
+        for (const [prop, value] of Object.entries(props)) {
+          if (!(prop in was.props)) was.props[prop] = [field.style.getPropertyValue(prop), field.style.getPropertyPriority(prop)];
+          field.style.setProperty(prop, value, 'important');
+        }
+        kept.set(field, was);
       }
-    }
+    } else if (others.length !== root.adoptedStyleSheets.length) root.adoptedStyleSheets = others;
     for (const el of root.querySelectorAll('*')) {
       const own = shadow(el);
       if (own) visit(own, on, Made);
@@ -815,10 +820,22 @@ function blankFields(on, forMs) {
       if (inner?.defaultView) visit(inner, on, inner.defaultView.CSSStyleSheet);
     }
   };
-  visit(document, on);
+  const off = () => {
+    visit(document, false);
+    for (const [field, { styled, props }] of kept) {
+      for (const [prop, [value, priority]] of Object.entries(props)) {
+        if (value) field.style.setProperty(prop, value, priority);
+        else field.style.removeProperty(prop);
+      }
+      if (!styled && field.getAttribute('style') === '') field.removeAttribute('style');
+    }
+    kept.clear();
+  };
+  if (on) visit(document, true);
+  else off();
   const timer = Symbol.for('still-blank');
   clearTimeout(globalThis[timer]);
-  if (on && forMs) globalThis[timer] = setTimeout(() => visit(document, false), forMs);
+  if (on && forMs) globalThis[timer] = setTimeout(off, forMs);
   return seen;
 }
 
@@ -1612,7 +1629,7 @@ async function press(name) {
  * `open` for a walk of the person's own tab: the debugger goes on the tab the account worker named, where it is now. It must still
  * be on the site it was on when the walk was started. No tab is opened, none is closed, and it does not move.
  */
-async function adopt(name, allow, free, named) {
+async function adopt(name, allow, free, named, signInPage) {
   const { tabId, site, device } = adopted;
   const me = { stopped: false };
   opening = me;
@@ -1639,7 +1656,7 @@ async function adopt(name, allow, free, named) {
     still();
     // `writable`: where the walk may change things, the start alone. `allowed` grows with each Yes; `refused` with each No.
     const writable = [...new Set([site, ...allowedFor(allow)])];
-    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, named: named === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+    walk = { tabId, name, url: tab.url, origin: site, allowed: [...writable], writable, free: free === true, named: named === true, signInPage: signInPage === true, refused: new Set(), sites: 0, questions: 0, lastInputAt: -Infinity, adopted: true, grouped, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
     await cmd('Page.enable');
     await watchNetwork();
     await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1670,9 +1687,10 @@ export const ops = {
   // `free`: its writes are not held; an older server never says it, so its walks are held as ever.
   // `helpers`: the server names this extension's own page helpers (`page-helpers.js`) and sends no code; an older
   // server never says it, and sends a function's source as ever.
-  async open({ url, name, allow, free, helpers: named }) {
+  // `signInPage`: the server takes the one still of a sign-in page (`sign-in-page`); an older one never says it, and gets none.
+  async open({ url, name, allow, free, helpers: named, signInPage }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
-    if (adopted) return adopt(name, allow, free, named);
+    if (adopted) return adopt(name, allow, free, named, signInPage);
     const site = admit(url, allowedFor(allow));
     const me = { stopped: false };
     opening = me;
@@ -1696,7 +1714,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, named: named === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
