@@ -52,7 +52,7 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
-    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears', 'cover']"],
     ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
@@ -1136,11 +1136,13 @@ describe('walk worker', () => {
       const drawn = [];
       answers['Page.captureScreenshot'] = () => ({ data: btoa(drawn[drawn.push(world.document.adoptedStyleSheets.length ? 'covered' : world.document.activeElement.value) - 1]) });
       for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
-        const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
+        const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), setAttribute: (n, v) => { attrs[n] = v; }, getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
         world.document = { activeElement: field, adoptedStyleSheets: [], querySelectorAll: () => [field], elementFromPoint: () => field };
         field.value = '4242 4242 4242 4242';
         assert.equal(atob((await ops.screenshot({ format: 'png' })).value.data), 'covered', kind);
         assert.equal(world.document.adoptedStyleSheets.length, 0, 'the field as it was once the still is taken');
+        // A password field keeps a mark once seen, so a "show password" button that makes it text leaves it covered.
+        if (kind === 'password') assert.equal(field.getAttribute('data-secret-field'), '', 'a password field seen is marked');
         const from = drawn.length;
         await ops.cdp({ method: 'Page.startScreencast', params: { maxWidth: 50 } });
         await settle(40);

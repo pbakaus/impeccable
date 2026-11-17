@@ -1575,7 +1575,8 @@ function secretFocus() {
 
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
-  const fields = 'input[type="password" i], [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]';
+  const seen = "data-secret-field";
+  const fields = `input[type="password" i], [${seen}], [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
   const rule = `${fields} { ${mark}: 1; filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }`;
   const g = globalThis;
   const ours = (sheet) => {
@@ -1596,8 +1597,11 @@ function coverSecrets(on, forMs) {
       sheet.replaceSync(rule);
       root.adoptedStyleSheets = [...others, sheet];
     }
-    if (on)
+    if (on) {
+      for (const field of Array.from(root.querySelectorAll(`input[type="password" i]:not([${seen}])`)))
+        field.setAttribute(seen, "");
       covered += root.querySelectorAll(fields).length;
+    }
     for (const el of Array.from(root.querySelectorAll("*"))) {
       if (el.shadowRoot)
         visit(el.shadowRoot, Made, on);
@@ -1633,4 +1637,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '9d7e10517b6bb0ad';
+export const HASH = '03ec3b1bd346854c';

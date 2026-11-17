@@ -13,7 +13,7 @@ const PART_CHARS = 256 * 1024;
  * another site on their Yes, attach a plain picture, hold every write the tab sends until the server opens them
  * (driver.js `holding`), and read and act on the page with its own helpers only, named by the server (page-helpers.js).
  */
-const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears'];
+const CAN = ['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears', 'cover'];
 /** Made once each time this worker starts: a different one mid-outing tells the other end the worker was restarted. */
 const BOOT = crypto.randomUUID();
 
