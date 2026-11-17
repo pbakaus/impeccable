@@ -1707,6 +1707,12 @@ function coverSecrets(on, forMs) {
         covered += 1;
         if (f.style && (kept.has(f) || !worn(f))) {
           const was = kept.get(f) ?? { style: f.getAttribute("style"), css: f.style.cssText, after: null, props: {} };
+          if (!kept.has(f) && f.ownerDocument?.createElement) {
+            const [said, applied] = [f.ownerDocument.createElement("i"), f.ownerDocument.createElement("i")];
+            said.style.cssText = was.style ?? "";
+            applied.style.cssText = was.css;
+            was.refused = said.style.cssText !== applied.style.cssText;
+          }
           if (kept.has(f) && f.getAttribute("style") !== was.after)
             was.changed = true;
           for (const [name, value] of Object.entries(wear)) {
@@ -1754,12 +1760,12 @@ function coverSecrets(on, forMs) {
   };
   const off = () => {
     visit(g.document, g.CSSStyleSheet, false);
-    for (const [f, { style, css, after, changed, props }] of kept) {
+    for (const [f, { style, css, after, changed, refused, props }] of kept) {
       if (!changed && f.style && f.getAttribute("style") === after) {
         f.style.cssText = css;
         if (style === null)
           f.removeAttribute?.("style");
-        else if (f.getAttribute("style") !== style)
+        else if (!refused && f.getAttribute("style") !== style)
           f.setAttribute("style", style);
         continue;
       }
@@ -1861,4 +1867,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '3a0f1c70637c6cde';
+export const HASH = '3a0a81c6d98e63b7';
