@@ -71,3 +71,27 @@ fn each_viewport_is_one_png_at_its_size() {
     let (w, h) = png_size(&std::fs::read(dir.join("looks/800x600-full.png")).unwrap());
     assert!(w == 800 && h > 3000, "{w}x{h}");
 }
+
+#[test]
+fn a_page_that_scrolls_itself_smoothly_is_captured_from_the_top() {
+    if !has_browser() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let dir = scratch("smooth");
+    let page = |script: &str| {
+        format!(
+            "<!doctype html><style>html {{ scroll-behavior: smooth; }} body {{ margin: 0; }}
+             div {{ height: 900px; }} .a {{ background: #c33; }} .b {{ background: #33c; }} .c {{ background: #3c3; }}</style>
+             <div class=\"a\"></div><div class=\"b\"></div><div class=\"c\"></div>{script}"
+        )
+    };
+    std::fs::write(dir.join("still.html"), page("")).unwrap();
+    std::fs::write(dir.join("moved.html"), page("<script>addEventListener('load', () => scrollTo(0, 1800));</script>")).unwrap();
+    for name in ["still", "moved"] {
+        let out = run(&dir, &[&format!("{name}.html"), "--viewport", "390x844", "--out", name]);
+        assert_eq!(out.status.code(), Some(0), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let shot = |name: &str| std::fs::read(dir.join(name).join("390x844.png")).unwrap();
+    assert!(shot("still") == shot("moved"), "the capture of a page that scrolled itself is not its top");
+}
