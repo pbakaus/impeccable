@@ -1,0 +1,9 @@
+{
+  "stdout": "DESIGN.md is already short (12 bytes): it is carried whole, with nothing to compact.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {
+    "DESIGN.md": "# D\n\nShort.\n"
+  }
+}
