@@ -44,7 +44,7 @@ The same restraint applies to `workspace-context-inherited`. Inheritance is a de
 
 ## Step 5: Compact DESIGN.md only with consent
 
-On `design-md-sprawl`, run `{{scripts_path}}/impeccable design-compact` and show the person its proposal and saving. Add `--write` only once they agree here; the original moves to `.impeccable/design-full.md`. Never compact as a side effect.
+On `design-md-sprawl`, run `{{scripts_path}}/impeccable design-compact` (with Step 1's `--target`) and show the person its proposal and saving. Add `--write` only once they agree here; the original moves to `.impeccable/design-full.md`. Never compact as a side effect.
 
 ## Monorepo notes
 

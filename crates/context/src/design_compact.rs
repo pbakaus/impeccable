@@ -26,13 +26,17 @@ nothing.\n\n\
   --target <path>  Select a workspace in a monorepo."
 }
 
-/// The frontmatter block as written (`---` to `---`, with its newline), and the rest.
+/// The frontmatter block as written (from a line that is `---` to the next, either with trailing spaces, as
+/// `parse_design_md` accepts them), and the rest.
 fn split_frontmatter(design: &str) -> (&str, &str) {
-    if let Some(rest) = design.strip_prefix("---\n").or_else(|| design.strip_prefix("---\r\n")) {
-        if let Some(end) = rest.find("\n---") {
-            let close = end + "\n---".len();
-            let after = rest[close..].find('\n').map_or(rest.len(), |n| close + n + 1);
-            let cut = design.len() - rest.len() + after;
+    let mut lines = design.split_inclusive('\n');
+    if lines.next().map(str::trim) != Some("---") {
+        return ("", design);
+    }
+    let mut cut = design.split_inclusive('\n').next().map_or(0, str::len);
+    for line in lines {
+        cut += line.len();
+        if line.trim() == "---" {
             return (&design[..cut], &design[cut..]);
         }
     }
@@ -40,15 +44,32 @@ fn split_frontmatter(design: &str) -> (&str, &str) {
 }
 
 /// The frontmatter without its YAML comments: whole-line ones, and a trailing ` # …` after a plain `key: value` (a
-/// quoted value keeps any `#` inside its quotes; block-scalar text is never cut). The keys and values the detector and
-/// the map read are untouched; what the comments explained stays in the original.
+/// quoted value keeps any `#` inside its quotes). A block scalar's text (`key: |` or `key: >`, then its deeper-indented
+/// lines) is kept exactly. The keys and values the detector and the map read are untouched; what the comments explained
+/// stays in the original.
 fn without_comments(frontmatter: &str) -> String {
     static KEY_VALUE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
         regex::Regex::new(r#"^(\s*[A-Za-z0-9_-]+:\s*(?:"[^"]*"|'[^']*'|[^"'#\s][^"'#]*?)?)\s+#.*$"#).unwrap()
     });
+    static BLOCK_START: once_cell::sync::Lazy<regex::Regex> =
+        once_cell::sync::Lazy::new(|| regex::Regex::new(r"^(\s*)[A-Za-z0-9_-]+:\s*[|>][+-]?[0-9]?\s*(?:#.*)?$").unwrap());
+    let indent = |l: &str| l.len() - l.trim_start().len();
     let mut out = String::with_capacity(frontmatter.len());
+    let mut block: Option<usize> = None;
     for line in frontmatter.split_inclusive('\n') {
         let bare = line.trim_end_matches(['\n', '\r']);
+        if let Some(at) = block {
+            if bare.trim().is_empty() || indent(bare) > at {
+                out.push_str(line);
+                continue;
+            }
+            block = None;
+        }
+        if let Some(c) = BLOCK_START.captures(bare) {
+            block = Some(c.get(1).map_or(0, |m| m.as_str().len()));
+            out.push_str(line);
+            continue;
+        }
         if bare.trim_start().starts_with('#') {
             continue;
         }
@@ -71,7 +92,7 @@ pub fn propose(design: &str, dir: &std::path::Path) -> String {
     if !frontmatter.is_empty() && !frontmatter.ends_with("\n\n") {
         out.push('\n');
     }
-    out.push_str(&format!("# {title}\n\n{map}\n"));
+    out.push_str(&format!("# {title}\n\n{}\n{map}\n", design_map::MAP_MARKER));
     out
 }
 
@@ -105,6 +126,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             _ => passthrough.push(a.clone()),
         }
     }
+    // The workspace flag, as given, for the follow-up command this prints.
+    let again = if passthrough.is_empty() { String::new() } else { format!(" {}", passthrough.join(" ")) };
     let target = match parse_target_options(&passthrough, true) {
         Ok(t) => t,
         Err(msg) => {
@@ -135,25 +158,28 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         io.out(&format!(
             "{proposal}\n---\n{rel}: {before} bytes now, {after} as the map (saves {} bytes, about {} tokens each time it is read).\n\
 The original would move to {ARCHIVE}, where the map points for any section's detail.\n\
-Show this to the person; write it with `impeccable design-compact --write` only once they agree.\n",
+Show this to the person; write it with `impeccable design-compact{again} --write` only once they agree.\n",
             before - after.min(before),
             (before - after.min(before)) / 4
         ));
         return 0;
     }
     let archive = dir.join(ARCHIVE);
-    if archive.exists() {
+    // Nothing the repository planted is followed: the archive is created only if no file or link is at its path, and
+    // the replacement goes through a fresh temporary file of our own, created exclusively, then one rename.
+    if std::fs::symlink_metadata(&archive).is_ok() {
         io.err(&format!("{} already exists: nothing written. Move it aside first.\n", archive.display()));
         return 1;
     }
+    let fresh = |p: &std::path::Path, body: &str| -> std::io::Result<()> {
+        use std::io::Write;
+        std::fs::OpenOptions::new().write(true).create_new(true).open(p)?.write_all(body.as_bytes())
+    };
+    let tmp = dir.join(format!(".DESIGN.md.compact-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos())));
     let written = std::fs::create_dir_all(archive.parent().unwrap_or(&dir))
-        .and_then(|_| std::fs::write(&archive, &design))
-        .and_then(|_| {
-            // The map replaces DESIGN.md in one rename, so a reader never sees half of it.
-            let tmp = dir.join(".DESIGN.md.compact");
-            std::fs::write(&tmp, &proposal)?;
-            std::fs::rename(&tmp, &path)
-        });
+        .and_then(|_| fresh(&archive, &design))
+        .and_then(|_| fresh(&tmp, &proposal))
+        .and_then(|_| std::fs::rename(&tmp, &path).inspect_err(|_| { let _ = std::fs::remove_file(&tmp); }));
     match written {
         Ok(()) => {
             io.out(&format!("{rel} is now its map ({after} bytes); the original is in {ARCHIVE}.\n"));
@@ -200,8 +226,15 @@ mod tests {
     }
 
     #[test]
-    fn a_file_without_frontmatter_keeps_none() {
+    fn a_file_without_frontmatter_keeps_none_and_spaced_delimiters_still_count() {
         assert_eq!(split_frontmatter("# D\n\nbody\n"), ("", "# D\n\nbody\n"));
         assert_eq!(split_frontmatter("---\na: 1\n---\nrest\n"), ("---\na: 1\n---\n", "rest\n"));
+        assert_eq!(split_frontmatter("---  \na: 1\n---\t\nrest\n"), ("---  \na: 1\n---\t\n", "rest\n"));
+    }
+
+    #[test]
+    fn block_scalar_text_is_kept_exactly() {
+        let fm = "---\ndescription: |\n  # Keep this heading\n  label: value # keep this\n\n  last line\nname: Demo # gone\n---\n";
+        assert_eq!(without_comments(fm), "---\ndescription: |\n  # Keep this heading\n  label: value # keep this\n\n  last line\nname: Demo\n---\n");
     }
 }
