@@ -143,6 +143,18 @@ pub fn print(io: &mut Io, v: &Value) {
     if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
         NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
     }
+    if let Some(steps) = impeccable_common::steps::Steps::new(io) {
+        // One step, its places as lines under it, and the next step's link on a line of its own.
+        steps.done(io, "Your setup", &[]);
+        let mut lines = text.lines().peekable();
+        while let Some(line) = lines.next() {
+            match lines.next_if(|n| n.starts_with("https://")) {
+                Some(url) => steps.link(io, line, url),
+                None => steps.details(io, &[line.to_string()]),
+            }
+        }
+        return;
+    }
     // Set apart from the sign-in lines above it.
     io.err(&format!("\n{text}"));
 }
