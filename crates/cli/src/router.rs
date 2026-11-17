@@ -105,7 +105,14 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "health-design-refresh" => impeccable_account::health::run_design_refresh(rest, io),
         // Background Pro renewal (pro dispatch spawns it). Not in --help.
         "pro-refresh" => impeccable_account::pro::run_refresh(rest, io),
-        "skills" => impeccable_skills::run(rest, io),
+        "skills" => {
+            let code = impeccable_skills::run(rest, io);
+            // The launcher finds the newest engine itself, so only install registers it, never update.
+            if code == 0 && rest.first().map(String::as_str) == Some("install") {
+                register_browser_host(&rest[1..], io);
+            }
+            code
+        }
         "loop" => crate::loop_install::run(rest, io),
         "switches" => crate::agent_block::run(rest, io),
         "switches-refresh" => crate::switch_sync::run_refresh(rest, io),
@@ -121,6 +128,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             let code = impeccable_skills::run(args, io);
             // Install ends by offering the sign-in, or naming it when an agent ran it (`crate::install_sign_in`).
             if code == 0 {
+                register_browser_host(rest, io);
                 crate::install_sign_in::after_install(rest, io, &engines, pack.rule_pack);
             }
             code
@@ -455,6 +463,23 @@ pub(crate) fn health_scan(
     }
 }
 
+/// Lets Chrome start the browser relay (REN-2053): the launcher and each present browser's host manifest. Install
+/// prints what changed; a failure is named and never fails it. `args` are the verb's own: asking for
+/// help changes nothing.
+fn register_browser_host(args: &[String], io: &mut Io) {
+    // CI runs install in throwaway machines: no browser to register with, and no files left behind.
+    if io.env.get("CI").is_some_and(|v| !v.is_empty()) || args.iter().any(|a| a == "-h" || a == "--help") {
+        return;
+    }
+    let Some(home) = impeccable_account::config::impeccable_home(&io.env) else { return };
+    let user_home = home.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+    let user_home = io.env.get("HOME").filter(|h| !h.is_empty()).map(std::path::PathBuf::from).unwrap_or(user_home);
+    let config_home = io.env.get("XDG_CONFIG_HOME").filter(|v| !v.is_empty()).map(std::path::PathBuf::from);
+    for line in impeccable_mcp::host_setup::register(&user_home, &home, config_home.as_deref()) {
+        let _ = writeln!(io.stdout, "{line}");
+    }
+}
+
 /// Whether this invocation is a scan the Pro engine may take over: the
 /// verbs that run rule packs (`detect`, its path shorthand, and the hooks).
 /// `detect --before` / `--kept` run no rules, and a Pro build older than
@@ -600,5 +625,33 @@ mod verb_tests {
         assert!(!super::is_scan(&args(&["detect", "--before", "page.html"]), &io));
         assert!(!super::is_scan(&args(&["detect", "--kept", "--json", "page.html"]), &io));
         assert!(!super::is_scan(&args(&["--kept", "page.html"]), &io));
+    }
+
+    /// Catches asking install or update for help registering a browser host, and CI leaving one behind (#1533).
+    #[test]
+    fn help_and_ci_register_no_browser_host() {
+        let home = std::env::temp_dir().join(format!("imp-router-host-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let launcher = home.join(".impeccable/browser/host");
+        let run = |args: &[&str], ci: bool| {
+            let mut env: std::collections::HashMap<String, String> = [("HOME".to_string(), home.to_string_lossy().into_owned())].into();
+            if ci {
+                env.insert("CI".into(), "true".into());
+            }
+            let (mut io, _) = impeccable_common::Io::captured("", std::env::temp_dir(), env);
+            super::register_browser_host(&args.iter().map(|s| s.to_string()).collect::<Vec<_>>(), &mut io);
+        };
+        // A verified engine in the cache, so only help and CI stand in the way.
+        let bin = home.join(".impeccable/bin/1.0.0/impeccable");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(bin.with_file_name("impeccable.verified"), b"abc 10\n").unwrap();
+        run(&["--help"], false);
+        run(&["-y"], true);
+        assert!(!launcher.exists());
+        run(&["-y"], false);
+        assert_eq!(launcher.exists(), cfg!(unix));
+        let _ = std::fs::remove_dir_all(&home);
     }
 }
