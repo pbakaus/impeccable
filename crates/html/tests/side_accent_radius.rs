@@ -241,5 +241,10 @@ fn logical_pairs_hover_borders_and_mixed_branches() {
         vec![".it:hover — border-right 4px stripe (right)"]
     );
     assert!(page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>").is_empty());
+    // A radius only in the hover rule rounds the box when the bar shows,
+    // unless the element's own `style` sets its corners.
+    let hover_rounded = ".it{width:400px;height:40px}.it:hover{border-radius:6px;border-left:3px solid red}";
+    assert_eq!(page(hover_rounded, "<button class=\"it\">x</button>"), vec![".it:hover — border-left 3px stripe (left)"]);
+    assert!(page(hover_rounded, "<button class=\"it\" style=\"border-radius:0\">x</button>").is_empty());
     assert!(page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>").is_empty());
 }

@@ -2792,6 +2792,9 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         let reset = ".card {\n  border-radius: 8px;\n  border-left: 3px solid red;\n}\n.card { border-radius: 0; }\n";
         assert!(side_tabs(reset, "/x/reset.css").is_empty());
         assert!(side_tabs(&format!("<div class=\"card\">x</div>\n<style>\n{reset}</style>\n"), "/x/Reset.svelte").is_empty());
+        // An `!important` radius in the bar's own rule outlasts the reset.
+        let important = ".card {\n  border-radius: 8px !important;\n  border-left: 3px solid red;\n}\n.card { border-radius: 0; }\n";
+        assert_eq!(side_tabs(important, "/x/important.css").len(), 1);
         // A quote's rule or a code line's gutter on a square box is fine; on
         // a rounded one it is a tab.
         let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";

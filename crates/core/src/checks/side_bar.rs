@@ -73,6 +73,12 @@ pub fn is_state_side_bar(finding: &PatternFinding) -> bool {
     finding.selector.as_deref().is_some_and(|s| without_state_pseudos(s) != s)
 }
 
+/// Whether an element's `style` attribute sets a radius, which wins over a
+/// state rule's: such an element is read by its own corners only.
+pub fn inline_style_sets_radius(style: Option<&str>) -> bool {
+    style.is_some_and(|s| s.to_ascii_lowercase().contains("radius"))
+}
+
 /// Whether a side `px` wide is a bar beside other sides at most `other` px:
 /// drawn alone, or 2px or more beside hairlines or sides at most half its
 /// width. Equal sides are a frame.

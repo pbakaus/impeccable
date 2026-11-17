@@ -1124,9 +1124,15 @@ pub fn side_tab_match_stands<'s>(
     let classes = tag.map(tag_classes).unwrap_or_default();
     let rounded = || {
         // The stylesheet's rules for the box, once they all apply, outrank
-        // the bar's own rule: a later `border-radius: 0` squares it.
-        if let Some(r) = index().and_then(|index| index.declaration_rounding(pos)) {
-            return r;
+        // the bar's own rule: a later `border-radius: 0` squares it. An
+        // `!important` radius in the bar's own rule outranks them in turn.
+        let important_own = statements.iter().any(|st| {
+            split_declaration(st).is_some_and(|(p, v)| is_radius_property(&p) && js::to_lower_case(&v).contains("!important"))
+        });
+        if !important_own {
+            if let Some(r) = index().and_then(|index| index.declaration_rounding(pos)) {
+                return r;
+            }
         }
         side_tab_scope_corners(m, source, i, sass).rounds_any()
             || tag.zip(markup_text).is_some_and(|(t, text)| {

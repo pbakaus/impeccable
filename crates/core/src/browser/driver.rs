@@ -1190,10 +1190,11 @@ struct PatternItem {
 /// nobody sees, or (for a style-text stripe) to no card rounded away from
 /// it; otherwise the elements its selector resolves to (`None` inside when
 /// it names no selector).
-fn pattern_finding_stands(
+fn pattern_finding_stands<'s>(
     dom: &dyn Dom,
     f: &crate::checks::css_scan::PatternFinding,
-    style_text: &str,
+    style_text: &'s str,
+    index: &once_cell::unsync::OnceCell<crate::checks::css_scan::CssHostIndex<'s>>,
 ) -> Option<Option<Vec<ElId>>> {
     let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) else {
         return Some(None);
@@ -1243,9 +1244,12 @@ fn pattern_finding_stands(
                     crate::checks::side_bar::corners_round(corners(el).as_ref()),
                 )
             }) || (crate::checks::side_bar::is_state_side_bar(f)
+                && matches
+                    .iter()
+                    .any(|&el| !crate::checks::side_bar::inline_style_sets_radius(dom.attr(el, "style").as_deref()))
                 && crate::checks::side_bar::side_bar_stands(
                     thickness,
-                    crate::checks::css_scan::CssHostIndex::new(style_text).side_bar_on_rounded_host(f),
+                    index.get_or_init(|| crate::checks::css_scan::CssHostIndex::new(style_text)).side_bar_on_rounded_host(f),
                 ))
         } else {
             matches
@@ -1458,11 +1462,12 @@ fn html_pattern_items(
         corpora.style_text.push_str(&linked_css);
     }
     // A rule that reports one candidate reports the first that stands here.
+    let host_index = once_cell::unsync::OnceCell::new();
     let all = crate::checks::html_patterns::check_html_patterns_picking(
         &html,
         Some(&corpora),
         context,
-        &|f| pattern_finding_stands(dom, f, &corpora.style_text).is_some(),
+        &|f| pattern_finding_stands(dom, f, &corpora.style_text, &host_index).is_some(),
     );
     // Left and right side bars are read by the side bar scan, whatever state
     // or colour; the recorded stripe scans keep the top and bottom bands.
@@ -1488,7 +1493,7 @@ fn html_pattern_items(
                 continue;
             }
         }
-        let Some(resolved) = pattern_finding_stands(dom, &f, &corpora.style_text) else {
+        let Some(resolved) = pattern_finding_stands(dom, &f, &corpora.style_text, &host_index) else {
             continue;
         };
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());
