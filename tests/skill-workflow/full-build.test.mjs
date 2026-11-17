@@ -20,6 +20,8 @@ import { detectProvider, getModel, hasKey, resolveModelList, PROVIDERS } from '.
 import { assertNewWorkLifecycle } from '../skill-behavior/assertions.mjs';
 import { PRODUCT_MD_SAMPLE, DESIGN_MD_SAMPLE as ORIGINAL_DESIGN, CASE_STUDY_ANSWER } from '../skill-behavior/fixtures.mjs';
 import { prepareBrowser } from './browser.mjs';
+import { EXISTING_PAGE } from './fixtures.mjs';
+import { assertBolderArtifact } from './scope.mjs';
 import { assertCompleted, assertFreshCaptures, assertDocumentationArtifacts } from './assertions.mjs';
 
 const DESIGN_MD_SAMPLE = ORIGINAL_DESIGN.replace(/GT Sectra \(commercial\)/g, 'Georgia (system)').replace(/JetBrains Mono/g, 'monospace').replace(/Inter/g, 'Arial');
@@ -52,17 +54,6 @@ BORING_BEIGE_CARDS. Quiet beige panels, timid scale, rounded cards everywhere.
 ## Color
 Warm gray background with a muted tan accent.
 `;
-
-const EXISTING_PAGE = `<!doctype html>
-<html><head><style>
-:root { --legacy-beige: #e8e1d5; --legacy-tan: #a78969; }
-body { background: var(--legacy-beige); color: #3c3833; font-family: Arial, sans-serif; }
-.card { border: 1px solid #cfc5b6; border-radius: 18px; padding: 24px; }
-</style></head><body>
-<header data-untouched="header"><a href="/">Harbor Desk</a></header>
-<main><section id="case-study" class="card"><h1>Harbor Desk</h1><p>Challenge. Approach. Outcome.</p><p>Image placeholder</p></section></main>
-<footer data-untouched="footer">Operational since 1987</footer>
-</body></html>`;
 
 // Deliberately broken enough that any honest critique lists three or more
 // Priority Issues, so the run cannot reach the "fewer than 3" skip branch by
@@ -240,9 +231,7 @@ for (const modelId of process.env.IMPECCABLE_SKILL_BEHAVIOR_MODELS ? resolveMode
         assert.ok(implementation >= 0, `refinement did not write current.html.\n${workflowTraceMessage(trace)}`);
         assertFreshCaptures(trace, workspace, 'current.html');
         const artifact = fs.readFileSync(path.join(workspace, 'current.html'), 'utf8');
-        assert.match(artifact, /data-untouched="header"/);
-        assert.match(artifact, /data-untouched="footer"/);
-        assert.match(artifact, /id="case-study"/);
+        await assertBolderArtifact(EXISTING_PAGE, artifact);
       } finally {
         cleanupWorkspace(workspace);
       }

@@ -106,6 +106,7 @@ describe('release.mjs guards', () => {
       optionalDependencies: { '@impeccable/cli-darwin-arm64': '0.1.0', '@impeccable/cli-linux-x64': '0.1.0' },
     }));
     write('ENGINE_VERSION', '0.1.0\n');
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'ab'.repeat(32) }));
     write('extension/manifest.json', JSON.stringify({ version: '2.0.0' }));
     write('site/pages/changelog.astro', CHANGELOG);
     write('dist/universal.zip', 'zip');
@@ -160,6 +161,37 @@ describe('release.mjs guards', () => {
     const { code, stderr } = runRelease(workDir, 'engine');
     assert.notEqual(code, 0);
     assert.match(stderr, /pins @impeccable\/cli-darwin-arm64@0\.1\.0.*expected 0\.2\.0/);
+  });
+
+  it('engine: refuses with no Pro release key compiled in', () => {
+    // Catches (launch review, 10 Nov): an engine tagged while scripts/cli-pro-release-keys.json
+    // was {}, which ships a CLI where every Pro build fails its signature check.
+    write('scripts/cli-pro-release-keys.json', '{}\n');
+    git(workDir, 'commit', '-am', 'empty keyring');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key/);
+  });
+
+  it('engine: refuses a Pro release key that is not 64 hex characters', () => {
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'not-a-key' }));
+    git(workDir, 'commit', '-am', 'bad key');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key/);
+  });
+
+  it('engine: refuses a keyring with one valid key and one malformed entry', () => {
+    // Catches (#1372 review): one valid key passed the check, but the engine rejects the
+    // whole file when any entry is malformed, so it would ship trusting no key at all.
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'ab'.repeat(32), 'release-2': 'AB'.repeat(32) }));
+    git(workDir, 'commit', '-am', 'one bad key');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key.*invalid: "release-2"/);
   });
 
   it('engine: refuses when the tag already exists on origin', () => {

@@ -4,6 +4,8 @@ The VS Code extension is a declarative delivery channel for the GitHub Copilot s
 
 Install [Impeccable from the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=renaissance-geek.impeccable), published by Renaissance Geek, or run `code --install-extension renaissance-geek.impeccable`. Requires VS Code 1.109.3+, Copilot Chat access, and a trusted local workspace. Use Chat in Agent mode, for example `/impeccable polish`. Avoid duplicate Impeccable skill installations in the same workspace/profile.
 
+The extension also declares support for the separate **Agents window** through `capabilities.agentsWindow.supported: true`. This is distinct from Chat's Agent mode and applies on VS Code versions that provide the Agents window. The minimum editor version and existing workspace-trust and virtual-workspace restrictions are unchanged.
+
 The package version follows `.claude-plugin/plugin.json`. Do not independently bump it for feature work. Publication and updates are separate maintainer steps; building or packaging does not publish.
 
 ## Scope
@@ -20,7 +22,7 @@ Sources: [release notes](https://code.visualstudio.com/updates/v1_109), [contrib
 
 ## Validation
 
-`node --test tests/vscode-extension.test.mjs` checks the generated manifest, linked resources, launcher relocation (including spaces and project cwd), lack of repo-install sidecars, and deterministic rebuilding. The core suite includes these checks. CI also runs `vsce package` on the staged directory.
+`node --test tests/vscode-extension.test.mjs` checks the generated manifest (including Agents window support and the existing workspace restrictions), linked resources, launcher relocation (including spaces and project cwd), lack of repo-install sidecars, and deterministic rebuilding. The core suite includes these checks. CI also runs `vsce package` on the staged directory.
 
 Before publishing, install the VSIX into a separate VS Code profile and extensions directory:
 
@@ -36,6 +38,8 @@ code --user-data-dir /absolute/path/to/test-profile \
 Use an otherwise skill-free fixture with PRODUCT.md, DESIGN.md, and a small HTML file. Disable discovery of user-level Impeccable copies in that test profile to avoid testing the wrong installation. Sign into Copilot without enabling Settings Sync.
 
 Check that `/impeccable` is discoverable, the loaded SKILL.md is inside the installed extension, a command-specific reference resolves there, and the launcher runs with cwd at the fixture. Record any requested command approvals. Also check that installation itself created no `.github/` directory or instructions file in the fixture. A launcher subprocess test alone is not a Copilot behavior test.
+
+On a VS Code version with the Agents window, repeat these checks there before publishing. Verify discovery from the installed extension without user overrides that force-enable it. A passing Chat Agent mode smoke does not establish Agents window discovery.
 
 Test the oldest supported editor as well as current stable before publication. Windows and remote workspaces need separate smoke checks; do not infer them from a macOS local run. Plain browser-only VS Code cannot run the native launcher.
 

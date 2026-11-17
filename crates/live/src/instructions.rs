@@ -9,8 +9,23 @@ pub fn poll_cmd(self_cmd: &str) -> String {
 }
 
 /// JS: bootInstructions({ scriptsPath })
-pub fn boot_instructions(self_cmd: &str) -> String {
-    format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd))
+pub fn boot_instructions(
+    self_cmd: &str,
+    dev_url: Option<&str>,
+    page_url: Option<&str>,
+    dev_command: Option<&str>,
+) -> String {
+    let origin = dev_url.map(|url| format!("Open {} as the page origin that serves a pageFiles entry (never serverPort; that is the helper).", url));
+    let origin = origin.or_else(|| dev_command.map(|command| format!("No dev server answered. If one is already running on another port or HTTPS, use its URL; otherwise start `{}` in the background, wait until it prints its URL, and run this boot again to get devUrl.", command)))
+        .or_else(|| page_url.map(|url| format!("No dev server is needed: open {} (a file URL; never serverPort, that is the helper). Tell the user that URL.", url)));
+    let instructions = format!("Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run {} immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.", poll_cmd(self_cmd));
+    match origin {
+        Some(origin) => instructions.replacen(
+            "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper).",
+            &origin, 1,
+        ),
+        None => instructions,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +140,14 @@ pub fn instructions_for_event(event: &Map<String, Value>, self_cmd: &str) -> Opt
                         id,
                         complete
                     )
+                } else if err == "markers_share_line" {
+                    format!(
+                        "Discard wrote nothing: a marker comment for {} shares its line with other markup. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), re-run {} --id {} --discard until it reports handled, then run {} and poll again.",
+                        id,
+                        script_cmd(self_cmd, "live-accept"),
+                        id,
+                        complete
+                    )
                 } else {
                     format!(
                         "Discard did NOT restore the source: {}. If the impeccable-variants wrapper for {} is still in source, replace it with the original element by hand (the VCS diff shows what it replaced). Once no impeccable-variants marker for {} remains in source, run {} and poll again.",
@@ -216,15 +239,19 @@ fn generate_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
             Some(v) if truthy(Some(v)) => js_str(Some(v)),
             _ => String::new(),
         };
+        let mut locator = String::new();
+        for (flag, value) in [("--element-id", el_id), ("--classes", classes), ("--tag", tag)] {
+            if !value.is_empty() {
+                locator.push_str(&format!(" {} \"{}\"", flag, value));
+            }
+        }
         steps.push(format!(
-            "Preflight could not scaffold{}. Run {} --id {} --count {} --element-id \"{}\" --classes \"{}\" --tag \"{}\" --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
+            "Preflight could not scaffold{}. Run {} --id {} --count {}{} --text \"<first ~80 chars of the picked element's textContent>\". Keep the flags separate; --text disambiguates repeated siblings. On a fallback error, follow live.md's Handle fallback.",
             err,
             script_cmd(self_cmd, "live-wrap"),
             id,
             count,
-            el_id,
-            classes,
-            tag
+            locator
         ));
     }
     // A Go the generate verb fired (`origin: "agent"`) plans exactly like a
@@ -269,15 +296,20 @@ fn svelte_component_instructions(event: &Map<String, Value>, scaffold: &Value) -
     )
 }
 
-fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+fn scaffold_is_insertion(scaffold: &Value) -> bool {
     let start = crate::util::js_number(scaffold.get("replaceStartLine"));
     let end = crate::util::js_number(scaffold.get("replaceEndLine"));
-    let insert_note = match (start, end) {
-        (Some(s), Some(e)) if e < s => format!(
+    matches!((start, end), (Some(s), Some(e)) if e < s)
+}
+
+fn deferred_wrapper_instructions(event: &Map<String, Value>, scaffold: &Value) -> String {
+    let insert_note = if scaffold_is_insertion(scaffold) {
+        format!(
             " (replaceEndLine < replaceStartLine: this is an INSERTION at line {}; remove nothing)",
             js_str(scaffold.get("replaceStartLine"))
-        ),
-        _ => String::new(),
+        )
+    } else {
+        String::new()
     };
     format!(
         "The wrapper is NOT in source yet. In ONE edit to {}: splice preview CSS plus all {} variants into scaffold.wrapperBlock at the \"Variants: insert below this line\" marker, then replace lines {}-{}{} with the result. Two separate writes reload the framework mid-publish and strand the browser at 0/N. Author CSS per the returned cssAuthoring contract; each variant div holds exactly ONE top-level element (same tag as the original); first visible, others display: none. On JSX/TSX wrap the <style> content in a template literal and use className / style={{{{...}}}}.",
@@ -318,11 +350,23 @@ fn insert_scaffold_instructions(event: &Map<String, Value>, self_cmd: &str) -> S
     }
     if let Some(s) = scaffold {
         if s.get("sourceWritten") == Some(&Value::Bool(false)) {
+            let edit = if scaffold_is_insertion(s) {
+                format!(
+                    "insert at line {} of {}, remove nothing",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("file"))
+                )
+            } else {
+                format!(
+                    "replace lines [{}, {}] of {} with the result",
+                    js_str(s.get("replaceStartLine")),
+                    js_str(s.get("replaceEndLine")),
+                    js_str(s.get("file"))
+                )
+            };
             return format!(
-                "{} Splice your variants into scaffold.wrapperBlock at the marker and insert the result at line {} of {} in ONE edit.",
-                base,
-                js_str(s.get("replaceStartLine")),
-                js_str(s.get("file"))
+                "{} Splice your variants into scaffold.wrapperBlock at the marker and {} in ONE edit.",
+                base, edit
             );
         }
     }
@@ -397,6 +441,9 @@ fn accept_instructions(event: &Map<String, Value>, self_cmd: &str) -> String {
         if err == Some("source_locked") {
             return format!("{}The source file is briefly locked by a publisher. Re-run the exact same live-accept command (idempotent); do NOT hand-edit the file, and do not poll past this.", prefix);
         }
+        if err == Some("markers_share_line") {
+            return format!("{}A marker comment for this session shares its line with other markup in {}, so accept refused and wrote nothing. Move each impeccable marker comment onto a line of its own (move only the marker, change nothing else), then re-run the same live-accept command.", prefix, js_str(result.get("file")));
+        }
         if err == Some("accept_receipt_conflict") {
             let prior = match result.get("priorOperation") {
                 Some(v) if truthy(Some(v)) => js_str(Some(v)),
@@ -449,6 +496,37 @@ mod tests {
     }
 
     #[test]
+    fn deferred_insert_instructions_respect_the_replacement_range() {
+        for (end, expected) in [
+            (4, "replace lines [4, 4] of index.html with the result"),
+            (3, "insert at line 4 of index.html, remove nothing"),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("scaffold".into(), json!({
+                "sourceWritten": false, "file": "index.html",
+                "replaceStartLine": 4, "replaceEndLine": end
+            }));
+            let instructions = insert_scaffold_instructions(&event, "impeccable");
+            assert!(instructions.contains(expected), "{instructions}");
+        }
+    }
+
+    #[test]
+    fn bare_element_fallback_omits_empty_locator_flags() {
+        for element in [
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee" }),
+            json!({ "tagName": "h1", "textContent": "Harbor Coffee", "id": "", "classes": [] }),
+        ] {
+            let mut event = generate_event(None);
+            event.insert("element".into(), element);
+            let instructions = generate_instructions(&event, "impeccable");
+            assert!(instructions.contains("live-wrap --id ab12cd34 --count 3 --tag \"h1\""), "{instructions}");
+            assert!(!instructions.contains("--element-id \"\""), "{instructions}");
+            assert!(!instructions.contains("--classes \"\""), "{instructions}");
+        }
+    }
+
+    #[test]
     fn an_agent_initiated_generate_plans_exactly_like_a_users() {
         let lane = generate_instructions(&generate_event(Some("agent")), "impeccable");
         let user = generate_instructions(&generate_event(None), "impeccable");
@@ -484,7 +562,61 @@ mod tests {
         assert!(locked.contains("Re-run impeccable live-accept --id ab12cd34 --discard"), "{locked}");
         assert!(locked.contains("do NOT hand-edit"), "{locked}");
         assert!(locked.contains("impeccable live-complete --id ab12cd34 --discarded"), "{locked}");
+        let shared = instructions_for_event(
+            &event(json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" })),
+            "impeccable",
+        )
+        .unwrap();
+        assert!(shared.contains("onto a line of its own"), "{shared}");
+        assert!(shared.contains("re-run impeccable live-accept --id ab12cd34 --discard"), "{shared}");
         let restored = instructions_for_event(&event(json!({ "handled": true, "file": "src/App.tsx" })), "impeccable").unwrap();
         assert!(restored.starts_with("Original restored"), "{restored}");
+    }
+
+    #[test]
+    fn a_shared_marker_line_on_accept_names_the_repair() {
+        let mut event = Map::new();
+        event.insert("type".into(), json!("accept"));
+        event.insert("id".into(), json!("ab12cd34"));
+        event.insert("_acceptResult".into(), json!({ "handled": false, "mode": "error", "file": "src/App.tsx", "error": "markers_share_line" }));
+        event.insert("_completionAck".into(), json!({ "ok": true, "type": "error" }));
+        let text = instructions_for_event(&event, "impeccable").unwrap();
+        assert!(text.contains("src/App.tsx"), "{text}");
+        assert!(text.contains("onto a line of its own"), "{text}");
+        assert!(text.contains("re-run the same live-accept command"), "{text}");
+        assert!(!text.contains("Accept failed"), "{text}");
+    }
+}
+
+#[cfg(test)]
+mod boot_tests {
+    use super::*;
+
+    #[test]
+    fn boot_without_server_names_static_page_or_dev_command() {
+        let default = boot_instructions("impeccable", None, None, None);
+        let page = boot_instructions("impeccable", None, Some("file:///app/index.html"), None);
+        assert!(page.starts_with("No dev server is needed: open file:///app/index.html (a file URL; never serverPort, that is the helper). Tell the user that URL."));
+        assert!(!page.contains("Open the app URL that serves"));
+        let dev = boot_instructions("impeccable", None, None, Some("npm run dev"));
+        assert!(dev.contains("start `npm run dev` in the background, wait until it prints its URL"));
+        assert!(dev.contains("run this boot again to get devUrl"));
+        for text in [&page, &dev] {
+            assert_eq!(text.split_once(" Then ").unwrap().1, default.split_once(" Then ").unwrap().1);
+        }
+    }
+
+    #[test]
+    fn boot_url_names_page_origin_and_preserves_default() {
+        let default = boot_instructions("impeccable", None, None, None);
+        let expected = "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper). Then start the poll loop per your harness policy in live.md and re-run impeccable live-poll immediately after every event or reply. Every event carries _instructions: follow them; they are the authoritative next step with real ids and paths filled in. A poll that is running is a poll you are SERVICING: never announce you are waiting and idle your turn; stay on the exec session until it returns an event, and never end a turn while a poll is outstanding.";
+        assert_eq!(default, expected);
+        let url = "http://localhost:5173";
+        let named = boot_instructions("impeccable", Some(url), None, None);
+        assert_eq!(named, expected.replacen(
+            "Open the app URL that serves a pageFiles entry (never serverPort; that is the helper).",
+            &format!("Open {} as the page origin that serves a pageFiles entry (never serverPort; that is the helper).", url), 1,
+        ));
+        assert_eq!(named.split_once(" Then ").unwrap().1, default.split_once(" Then ").unwrap().1);
     }
 }

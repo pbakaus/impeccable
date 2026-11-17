@@ -167,7 +167,7 @@ Projects help you organize your work and collaborate with your team.
 
 ## Empty State Design
 
-Every empty state needs:
+A first-use empty state carries all five parts below. The other types listed after them need fewer: a user-cleared state stays light, and a no-results state mostly needs a way out.
 
 ### What Will Be Here
 "Your recent projects will appear here"
@@ -195,17 +195,18 @@ Illustration or icon (not just text on blank page)
 
 ### Technical approaches:
 
-**Tooltip libraries**: Tippy.js, Popper.js
-**Tour libraries**: Intro.js, Shepherd.js, React Joyride
+**Tooltip libraries**: Floating UI, Tippy.js
+**Tour libraries**: Driver.js, React Joyride (both MIT)
 **Modal patterns**: Focus trap, backdrop, ESC to close
 **Progress tracking**: LocalStorage for "seen" states
 **Analytics**: Track completion, drop-off points
 
 **Storage patterns**:
 ```javascript
-// Track which onboarding steps user has seen
-localStorage.setItem('onboarding-completed', 'true');
-localStorage.setItem('feature-tooltip-seen-reports', 'true');
+// Namespace keys by account id + onboarding version, so a shared browser
+// doesn't let one account's progress hide onboarding for another.
+localStorage.setItem('onboarding-completed:v1:' + userId, 'true');
+localStorage.setItem('feature-tooltip-seen-reports:v1:' + userId, 'true');
 ```
 
 Show onboarding once: track completion and respect dismissals.

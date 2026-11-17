@@ -1,5 +1,5 @@
 {
-  "name": "Vite 8 + SvelteKit stateful page",
+  "name": "Vite 8 + SvelteKit 3 stateful page",
   "config": {
     "files": [
       "src/app.html"
@@ -12,7 +12,6 @@
     "src/app.html",
     "src/routes/+page.svelte",
     "src/routes/+layout.svelte",
-    "svelte.config.js",
     "vite.config.js"
   ],
   "generatedFiles": [],

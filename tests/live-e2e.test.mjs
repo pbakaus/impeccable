@@ -278,7 +278,7 @@ for (const { name, fixture } of fixtures) {
       const domSelector = isInsert
         ? insertDomSelector
         : pickSelector;
-      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture) || name === 'nuxt-vite7';
+      const usesSvelteComponentPreview = fixtureUsesSvelteKitAdapter(fixture);
       // Component previews mount every variant into the same node, so one
       // selector serves all three; the HTML/JSX paths keep a div per variant.
       const variantContentSelectorFor = (variantNum) => (isInsert

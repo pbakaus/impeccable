@@ -22,12 +22,18 @@ use crate::file_system::{
     walk_dir_reporting,
 };
 use crate::github_annotations::{
-    format_github_annotations, GITHUB_JSON_CONFLICT, GITHUB_LIST_RULES_CONFLICT,
+    format_github_annotations, is_advisory, GITHUB_JSON_CONFLICT, GITHUB_LIST_RULES_CONFLICT,
 };
 use crate::jsp;
 use crate::list_rules::{
     collect_catalog_rules, format_list_rules_ids, format_list_rules_json, format_list_rules_text,
     LIST_RULES_SCAN_ERROR,
+};
+use crate::sarif::{
+    format_sarif, SARIF_GITHUB_CONFLICT, SARIF_JSON_CONFLICT, SARIF_LIST_RULES_CONFLICT,
+};
+use crate::unused_ignores::{
+    merge_unused_ignores, partition_unused_ignores, ScanEngine, NEEDS_INLINE_IGNORES,
 };
 use crate::util::{exists, re, D};
 
@@ -37,9 +43,15 @@ Scan files or URLs for UI anti-patterns and design quality issues.
 
 Options:
   --json              Output results as JSON
+  --changed           Scan the UI files git reports as changed under the
+                      current directory: modified or staged tracked files
+                      and untracked files git does not ignore. Takes no
+                      targets
   --quiet             In text mode, only print the final findings count
   --github            Write GitHub Actions annotations for each
-                      finding. Not with --json or --list-rules
+                      finding. Not with --json, --sarif or --list-rules
+  --sarif             Write a SARIF 2.1.0 log for code scanning.
+                      Not with --json, --github or --list-rules
   --list-rules        Print the detector rule catalog and exit. --json
                       for JSON, --quiet for ids only. Takes no targets
   --scope <name>      Only report rules in the given design domain
@@ -49,6 +61,10 @@ Options:
   --no-config         Do not apply project config, detector ignores, inline
                       ignore comments, or DESIGN.md
   --no-inline-ignores Do not honor in-file impeccable-disable* ignore comments
+  --report-unused-ignores
+                      Report inline ignore comments that waived no
+                      finding. Not with --no-inline-ignores or
+                      --no-config
   --no-design-system  Do not load local DESIGN.md / .impeccable/design.json context
   --no-advisory       Suppress advisory findings entirely (e.g. em-dash overuse)
   --no-consent-hiding URL scans: keep known consent managers' banners
@@ -64,6 +80,12 @@ Options:
                       resized or closed. Takes no file or URL targets
   --target <text>     With --cdp: pick the page whose URL or title contains
                       this text when the app has more than one
+  --before            Record the wiring of each local .html file (links,
+                      forms, fields, buttons, handlers, ids, test hooks,
+                      scripts, label targets) under .impeccable/wiring/
+  --kept              Compare each local .html file with its --before
+                      inventory: exit 1 when wiring went missing, 2 when
+                      a file has no inventory. New items are listed
   --help              Show this help message
 
 Advisory findings:
@@ -75,6 +97,8 @@ Output streams:
   Human-readable findings go to stderr so stdout stays available for structured
   output. Use --json for JSON on stdout, or redirect text with 2> findings.txt.
   --github writes Actions annotations to stdout (no human findings).
+  --sarif writes a SARIF 2.1.0 log to stdout (no human findings). A clean
+  scan still writes one, so code scanning can close alerts.
   --list-rules writes the catalog to stdout (no scan).
 
 Exit status:
@@ -82,6 +106,10 @@ Exit status:
   1  At least one requested target could not be scanned
   2  Scan completed with primary findings
   Operational failure takes precedence when a multi-target scan is partial.
+  --changed outside a git work tree exits 1 with an error and scans nothing.
+  --kept: 0 wiring kept, 1 a wiring item is missing, 2 a file could not be
+  compared (no --before inventory); 2 takes precedence. --before: 0 saved,
+  1 a file could not be recorded.
 
 Project config:
   Respects .impeccable/config.json and .impeccable/config.local.json detector
@@ -95,6 +123,10 @@ Inline ignores:
     // impeccable-disable-next-line bounce-easing: intentional bounce
   impeccable-disable applies to the whole file; -line / -next-line are scoped.
   List one or more rule ids (comma-separated), or omit them / use * for all.
+  --report-unused-ignores lists each rule in those comments that waived
+  nothing, as a warning (unused-ignore) on the same findings stream. A *
+  waiver is listed only when it waived no finding at all. Advisory findings
+  count as a use. URL and --cdp scans have no source text and report none.
 
 Detection modes:
   HTML files     Static HTML/CSS analysis (default, catches linked CSS)
@@ -110,9 +142,14 @@ Examples:
   impeccable detect https://example.com
   impeccable detect --cdp 9222 --target \"My App\" --json
   impeccable detect --json .
+  impeccable detect --json --changed
   impeccable detect --github src/
+  impeccable detect --sarif src/
   impeccable detect --list-rules
+  impeccable detect --report-unused-ignores src/
   impeccable detect --no-config src/
+  impeccable detect --before index.html
+  impeccable detect --kept index.html
 ";
 
 /// Remove every `--name <value>` / `--name=<value>` from `args`. `None` when
@@ -141,11 +178,36 @@ fn take_value_flag(args: &mut Vec<String>, name: &str) -> Option<Option<String>>
     found
 }
 
-fn format_finding_summary(count: usize) -> String {
-    format!(
-        "{count} anti-pattern{} found.",
-        if count == 1 { "" } else { "s" }
-    )
+/// The summary line. `--report-unused-ignores` findings are counted on
+/// their own: a stale waiver is not an anti-pattern, and a run whose only
+/// findings are stale waivers should not read as one that found
+/// anti-patterns. With none, this is the usual line, byte for byte.
+fn format_finding_summary(count: usize, unused: usize) -> String {
+    let unused = unused.min(count);
+    let antipatterns = count - unused;
+    let ap = format!(
+        "{antipatterns} anti-pattern{}",
+        if antipatterns == 1 { "" } else { "s" }
+    );
+    if unused == 0 {
+        return format!("{ap} found.");
+    }
+    let ui = format!(
+        "{unused} unused inline ignore{}",
+        if unused == 1 { "" } else { "s" }
+    );
+    if antipatterns == 0 {
+        format!("{ui} found.")
+    } else {
+        format!("{ap} and {ui} found.")
+    }
+}
+
+fn count_unused_ignores(findings: &[&Finding]) -> usize {
+    findings
+        .iter()
+        .filter(|f| f.antipattern == crate::unused_ignores::UNUSED_IGNORE_ID)
+        .count()
 }
 
 /// JS: main.mjs#expandJoinedUrlTargets
@@ -173,10 +235,6 @@ fn expand_joined_url_targets(targets: Vec<String>) -> Vec<String> {
         }
     }
     out
-}
-
-fn is_advisory(f: &Finding) -> bool {
-    f.advisory == Some(true) || f.severity == "advisory"
 }
 
 fn partition_advisory(findings: &[Finding]) -> (Vec<&Finding>, Vec<&Finding>) {
@@ -274,7 +332,10 @@ pub fn format_findings(findings: &[Finding], json_mode: bool, stderr_tty: bool) 
     }
     let (primary, advisory) = partition_advisory(findings);
     let mut out = format_findings_body(&primary);
-    out.push(format!("\n{}", format_finding_summary(primary.len())));
+    out.push(format!(
+        "\n{}",
+        format_finding_summary(primary.len(), count_unused_ignores(&primary))
+    ));
     let section = format_advisory_section(&advisory, stderr_tty);
     if !section.is_empty() {
         out.push(section);
@@ -295,6 +356,7 @@ struct Ctx<'a> {
     json_mode: bool,
     quiet_mode: bool,
     github_mode: bool,
+    sarif_mode: bool,
     design_system_enabled: bool,
     base: ScanOptions,
     cache: DesignSystemCache,
@@ -305,6 +367,13 @@ struct Ctx<'a> {
     /// Local files that went to the regex engine instead of the static HTML
     /// engine, so the run can say its findings are an undercount (#884).
     regex_only_files: usize,
+    /// Local files the engines read, for design health.
+    files_scanned: usize,
+    /// Of those, the UI files (markup, styles, components) and the ones the
+    /// static HTML engine read, for foundations.
+    ui_files_scanned: usize,
+    html_files_scanned: usize,
+    regex_component_files: usize,
     /// Their extensions, lowercased and sorted, for the note.
     regex_only_exts: BTreeSet<String>,
     /// Each scanned directory's framework dev-server port, deduplicated, so
@@ -314,6 +383,9 @@ struct Ctx<'a> {
     /// target (a DESIGN.md that declares a purple), and per URL scan note (a
     /// consent banner the engine hid), in first-seen order.
     design_notes: Vec<String>,
+    /// `--report-unused-ignores`: engines returned raw findings, and this
+    /// run appends a warning for each waiver that matched nothing.
+    report_unused_ignores: bool,
     /// Custom properties per project, read once for the stripe colours a
     /// component takes from a token sheet elsewhere.
     tokens: ProjectTokens,
@@ -357,16 +429,19 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// The file's findings, plus the source text when the regex path read
+    /// it (`None` for the HTML engine, which reads the file itself).
     fn detect_local_file(
         &mut self,
         file_path: &str,
         options: &ScanOptions,
-    ) -> Result<Vec<Finding>, EngineError> {
+    ) -> Result<(Vec<Finding>, Option<String>), EngineError> {
         if uses_html_engine(file_path, &self.config.extensions) {
             return self
                 .engines
                 .html
-                .detect_html(file_path, options, &mut *self.io.stderr);
+                .detect_html(file_path, options, &mut *self.io.stderr)
+                .map(|findings| (findings, None));
         }
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
@@ -376,6 +451,7 @@ impl<'a> Ctx<'a> {
                     std::io::ErrorKind::PermissionDenied => {
                         format!("EACCES: permission denied, open '{file_path}'")
                     }
+                    std::io::ErrorKind::InvalidData => e.to_string(),
                     _ => format!("ENOENT: no such file or directory, open '{file_path}'"),
                 }));
             }
@@ -383,7 +459,7 @@ impl<'a> Ctx<'a> {
         self.regex_only_files += 1;
         self.regex_only_exts.insert(ext_from_file_path(file_path));
         let tokens = may_need_tokens(&content).then(|| self.tokens.for_file(file_path));
-        Ok(detect_text(
+        let findings = detect_text(
             &content,
             file_path,
             &TextOptions {
@@ -393,6 +469,50 @@ impl<'a> Ctx<'a> {
                 rule_pack: options.rule_pack,
                 tokens: tokens.as_deref(),
             },
+        );
+        Ok((findings, Some(content)))
+    }
+
+    /// [`detect_local_file`], then (only under `--report-unused-ignores`)
+    /// re-apply the file's waivers and append one finding per rule that
+    /// waived nothing. The flag-off path returns the engine findings as-is.
+    fn scan_local_file(
+        &mut self,
+        file_path: &str,
+        options: &ScanOptions,
+    ) -> Result<Vec<Finding>, EngineError> {
+        let (findings, source) = self.detect_local_file(file_path, options)?;
+        if !self.report_unused_ignores {
+            return Ok(findings);
+        }
+        // The regex path hands back the text it scanned. The HTML engine
+        // reads the file itself, so read it once more with the same decode as
+        // its `read_source` (`String::from_utf8_lossy`): `read_to_string`
+        // fails on a non-UTF-8 file that engine still scanned, and returning
+        // those raw findings would leak every waiver (and report no
+        // unused-ignore). A real IO failure is a scan error, same as the
+        // first read, so the run says so instead of publishing ignores-off
+        // findings.
+        let source_was_regex = source.is_some();
+        let content = match source {
+            Some(content) => content,
+            None => match std::fs::read(file_path) {
+                Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                Err(err) => return Err(EngineError::new(node_scan_error(file_path, &err))),
+            },
+        };
+        // The regex path is the one that handed back its text.
+        let engine = if source_was_regex {
+            ScanEngine::regex_for(&content, file_path)
+        } else {
+            ScanEngine::Html
+        };
+        Ok(merge_unused_ignores(
+            file_path,
+            findings,
+            &content,
+            engine,
+            options.design_system.as_deref(),
         ))
     }
 
@@ -407,14 +527,14 @@ impl<'a> Ctx<'a> {
             if let Some(fp) = fp {
                 if !fp.is_empty() && exists(&fp) {
                     let opts = self.scan_options_for(Some(&fp));
-                    let found = self.detect_local_file(&fp, &opts)?;
+                    let found = self.scan_local_file(&fp, &opts)?;
                     self.note_scanned(&opts);
                     return Ok(found);
                 }
             }
         }
         let opts = self.scan_options_for(None);
-        Ok(detect_text(
+        let found = detect_text(
             &input,
             "<stdin>",
             &TextOptions {
@@ -424,7 +544,17 @@ impl<'a> Ctx<'a> {
                 rule_pack: opts.rule_pack,
                 tokens: None,
             },
-        ))
+        );
+        if self.report_unused_ignores {
+            return Ok(merge_unused_ignores(
+                "<stdin>",
+                found,
+                &input,
+                ScanEngine::regex_for(&input, "<stdin>"),
+                opts.design_system.as_deref(),
+            ));
+        }
+        Ok(found)
     }
 }
 
@@ -484,13 +614,86 @@ fn file_url_to_local_path(url: &str) -> Option<String> {
 /// JS: main.mjs#detectCli. `args` are the argv after the `detect` verb (the
 /// leading `detect` the JS strips itself is also stripped here).
 pub fn run_detect(args: &[String], io: &mut Io, engines: &Engines) -> i32 {
-    match detect_cli(args, io, engines) {
+    run_detect_with_pack(args, io, engines, None)
+}
+
+/// A completed scan of one whole local directory, as design health uploads
+/// it (`impeccable_account::health`). Only a scan that could be the whole
+/// project produces one: the working directory or a single directory target,
+/// with no `--scope`, no `--cdp`, no stdin, no URL and no file left unscanned.
+/// Whether `root` is the top of a git work tree is the caller's check.
+#[derive(Debug, Clone)]
+pub struct FullScan {
+    /// The scanned directory, absolute.
+    pub root: String,
+    pub files_scanned: usize,
+    /// Scanned markup, style and component files (not plain .js/.ts).
+    pub ui_files_scanned: usize,
+    /// Scanned files the static HTML engine read, the only local files the
+    /// element rules (low contrast among them) run on.
+    pub html_files_scanned: usize,
+    /// Scanned non-style files (components, scripts) that only the regex
+    /// engine read, so element rules never judged any markup in them.
+    pub regex_component_files: usize,
+    /// What detect reported, after the config, ignores and `--no-advisory`.
+    pub findings: Vec<Finding>,
+    /// Everything besides the engine that decides which findings can exist:
+    /// each enabled rule id (sorted), then each setting as `name=value`.
+    /// Formatting flags are left out.
+    pub ruleset: Vec<String>,
+}
+
+/// Markup, style and component files: the scannable ones besides plain scripts.
+fn is_ui_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [
+        ".html", ".htm", ".css", ".scss", ".sass", ".less", ".jsx", ".tsx", ".vue", ".svelte",
+        ".astro", ".blade.php",
+    ]
+    .iter()
+    .any(|ext| lower.ends_with(ext))
+}
+
+fn is_style_file(file: &str) -> bool {
+    let lower = file.to_ascii_lowercase();
+    [".css", ".scss", ".sass", ".less"].iter().any(|ext| lower.ends_with(ext))
+}
+
+/// [`run_detect_with_pack`] that also hands back a [`FullScan`] when the run
+/// was one. Output and exit code are the same either way.
+pub fn run_detect_reporting(
+    args: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    report: &mut Option<FullScan>,
+) -> i32 {
+    match detect_cli(args, io, engines, rule_pack, Some(report)) {
         Ok(code) => code,
         Err(Exit(code)) => code,
     }
 }
 
-fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32, Exit> {
+/// CLI scanning with a build-supplied source/browser hook.
+pub fn run_detect_with_pack(
+    args: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+) -> i32 {
+    match detect_cli(args, io, engines, rule_pack, None) {
+        Ok(code) => code,
+        Err(Exit(code)) => code,
+    }
+}
+
+fn detect_cli(
+    args_in: &[String],
+    io: &mut Io,
+    engines: &Engines,
+    rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    report: Option<&mut Option<FullScan>>,
+) -> Result<i32, Exit> {
     let mut args: Vec<String> = args_in
         .iter()
         .map(|a| match a.as_str() {
@@ -506,8 +709,10 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
     let json_mode = has(&args, "--json");
     let quiet_mode = has(&args, "--quiet");
     let github_mode = has(&args, "--github");
+    let sarif_mode = has(&args, "--sarif");
     let help_mode = has(&args, "--help");
     let no_advisory = has(&args, "--no-advisory");
+    let changed_mode = has(&args, "--changed");
     if has(&args, "--fast") {
         io.err("Note: --fast is deprecated and ignored. The full scan is fast now and runs every rule.\n");
     }
@@ -631,17 +836,21 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         && !has(&args, "--no-design-system")
         && detection_config.design_system_not_disabled();
     let inline_ignores_enabled = config_enabled && !has(&args, "--no-inline-ignores");
+    let report_unused_ignores = has(&args, "--report-unused-ignores");
     let base = ScanOptions {
-        inline_ignores: inline_ignores_enabled,
+        // The flag asks the engines for raw findings. The CLI applies the
+        // waivers itself so it can see which comments matched nothing.
+        inline_ignores: inline_ignores_enabled && !report_unused_ignores,
         design_system: None,
         viewport,
         profile: None,
         // The `impeccable` binary installs no rule pack; a library caller that
         // does sets this before handing the options to an engine.
-        rule_pack: None,
+        rule_pack,
         keep_consent_banners: has(&args, "--no-consent-hiding"),
         keep_overlays: has(&args, "--no-overlay-hiding"),
         unreported_rules: unreported_rules(&detection_config.ignore_rules, &scopes),
+        image_samples: crate::engines::ImageSamples::Decode,
         ignored_linked_stylesheet: Some({
             let (cwd, config) = (cwd.clone(), detection_config.clone());
             std::rc::Rc::new(move |path: &str| should_ignore_detection_file(path, &cwd, &config))
@@ -658,12 +867,42 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         io.out(USAGE);
         return Ok(0);
     }
+    let before_mode = has(&args, "--before");
+    let kept_mode = has(&args, "--kept");
+    if before_mode || kept_mode {
+        use crate::wiring::{run_before, run_kept, usage_error, Mode};
+        let mode = if before_mode { Mode::Before } else { Mode::Kept };
+        let mut other: Vec<&str> = Vec::new();
+        if before_mode && kept_mode {
+            other.push("--kept");
+        }
+        if cdp.is_some() {
+            other.push("--cdp");
+        }
+        for flag in ["--list-rules", "--github", "--sarif", "--changed"] {
+            if has(&args, flag) {
+                other.push(flag);
+            }
+        }
+        if let Some(message) = usage_error(mode, &targets, &other) {
+            io.err(&message);
+            return Err(Exit(1));
+        }
+        return Ok(match mode {
+            Mode::Before => run_before(&targets, json_mode, io, engines),
+            Mode::Kept => run_kept(&targets, json_mode, io, engines),
+        });
+    }
     if has(&args, "--list-rules") {
         if github_mode {
             io.err(GITHUB_LIST_RULES_CONFLICT);
             return Err(Exit(1));
         }
-        if cdp.is_some() || !targets.is_empty() {
+        if sarif_mode {
+            io.err(SARIF_LIST_RULES_CONFLICT);
+            return Err(Exit(1));
+        }
+        if cdp.is_some() || !targets.is_empty() || changed_mode {
             io.err(LIST_RULES_SCAN_ERROR);
             return Err(Exit(1));
         }
@@ -677,14 +916,42 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         }
         return Ok(0);
     }
+    if sarif_mode && json_mode {
+        io.err(SARIF_JSON_CONFLICT);
+        return Err(Exit(1));
+    }
+    if sarif_mode && github_mode {
+        io.err(SARIF_GITHUB_CONFLICT);
+        return Err(Exit(1));
+    }
     if github_mode && json_mode {
         io.err(GITHUB_JSON_CONFLICT);
+        return Err(Exit(1));
+    }
+    if report_unused_ignores && !inline_ignores_enabled {
+        io.err(NEEDS_INLINE_IGNORES);
         return Err(Exit(1));
     }
     if cdp.is_some() && !targets.is_empty() {
         io.err("Error: --cdp scans the page of a running app and takes no file or URL targets\n");
         return Err(Exit(1));
     }
+    if changed_mode && (cdp.is_some() || !targets.is_empty()) {
+        io.err("Error: --changed scans the files git reports as changed and takes no file, URL, or --cdp targets\n");
+        return Err(Exit(1));
+    }
+    // Resolved before the scan so stdin is never read under --changed.
+    let changed: Option<Vec<String>> = if changed_mode {
+        match crate::changed::changed_ui_files(&cwd, &detection_config.extensions) {
+            Some(files) => Some(files),
+            None => {
+                io.err(crate::changed::NOT_A_REPO);
+                return Err(Exit(crate::changed::NOT_A_REPO_EXIT));
+            }
+        }
+    } else {
+        None
+    };
 
     let stdin_tty = io.stdin_is_tty;
     let stderr_tty = stderr_is_tty();
@@ -701,16 +968,22 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
         json_mode,
         quiet_mode,
         github_mode,
+        sarif_mode,
         design_system_enabled,
         base,
         cache: DesignSystemCache::new(),
         stdin_tty,
         had_operational_failure: false,
         regex_only_files: 0,
+        files_scanned: 0,
+        ui_files_scanned: 0,
+        html_files_scanned: 0,
+        regex_component_files: 0,
         regex_only_exts: BTreeSet::new(),
         dev_server_ports: BTreeSet::new(),
         design_notes: Vec::new(),
         tokens: ProjectTokens::default(),
+        report_unused_ignores,
     };
 
     let mut all: Vec<Finding> = Vec::new();
@@ -735,7 +1008,7 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
                     // notes say which checks did not run (a hidden window skips
                     // the pixel reads), so they go to stderr there and stdout
                     // stays the JSON.
-                    if ctx.json_mode || ctx.github_mode {
+                    if ctx.json_mode || ctx.github_mode || ctx.sarif_mode {
                         ctx.io.err(&format!("{note}\n"));
                     } else if !ctx.design_notes.contains(&note) {
                         ctx.design_notes.push(note);
@@ -747,10 +1020,16 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
                 ctx.io.err(&format!("Error: {}\n", e.message));
             }
         }
-    } else if !stdin_tty && targets.is_empty() {
+    } else if changed.as_ref().is_some_and(|files| files.is_empty()) {
+        if !json_mode && !quiet_mode && !github_mode {
+            ctx.io.err("No changed UI files to scan.\n");
+        }
+    } else if !stdin_tty && targets.is_empty() && changed.is_none() {
         all = ctx.handle_stdin().map_err(|e| fatal(ctx.io, e))?;
     } else {
-        let paths: Vec<String> = if targets.is_empty() {
+        let paths: Vec<String> = if let Some(files) = changed.as_ref() {
+            files.clone()
+        } else if targets.is_empty() {
             vec![cwd.clone()]
         } else {
             targets.clone()
@@ -787,20 +1066,117 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
             s.close();
         }
         result?;
-        if !json_mode && !quiet_mode && !github_mode && ctx.regex_only_files > 0 {
+        if !json_mode && !quiet_mode && !github_mode && !sarif_mode && ctx.regex_only_files > 0 {
             let note = regex_only_note(ctx.regex_only_files, &ctx.regex_only_exts, &ctx.dev_server_ports);
             ctx.io.err(&note);
         }
     }
 
+    // Hold unused-ignore findings out of the config and scope filters.
+    // They are not catalog rules, so `--scope` would drop every one, and
+    // the flag asked for them by name. Without the flag this is a no-op.
+    let unused_reports = if ctx.report_unused_ignores {
+        let (rest, unused) = partition_unused_ignores(std::mem::take(&mut all));
+        all = rest;
+        unused
+    } else {
+        Vec::new()
+    };
     all = filter_detection_findings(all, &ctx.config);
     let scope_refs: Vec<&str> = scopes.iter().map(|s| s.as_str()).collect();
     all = filter_by_scopes(all, &scope_refs, |f: &Finding| f.antipattern.as_str());
     if no_advisory {
         all.retain(|f| !is_advisory(f));
     }
+    if let Some(report) = report {
+        // One local directory, the whole of it, with nothing skipped.
+        let whole = cdp.is_none()
+            && changed.is_none()
+            && (stdin_tty || !targets.is_empty())
+            && targets.len() <= 1
+            && scopes.is_empty()
+            && !ctx.had_operational_failure;
+        let root = match targets.first() {
+            None => Some(cwd.clone()),
+            Some(t) if !URL_RE.is_match(t) => Some(jsp::resolve(&cwd, &[t.as_str()])),
+            Some(_) => None,
+        };
+        if let Some(root) = root.filter(|r| whole && std::path::Path::new(r).is_dir()) {
+            let mut ruleset: Vec<String> = impeccable_core::registry::all_antipatterns()
+                .map(|ap| ap.id.to_string())
+                .filter(|id| !ctx.config.ignore_rules.iter().any(|r| normalize_ignore_rule(r) == *id))
+                .collect();
+            ruleset.sort();
+            ruleset.dedup();
+            let mut files = ctx.config.ignore_files.clone();
+            files.sort();
+            // Only what decides a match: when or why a value was ignored doesn't.
+            let mut values: Vec<String> = ctx
+                .config
+                .ignore_values
+                .iter()
+                .map(|v| serde_json::json!([v.rule, v.value, v.files]).to_string())
+                .collect();
+            values.sort();
+            let mut extensions: Vec<String> = ctx
+                .config
+                .extensions
+                .iter()
+                .map(|e| serde_json::json!([e.ext, e.engine]).to_string())
+                .collect();
+            extensions.sort();
+            // The design systems the scan read decide matches too (allowed
+            // colors, fonts, radii): a changed DESIGN.md is a new ruleset, not
+            // a round of fixes. Paths are left out so every checkout agrees.
+            let mut design_systems: Vec<String> = ctx
+                .cache
+                .iter()
+                .filter_map(|(key, ds)| {
+                    let mut ds = (**ds.as_ref()?).clone();
+                    ds.source_path = None;
+                    ds.sidecar_path = None;
+                    // A timestamp comparison that only feeds the edit
+                    // hook's staleness note; it decides no finding.
+                    ds.md_newer_than_json = false;
+                    let dir = key.strip_prefix("root:").unwrap_or(key);
+                    let dir = std::path::Path::new(dir)
+                        .strip_prefix(&root)
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        // Discovery stops at the repo's own .git, so a root
+                        // outside it isn't expected; never hash its path.
+                        .unwrap_or_else(|_| "<outside>".to_string());
+                    Some(format!("design-system:{dir}={ds:?}"))
+                })
+                .collect();
+            design_systems.sort();
+            ruleset.extend(design_systems);
+            ruleset.extend([
+                format!("config={config_enabled}"),
+                format!("inline-ignores={inline_ignores_enabled}"),
+                format!("design-system={design_system_enabled}"),
+                format!("no-advisory={no_advisory}"),
+                format!("advisory-rules={}", ctx.config.advisory_rules.as_deref().unwrap_or("")),
+                format!("ignore-files={}", serde_json::json!(files)),
+                format!("ignore-values={}", serde_json::json!(values)),
+                format!("extensions={}", serde_json::json!(extensions)),
+            ]);
+            *report = Some(FullScan {
+                root,
+                files_scanned: ctx.files_scanned,
+                ui_files_scanned: ctx.ui_files_scanned,
+                html_files_scanned: ctx.html_files_scanned,
+                regex_component_files: ctx.regex_component_files,
+                findings: all.clone(),
+                ruleset,
+            });
+        }
+    }
+    // Unused-ignore findings join after the design-health snapshot: they
+    // are not catalog rules, so they must not count toward the repo's health.
+    all.extend(unused_reports);
     let (primary, advisory) = partition_advisory(&all);
     let (primary_len, advisory_len) = (primary.len(), advisory.len());
+    let unused_len = count_unused_ignores(&primary);
     // Exit 1 means at least one requested scan could not complete. It takes
     // precedence over exit 2 because findings from the remaining targets do
     // not turn a partial scan into a complete one (#711).
@@ -821,9 +1197,13 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
             if !text.is_empty() {
                 ctx.io.out(&text);
             }
+        } else if sarif_mode {
+            emit_sarif(&mut ctx, &all, &scopes, no_advisory);
         } else if quiet_mode {
-            ctx.io
-                .err(&format!("{}\n", format_finding_summary(primary_len)));
+            ctx.io.err(&format!(
+                "{}\n",
+                format_finding_summary(primary_len, unused_len)
+            ));
             if advisory_len > 0 {
                 let note = dim(
                     &format!(
@@ -843,10 +1223,26 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
     }
     if json_mode {
         ctx.io.out("[]\n");
+    } else if sarif_mode {
+        emit_sarif(&mut ctx, &all, &scopes, no_advisory);
     } else if !github_mode && !quiet_mode {
         print_design_notes(&mut ctx, false);
     }
     Ok(exit_code)
+}
+
+/// `--sarif` writes a log on every completed scan, including a clean one.
+fn emit_sarif(ctx: &mut Ctx, findings: &[Finding], scopes: &[String], no_advisory: bool) {
+    let rules = collect_catalog_rules(scopes, no_advisory);
+    let text = format_sarif(
+        findings,
+        &rules,
+        &ctx.cwd,
+        ctx.io.env("GITHUB_WORKSPACE"),
+        env!("CARGO_PKG_VERSION"),
+        !ctx.had_operational_failure,
+    );
+    ctx.io.out(&format!("{text}\n"));
 }
 
 /// Text mode: say which checks a project's DESIGN.md switched off, after the
@@ -855,6 +1251,9 @@ fn detect_cli(args_in: &[String], io: &mut Io, engines: &Engines) -> Result<i32,
 /// offer the `detector.extensions` opt-in for them. JSX is not on the list:
 /// the parser reads nothing useful from it.
 const HTML_LIKE_TEMPLATE_EXTS: &[&str] = &[".astro", ".svelte", ".vue"];
+/// A scan large enough to ask before it starts: past this many files, or this many HTML files (each processed alone).
+const LARGE_SCAN_FILES: usize = 500;
+const LARGE_SCAN_HTML: usize = 50;
 
 /// The #884 note: which files only got the regex engine, what that misses,
 /// and the scan that would run every rule.
@@ -1000,7 +1399,7 @@ fn scan_targets(
             continue;
         };
         if stat.is_dir() {
-            if !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode {
+            if !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
                 if let Some(fw) = detect_framework_config(&resolved) {
                     ctx.dev_server_ports.insert(fw.port);
                     let probe = is_port_listening(fw.port, Some(fw.fingerprint));
@@ -1045,12 +1444,15 @@ fn scan_targets(
                 .iter()
                 .filter(|f| uses_html_engine(f, &ctx.config.extensions))
                 .count();
-            if files.len() > 50 && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode {
+            // Asked only when a scan will take a while: a few dozen files scan in seconds (Paul, 16 Nov: 52 files asked).
+            if (files.len() > LARGE_SCAN_FILES || html_count > LARGE_SCAN_HTML) && ctx.stdin_tty && !ctx.json_mode && !ctx.quiet_mode && !ctx.github_mode && !ctx.sarif_mode {
+                // "in ." read as "in .." before its full stop: the working folder is named in words.
+                let place = if target == "." || target == "./" { "this folder".to_string() } else { target.to_string() };
                 ctx.io.err(&format!(
                     "\nFound {} files ({} HTML) in {}.\nScanning may take a while{}.\nTarget a specific subdirectory to narrow scope.\n",
                     files.len(),
                     html_count,
-                    target,
+                    place,
                     if html_count > 10 { " (static HTML/CSS processes each HTML file individually)" } else { "" }
                 ));
                 if !confirm(ctx.io, "Continue?") {
@@ -1084,9 +1486,22 @@ fn scan_targets(
                     continue;
                 }
                 let opts = ctx.scan_options_for(Some(file));
-                let mut file_findings = match ctx.detect_local_file(file, &opts) {
+                let mut file_findings = match ctx.scan_local_file(file, &opts) {
                     Ok(f) => {
                         ctx.note_scanned(&opts);
+                        ctx.files_scanned += 1;
+                        if uses_html_engine(file, &ctx.config.extensions) {
+                            ctx.html_files_scanned += 1;
+                            ctx.ui_files_scanned += 1;
+                        } else {
+                            if is_ui_file(file) {
+                                ctx.ui_files_scanned += 1;
+                            }
+                            // Plain .js/.ts can hold JSX too.
+                            if !is_style_file(file) {
+                                ctx.regex_component_files += 1;
+                            }
+                        }
                         f
                     }
                     Err(e) => {
@@ -1115,7 +1530,7 @@ fn scan_targets(
                 continue;
             }
             let opts = ctx.scan_options_for(Some(&resolved));
-            match ctx.detect_local_file(&resolved, &opts) {
+            match ctx.scan_local_file(&resolved, &opts) {
                 Ok(f) => {
                     ctx.note_scanned(&opts);
                     all.extend(f)

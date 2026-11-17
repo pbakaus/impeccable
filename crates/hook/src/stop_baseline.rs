@@ -162,7 +162,7 @@ pub fn capture(
     if std::fs::read_to_string(file).ok().as_deref() != Some(expected.as_str()) {
         return;
     }
-    let findings = detector_detect_text(original, file, &HookScanOptions::default());
+    let findings = detector_detect_text(original, file, &HookScanOptions { rule_pack: rt.rule_pack, ..HookScanOptions::default() });
     if findings.len() > MAX_FINDINGS {
         return;
     }

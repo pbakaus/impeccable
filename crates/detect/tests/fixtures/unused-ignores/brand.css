@@ -1,0 +1,9 @@
+/* Live rule beside a stale one, a stale next-line, and a live next-line. */
+.brand { font-family: Inter, sans-serif; } /* impeccable-disable-line overused-font, bounce-easing */
+
+/* The next line eases out. It does not bounce. */
+/* impeccable-disable-next-line bounce-easing */
+.panel { margin: 0; }
+
+/* impeccable-disable-next-line bounce-easing: the spring is the point */
+.hero { transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55); }

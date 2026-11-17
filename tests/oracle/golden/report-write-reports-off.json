@@ -1,0 +1,7 @@
+{
+  "stdout": "REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the audit report was not saved. Carry on; nothing else changes.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

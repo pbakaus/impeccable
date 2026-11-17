@@ -1,0 +1,7 @@
+{
+  "stdout": "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Sign in again: run `impeccable login`\"}],\"isError\":true}}\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

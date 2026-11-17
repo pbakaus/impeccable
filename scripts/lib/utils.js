@@ -316,6 +316,7 @@ export function readSourceFiles(rootDir) {
         claudeName: agentFrontmatter['claude-name'] || name,
         description: agentFrontmatter.description || '',
         tools: agentFrontmatter.tools || '',
+        disallowedTools: agentFrontmatter['disallowed-tools'] || '',
         model: agentFrontmatter.model || '',
         effort: agentFrontmatter.effort || '',
         maxTurns: agentFrontmatter['max-turns'] ? Number(agentFrontmatter['max-turns']) : '',

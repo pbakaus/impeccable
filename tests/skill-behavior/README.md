@@ -445,6 +445,9 @@ results remain the completed measurements.
 | 20 | PRODUCT.md + DESIGN.md + `index.html`; prompt is `/impeccable generate 2 bold variants of the hero heading` | loads `reference/generate.md`, and before any `live.md` read (live.md alone is the misroute) |
 | 21 | same fixture; prompt is natural language with no command word ("Show me a few quieter versions of the hero heading in the browser so I can pick one.") | infers `reference/generate.md` before any `live.md` read |
 | 22 | same fixture; prompt is `Make the hero heading bolder.` | does **not** load `reference/generate.md` (a plain refinement stays out of live); which playbook the refinement lands on is existing routing's business, not this guard's |
+| 23 | PRODUCT.md with no DESIGN.md; the craft prompt pins a world and leaves the first surface open | runs a scoped `concept-seed` roll; stops at the roll, no build |
+| 24 | one fixture per split playbook: a world redesign, a build from an approved comp, an inline web critique, a native iOS critique; each repeats `IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS` times (default 3) | every run loads the part (`new-work-world.md`, `new-work-comp.md`, `critique-rubric.md`) before any implementation write, roll, `build-phase` or `comp-spec`; one miss fails the path |
+| 25 | empty workspace; prompt is `/impeccable init`; run signed out and signed in, each with its own `IMPECCABLE_HOME` (signed in: a stored 0600 state, no credential), stopping at the first question | `context`'s `ACCOUNT:` line matches the fixture; no `whoami` call; signed out, the text before the first question names `npx impeccable login`; signed in, sign-in is never mentioned. Skips on an engine whose `context` prints no `ACCOUNT:` line (0.1.24 and older). Measured on claude-sonnet-5 (2026-11-15): signed out 11 of 11, signed in 6 of 6; 7 of 9 signed out with the sentence in init's Step 1 |
 
 ## Setup launcher-failure branch (2026-09-06, PR #750)
 
@@ -588,6 +591,15 @@ The full-build file adds end-to-end assertions for attended fresh init,
 an initialized natural build request, replacement-world redesign, scope-preserving bolder
 refinement, and critique's closing question. It checks question order and
 context/artifact writes rather than only reference-file loading.
+
+The bolder artifact check compares header text and links and footer text to the
+original fixture, with whitespace normalized. It also requires a change to the
+`#case-study` DOM or computed styles at desktop or mobile size; CSS-only changes
+are valid, while comments and unused CSS are not. This is a scope/change check,
+not a design-quality score. The existing trace and fresh-capture checks remain.
+Run its offline positive and negative cases with
+`node --test tests/skill-workflow-scope.test.mjs`; they also run in
+`bun run test:skill-workflow` before any provider-backed turns.
 
 `critique closes with the question or an explicit skip line` is a regression
 guard, not a routing check. A critique that prints its report and then stops,

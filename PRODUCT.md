@@ -24,7 +24,7 @@ Builders install Impeccable from the repository or package, run `/impeccable ini
 
 ## Capabilities and Constraints
 
-- The skill exposes 23 design commands covering new work, critique, technical audit, refinement, hardening, adaptation, and live iteration.
+- The skill exposes 24 design commands covering new work, critique, technical audit, refinement, hardening, adaptation, and live iteration.
 - The CLI and browser extension run deterministic detector rules without an LLM or API key; LLM critique remains a separate judgment layer.
 - Provider-specific root harness folders and `plugin/` are generated distribution artifacts. Source changes belong in `skill/`, `scripts/`, `cli/`, `site/`, `extension/`, `functions/`, or `tests/`.
 - Product claims, testimonials, customers, benchmarks, pricing, licensing, and deployment facts must not be invented when evidence is absent.

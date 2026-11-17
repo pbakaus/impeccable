@@ -25,11 +25,17 @@ pub fn escape_property(value: &str) -> String {
     escape_data(value).replace(':', "%3A").replace(',', "%2C")
 }
 
-fn is_advisory(finding: &Finding) -> bool {
+/// Advisory findings are a GitHub `notice` and a SARIF `note`. Either the
+/// `advisory` flag or severity `advisory`.
+///
+/// Shared by `--github`, `--sarif`, and the text-mode split.
+pub fn is_advisory(finding: &Finding) -> bool {
     finding.advisory == Some(true) || finding.severity == "advisory"
 }
 
-fn workflow_command(finding: &Finding) -> &'static str {
+/// `notice` for an advisory, `error` when severity is `error`, otherwise
+/// `warning`. `--sarif` uses this split and maps `notice` to `note`.
+pub fn workflow_command(finding: &Finding) -> &'static str {
     if is_advisory(finding) {
         "notice"
     } else if finding.severity == "error" {
@@ -49,8 +55,10 @@ fn strip_root(path: &Path, root: &Path) -> Option<String> {
     })
 }
 
-/// Path GitHub should annotate: relative to `GITHUB_WORKSPACE` when that is
-/// a prefix, else relative to cwd. URLs and empty paths stay as given.
+/// Path a finding should be reported at: relative to `GITHUB_WORKSPACE` when
+/// that is a prefix, else relative to cwd. URLs and empty paths stay as given.
+///
+/// Shared by `--github` and `--sarif`.
 pub fn annotation_file(file: &str, cwd: &str, workspace: Option<&str>) -> String {
     if file.is_empty() || file.contains("://") {
         return file.replace('\\', "/");

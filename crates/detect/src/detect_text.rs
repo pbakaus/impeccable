@@ -22,7 +22,7 @@ use crate::regex_matchers::{
     is_stripe_child_match, side_tab_known_square_in_sheet, side_tab_markup_known_square,
     side_tab_rounded_in_scope, style_index_text,
     ElementSource, MatchCtx, Scope, SourceText,
-    REGEX_ANALYZERS, REGEX_MATCHERS, TEXT_CONTENT_ANALYZER_IDS,
+    REGEX_ANALYZERS, REGEX_ANALYZER_IDS, REGEX_MATCHERS, TEXT_CONTENT_ANALYZER_IDS,
 };
 use crate::util::{line_of_offset, re, ANY, B, D, W, WS, WS_CHARS};
 
@@ -72,6 +72,33 @@ pub fn ext_from_file_path(file_path: &str) -> String {
         Some(m) => js::to_lower_case(m.as_str()),
         None => String::new(),
     }
+}
+
+/// Every built-in rule id [`detect_text`] can report, design-system rules
+/// aside (those depend on what DESIGN.md declares, not on the engine).
+/// `page_analyzers` is [`should_run_page_analyzers`] for the file: without it
+/// the page analyzers (spacing, copy, glow, halo, marquee) never run.
+///
+/// Element and page rules that need a parsed document (`low-contrast`,
+/// `tiny-text`, ...) are not here: this engine cannot report them, so an
+/// inline waiver naming one can never be shown to be stale by a regex scan.
+pub fn regex_engine_rule_ids(page_analyzers: bool) -> Vec<&'static str> {
+    // Inset, pseudo-element and row stripes report side-tab; the grid scan
+    // reports codex-grid-background. Everything else is a line matcher.
+    let mut ids: Vec<&'static str> = vec!["side-tab", "codex-grid-background"];
+    for matcher in REGEX_MATCHERS.iter() {
+        if !ids.contains(&matcher.id) {
+            ids.push(matcher.id);
+        }
+    }
+    if page_analyzers {
+        for id in REGEX_ANALYZER_IDS {
+            if !ids.contains(id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids
 }
 
 /// JS `shouldRunPageAnalyzers`.

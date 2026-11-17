@@ -65,7 +65,18 @@ async function download() {
     throw new Error(`no checksum for engine ${VERSION} (${ASSET}) in ${MANIFEST}; refusing the unverified download`);
   }
   const res = await fetch(URL, { redirect: 'follow' });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    if (res.status >= 500 && res.status < 600) {
+      const host = new globalThis.URL(res.url).hostname;
+      const github = host === 'github.com' || host.endsWith('.github.com')
+        || host === 'githubusercontent.com' || host.endsWith('.githubusercontent.com');
+      const detail = github
+        ? `GitHub's downloads are failing right now (HTTP ${res.status} from ${host}). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered.`
+        : `${host} is failing right now (HTTP ${res.status}), a server error on ${host}'s side. Try again later.`;
+      process.stderr.write(`impeccable: could not download engine ${VERSION}: ${detail}\n`);
+    }
+    return null;
+  }
   const buf = Buffer.from(await res.arrayBuffer());
   if (createHash('sha256').update(buf).digest('hex') !== expected) {
     throw new Error(`checksum mismatch downloading ${URL}`);

@@ -14,6 +14,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import {
@@ -133,6 +136,46 @@ function executedUpdateCommands(trace) {
   );
 }
 
+// Scenario 24 helpers. The step that needs a split playbook's part is the
+// first implementation write, roll, build-phase or comp-spec call, or the first
+// heuristic score (in a tool call's input or in the agent's own text).
+const LOAD_RUNS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS || 3);
+const TINY_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+// A score: an N/4 mark, a /40 or /32 total, or a 0-4 or n/a cell right after a
+// named heuristic (the template's # column and its ? cells do not count).
+const scoresHeuristics = (text) => /heuristic/i.test(text)
+  && (/\b\d{1,2}\s*\/\s*(?:4|40|32)\b/.test(text) || /\|[^|\n]*[a-z][^|\n]*\|\s*(?:[0-4]|n\/a)\s*\|/i.test(text));
+const needsPart = (call) => (call.mutatedPaths || []).some((file) => /\.(html?|css|svelte|jsx?|tsx?|swift)$/i.test(file))
+  || (call.name === 'bash' && /concept-seed|build-phase|comp-spec/.test(call.input?.command || ''))
+  || scoresHeuristics(JSON.stringify(call.input ?? ''));
+const needIndex = (trace) => {
+  const calls = trace.toolCalls.findIndex(needsPart);
+  const scored = (trace.textSteps || []).find((step) => scoresHeuristics(step.text));
+  const candidates = [calls, scored ? scored.callsBefore : -1].filter((i) => i >= 0);
+  return candidates.length ? Math.min(...candidates) : -1;
+};
+const partLoadedInTime = (trace, part) => {
+  const loadIndex = trace.toolCalls.findIndex((call) => callLoadedFile(call, part));
+  const need = needIndex(trace);
+  return loadIndex >= 0 && (need < 0 || loadIndex < need);
+};
+
+it('scenario 24 helpers: a part read after scoring or after the first write is a miss', () => {
+  const read = { name: 'read', input: { path: 'reference/critique-rubric.md' }, loadedFiles: ['reference/critique-rubric.md'] };
+  const write = { name: 'write', input: { path: 'index.html', content: '<p>' }, mutatedPaths: ['index.html'] };
+  const scoreText = { text: 'Heuristic 1, visibility of system status: 3/4', callsBefore: 1 };
+  assert.ok(partLoadedInTime({ toolCalls: [read, write] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [write, read] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [], textSteps: [] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [{ name: 'bash', input: { command: 'ls' } }, read], textSteps: [scoreText] }, 'critique-rubric.md'));
+  assert.ok(partLoadedInTime({ toolCalls: [read, { name: 'bash', input: { command: 'ls' } }], textSteps: [{ ...scoreText, callsBefore: 2 }] }, 'critique-rubric.md'));
+  const table = { text: '| # | Heuristic | Score |\n|---|---|---|\n| 1 | Visibility of system status | 3 |', callsBefore: 0 };
+  assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [table] }, 'critique-rubric.md'));
+  assert.ok(!partLoadedInTime({ toolCalls: [read], textSteps: [{ text: 'Heuristics total: 31/40', callsBefore: 0 }] }, 'critique-rubric.md'));
+  const template = { text: '| # | Heuristic | Score | Key Issue |\n|---|---|---|---|\n| 1 | Visibility of System Status | ? | |', callsBefore: 0 };
+  assert.ok(partLoadedInTime({ toolCalls: [read], textSteps: [template] }, 'critique-rubric.md'));
+});
+
 for (const modelId of resolveModelList()) {
   const provider = detectProvider(modelId);
   const keyPresent = hasKey(provider);
@@ -188,7 +231,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -204,6 +247,11 @@ for (const modelId of resolveModelList()) {
         assert.ok(
           fileLoaded(trace, 'new-work.md'),
           `a greenfield request with PRODUCT.md should load new-work.md to establish the missing visual world.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
+        );
+        assert.ok(
+          fileLoaded(trace, 'new-work-world.md'),
+          `with no visual world yet, new-work should send the agent on to new-work-world.md.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`,
         );
       } finally {
@@ -304,7 +352,7 @@ for (const modelId of resolveModelList()) {
       });
       try {
         const { trace, text } = await runTurn({
-          checkpoint: 'new-work.md',
+          checkpoint: 'new-work-world.md',
           workspace,
           model,
           userPrompt: CRAFT_PROMPT,
@@ -319,6 +367,9 @@ for (const modelId of resolveModelList()) {
         );
         assert.ok(fileLoaded(trace, 'new-work.md'),
           `greenfield craft should load new-work.md for visual authority and world discovery.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+        assert.ok(fileLoaded(trace, 'new-work-world.md'),
+          `world discovery lives in new-work-world.md, which new-work should load.\n` +
             `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
         assert.equal(fileLoaded(trace, 'init.md'), false, 'existing PRODUCT.md must not re-enter init for missing DESIGN.md');
       } finally {
@@ -595,6 +646,64 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    // The ACCOUNT line arrives with an engine release; the pinned engine before it has none.
+    const accountLine = (() => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-account-probe-'));
+      try {
+        return /^ACCOUNT: /m.test(execFileSync(ENGINE_BIN, ['context'], { cwd: dir, env: { ...process.env, IMPECCABLE_HOME: dir, IMPECCABLE_NO_UPDATE_CHECK: '1' }, encoding: 'utf8' }));
+      } catch { return false; } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    })();
+    for (const signedIn of [false, true]) {
+      it(`scenario 25: init ${signedIn ? 'stays quiet about sign-in when signed in' : 'leads with the sign-in line when signed out'}`, { skip: !accountLine && 'this engine prints no ACCOUNT line' }, async () => {
+        // init reads context's ACCOUNT line: signed out, its first message names the
+        // sign-in before any question; signed in, it says nothing; either way no whoami call.
+        const workspace = prepareWorkspace({ files: {} });
+        const home = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-home-'));
+        if (signedIn) {
+          const issuer = 'https://api.impeccable.style';
+          const id = crypto.createHash('sha256').update(issuer).digest('hex').slice(0, 16);
+          const dir = path.join(home, 'account', id);
+          // The CLI trusts only a private store: 0700 directories, a 0600 file.
+          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          fs.chmodSync(home, 0o700);
+          fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({
+            schema: 1, issuer, generation: 1, login: 1, signed_in: true, backend: 'file', token_endpoint: `${issuer}/oauth/token`,
+          }), { mode: 0o600 });
+        }
+        try {
+          // The fixture mirrors crates/account's store; if that layout moves, fail here, not as a model miss.
+          const account = execFileSync(ENGINE_BIN, ['context'], { cwd: workspace, env: { ...process.env, IMPECCABLE_HOME: home, IMPECCABLE_ACCOUNT_URL: '', IMPECCABLE_NO_UPDATE_CHECK: '1' }, encoding: 'utf8' }).match(/^ACCOUNT: .*$/m)?.[0];
+          assert.equal(account, signedIn ? 'ACCOUNT: signed in' : 'ACCOUNT: not signed in', 'the IMPECCABLE_HOME fixture no longer gives the intended sign-in state');
+          const { trace, text } = await runTurn({
+            workspace,
+            model,
+            userPrompt: '/impeccable init',
+            env: { IMPECCABLE_HOME: home, IMPECCABLE_ACCOUNT_URL: '', IMPECCABLE_NO_UPDATE_CHECK: '1' },
+            maxSteps: 10,
+            checkpoint: (t) => t.questionCalls.length > 0,
+          });
+          assert.ok(trace.questionCalls.length > 0, `init should reach its first question.\nTrace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+          logTrace('S25', signedIn ? 'init-signed-in' : 'init-signed-out', modelId, trace, { textSample: text.slice(0, 600) });
+          const firstQuestion = trace.questionCalls[0] ? JSON.stringify(trace.questionCalls[0]) : '';
+          const firstQuestionAt = trace.toolCalls.findIndex((c) => c.name === 'ask_user_question');
+          const before = (trace.textSteps ?? [])
+            .filter((s) => firstQuestionAt < 0 || s.callsBefore <= firstQuestionAt)
+            .map((s) => s.text).join('\n');
+          const said = `${before}\n${firstQuestion}`;
+          const summary = `Said before the first question: ${said.slice(0, 1200)}\nTrace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`;
+          assert.equal(bashCommandsMatching(trace, 'impeccable whoami').length, 0, `init should read context's ACCOUNT line, not call whoami.\n${summary}`);
+          if (signedIn) {
+            assert.ok(!/impeccable login/.test(`${trace.assistantTexts?.join('\n') ?? ''}\n${JSON.stringify(trace.questionCalls)}`), `a signed-in init should not mention sign-in.\n${summary}`);
+          } else {
+            assert.ok(/npx impeccable login/.test(said), `a signed-out init should name the sign-in before its first question.\n${summary}`);
+          }
+        } finally {
+          cleanupWorkspace(workspace);
+          fs.rmSync(home, { recursive: true, force: true });
+        }
+      });
+    }
 
     it('scenario 14: native iOS project (context loads ios.md)', async () => {
       // PRODUCT.md sets `## Platform` to `ios`. impeccable context now reads and emits
@@ -905,5 +1014,84 @@ for (const modelId of resolveModelList()) {
         cleanupWorkspace(workspace);
       }
     });
+
+    // A named world alone leaves the first surface open, so the roll still binds.
+    // The context-only bash tool says everything but `context` is off limits, which
+    // would bias this decision, so the turn gets the real shell and a local catalog.
+    it('scenario 23: a pinned world with an open first surface still rolls', async () => {
+      const workspace = prepareWorkspace({ files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_NO_REGISTER } });
+      // A roll counts only once it ran and dealt: the trace records a command
+      // before it runs, so an attempt that fails would otherwise pass.
+      const scopedRolls = (trace) => trace.bashCommands.filter((command, i) => /concept-seed\b.*--scope/.test(command)
+        && trace.bashOutputs[i]?.startsWith('exit=0\n') && trace.bashOutputs[i].includes('SEED REFERENCE:'));
+      try {
+        const { trace, text } = await runTurn({
+          checkpoint: (trace) => scopedRolls(trace).length > 0,
+          contextOnlyBash: false,
+          env: {
+            IMPECCABLE_CATALOG_DIR: path.resolve(import.meta.dirname, '../fixtures/concept-catalog'),
+            IMPECCABLE_SEED_SALT: 'skill-behavior',
+          },
+          workspace,
+          model,
+          userPrompt: `${CRAFT_PROMPT}. The world is fixed: a working laboratory notebook, ruled graph paper in blue-black ink with pencil margin annotations.`,
+          maxSteps: 16,
+        });
+        logTrace('S23', 'partial-pin-rolls', modelId, trace, { textSample: text.slice(0, 400) });
+        assert.ok(scopedRolls(trace).length >= 1,
+          `a pin that leaves the first surface open must still run concept-seed.\n` +
+            `Trace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`);
+      } finally {
+        cleanupWorkspace(workspace);
+      }
+    });
+
+    // Split playbooks: SKILL.md's Setup step 2 names each part file, so the agent
+    // reads it with the playbook rather than finding the pointer two files deep.
+    // Every run must load the part before the step that needs it; the rate is
+    // the point, so each path repeats (IMPECCABLE_SKILL_BEHAVIOR_LOAD_RUNS, default 3).
+    // The sub-agent critique path needs a sub-agent tool this harness lacks, so
+    // it is measured in real Claude Code instead (headless runs, by hand).
+    const NESTED_PATHS = [
+      { id: 'world', part: 'new-work-world.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable redesign index.html: replace the current look with a completely new visual world and keep the copy.' },
+      { id: 'comp', part: 'new-work-comp.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML,
+          '.impeccable/config.json': '{ "buildPath": "comp" }\n',
+          '.impeccable/mocks/landing.png': TINY_PNG,
+          '.impeccable/mocks/landing.png.json': JSON.stringify({ prompt: 'The landing page for the product in this workspace.', approved: true }, null, 2) },
+        prompt: '/impeccable build index.html from the approved comp at .impeccable/mocks/landing.png.' },
+      { id: 'critique-inline', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE, 'DESIGN.md': DESIGN_MD_SAMPLE, 'index.html': MINIMAL_LANDING_HTML },
+        prompt: '/impeccable critique index.html' },
+      { id: 'critique-native', part: 'critique-rubric.md',
+        files: { 'PRODUCT.md': PRODUCT_MD_SAMPLE_IOS, 'TideDetailView.swift': MINIMAL_IOS_SOURCE },
+        prompt: '/impeccable critique TideDetailView.swift' },
+    ];
+    for (const nested of NESTED_PATHS) {
+      it(`scenario 24: ${nested.id} loads ${nested.part} on every run (${LOAD_RUNS} runs)`, async () => {
+        const misses = [];
+        for (let run = 1; run <= LOAD_RUNS; run++) {
+          const workspace = prepareWorkspace({ files: nested.files });
+          try {
+            const { trace, text } = await runTurn({
+              checkpoint: (trace) => fileLoaded(trace, nested.part) || needIndex(trace) >= 0,
+              workspace,
+              model,
+              userPrompt: nested.prompt,
+              maxSteps: 12,
+            });
+            logTrace('S24', `${nested.id} run ${run}`, modelId, trace, { textSample: text.slice(0, 400) });
+            if (!partLoadedInTime(trace, nested.part)) misses.push({ run, trace: summarizeTrace(trace) });
+          } finally {
+            cleanupWorkspace(workspace);
+          }
+        }
+        assert.equal(misses.length, 0,
+          `${nested.part} was not loaded before the step that needs it in ${misses.length} of ${LOAD_RUNS} runs.\n` +
+            `Misses: ${JSON.stringify(misses, null, 2)}`);
+      });
+    }
   });
 }

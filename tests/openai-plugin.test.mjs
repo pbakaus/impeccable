@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { stageOpenAIPlugin } from '../scripts/lib/openai-plugin.js';
-import { buildCodexPluginHooksManifest } from '../scripts/lib/transformers/hooks.js';
 
 function write(root, rel, contents) {
   const abs = path.join(root, rel);
@@ -61,11 +60,10 @@ describe('OpenAI plugin staging', () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  it('packages the Codex skill, agents, manifest, icon, and compatible hook', () => {
+  it('packages the Codex skill, agents, manifest, and icon, with no bundled hook', () => {
     const pluginRoot = stageOpenAIPlugin(root, dist);
     const skill = fs.readFileSync(path.join(pluginRoot, 'skills/impeccable/SKILL.md'), 'utf8');
     const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, '.codex-plugin/plugin.json'), 'utf8'));
-    const hooks = JSON.parse(fs.readFileSync(path.join(pluginRoot, 'hooks/hooks.json'), 'utf8'));
 
     assert.match(skill, /\$impeccable/);
     assert.match(skill, /\.codex\/skills\/impeccable/);
@@ -87,8 +85,19 @@ describe('OpenAI plugin staging', () => {
     assert.equal('email' in manifest.author, false);
     assert.equal(manifest.interface.shortDescription, 'Design and refine interfaces');
     assert.equal(manifest.interface.category, 'Creativity');
-    assert.deepEqual(hooks, buildCodexPluginHooksManifest());
-    assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /\$\{PLUGIN_ROOT\}/);
-    assert.doesNotMatch(hooks.hooks.PostToolUse[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
+    // OpenAI's review no longer accepts plugins that bundle hooks.
+    assert.equal(fs.existsSync(path.join(pluginRoot, 'hooks')), false);
+    assert.equal('hooks' in manifest, false);
+    assert.doesNotMatch(manifest.interface.longDescription, /as you work/);
+  });
+});
+
+describe('OpenAI plugin release step', () => {
+  it('reminds a skill release to upload the ChatGPT package (#1023)', () => {
+    const release = fs.readFileSync(new URL('../scripts/release.mjs', import.meta.url), 'utf8');
+    const skill = release.match(/\n  skill: \{([\s\S]*?)\n  \},/)?.[1] ?? '';
+    const hint = skill.match(/postReleaseHint:\s*\n?\s*(['`])([\s\S]*?)\1,/)?.[2] ?? '';
+    assert.match(hint, /dist\/openai-plugin\.zip/);
+    assert.match(hint, /docs\/openai-plugin-submission\.md/);
   });
 });
