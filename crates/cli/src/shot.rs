@@ -33,7 +33,7 @@ fn capture(browser: &mut Browser, url: &str, vp: Viewport, full: bool) -> Result
             let img = fullpage::decode_jpeg(&shot.jpeg_base64).ok_or("the full-page capture did not decode")?;
             full_page_png(img.width(), img.height(), img.as_raw())
         } else {
-            let _ = page.evaluate("window.scrollTo(0, 0)");
+            let _ = page.evaluate("window.scrollTo({ left: 0, top: 0, behavior: 'instant' })");
             let data = page.screenshot_viewport().map_err(|e| e.message)?;
             base64::engine::general_purpose::STANDARD.decode(data).map_err(|e| e.to_string())
         }
@@ -58,7 +58,7 @@ pub fn run(rest: &[String], io: &mut Io) -> i32 {
         match a.as_str() {
             "--full" => full = true,
             "--out" => match it.next() {
-                Some(dir) if !dir.trim().is_empty() => out = Some(dir.clone()),
+                Some(dir) if !dir.trim().is_empty() && !dir.starts_with("--") => out = Some(dir.clone()),
                 _ => {
                     io.err(USAGE);
                     return 2;

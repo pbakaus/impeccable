@@ -1,5 +1,6 @@
-//! `impeccable shot`: a page is required; with a browser it writes one PNG per
-//! viewport at that viewport's size and prints each path.
+//! `impeccable shot`: a page is required, and `--out` takes a folder, not a
+//! flag; with a browser it writes one PNG per viewport at that viewport's size
+//! and prints each path.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -36,7 +37,13 @@ fn png_size(bytes: &[u8]) -> (u32, u32) {
 #[test]
 fn a_page_is_required() {
     let dir = scratch("usage");
-    for args in [&[][..], &["missing.html"][..], &["index.html", "--viewport", "wide"][..]] {
+    std::fs::write(dir.join("index.html"), "<p>hi</p>").unwrap();
+    for args in [
+        &[][..],
+        &["missing.html"][..],
+        &["index.html", "--viewport", "wide"][..],
+        &["index.html", "--out", "--full"][..],
+    ] {
         let out = run(&dir, args);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
     }
