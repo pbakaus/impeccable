@@ -187,7 +187,10 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     // switch by switch). Until they've set their own, a block this machine already holds
     // (from `loop connect` or `install`) is sent as their first set instead of overwritten.
     let holds_block = sets.iter().any(|s| s.as_ref().is_some_and(|v| !v.is_empty()));
-    let page: Option<Vec<String>> = if remote.me_set || !holds_block { remote.me.clone() } else { None };
+    // Only a block no sync has written yet (no base saved) is migrated; one this sync wrote
+    // from the team's set keeps following the page.
+    let migrate = !remote.me_set && holds_block && base.is_none();
+    let page: Option<Vec<String>> = if migrate { None } else { remote.me.clone() };
     let synced: Option<Vec<String>> = match decide(page.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
             let first = !remote.me_set;
