@@ -1133,8 +1133,16 @@ pub fn side_tab_match_stands<'s>(
             || index().is_some_and(|index| index.is_declaration_rounded(pos))
             || tag.zip(markup_text).is_some_and(|(t, text)| {
                 // The tag's own radii apply over the stylesheet's, corner by corner.
-                let inline: Vec<(String, String)> =
-                    statements.iter().filter_map(|st| split_declaration(st)).filter(|(p, _)| is_radius_property(p)).collect();
+                // A spread may bring in any radius: `None`.
+                let inline: Vec<Option<(String, String)>> = statements
+                    .iter()
+                    .filter_map(|st| {
+                        if is_unseen_declaration_source(st) {
+                            return Some(None);
+                        }
+                        split_declaration(st).filter(|(p, _)| is_radius_property(p)).map(Some)
+                    })
+                    .collect();
                 let name = tag_name(t);
                 let tag = Some(name.as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase()));
                 markup_index.get_or_init(|| CssHostIndex::new(text)).element_corners(tag, &classes, &inline).rounds_any()
@@ -1175,6 +1183,10 @@ fn tag_style_statements(tag: &str) -> Vec<String> {
     split_commas_outside_parens(object)
         .into_iter()
         .filter_map(|entry| {
+            // A spread stays, so a reader knows it may bring declarations in.
+            if js::trim(entry).starts_with("...") {
+                return Some(js::trim(entry).to_string());
+            }
             let (key, value) = entry.split_once(':')?;
             let key = js::trim(key).trim_matches(|c| c == '"' || c == '\'');
             let mut prop = String::new();

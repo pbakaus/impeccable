@@ -1938,7 +1938,8 @@ impl<'a> CssHostIndex<'a> {
 
     /// The corners the rules whose subject could match a markup element (its
     /// tag, its literal classes) give it, with `inline` (the tag's own radius
-    /// declarations) over them: what a hairline in a `style` attribute reads
+    /// declarations, `None` for a statement that may bring one in unseen,
+    /// such as a spread) over them: what a hairline in a `style` attribute reads
     /// from the file's style blocks. Declarations apply the way the cascade
     /// orders them: `!important` last, then inline, then by the specificity
     /// of the subject's classes and type, then in source order. An ancestor
@@ -1947,7 +1948,7 @@ impl<'a> CssHostIndex<'a> {
         &self,
         tag: Option<&str>,
         classes: &[String],
-        inline: &[(String, String)],
+        inline: &[Option<(String, String)>],
     ) -> DeclaredCorners {
         // (important, inline, [classes, types], source order, statement), each
         // with the statement it applies.
@@ -1971,8 +1972,11 @@ impl<'a> CssHostIndex<'a> {
                 }
             }
         }
-        for (k, (prop, value)) in inline.iter().enumerate() {
-            layered.push(((is_important(value), true, [0, 0], 0, k), Some((prop.as_str(), value.as_str()))));
+        for (k, decl) in inline.iter().enumerate() {
+            layered.push(match decl {
+                Some((prop, value)) => ((is_important(value), true, [0, 0], 0, k), Some((prop.as_str(), value.as_str()))),
+                None => ((false, true, [0, 0], 0, k), None),
+            });
         }
         layered.sort_by_key(|(rank, _)| *rank);
         let mut corners = DeclaredCorners::default();

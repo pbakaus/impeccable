@@ -2795,6 +2795,9 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         assert_eq!(side_tabs(&card(".card { border-radius: 8px; }", "border-left: 1px solid #ddd; border-top-left-radius: 0;"), "/x/c.vue").len(), 1);
         assert!(side_tabs(&card(".card { border-top-left-radius: 8px; }", "border-left: 1px solid #ddd; border-top-left-radius: 0;"), "/x/c.vue").is_empty());
         assert_eq!(side_tabs(&card(".card { border-radius: 8px !important; }", "border-left: 1px solid #ddd; border-radius: 0;"), "/x/c.vue").len(), 1);
+        // A spread in the style object may square the corners it does not name.
+        let spread = "const square = { borderRadius: 0 };\nexport const A = () => (\n  <>\n    <style>{`.card { border-radius: 8px; }`}</style>\n    <div className=\"card\" style={{ ...square, borderLeft: '1px solid #ddd', borderTopLeftRadius: 0 }} />\n  </>\n);\n";
+        assert!(side_tabs(spread, "/x/s.tsx").is_empty(), "{:?}", side_tabs(spread, "/x/s.tsx"));
         // A quote's rule or a code line's gutter is typography on a square
         // box and a tab on a rounded one.
         let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";
