@@ -499,7 +499,7 @@ function fieldReads(point, noSecrets = false) {
   const read = (el) => {
     if (!el)
       return null;
-    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? ""))))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -728,7 +728,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const focused = doc.activeElement;
   if (best.score === 0 && focused && fields.includes(focused))
     best = { el: focused, score: 0 };
-  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || best.el.tagName === "INPUT" && /^(?:text)?$/i.test(best.el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(best.el.getAttribute(a) ?? ""))))
     return null;
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
@@ -1564,7 +1564,7 @@ function secretFocus() {
   if (!el)
     return null;
   const tokens = String(el.getAttribute?.("autocomplete") ?? "").toLowerCase().split(/\s+/);
-  if (el.tagName === "INPUT" && String(el.type).toLowerCase() === "password" || el.getAttribute?.("data-secret-field") != null || tokens.some((t) => t === "current-password" || t === "new-password"))
+  if (el.tagName === "INPUT" && String(el.type).toLowerCase() === "password" || el.getAttribute?.("data-secret-field") != null || tokens.some((t) => t === "current-password" || t === "new-password") || el.tagName === "INPUT" && String(el.type).toLowerCase() === "text" && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute?.(a) ?? "")))
     return "password";
   if (tokens.some((t) => t.startsWith("cc-")))
     return "card";
@@ -1576,7 +1576,9 @@ function secretFocus() {
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
   const seen = "data-secret-field";
-  const fields = `input[type="password" i], [${seen}], [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
+  const held = "data-secret-form";
+  const named = ["name", "id", "placeholder", "aria-label"];
+  const fields = `input[type="password" i], [${seen}], input:is([type="text" i], :not([type])):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
   const rule = `${fields} { ${mark}: 1; filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }`;
   const g = globalThis;
   const ours = (sheet) => {
@@ -1600,6 +1602,38 @@ function coverSecrets(on, forMs) {
     if (on) {
       for (const field of Array.from(root.querySelectorAll(`input[type="password" i]:not([${seen}])`)))
         field.setAttribute(seen, "");
+      const passwordField = (f) => String(f.type).toLowerCase() === "password" || f.getAttribute(seen) !== null || /current-password|new-password/i.test(f.getAttribute("autocomplete") ?? "") || String(f.type).toLowerCase() === "text" && named.some((a) => /passw|pwd/i.test(f.getAttribute(a) ?? ""));
+      for (const f of Array.from(root.querySelectorAll("input")))
+        if (f.getAttribute(seen) === null && passwordField(f))
+          f.setAttribute(seen, "");
+      const passwords = (box) => Array.from(box.querySelectorAll("input")).filter(passwordField).length;
+      const account = (f) => {
+        const said = [...named, "autocomplete"].map((a) => f.getAttribute(a) ?? "").join(" ");
+        return ["email", "tel"].includes(String(f.type).toLowerCase()) || /user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said);
+      };
+      for (const box of Array.from(root.querySelectorAll(`[${held}]`))) {
+        const inputs = Array.from(box.querySelectorAll("input"));
+        if (passwords(box) >= Number(box.getAttribute(held)) || !inputs.some((f) => f.getAttribute(`${held}-name`) !== null))
+          continue;
+        for (const f of inputs) {
+          const size = f.getBoundingClientRect();
+          if (String(f.type).toLowerCase() === "text" && f.value && size.width > 0 && size.height > 0 && !account(f))
+            f.setAttribute(seen, "");
+        }
+      }
+      for (const field of Array.from(root.querySelectorAll("input"))) {
+        if (!passwordField(field))
+          continue;
+        let box = field.form ?? field.parentElement;
+        while (!field.form && box?.parentElement && box.querySelectorAll("input, button").length < 2)
+          box = box.parentElement;
+        if (!box)
+          continue;
+        box.setAttribute(held, String(Math.max(Number(box.getAttribute(held)) || 0, passwords(box))));
+        for (const f of Array.from(box.querySelectorAll("input")))
+          if (account(f))
+            f.setAttribute(`${held}-name`, "");
+      }
       covered += root.querySelectorAll(fields).length;
     }
     for (const el of Array.from(root.querySelectorAll("*"))) {
@@ -1637,4 +1671,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '66fd72b7aad3faab';
+export const HASH = '49429671fe204937';
