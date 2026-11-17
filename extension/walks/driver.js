@@ -1310,7 +1310,7 @@ function secretField(node) {
   const attrs = node?.attributes ?? [];
   const attr = (name) => { for (let i = 0; i + 1 < attrs.length; i += 2) if (String(attrs[i]).toLowerCase() === name) return String(attrs[i + 1]).toLowerCase(); return ''; };
   const tokens = attr('autocomplete').split(/\s+/);
-  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && ['data-impeccable-secret-field', 'data-impeccable-secret-maybe'].includes(String(name).toLowerCase())) || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && /^(?:text)?$/.test(attr('type')) && ['name', 'id', 'placeholder', 'aria-label'].some((name) => /passw|pwd/.test(attr(name))));
+  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || attrs.some((name, i) => i % 2 === 0 && ['data-impeccable-secret-field', 'data-impeccable-secret-maybe'].includes(String(name).toLowerCase())) || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-')) || (node?.nodeName === 'INPUT' && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/.test(attr('type')) && ['name', 'id', 'placeholder', 'aria-label'].some((name) => /passw|pwd/.test(attr(name))));
 }
 
 /** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */

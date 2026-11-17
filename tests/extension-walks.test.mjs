@@ -369,6 +369,7 @@ describe('walk lookout', () => {
     ['a password a button swapped while empty beside a filled name, then typed into', 'beside', false, { filled: false, marked: true }],
     ['a text field named for a password a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password' }],
     ['a text field named user[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'user[password]' }],
+    ['a text field named password_reset[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password_reset[password]' }],
     ['a company typed once the password field beside it was hidden', 'hide', true, { filled: false, marked: false }, { name: 'company' }],
   ]) {
     it(`sees ${label}`, () => {
