@@ -7506,3 +7506,12 @@ files, so only `doctor` runs it.
 
 - `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
   `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.
+
+## Recorded 2026-11-17: this repo's DESIGN.md describes what ships here (REN-2129)
+
+DESIGN.md and `.impeccable/design.json` described the departed site's dark lacquer palette; they now describe the
+extension's paper-and-instruments tokens (`extension/shared/kinpaku.css`). Two detect cases scan a fixture from the
+repo root, so they read that palette.
+
+- `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and its greys are
+  no longer in the palette, so they report as advisories beside `#33d17a`.
