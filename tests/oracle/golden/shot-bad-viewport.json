@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "--viewport takes WIDTHxHEIGHT, comma-separated for several, e.g. 1440x900,390x844\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

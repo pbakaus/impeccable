@@ -186,6 +186,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         ),
         // comp-fidelity verbs (crates/comp-verbs over crates/comp)
         "first-viewport" => crate::first_viewport::run(rest, io),
+        "shot" => crate::shot::run(rest, io),
         "comp-spec" => impeccable_comp_verbs::run_comp_spec(rest, io),
         "comp-diff" => impeccable_comp_verbs::run_comp_diff(rest, io),
         "font-match" => {
@@ -557,6 +558,7 @@ const KNOWN_VERBS: &[&str] = &[
     "serve-question",
     "component-review",
     "first-viewport",
+    "shot",
     "comp-spec",
     "comp-diff",
     "font-match",

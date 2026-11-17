@@ -2324,6 +2324,21 @@ this rule to an existing unsubmitted draft. It verifies stored image blobs and
 current source integrity, preserves any new reviewer decisions, records the
 prior approval revision, and leaves packet revisions and old receipts unchanged.
 
+## `shot` (skill-internal)
+
+`impeccable shot <page or url> [--viewport WxH[,WxH...]] [--full] [--out <dir>]`
+is the skill's look at a rendered page: a local HTML file (resolved against the
+working directory) or an http, https or file URL. Each viewport (default
+`1440x900,390x844`; `--viewport` takes a comma-separated list and may repeat)
+loads the page in its own tab, waits for load, images and fonts, and writes one
+PNG of the first viewport, `<W>x<H>.png`, or of the whole page from the top with
+`--full`, `<W>x<H>-full.png` (cut at 20000px). Files go to `--out`, else to
+`.impeccable/shots/`, whose `.gitignore` (`*`) the engine writes; a run
+overwrites the last. stdout is one path per line, relative to the working
+directory when inside it. Exit 2 on a missing page or bad arguments, 1 when no
+Chrome or Chromium is found (one stderr line) or a viewport fails to load (one
+stderr line each, the other viewports still written), else 0.
+
 ## `motion-capture` (skill-internal)
 
 `impeccable motion-capture <url> --click <selector> --out-dir <directory>`
