@@ -84,16 +84,16 @@ export function lookInPage() {
   const named = (input) => kind(input) === 'text' && NAMED.some((name) => /passw|pwd/i.test(input.getAttribute?.(name) ?? ''));
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => kind(input) === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
-  // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round a shown
+  // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round each
   // password field (its form, or the elements round it up to the first that holds an account field, two when none
-  // does) keep how many they held, and whether one held an account field. While a box shows fewer and a marked account
-  // field is still shown, or it never held one, each filled, shown text field in it that names no account is marked as
-  // one that may hold a secret: covered and never read, but no pause. It counts from then.
+  // does) keep how many they held and showed, and whether one held an account field. While a box holds or shows fewer
+  // and a marked account field is still in it, or it never held one, each filled, shown text field in it that names no
+  // account is marked as one that may hold a secret: covered and never read, but no pause. It counts from then.
   const MAYBE = 'data-impeccable-secret-maybe';
   const HELD = 'data-impeccable-secret-form';
   const inputs = (box) => [...box.querySelectorAll('input')];
   const shown = (f) => { const size = f.getBoundingClientRect(); return size.width > 0 && size.height > 0; };
-  const passwords = (box) => inputs(box).filter((f) => (f.getAttribute(MARK) !== null || f.getAttribute(MAYBE) !== null) && shown(f)).length;
+  const passwords = (box, all) => inputs(box).filter((f) => (f.getAttribute(MARK) !== null || f.getAttribute(MAYBE) !== null) && (all || shown(f))).length;
   const account = (f) => {
     const said = [...NAMED, 'autocomplete'].map((name) => f.getAttribute(name) ?? '').join(' ');
     return ['email', 'tel'].includes(kind(f)) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
@@ -101,21 +101,21 @@ export function lookInPage() {
   for (const root of roots) {
     for (const f of inputs(root)) if (f.getAttribute(MARK) === null && (kind(f) === 'password' || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? ''))) f.setAttribute(MARK, '');
     for (const box of root.querySelectorAll(`[${HELD}]`)) {
-      const [most, had] = (box.getAttribute(HELD) ?? '').split(' ');
+      const [most, mostShown, had] = (box.getAttribute(HELD) ?? '').split(' ');
       const all = inputs(box);
-      if (passwords(box) >= Number(most) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null && shown(f)))) continue;
+      if ((passwords(box, true) >= Number(most) && passwords(box, false) >= Number(mostShown)) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null))) continue;
       for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null) f.setAttribute(MAYBE, '');
     }
     for (const field of inputs(root)) {
-      if (field.getAttribute(MARK) === null || !shown(field)) continue;
+      if (field.getAttribute(MARK) === null) continue;
       const round = [];
       for (let box = field.form ? null : field.parentElement; box; box = box.parentElement) round.push(box);
       const upTo = round.findIndex((box) => inputs(box).some(account));
       for (const box of field.form ? [field.form] : round.slice(0, upTo < 0 ? 2 : upTo + 1)) {
         const accounts = inputs(box).filter(account);
         for (const f of accounts) f.setAttribute(`${HELD}-name`, '');
-        const [most, had] = (box.getAttribute(HELD) ?? '').split(' ');
-        box.setAttribute(HELD, `${Math.max(Number(most) || 0, passwords(box))}${had || accounts.length ? ' named' : ''}`);
+        const [most, mostShown, had] = (box.getAttribute(HELD) ?? '').split(' ');
+        box.setAttribute(HELD, `${Math.max(Number(most) || 0, passwords(box, true))} ${Math.max(Number(mostShown) || 0, passwords(box, false))}${had || accounts.length ? ' named' : ''}`);
       }
     }
   }
