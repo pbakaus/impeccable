@@ -441,3 +441,36 @@ it('context-only routing tools keep project writes observable but protect the st
     cleanupWorkspace(workspace);
   }
 });
+
+// Catches a picture handed to the model as its bytes decoded as text (the token noise #1551's captures caused), a text
+// file no longer handed over as text, and a failed read counted as loaded.
+it('read hands a picture to the model as an image and text as text, and counts only reads that succeed', async () => {
+  const workspace = prepareWorkspace({ files: { 'index.html': '<p>x</p>' } });
+  try {
+    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de', 'hex');
+    fs.writeFileSync(path.join(workspace, 'shot.png'), png);
+    const { tools, trace } = makeTools(workspace);
+    const image = await tools.read.execute({ path: 'shot.png' }, { toolCallId: 'a', messages: [] });
+    assert.deepEqual(image, { image: png.toString('base64'), mediaType: 'image/png' });
+    assert.deepEqual(tools.read.toModelOutput({ toolCallId: 'a', input: { path: 'shot.png' }, output: image }),
+      { type: 'content', value: [{ type: 'image-data', data: png.toString('base64'), mediaType: 'image/png' }] });
+    const text = await tools.read.execute({ path: 'index.html' }, { toolCallId: 'b', messages: [] });
+    assert.equal(text, '<p>x</p>');
+    assert.deepEqual(tools.read.toModelOutput({ toolCallId: 'b', input: { path: 'index.html' }, output: text }), { type: 'text', value: '<p>x</p>' });
+    const locked = path.join(workspace, 'locked.png');
+    fs.writeFileSync(locked, png);
+    fs.chmodSync(locked, 0o000);
+    // Only where a mode of 000 really stops a read (not on Windows, not as root).
+    let unreadable = false;
+    try { fs.readFileSync(locked); } catch { unreadable = true; }
+    if (unreadable) {
+      await assert.rejects(tools.read.execute({ path: 'locked.png' }, { toolCallId: 'c', messages: [] }));
+      assert.equal(trace.toolCalls.at(-1).succeeded, false);
+      assert.equal(trace.toolCalls.at(-1).loadedFiles, undefined);
+    }
+    assert.deepEqual(trace.toolCalls.slice(0, 2).map((c) => [c.input.path, c.succeeded]), [['shot.png', true], ['index.html', true]]);
+  } finally {
+    fs.rmSync(path.join(workspace, 'locked.png'), { force: true });
+    cleanupWorkspace(workspace);
+  }
+});
