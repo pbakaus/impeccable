@@ -3,64 +3,107 @@
 use crate::context::{extract_platform, TargetCandidate};
 use crate::design_parser::parse_design_md;
 use crate::jsp;
-use crate::signals::git_run;
 use crate::staleness::{check_native_platform_evidence, finding, js_truthy, to_relative, unique_roots, Finding};
 use crate::util::{exists, js_trim, read_json, safe_read};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
 
-const VISUAL_SOURCE_DIRS: [&str; 7] = ["src", "app", "pages", "components", "site", "styles", "public"];
 const LEGACY_LIVE_PATHS: [&str; 2] = [".impeccable-live.json", ".impeccable-live"];
 
-fn git(args: &[&str], cwd: &str) -> Option<String> {
-    git_run(args, cwd, true, Some(5000))
+/// Stylesheets a DESIGN.md can map; a script or JSON file counts only when its name says it holds tokens.
+const STYLE_EXTENSIONS: [&str; 4] = ["css", "scss", "sass", "less"];
+const TOKEN_SCRIPT_EXTENSIONS: [&str; 6] = ["json", "js", "ts", "mjs", "cjs", "mts"];
+const TOKEN_NAMES: [&str; 4] = ["token", "theme", "tailwind", "design"];
+
+/// A file whose values DESIGN.md's colours should be found in.
+fn is_token_file(p: &str) -> bool {
+    let lower = p.to_ascii_lowercase();
+    let name = lower.rsplit('/').next().unwrap_or(&lower);
+    let ext = name.rsplit('.').next().unwrap_or("");
+    STYLE_EXTENSIONS.contains(&ext) || (TOKEN_SCRIPT_EXTENSIONS.contains(&ext) && TOKEN_NAMES.iter().any(|t| name.contains(t)))
 }
 
-/// JS: checkDesignDrift
-pub fn check_design_drift(design_path: Option<&str>, project_root: &str, threshold: usize) -> Vec<Finding> {
+/// A colour value as written either way: lower case, no spaces, no leading zero (`oklch(14% 0.018 95)` is `oklch(14%.018 95)`).
+fn colour_key(v: &str) -> String {
+    static LEADING_ZERO: Lazy<Regex> = Lazy::new(|| Regex::new(r"(^|[^0-9])0\.").unwrap());
+    let lower = v.to_ascii_lowercase();
+    LEADING_ZERO.replace_all(&lower, "$1.").chars().filter(|c| !c.is_whitespace()).collect()
+}
+/// At most this many names per finding; the rest are counted.
+const NAMED: usize = 5;
+
+/// What DESIGN.md says that the repository no longer has (REN-2129): files it names that are gone, and colours its
+/// frontmatter declares that none of the token files it names still contain. Structural, so it is a contradiction,
+/// not a suspicion. A colour is checked only when DESIGN.md names at least one token file that exists.
+pub fn check_design_drift(design_path: Option<&str>, project_root: &str) -> Vec<Finding> {
     let Some(design_path) = design_path else { return vec![] };
     if project_root.is_empty() {
         return vec![];
     }
-    match git(&["rev-parse", "--is-inside-work-tree"], project_root) {
-        Some(s) if !s.is_empty() => {}
-        _ => return vec![],
+    let Some(design) = safe_read(design_path) else { return vec![] };
+    let rel_design = to_relative(Some(design_path), project_root).unwrap_or_else(|| "DESIGN.md".to_string());
+    let root = std::path::Path::new(project_root);
+    let mut named: Vec<String> = Vec::new();
+    for line in design.lines() {
+        for p in crate::design_map::path_mentions(line) {
+            if p.contains('/') && crate::design_map::is_relative_path(&p) && !p.contains('*') && !named.contains(&p) {
+                named.push(p);
+            }
+        }
     }
-    let rel_design = to_relative(Some(design_path), project_root).unwrap();
-    let last = match git(&["log", "-1", "--format=%H", "--", &rel_design], project_root) {
-        Some(s) if !s.is_empty() => s,
-        _ => return vec![],
-    };
-    let dirs: Vec<&str> = VISUAL_SOURCE_DIRS.iter().copied().filter(|d| exists(&jsp::join(&[project_root, d]))).collect();
-    if dirs.is_empty() {
-        return vec![];
+    let (live, dead): (Vec<String>, Vec<String>) = named.into_iter().partition(|p| root.join(p).exists());
+    let mut out = Vec::new();
+    if !dead.is_empty() {
+        out.push(finding(
+            "design-md-dead-path",
+            "DESIGN.md",
+            Some(rel_design.clone()),
+            "route",
+            format!("{} names {} that no longer {}: {}.", rel_design, if dead.len() == 1 { "a file" } else { "files" }, if dead.len() == 1 { "exists" } else { "exist" }, listed(&dead)),
+            "Point each line at where its file lives now, or drop it. `document` regenerates DESIGN.md from the code.".to_string(),
+        ));
     }
-    let mut args: Vec<&str> = vec!["log", "--oneline"];
-    let range = format!("{}..HEAD", last);
-    args.push(&range);
-    args.push("--");
-    args.extend(dirs.iter());
-    let Some(log) = git(&args, project_root) else { return vec![] };
-    let commits = if log.is_empty() { 0 } else { log.split('\n').filter(|l| !l.is_empty()).count() };
-    if commits < threshold {
-        return vec![];
+    let tokens: String = live
+        .iter()
+        .filter(|p| is_token_file(p))
+        .filter_map(|p| safe_read(&root.join(p).to_string_lossy()))
+        .map(|t| colour_key(&t))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !tokens.is_empty() {
+        let fm = parse_design_md(&design).frontmatter.unwrap_or_default();
+        let missing: Vec<String> = fm
+            .get("colors")
+            .and_then(Value::as_object)
+            .map(|colors| {
+                colors
+                    .iter()
+                    .filter_map(|(name, v)| v.as_str().map(|v| (name, v.trim())))
+                    .filter(|(_, v)| !v.is_empty() && !tokens.contains(&colour_key(v)))
+                    .map(|(name, v)| format!("{name} {v}"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !missing.is_empty() {
+            out.push(finding(
+                "design-md-color-drift",
+                "DESIGN.md",
+                Some(rel_design.clone()),
+                "route",
+                format!("{} declares {} the token files it names no longer contain: {}.", rel_design, if missing.len() == 1 { "a colour" } else { "colours" }, listed(&missing)),
+                "If the palette moved, `document` regenerates DESIGN.md from the code; if DESIGN.md is right, the code has drifted from it.".to_string(),
+            ));
+        }
     }
-    let when = git(&["log", "-1", "--format=%ad", "--date=short", "--", &rel_design], project_root).filter(|s| !s.is_empty());
-    vec![finding(
-        "design-md-drift",
-        "DESIGN.md",
-        Some(rel_design.clone()),
-        "route",
-        format!(
-            "{} commits have touched {} since {} was last edited{}. This counts commits, not contradictions: it says the document is worth re-reading, not that it is wrong.",
-            commits,
-            dirs.join(", "),
-            rel_design,
-            when.map(|w| format!(" ({})", w)).unwrap_or_default()
-        ),
-        "Read DESIGN.md against the current tokens and components before trusting it as authority. If it has genuinely drifted, `document` regenerates it from the code.".to_string(),
-    )]
+    out
+}
+
+/// Names in backticks, the first few, then how many more.
+fn listed(names: &[String]) -> String {
+    let shown: Vec<String> = names.iter().take(NAMED).map(|n| format!("`{n}`")).collect();
+    let more = names.len().saturating_sub(NAMED);
+    if more > 0 { format!("{} and {} more", shown.join(", "), more) } else { shown.join(", ") }
 }
 
 fn has_coverage_value(v: Option<&Value>) -> bool {
@@ -515,7 +558,7 @@ pub fn load_known_rule_ids() -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_hook_installation, check_spent_build_artifacts};
+    use super::{check_design_drift, check_hook_installation, check_spent_build_artifacts};
 
     static TMP_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -541,6 +584,30 @@ mod tests {
         let p = std::path::Path::new(root).join(rel);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, body).unwrap();
+    }
+
+    /// Catches drift reported from a count of commits instead of what DESIGN.md contradicts: a named file that is gone, a
+    /// declared colour no named token file still contains, and nothing at all when the map still holds.
+    #[test]
+    fn design_drift_names_dead_paths_and_colours_the_token_files_lost() {
+        let root = tmp();
+        write(&root, "styles/tokens.css", ":root { --brand: #C8552B; --ink: oklch(20% 0 0); --mist: oklch(96%  .012 95); }\n");
+        // A script named for something else is no token file: its values are never searched.
+        write(&root, "src/live.js", "const gold = '#d4af37';\n");
+        write(&root, "src/Button.tsx", "export {};\n");
+        let design = "---\ncolors:\n  brand: \"#c8552b\"\n  ink: \"oklch(20% 0 0)\"\n  mist: \"oklch(96% 0.012 95)\"\n  gold: \"#d4af37\"\n---\n# D\n\nTokens live in `styles/tokens.css`; buttons in `src/Button.tsx`; the overlay in `src/live.js`.\nCards were in `src/Card.tsx` and [the nav](src/nav/Nav.astro).\nGlobs like `src/**/*.tsx` and words like `e.g.` are not files.\n";
+        write(&root, "DESIGN.md", design);
+        let path = format!("{root}/DESIGN.md");
+        let found = check_design_drift(Some(&path), &root);
+        let ids: Vec<&str> = found.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["design-md-dead-path", "design-md-color-drift"]);
+        assert_eq!(found[0].summary, "DESIGN.md names files that no longer exist: `src/Card.tsx`, `src/nav/Nav.astro`.");
+        assert_eq!(found[1].summary, "DESIGN.md declares a colour the token files it names no longer contain: `gold #d4af37`.");
+        // The map holds: no finding.
+        write(&root, "src/Card.tsx", "export {};\n");
+        write(&root, "src/nav/Nav.astro", "");
+        write(&root, "styles/tokens.css", ":root { --brand: #c8552b; --ink: oklch(20% 0 0); --mist: oklch(96% .012 95); --gold: #D4AF37; }\n");
+        assert!(check_design_drift(Some(&path), &root).is_empty());
     }
 
     #[test]

@@ -7495,3 +7495,13 @@ A quote's rule (a `blockquote`, a box whose class names a quote) and a code line
 - `detect-fixture-{json,text}-side-tab-every-variant-html`: the square quote moved to the passing controls (with a square diff gutter inside `pre`); the new rounded quote reports `border-left: 3px + border-radius: 8px`.
 - `detect-fixture-{json,text}-side-tab-every-variant-css`: a rounded `.f-quote-rounded` reports; a square `blockquote` rule and `pre .diff-add` gutter pass; the pressed nav item moves down a line.
 - `legitimate-borders.html` has its blockquote and code-diff sections back; its golden did not move (still no findings).
+
+## Recorded 2026-11-17: design drift is what DESIGN.md contradicts, not a commit count (REN-2129)
+
+`design-md-drift` counted commits under the visual source directories since DESIGN.md last changed; a count is a
+suspicion, not a contradiction. Two structural findings replace it: `design-md-dead-path` (a file DESIGN.md names is
+gone) and `design-md-color-drift` (a frontmatter colour none of the token files it names still contains). They also
+reach `context`'s CONTEXT_STALE through the boot findings.
+
+- `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
+  `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.
