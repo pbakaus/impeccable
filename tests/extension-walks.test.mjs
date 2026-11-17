@@ -1620,11 +1620,25 @@ describe('walk worker', () => {
       await assert.rejects(ops.keyboard({ action: 'type', text: 'hunter2' }), { name: 'NotAllowed' });
       await assert.rejects(ops.keyboard({ action: 'press', key: 'Enter' }), { name: 'NotAllowed' });
       assert.equal(sent.slice(before).filter((m) => m.startsWith('Input.')).length, 0);
+      // Tab, Shift+Tab and Escape only leave it: a screen reader's way out of another site's frame or a code field.
+      for (const key of ['Tab', 'Shift+Tab', 'Escape']) await ops.keyboard({ action: 'press', key });
+      const keys = args.slice(before).filter((p) => p?.type === 'rawKeyDown').map((p) => [p.key, p.modifiers ?? 0]);
+      assert.deepEqual(keys, [['Tab', 0], ['Tab', 8], ['Escape', 0]]);
       page.seen = {};
+      const typed = sent.length;
       await ops.keyboard({ action: 'type', text: 'ok' });
-      assert.equal(sent.slice(before).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
+      assert.equal(sent.slice(typed).filter((m) => m === 'Input.dispatchKeyEvent').length, 4);
     });
   }
+
+  it('presses not even Tab where it cannot see the focus', async () => {
+    const { ops } = await walked();
+    page.seen = null;
+    const before = sent.length;
+    await assert.rejects(ops.keyboard({ action: 'press', key: 'Tab' }), { name: 'NotAllowed' });
+    assert.equal(sent.slice(before).filter((m) => m.startsWith('Input.')).length, 0);
+    page.seen = {};
+  });
 
   // The op says where, never what. Whatever else it carries, the page gets the plain picture the driver draws.
   it('attaches only the plain picture drawn in code, whatever file, path or address the op names', async () => {

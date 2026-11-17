@@ -351,7 +351,7 @@ describe('account worker', () => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-walk', refresh_token: 'refresh-walk-2', expires_in: 900 });
       if (url.endsWith('/cancel') && url.startsWith(`${ISSUER}/extension/v1/walks/`)) { cancelled.push([url.slice(ISSUER.length), init.method]); return json(204, null); }
-      if (url === `${ISSUER}/extension/v1/walks`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
+      if (url === `${ISSUER}/extension/v1/walks?can=hears`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
       if (url === `${ISSUER}/extension/v1/personas?can=hears` && !init.method) return json(200, { personas: [{ ...PERSONA, role: 1 }] });
       if (url.startsWith(`${ISSUER}/extension/v1/personas`) && init.method) { made.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null }); return mine(); }
       return json(404, {});
@@ -535,7 +535,7 @@ describe('account worker', () => {
       const served = globalThis.fetch;
       globalThis.fetch = async (url, init = {}) => {
         if (url === `${ISSUER}/extension/v1/me`) return json(503, {});
-        if (url === `${ISSUER}/extension/v1/walks/plan`) return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } });
+        if (url === `${ISSUER}/extension/v1/walks/plan?can=hears`) return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } });
         return served(url, init);
       };
       await chrome.storage.local.remove(`widths:${ISSUER}`);

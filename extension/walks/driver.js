@@ -1327,6 +1327,7 @@ function attach(x, y, data, name, type) {
 const KEYS = {
   Enter: { code: 'Enter', vk: 13, text: '\r' },
   Tab: { code: 'Tab', vk: 9 },
+  'Shift+Tab': { key: 'Tab', code: 'Tab', vk: 9, modifiers: 8 },
   Escape: { code: 'Escape', vk: 27 },
   Backspace: { code: 'Backspace', vk: 8 },
   Delete: { code: 'Delete', vk: 46 },
@@ -1343,7 +1344,7 @@ const KEYS = {
 
 function keyOf(name) {
   const named = KEYS[name];
-  if (named) return { key: named.key ?? name, code: named.code, windowsVirtualKeyCode: named.vk, ...(named.text ? { text: named.text } : {}) };
+  if (named) return { key: named.key ?? name, code: named.code, windowsVirtualKeyCode: named.vk, ...(named.text ? { text: named.text } : {}), ...(named.modifiers ? { modifiers: named.modifiers } : {}) };
   if ([...name].length !== 1) throw fail('Error', `Unknown key: "${name}"`);
   const upper = name.toUpperCase();
   const code = /^[A-Z]$/.test(upper) ? `Key${upper}` : /^[0-9]$/.test(name) ? `Digit${name}` : undefined;
@@ -1353,17 +1354,20 @@ function keyOf(name) {
 /** What typing must never reach, by what has focus (signin.js `lookInPage`). */
 const UNTYPABLE = { password: 'a password field', card: 'a payment card field', code: 'a one-time code field', frame: 'a frame on another origin' };
 
-/** Throws `NotAllowed` unless a key may go where focus is now. A page that cannot be read is not typed into. */
-async function typable() {
+/** Keys that only move focus or close something: no text goes in and none comes out, so they leave any field, or a frame on another origin. */
+const MOVES = new Set(['Tab', 'Shift+Tab', 'Escape']);
+
+/** Throws `NotAllowed` unless a key may go where focus is now (a press names its `key`). A page that cannot be read is not typed into. */
+async function typable(key) {
   const seen = await look();
   if (!seen) throw fail('NotAllowed', 'a journey types only where it can see the focus');
-  if (seen.focus) throw fail('NotAllowed', `a journey does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
+  if (seen.focus && !MOVES.has(key)) throw fail('NotAllowed', `a journey does not type into ${UNTYPABLE[seen.focus] ?? 'this field'}`);
 }
 
 async function press(name) {
   const key = keyOf(name);
   await cmd('Input.dispatchKeyEvent', { type: key.text ? 'keyDown' : 'rawKeyDown', ...key });
-  await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, ...(key.code ? { code: key.code, windowsVirtualKeyCode: key.windowsVirtualKeyCode } : {}) });
+  await cmd('Input.dispatchKeyEvent', { type: 'keyUp', key: key.key, ...(key.code ? { code: key.code, windowsVirtualKeyCode: key.windowsVirtualKeyCode } : {}), ...(key.modifiers ? { modifiers: key.modifiers } : {}) });
 }
 
 /**
@@ -1656,12 +1660,13 @@ export const ops = {
     });
   },
 
-  // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin.
+  // Every key is checked first: none reaches a password, card or one-time-code field, or a frame on another origin, but
+  // Tab, Shift+Tab and Escape, which only leave it.
   async keyboard({ action, key, text }) {
     const at = fences;
     walk.lastInputAt = Date.now();
     if (action === 'press') {
-      await typable();
+      await typable(String(key));
       overtaken(at);
       // On a focused native list, its choice steps (`stepList`); on another site, where the walk only looks, it stays.
       const listed = await inLookout(`(${stepList})(${JSON.stringify(String(key))}, ${!lookOnly()})`);

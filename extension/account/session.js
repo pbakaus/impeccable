@@ -418,7 +418,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      * could be started), `failed`.
      */
     async startWalk(body) {
-      const answer = await call(issuer(), '/walks', body).catch(() => null);
+      // `can`: this extension reads a page out, so a persona who hears it may walk here (as `personas` says).
+      const answer = await call(issuer(), '/walks?can=hears', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
@@ -438,7 +439,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
 
     /** Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as `startWalk`. */
     async planWalk(body) {
-      const answer = await call(issuer(), '/walks/plan', body).catch(() => null);
+      const answer = await call(issuer(), '/walks/plan?can=hears', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
