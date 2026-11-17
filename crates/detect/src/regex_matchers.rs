@@ -1131,12 +1131,13 @@ pub fn side_tab_match_stands<'s>(
     let rounded = || {
         side_tab_scope_corners(m, source, i, sass).rounds_any()
             || index().is_some_and(|index| index.is_declaration_rounded(pos))
-            || tag.is_some_and(|t| {
-                // A radius the tag declares itself wins over the stylesheet's.
-                !statements.iter().any(|st| split_declaration(st).is_some_and(|(p, _)| is_radius_property(&p)))
-                    && markup_text.is_some_and(|text| {
-                    markup_index.get_or_init(|| CssHostIndex::new(text)).is_element_rounded(Some(tag_name(t).as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase())), &classes)
-                })
+            || tag.zip(markup_text).is_some_and(|(t, text)| {
+                // The tag's own radii apply over the stylesheet's, corner by corner.
+                let inline: Vec<(String, String)> =
+                    statements.iter().filter_map(|st| split_declaration(st)).filter(|(p, _)| is_radius_property(p)).collect();
+                let name = tag_name(t);
+                let tag = Some(name.as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase()));
+                markup_index.get_or_init(|| CssHostIndex::new(text)).element_corners(tag, &classes, &inline).rounds_any()
             })
     };
     side_bar_stands_on(width, false, typographic) || side_bar_stands_on(width, rounded(), typographic)

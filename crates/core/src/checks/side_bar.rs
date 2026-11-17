@@ -488,10 +488,13 @@ pub fn scan_css_text_for_side_bars_with(content: &str, state_borders: bool) -> V
                 .or_else(|| {
                     let state = state_borders && without_state_pseudos(selector) != selector;
                     let lookup = |name: &str| props.get(name).cloned();
+                    // The first side that stands as a bar: a right bar
+                    // stays a bar beside a thinner left border.
                     state
-                        .then(|| row_stripe::border_stripe_in(&m[2], &lookup, 1.0..=f64::MAX))
+                        .then(|| row_stripe::border_stripes_in(&m[2], &lookup, 1.0..=f64::MAX))
+                        .into_iter()
                         .flatten()
-                        .filter(|&(_, px, _, other)| is_bar_beside(px, other))
+                        .find(|&(_, px, _, other)| is_bar_beside(px, other))
                         .map(|(prop, px, edge, _)| format!("{prop} {}px stripe ({edge})", number_to_string(px)))
                 })
         };
@@ -626,6 +629,14 @@ mod tests {
         // Equal borders on both inline sides in a hover state are a frame.
         assert!(scan_css_text_for_side_bars_with(".it:hover { border-left: 2px solid #ddd; border-right: 2px solid #ddd; }", true).is_empty());
         assert_eq!(scan_css_text_for_side_bars_with(".it:hover { border-left: 4px solid #ddd; border-right: 1px solid #ddd; }", true).len(), 1);
+    }
+
+    #[test]
+    fn a_state_bar_on_the_right_beside_a_thinner_left_border() {
+        // The left side fails against the right; the right is the bar.
+        let found = scan_css_text_for_side_bars_with(".it:hover { border-left: 2px solid #ddd; border-right: 4px solid #ddd; }", true);
+        let snippets: Vec<&str> = found.iter().map(|f| f.snippet.as_str()).collect();
+        assert_eq!(snippets, vec![".it:hover — border-right 4px stripe (right)"]);
     }
 
     #[test]

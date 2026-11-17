@@ -242,6 +242,11 @@ fn logical_pairs_hover_borders_and_mixed_branches() {
         page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>"),
         vec![".it:hover — border-left 2px stripe (left)"]
     );
+    // A right bar in a hover state behind a thinner left border.
+    assert_eq!(
+        page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd;border-right:4px solid #ddd}", "<button class=\"it\">x</button>"),
+        vec![".it:hover — border-right 4px stripe (right)"]
+    );
     assert_eq!(
         page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>"),
         vec!["blockquote, .card — inset box-shadow 3px stripe (left)"]

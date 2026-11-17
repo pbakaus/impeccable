@@ -2784,6 +2784,17 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         let card = |css: &str, style: &str| format!("<template>\n  <div class=\"card\" style=\"{style}\">x</div>\n</template>\n<style>\n{css}\n</style>\n");
         assert!(side_tabs(&card(".card { border-radius: 8px; }\n.card { border-radius: 0; }", "border-left: 1px solid #ddd;"), "/x/s.vue").is_empty());
         assert!(side_tabs(&card(".card { border-radius: 8px; }", "border-left: 1px solid #ddd; border-radius: 0;"), "/x/i.vue").is_empty());
+        // Review round three: selector priority and `!important` order the
+        // file's radii, and inline corners apply over them one at a time.
+        let bar = "border-left: 1px solid #ddd;";
+        assert_eq!(side_tabs(&card(".card { border-radius: 8px; }\ndiv { border-radius: 0; }", bar), "/x/p.vue").len(), 1);
+        assert_eq!(side_tabs(&card(".card { border-radius: 8px !important; }\ndiv.card { border-radius: 0; }", bar), "/x/p.vue").len(), 1);
+        assert!(side_tabs(&card("div.card { border-radius: 0; }\n.card { border-radius: 8px; }", bar), "/x/p.vue").is_empty());
+        // An ancestor the reader cannot check does not outrank the box's own rule.
+        assert_eq!(side_tabs(&card(".dark .card { border-radius: 0; }\n.card { border-radius: 8px; }", bar), "/x/p.vue").len(), 1);
+        assert_eq!(side_tabs(&card(".card { border-radius: 8px; }", "border-left: 1px solid #ddd; border-top-left-radius: 0;"), "/x/c.vue").len(), 1);
+        assert!(side_tabs(&card(".card { border-top-left-radius: 8px; }", "border-left: 1px solid #ddd; border-top-left-radius: 0;"), "/x/c.vue").is_empty());
+        assert_eq!(side_tabs(&card(".card { border-radius: 8px !important; }", "border-left: 1px solid #ddd; border-radius: 0;"), "/x/c.vue").len(), 1);
         // A quote's rule or a code line's gutter is typography on a square
         // box and a tab on a rounded one.
         let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";
