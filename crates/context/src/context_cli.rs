@@ -1008,6 +1008,14 @@ fn append_design(parts: &mut Parts, ctx: &Ctx) {
         parts.doc("# DESIGN.md".to_string(), path, design);
         return;
     }
+    // Already its map (`design-compact`): the body as written, within the map's own cap; mapping it again would lose
+    // its rules and the pointer to the original.
+    if let Some(at) = design.find(design_map::MAP_MARKER) {
+        let body = design[at + design_map::MAP_MARKER.len()..].trim();
+        let body: String = body.chars().take(design_map::MAP_SIZE).collect();
+        parts.push(format!("# DESIGN.md (map; {path})\n\n{body}"));
+        return;
+    }
     let root = std::path::Path::new(ctx.design_context_dir.as_deref().unwrap_or("."));
     parts.push(format!("# DESIGN.md (map; full file: {path})\n\n{}", design_map::map(design, root, path)));
 }

@@ -547,6 +547,23 @@ const cases = [
     },
     args: ['--json'], env: env(),
   },
+  // `design-compact` (REN-2129, S3): proposes a long DESIGN.md as its map and writes only with --write, never over an
+  // archive that exists. The long fixture's frontmatter carries a comment, a quoted hex and a rule the map keeps.
+  ...(() => {
+    const LONG = '---\nname: Oracle\n# All values mirror tokens.css.\ncolors:\n  brand: "#c8552b"   # the accent\n  ink: "oklch(14% 0 0)"\n---\n\n# Oracle Design\n\n**The One Accent Rule.** Brand stays under 10% of any screen.\n\n## Don\'ts\n\n- Don\'t add drop shadows to cards.\n\n' + 'A long paragraph of history that a map leaves in the original.\n\n'.repeat(40);
+    const long = (ws) => write(ws, 'DESIGN.md', LONG);
+    const files = ['DESIGN.md', '.impeccable/design-full.md'];
+    return [
+      { id: 'design-compact-short', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => write(ws, 'DESIGN.md', '# D\n\nShort.\n'), env: env(), files },
+      { id: 'design-compact-propose', verb: 'design-compact', workspace: 'ctx-signals', setup: long, env: env(), files },
+      { id: 'design-compact-write', verb: 'design-compact', workspace: 'ctx-signals', setup: long, args: ['--write'], env: env(), files },
+      // A planted link where the archive goes is never followed: refused, nothing written through it.
+      { id: 'design-compact-write-archive-link', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); fs.mkdirSync(`${ws}/.impeccable`, { recursive: true }); fs.symlinkSync(`${ws}/elsewhere.md`, `${ws}/.impeccable/design-full.md`); }, args: ['--write'], env: env(), files: ['DESIGN.md', 'elsewhere.md'] },
+      // A DESIGN.md design-compact wrote is carried as written, even past the map budget: never a map of a map.
+      { id: 'context-compacted-design', verb: 'context', workspace: 'ctx-signals', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Oracle\ncolors:\n' + Array.from({ length: 60 }, (_, i) => `  tone-${i}: "oklch(${i}% 0.01 95)"\n`).join('') + '---\n\n# Oracle Design\n\n<!-- impeccable:design-map -->\nRules:\n- The One Accent Rule. Brand stays under 10% of any screen.\nMap: src/tokens.css\nFull: .impeccable/design-full.md (read a section when you need its detail)\n'), env: env() },
+      { id: 'design-compact-write-archive-exists', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); write(ws, '.impeccable/design-full.md', 'An earlier original.\n'); }, args: ['--write'], env: env(), files },
+    ];
+  })(),
   { id: 'doctor-design-no-drift', verb: 'doctor', workspace: 'ctx-signals', setup: (ws) => { write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n'); gitInit(ws); }, args: ['--json'], env: env() },
 
   // ======================================================================

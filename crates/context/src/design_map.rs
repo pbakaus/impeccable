@@ -12,6 +12,8 @@ pub const MAP_BUDGET: usize = 1600;
 /// Bytes the map itself may take (about 600 tokens): room for every rule of a large system, which the
 /// guardrails need more than the long tail of its palette (REN-2129 gate, 17 Nov).
 pub const MAP_SIZE: usize = 2400;
+/// Marks a DESIGN.md that `design-compact` wrote as its map: `context` carries its body as written, never a map of a map.
+pub const MAP_MARKER: &str = "<!-- impeccable:design-map -->";
 const COLOR_LINE_BUDGET: usize = 240;
 /// The colour-role line is shorter: one colour per role says more than the long tail of a ramp.
 const ROLE_LINE_BUDGET: usize = 200;
