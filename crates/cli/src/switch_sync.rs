@@ -228,9 +228,15 @@ fn refresh(args: &[String], io: &mut Io) -> &'static str {
             }
             match sent {
                 Some(_) if write_all(&on, &link) => Some(on),
-                Some(_) => Some(on),
+                Some(_) => {
+                    said = "skipped: a rule file couldn't be written";
+                    Some(on)
+                }
                 // Not sent: the base stays, so the next refresh still sees the change.
-                None => base.clone(),
+                None => {
+                    said = "skipped: Impeccable didn't take the change";
+                    base.clone()
+                }
             }
         }
         Step::Write(on) => {
@@ -238,6 +244,7 @@ fn refresh(args: &[String], io: &mut Io) -> &'static str {
                 said = "synced";
                 Some(on)
             } else {
+                said = "skipped: a rule file couldn't be written";
                 base.clone()
             }
         }

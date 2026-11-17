@@ -495,7 +495,9 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
     let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line} instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.\n<!-- impeccable end -->"));
     std::fs::write(&claude, t).unwrap();
     fake.route("POST", "/cli/v1/agents/me", 500, vec![], "{}");
-    refresh();
+    // The failure is said, never "unchanged", so Loop's log can tell it from a settled refresh.
+    let out = impeccable(&env, &["switches-refresh"]).current_dir(&project).output().unwrap();
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "skipped: Impeccable didn't take the change\n");
     assert!(lines(&claude).contains(loop_line), "the unsent change stays: {}", lines(&claude));
     // The send works next time; then both files carry the set and nothing is sent again.
     fake.route("POST", "/cli/v1/agents/me", 200, vec![], r#"{"outcome":"set","rev":2,"team":null,"me":["taste","loop"]}"#);

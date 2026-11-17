@@ -2525,7 +2525,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   notice) always runs, and outside any repository reads the person's set with no repository.
   It prints one line: `synced` (files written or a change sent), `unchanged`, or
   `skipped: <why>` (not signed in, Impeccable didn't answer, another refresh is running, a
-  rule file can't be read), and exits 0. `--help` prints `Usage: impeccable switches-refresh [--now]`;
+  rule file can't be read or written, Impeccable didn't take the change), and exits 0. `--help` prints `Usage: impeccable switches-refresh [--now]`;
   any other argument prints it on stderr and exits 2.
   It waits up to 4 s for the sign-in
   lock, so a refresh started beside another worker runs after it, never skips. `impeccable switches
