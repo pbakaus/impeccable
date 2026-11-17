@@ -217,6 +217,11 @@ impl Fake {
                 "file".to_string(),
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
+            // A loaded Windows runner has taken over git's 2 s to answer (REN-2117).
+            (
+                "IMPECCABLE_TEST_GIT_DEADLINE_MS".to_string(),
+                "15000".to_string(),
+            ),
             // Windows allows the file backend only inside the user profile.
             (
                 "USERPROFILE".to_string(),

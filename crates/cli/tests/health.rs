@@ -748,7 +748,9 @@ fn design_forget_fences_a_late_success_response() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-forget-race");
+    let mut env = fake.env("design-forget-race");
+    // `forget` waits 3 s for an upload holding the lock: the real budget must end first.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -898,7 +900,9 @@ fn design_has_one_two_second_response_budget() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-response-budget");
+    let mut env = fake.env("design-response-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -926,7 +930,9 @@ fn design_refresh_can_finish_safely_after_detect_stops_waiting() {
         k.design = true;
         k.access_ttl = 0;
     }
-    let env = fake.env("design-renew-budget");
+    let mut env = fake.env("design-renew-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     fake.knobs.lock().unwrap().access_ttl = 900;
     let root = repo(&env, None);
