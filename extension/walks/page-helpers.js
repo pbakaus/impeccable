@@ -361,6 +361,7 @@ function clickByText(wanted, opts) {
     }
     if (holders.length === 1) {
       const { sel, opt } = holders[0];
+      const was = sel.getBoundingClientRect();
       sel.scrollIntoView({ block: "center" });
       const r = sel.getBoundingClientRect();
       const labelled = sel.id ? doc.querySelector(`label[for="${sel.id.replace(/"/g, "")}"]`) : null;
@@ -371,11 +372,12 @@ function clickByText(wanted, opts) {
         sel.dispatchEvent(new Ev("input", { bubbles: true }));
         sel.dispatchEvent(new Ev("change", { bubbles: true }));
       }
-      return { clicked: norm(`${opt.textContent ?? ""}`).slice(0, 60), exact: true, tag: "option", selector: `select${sel.id ? `#${sel.id}` : ""}${sel.getAttribute("name") ? `[name="${sel.getAttribute("name")}"]` : ""}`, target: { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, point: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }, scrollY: Math.round(w.scrollY), chose: { option: norm(`${opt.textContent ?? ""}`).slice(0, 60), select: selectName.slice(0, 60) } };
+      return { clicked: norm(`${opt.textContent ?? ""}`).slice(0, 60), exact: true, tag: "option", selector: `select${sel.id ? `#${sel.id}` : ""}${sel.getAttribute("name") ? `[name="${sel.getAttribute("name")}"]` : ""}`, target: { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }, point: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }, scrollY: Math.round(w.scrollY), ...typeof w.innerWidth === "number" ? { view: { width: Math.round(w.innerWidth), height: Math.round(w.innerHeight) }, seen: { x: Math.round(was.left), y: Math.round(was.top) } } : {}, chose: { option: norm(`${opt.textContent ?? ""}`).slice(0, 60), select: selectName.slice(0, 60) } };
     }
   }
   if (!best)
     return null;
+  const was = best.el.getBoundingClientRect();
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
   const target = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
@@ -444,7 +446,7 @@ function clickByText(wanted, opts) {
     const picked = all.find((o) => o.selected), current = picked ? siteText(picked) : "";
     options = { names: names.slice(0, 12), count: names.length, ...current ? { current } : {} };
   }
-  return { clicked: best.text, ...options ? { options } : {}, ...shown ? { shown } : {}, ...shownTwins ? { shownTwins } : {}, nameCount: peers.length, ...sameSelector ? { sameSelector } : {}, ...sharedClasses.length ? { sharedClasses } : {}, ...inChange ? { inChange } : {}, ...label ? { label } : {}, ...role ? { role } : {}, href: best.el.closest?.("a[href]")?.getAttribute("href") ?? undefined, exact: !!one || exact, tag: best.el.tagName.toLowerCase(), selector, target, point, scrollY: Math.round(w.scrollY), ...covered ? { covered } : {}, ...outside ? { outside: true } : {}, ...slider ? { slider: true, axis } : {}, ...one ? { one } : {}, ...alike };
+  return { clicked: best.text, ...options ? { options } : {}, ...shown ? { shown } : {}, ...shownTwins ? { shownTwins } : {}, nameCount: peers.length, ...sameSelector ? { sameSelector } : {}, ...sharedClasses.length ? { sharedClasses } : {}, ...inChange ? { inChange } : {}, ...label ? { label } : {}, ...role ? { role } : {}, href: best.el.closest?.("a[href]")?.getAttribute("href") ?? undefined, exact: !!one || exact, tag: best.el.tagName.toLowerCase(), selector, target, point, scrollY: Math.round(w.scrollY), ...typeof w.innerWidth === "number" ? { view: { width: Math.round(w.innerWidth), height: Math.round(w.innerHeight) }, seen: { x: Math.round(was.left), y: Math.round(was.top) } } : {}, ...covered ? { covered } : {}, ...outside ? { outside: true } : {}, ...slider ? { slider: true, axis } : {}, ...one ? { one } : {}, ...alike };
 }
 
 function confirmingControl(at, enter = false, wide = false) {
@@ -766,6 +768,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
     best = { el: focused, score: 0 };
   if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-impeccable-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
     return null;
+  const was = best.el.getBoundingClientRect();
   best.el.scrollIntoView({ block: "center" });
   const r = best.el.getBoundingClientRect();
   const target = { x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) };
@@ -789,7 +792,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
     best.el.textContent = text;
     best.el.dispatchEvent(new w.Event("input", { bubbles: true }));
   }
-  return { typed: text, target, point: { x: Math.round(r.left + 12), y: Math.round(r.top + r.height / 2) } };
+  return { typed: text, target, point: { x: Math.round(r.left + 12), y: Math.round(r.top + r.height / 2) }, ...typeof w.innerWidth === "number" ? { view: { width: Math.round(w.innerWidth), height: Math.round(w.innerHeight) }, seen: { x: Math.round(was.left), y: Math.round(was.top) } } : {} };
 }
 
 function controlKeyEvidence(mode) {
@@ -1609,6 +1612,11 @@ function secretFocus() {
   return null;
 }
 
+function viewSize() {
+  const w = globalThis;
+  return { width: Math.round(w.innerWidth), height: Math.round(w.innerHeight) };
+}
+
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
   const seen = "data-impeccable-secret-field";
@@ -1717,7 +1725,7 @@ function coverSecrets(on, forMs) {
   return covered;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, coverSecrets });
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, coverSecrets });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -1732,4 +1740,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '3be36667c52b2db1';
+export const HASH = '664efd13ee8732d6';
