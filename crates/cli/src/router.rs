@@ -238,7 +238,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             impeccable_hook::run_hook_before_edit_with_pack(rest, io, engines.html, pack.rule_pack)
         }
         "hooks" | "hook-admin" => impeccable_hook::run_hook_admin(rest, io),
-        v if v.starts_with("live") => impeccable_live::run(v, rest, io),
+        // A successful variant accept records the prototyping session (REN-1917), after its result is out.
+        v if v.starts_with("live") => impeccable_live::run_with_accepted(v, rest, io, &mut |io, a| {
+            impeccable_account::prototypes::after_accept(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms))
+        }),
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
         v if impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy()) => {
