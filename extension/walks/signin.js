@@ -90,7 +90,7 @@ export function lookInPage() {
   // field, two when none does, never `<html>`, and `<body>` only round a field right in it) keep how many they held and
   // showed, and whether one held an account field. While a box holds fewer, no box in it does, and a marked account
   // field is still in it, or it never held one, each filled, shown text field in it that names no account is marked as
-  // one that may hold a secret (while it only shows fewer, each that holds what a hidden one holds: a clone shown):
+  // one that may hold a secret (while it only shows fewer, each beside a hidden one or holding what it holds: a clone shown):
   // covered and never read, and no pause unless the server sends its own code (`maybe`). That mark is no password
   // field, so a box keeps watching for the password typed after a filled name took it. A search box in a page's header
   // stays plain once a sign-in below it went, and so does a checkout whose account section was only hidden.
@@ -119,9 +119,10 @@ export function lookInPage() {
     for (const { box, gone, had } of fewer) {
       const all = inputs(box);
       if (fewer.some((other) => within(other.box, box)) || (had && !all.some((f) => f.getAttribute(`${HELD}-name`) !== null))) continue;
-      // One gone: any filled field may be the one swapped in. One only hidden: a shown clone holding what it holds.
-      const clones = all.filter((f) => counts(f) && !shown(f) && f.value).map((f) => f.value);
-      for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null && (gone || clones.includes(f.value))) f.setAttribute(MAYBE, '');
+        // One gone: any filled field may be the one swapped in. One only hidden: a shown clone, beside it or holding what it holds.
+      const hidden = all.filter((f) => counts(f) && !shown(f));
+      const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || (Boolean(h.value) && h.value === f.value));
+      for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null && (gone || clone(f))) f.setAttribute(MAYBE, '');
     }
     for (const field of inputs(root)) {
       if (!counts(field)) continue;
