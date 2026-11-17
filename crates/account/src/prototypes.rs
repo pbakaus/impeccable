@@ -10,15 +10,22 @@ use std::time::Instant;
 
 /// Nothing on success, signed out, or under an opt-out; at most one line on
 /// stderr when it couldn't save, since stdout is the accept's JSON.
-pub fn after_accept(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64) {
-    if let Some(reason) = upload(io, session_id, root, target, variants) {
+/// `accepted_at` is the first accept's time, so a replay records the same moment.
+pub fn after_accept(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64)) {
+    if let Some(reason) = upload(io, session_id, root, target, variants, accepted_at) {
         io.err(&format!("Prototype not saved to Impeccable: {reason}\n"));
     }
 }
 
 /// The upload body: exactly the keys the service reads. A retry of the same
 /// session in the same project carries the same id, so it records once.
-fn body(session_id: &str, root: &Path, target: &str, variants: u64) -> Option<Value> {
+fn body(session_id: &str, root: &Path, target: &str, variants: u64, (at, at_ms): (&str, i64)) -> Option<Value> {
+    // The service takes a record made within the last day; an older accept is
+    // not news, so it sends nothing (an hour's margin for clock drift).
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?.as_millis() as i64;
+    if !(now - 23 * 3_600_000..=now + 60_000).contains(&at_ms) {
+        return None;
+    }
     let target = target.trim();
     if target.is_empty() || target.chars().count() > 200 || target.chars().any(char::is_control) {
         return None;
@@ -36,17 +43,17 @@ fn body(session_id: &str, root: &Path, target: &str, variants: u64) -> Option<Va
         "prototypeId": format!("{}-{}-{}-{}-{}", &h[..8], &h[8..12], &h[12..16], &h[16..20], &h[20..]),
         "target": target,
         "variants": variants,
-        "createdAt": impeccable_context::util::iso_now(),
+        "createdAt": at,
     }))
 }
 
-fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64) -> Option<String> {
+fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64)) -> Option<String> {
     let started = Instant::now();
     let signed_in = match ready(io, Some(root)) {
         Ok(signed_in) => signed_in,
         Err(stop) => return stopped(stop),
     };
-    let mut body = body(session_id, root, target, variants)?;
+    let mut body = body(session_id, root, target, variants, accepted_at)?;
     if let Some((key, _)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
         body["repoKey"] = key.into();
     }

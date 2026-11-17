@@ -940,7 +940,17 @@ fn an_accepted_variant_records_the_prototype_once_and_never_when_opted_out() {
     let mut keys: Vec<_> = sent[0].as_object().unwrap().keys().cloned().collect();
     keys.sort();
     assert_eq!(keys, ["createdAt", "prototypeId", "target", "variants"]);
+    // The replay keeps the first accept's time.
+    assert_eq!(sent[0]["createdAt"], sent[1]["createdAt"]);
     impeccable(&env, root, &["critiques", "off"]).output().unwrap();
+    assert!(accept().status.success());
+    assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
+    // An accept older than the service's one-day window sends nothing.
+    impeccable(&env, root, &["critiques", "on"]).output().unwrap();
+    let receipt = root.join(format!(".impeccable/live/accept-receipts/{id}.json"));
+    let mut r: serde_json::Value = serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
+    r["completedAt"] = "2026-01-01T00:00:00.000Z".into();
+    std::fs::write(&receipt, r.to_string()).unwrap();
     assert!(accept().status.success());
     assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
 }

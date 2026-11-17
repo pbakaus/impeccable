@@ -67,6 +67,10 @@ pub struct Accepted {
     /// The page path (`/pricing`), or a file page's name.
     pub target: String,
     pub variants: u64,
+    /// When the variant was first accepted (ISO 8601), from the accept receipt.
+    pub accepted_at: String,
+    /// The same time in Unix milliseconds.
+    pub accepted_ms: i64,
 }
 
 /// Called with the caller's `Io` once an accept's result is out: after the

@@ -112,12 +112,16 @@ pub fn run_with_accepted(args: &[String], io: &mut Io, accepted: &mut crate::OnA
     code
 }
 
-/// What the CLI records of an accepted session, from its journal: the page
-/// path (never origin, query or fragment) and how many variants it generated.
+/// What the CLI records of an accepted session, from its journal and its
+/// accept receipt: the page path, how many variants it generated, and when
+/// it was first accepted (a replay keeps the original time).
 fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::Accepted> {
     let cwd = io.cwd.to_string_lossy().into_owned();
-    // Only read a journal that exists: opening the store would create its folder.
-    if !std::path::Path::new(&crate::paths::live_sessions_dir(&cwd, &io.env)).join(format!("{id}.jsonl")).is_file() {
+    // Only read a journal that exists, here or in the legacy folder the store
+    // also reads: opening the store would create its folder.
+    let journal = format!("{id}.jsonl");
+    let dirs = [crate::paths::live_sessions_dir(&cwd, &io.env), crate::paths::legacy_live_sessions_dir(&cwd, &io.env)];
+    if !dirs.iter().any(|d| std::path::Path::new(d).join(&journal).is_file()) {
         return None;
     }
     let snapshot = crate::session::create_live_session_store(&cwd, &io.env, Some(id))
@@ -127,18 +131,32 @@ fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::
     let count = |k: &str| snapshot.get(k).and_then(Value::as_f64).filter(|n| *n >= 1.0);
     let variants = count("arrivedVariants").or_else(|| count("expectedVariants"))? as u64;
     let url = snapshot.get("pageUrl").and_then(Value::as_str).or(page_url)?;
-    Some(crate::Accepted { session_id: id.to_string(), root: io.cwd.clone(), target: page_path(url), variants })
+    let accepted_at = read_accept_receipt(&cwd, &io.env, id)
+        .and_then(|r| r.get("completedAt").and_then(Value::as_str).map(String::from))?;
+    let accepted_ms = crate::util::date_parse_ms(&accepted_at)?;
+    Some(crate::Accepted {
+        session_id: id.to_string(),
+        root: io.cwd.clone(),
+        target: page_path(url)?,
+        variants,
+        accepted_at,
+        accepted_ms,
+    })
 }
 
-fn page_path(url: &str) -> String {
-    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
-    let path = if scheme.is_empty() { rest } else { rest.find('/').map_or("/", |i| &rest[i..]) };
-    let path = path.split(['?', '#']).next().unwrap_or_default();
-    // A file page names its file, never the folders above it.
-    match scheme {
-        "file" => path.rsplit('/').next().unwrap_or_default().to_string(),
-        _ if path.is_empty() => "/".to_string(),
-        _ => path.to_string(),
+/// What a page URL names, without the person's machine: an http(s) page's
+/// path (no origin, query or fragment), a `file:` page's file name only, and
+/// nothing for any other scheme.
+fn page_path(url: &str) -> Option<String> {
+    let (scheme, rest) = url.split_once(':')?;
+    let rest = rest.split(['?', '#']).next().unwrap_or_default();
+    match scheme.to_ascii_lowercase().as_str() {
+        "file" => rest.rsplit(['/', '\\']).next().filter(|n| !n.is_empty()).map(String::from),
+        "http" | "https" => {
+            let after_host = rest.strip_prefix("//")?;
+            Some(after_host.find('/').map_or("/", |i| &after_host[i..]).to_string())
+        }
+        _ => None,
     }
 }
 
@@ -1457,6 +1475,29 @@ fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
+}
+
+#[cfg(test)]
+mod page_path_tests {
+    use super::page_path;
+
+    #[test]
+    fn only_a_page_path_or_a_file_name_leaves_the_machine() {
+        for (url, want) in [
+            ("http://localhost:5173/pricing?plan=pro#top", Some("/pricing")),
+            ("HTTPS://shop.test", Some("/")),
+            ("file:///home/alice/site/page.html", Some("page.html")),
+            ("file:/home/alice/page.html", Some("page.html")),
+            ("FILE:///C:/Users/alice/page.html?x#y", Some("page.html")),
+            ("file:C:\\Users\\alice\\page.html", Some("page.html")),
+            ("file:///home/alice/", None),
+            ("about:blank", None),
+            ("/pricing", None),
+            ("http:/pricing", None),
+        ] {
+            assert_eq!(page_path(url).as_deref(), want, "{url}");
+        }
+    }
 }
 
 #[cfg(test)]

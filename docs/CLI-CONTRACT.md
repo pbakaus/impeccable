@@ -3114,11 +3114,14 @@ renewal, lock and two-second budget as a critique upload. Through `live-poll`
 it runs after the browser's reply and the printed event. The body is exactly
 `prototypeId`, `target`, `variants`, `createdAt` and optional `repoKey`:
 `prototypeId` is a UUID (version nibble 4) hashed from the app root and the
-session id, so a retry is a `repeat`; `target` is the session's page path
-(no origin, query or fragment; a `file:` page sends its file name);
+session id, so a retry is a `repeat`; `target` is an http(s) page's path
+(no origin, query or fragment), or only the file name of a `file:` page (any
+case, with or without `//`); any other scheme sends nothing.
 `variants` is the session's arrived variant count, else its requested count;
-`createdAt` is the accept time; `repoKey` is the critique key. A session with
-no page URL, no count in 1-24, or an invalid target sends nothing. Nothing of
+`createdAt` is the first accept's time from its receipt, so a replay sends the
+same time, and an accept older than 23 hours sends nothing; `repoKey` is the
+critique key. A session with no journal (current or legacy folder), no page
+URL, no count in 1-24, or an invalid target sends nothing. Nothing of
 the variants is sent. It prints nothing on success or signed out, and at most
 one `Prototype not saved to Impeccable: <reason>` line on stderr, so the
 accept's stdout JSON is unchanged.
