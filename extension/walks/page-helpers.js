@@ -435,6 +435,25 @@ function confirmingControl(at, enter = false, wide = false) {
   const norm = (s) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim(), whole = (raw, short) => wide ? [...short, ...raw.map((s) => s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, 80)).filter((s) => s.length > 0 && !short.includes(s))] : short;
   const changes = /\b(?:approve|reject|decline|deny|submit|save|delete|remove|send|pay|confirm|publish|archive|revoke|withdraw|transfer)\b|\bcancel [a-z]/;
   let el = at ? doc.elementFromPoint ? doc.elementFromPoint(at.x, at.y) : null : doc.activeElement ?? null;
+  for (;!at; ) {
+    if (el?.shadowRoot?.activeElement) {
+      el = el.shadowRoot.activeElement;
+      continue;
+    }
+    if (el && (el.tagName === "IFRAME" || el.tagName === "FRAME")) {
+      let inner = null;
+      try {
+        inner = el.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (!inner)
+        return wide ? "" : "the frame";
+      el = inner.activeElement ?? null;
+      continue;
+    }
+    break;
+  }
   while (el) {
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute("type") ?? "").toLowerCase();
@@ -496,7 +515,41 @@ function fieldReads(point, noSecrets = false) {
 }
 
 function focusedText() {
-  const doc = globalThis.document;
+  const doc = globalThis.document, roots = [doc];
+  let focused = doc.activeElement ?? null, deep = false;
+  for (;; ) {
+    if (focused?.shadowRoot?.activeElement) {
+      deep = true;
+      focused = focused.shadowRoot.activeElement;
+      continue;
+    }
+    if (focused && (focused.tagName === "IFRAME" || focused.tagName === "FRAME")) {
+      let inner = null;
+      try {
+        inner = focused.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (!inner)
+        return null;
+      deep = true;
+      focused = inner.activeElement ?? null;
+      continue;
+    }
+    break;
+  }
+  for (let at = 0;deep && at < roots.length; at++) {
+    for (const el of Array.from(roots[at].querySelectorAll?.("*") ?? [])) {
+      if (el.shadowRoot)
+        roots.push(el.shadowRoot);
+      if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+        try {
+          if (el.contentDocument)
+            roots.push(el.contentDocument);
+        } catch {}
+      }
+    }
+  }
   const key = (t) => (t ?? "").normalize("NFKC").toLowerCase().trim().replace(/[.,]$/, "").split(/\s+/).filter(Boolean).join(" ");
   const shownOf = (el) => {
     if (!el || /^(?:body|html|textarea|select)$/i.test(el.tagName) || el.isContentEditable)
@@ -507,10 +560,10 @@ function focusedText() {
     const words = (input ? (el.value ?? "").trim() : (el.innerText ?? "").trim()) || el.getAttribute("aria-label");
     return words && key(words) ? words : null;
   };
-  const shown = shownOf(doc.activeElement);
+  const shown = shownOf(focused);
   if (!shown)
     return null;
-  const several = Array.from(doc.querySelectorAll?.("button,a,input,summary,[role],[tabindex]") ?? []).filter((el) => el !== doc.activeElement && key(shownOf(el)) === key(shown)).length + 1;
+  const several = roots.flatMap((root) => Array.from(root.querySelectorAll?.("button,a,input,summary,[role],[tabindex]") ?? [])).filter((el) => el !== focused && key(shownOf(el)) === key(shown)).length + 1;
   return { shown, several };
 }
 
@@ -732,8 +785,30 @@ function controlKeyEvidence(mode) {
 }
 
 function focusedControl(region) {
-  const doc = globalThis.document;
-  const el = doc.activeElement;
+  const roots = [globalThis.document];
+  let focus = roots[0].activeElement ?? null;
+  for (;; ) {
+    if (focus?.shadowRoot?.activeElement) {
+      roots.push(focus.shadowRoot);
+      focus = focus.shadowRoot.activeElement;
+      continue;
+    }
+    if (focus && (focus.tagName === "IFRAME" || focus.tagName === "FRAME")) {
+      let inner = null;
+      try {
+        inner = focus.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (!inner)
+        return null;
+      roots.push(inner);
+      focus = inner.activeElement ?? null;
+      continue;
+    }
+    break;
+  }
+  const el = focus, doc = roots.at(-1), all = (selector) => roots.flatMap((root) => Array.prototype.slice.call(root.querySelectorAll(selector)));
   if (!el || /^(?:body|html)$/.test(el.tagName.toLowerCase()))
     return null;
   const tag = el.tagName.toLowerCase();
@@ -751,20 +826,20 @@ function focusedControl(region) {
   const name = el.getAttribute("name");
   const testId = el.getAttribute("data-testid") ?? el.getAttribute("data-test");
   const selector = `${tag}${el.id ? `#${esc(el.id)}` : ""}${classes.map((c) => `.${esc(c)}`).join("")}${name ? `[name="${esc(name)}"]` : ""}${testId ? `[data-testid="${esc(testId)}"]` : ""}`;
-  const controls = Array.prototype.slice.call(doc.querySelectorAll('button,a,input,select,textarea,summary,dialog,[role],[contenteditable="true"],[tabindex]'));
+  const controls = all('button,a,input,select,textarea,summary,dialog,[role],[contenteditable="true"],[tabindex]');
   const styleOf = globalThis.getComputedStyle;
   const visible = (candidate) => {
     const style = styleOf?.(candidate), rect = candidate.getBoundingClientRect?.();
     return style?.display !== "none" && style?.visibility !== "hidden" && style?.visibility !== "collapse" && (!rect || rect.width >= 2 && rect.height >= 2) && !candidate.closest?.("[inert]") && candidate.getAttribute("disabled") === null;
   };
-  const modals = Array.from(doc.querySelectorAll(':modal, [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')).filter((candidate) => (candidate.tagName.toLowerCase() === "dialog" || candidate.getAttribute("aria-modal") === "true") && visible(candidate));
+  const modals = all(':modal, [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]').filter((candidate) => (candidate.tagName.toLowerCase() === "dialog" || candidate.getAttribute("aria-modal") === "true") && visible(candidate));
   const modal = modals.filter((candidate) => candidate.contains?.(el)).at(-1) ?? modals.at(-1);
   const sameName = [...new Set([el, ...controls])].filter((candidate) => {
     if (!visible(candidate) || modal && candidate !== modal && !modal.contains?.(candidate))
       return false;
     let name = candidate.getAttribute("aria-label") || candidate.getAttribute("title") || candidate.getAttribute("placeholder") || "";
     if (!name && candidate.id)
-      name = Array.prototype.slice.call(doc.querySelectorAll("label[for]")).find((label) => label.getAttribute("for") === candidate.id)?.textContent ?? "";
+      name = all("label[for]").find((label) => label.getAttribute("for") === candidate.id)?.textContent ?? "";
     return (name || candidate.innerText || candidate.textContent || "").normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ") === resolved?.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu)?.join(" ");
   });
   const signature = (candidate) => JSON.stringify([candidate.tagName.toLowerCase(), typeof candidate.className === "string" ? candidate.className.split(/\s+/).filter(Boolean).sort() : [], candidate.getAttribute("name"), candidate.getAttribute("data-testid") ?? candidate.getAttribute("data-test")]);
@@ -1558,4 +1633,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '19f138d999ca3f63';
+export const HASH = 'e39d6d565f8694be';
