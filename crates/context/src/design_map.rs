@@ -388,9 +388,11 @@ mod tests {
         let root = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
         let out = map(include_str!("../../../DESIGN.md"), root, "DESIGN.md");
         assert!(out.len() <= MAP_SIZE, "{} bytes:\n{out}", out.len());
-        // The CTA's pressed gold arrives beside the gold itself (interaction ranks right after primary).
-        assert!(out.contains("Colors: primary: kinpaku-gold oklch(84% 0.19 80.46); interaction: kinpaku-rich oklch(77% 0.13 82); secondary: verdigris-patina"), "{out}");
-        assert!(out.contains("- CTA Lift: 0 18px 48px oklch(2% 0.004 95 / 0.4)\n"), "{out}");
+        // The hover gold arrives beside the gold itself (interaction ranks right after primary), and patina-deep, the
+        // one colour that may carry text on paper, before the surfaces.
+        assert!(out.contains("Colors: primary: kinpaku oklch(84% 0.19 80.46); interaction: kinpaku-vivid oklch(87% 0.20 85); secondary: patina-deep oklch(46% 0.08 188)"), "{out}");
+        // The controls' raised cap by its token and value (the gate's missing CTA Lift was this).
+        assert!(out.contains("- --ks-cap-lift: inset 0 1px 0 oklch(100% 0 0 / 0.9), 0 1px 0 oklch(13% 0 0 / 0.14), 0 2px 3px oklch(13% 0 0 / 0.08)\n"), "{out}");
         // Every Don't: they give way last.
         let donts = out.split("Don't:\n").nth(1).unwrap().lines().take_while(|l| l.starts_with("- "));
         assert!(!donts.into_iter().any(|l| l.starts_with("- (+")), "{out}");
