@@ -1131,7 +1131,8 @@ describe('walk worker', () => {
     globalThis.fetch = async (url) => (url === 'chrome-extension://ext/walks/consent-rules.js' ? new Response(consentRules) : new Response('', { status: 404 }));
     const ran = [];
     answers['Runtime.evaluate'] = (params) => {
-      if (params.contextId === worlds['impeccable-walk-lookout']) return was(params);
+      // The badge's own world (hidden while a helper looks at a point) runs no helper.
+      if (params.contextId === worlds['impeccable-walk-lookout'] || params.expression.includes('__impeccableWalkBadge')) return was(params);
       ran.push(params);
       // By value, as Chrome hands it back. A helper may throw on a stub page, never reach for a name it does not have.
       try { const value = vm.runInContext(params.expression, world); return { result: value === undefined ? {} : { value: JSON.parse(JSON.stringify(value)) } }; } catch (err) { if (err?.name === 'ReferenceError' || err?.name === 'SyntaxError') throw err; return { result: {} }; }
@@ -1685,6 +1686,43 @@ describe('walk worker', () => {
       assert.deepEqual(await tried('mouse', { action: 'click', x: 1, y: 1 }), NOT_ASKED, 'an older server: held, never asked');
     } finally {
       answers['Runtime.evaluate'] = was;
+      await reopen(undefined);
+    }
+  });
+
+  // The badge sits over the page's corner, where a shop's toast put its "Go to shopping bag": the walk found that button
+  // covered by the badge, twice, and a press there would have landed on Stop.
+  it('hides the badge while it presses or looks at a point, and only then', async () => {
+    const { ops, rearm, dispatch } = await walked();
+    const badgeIn = async () => { fire('Runtime.executionContextCreated', { context: { id: 77, name: 'impeccable-walk-badge', auxData: { frameId: 'main' } } }); await settle(5); };
+    const seenSince = (at) => args.slice(at).flatMap((p, i) => {
+      if (sent[at + i] === 'Input.dispatchMouseEvent') return [p.type];
+      if (sent[at + i] !== 'Runtime.evaluate') return [];
+      if (p.contextId === 77) return /veil\((true|false)\)/.test(p.expression) ? [p.expression.includes('veil(true)') ? 'hide' : 'show'] : [];
+      if (p.expression.includes('submitsAt')) return ['submitsAt'];
+      return p.contextId === worlds['impeccable-walk-read'] ? [p.expression.includes('clickByText') ? 'clickByText' : 'read'] : [];
+    });
+    await badgeIn();
+    let at = sent.length;
+    await ops.mouse({ action: 'click', x: 700, y: 560 });
+    await ops.evaluate({ helper: 'clickByText', args: ['Go to shopping bag', { locateOnly: true }] });
+    await ops.evaluate({ helper: 'pageAddress', args: [] });
+    assert.deepEqual(seenSince(at), ['hide', 'mouseMoved', 'mousePressed', 'mouseReleased', 'show', 'hide', 'clickByText', 'show', 'read']);
+    // On a free walk the press is first looked at for a submit: there too, or a "Place order" under the badge goes unasked.
+    const reopen = async (free) => {
+      await ops.close();
+      rearm();
+      dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: SITE } });
+      await ops.open({ url: `${SITE}/`, name: 'Mira', ...(free ? { free } : {}) });
+      await settle(5);
+    };
+    try {
+      await reopen(true);
+      await badgeIn();
+      at = sent.length;
+      await ops.mouse({ action: 'click', x: 700, y: 560 });
+      assert.deepEqual(seenSince(at), ['hide', 'submitsAt', 'show', 'hide', 'mouseMoved', 'mousePressed', 'mouseReleased', 'show']);
+    } finally {
       await reopen(undefined);
     }
   });

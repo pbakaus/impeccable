@@ -2,7 +2,7 @@
 // side panel; Stop, and Continue on a pause, also from the badge. Every op the socket asks passes through here first, so the server's engine
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
-import { unseen, whenPressed } from './badge.js';
+import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
 import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
@@ -141,7 +141,8 @@ for (const [name, run] of Object.entries(ops)) {
       if (!(await clear(name)) && at === fenced()) {
         if (!checked) {
           checked = true;
-          const control = await submitIn(name, req);
+          // Looked at as the press will be made, with the badge out of the way: else a submit under it goes unasked.
+          const control = await submitIn(name, req, withoutBadge);
           if (control) [ask, agreed] = [{ kind: 'send', what: `Submit "${control}"` }, false];
           continue;
         }

@@ -815,15 +815,16 @@ function submitsAt(at, enter) {
 /**
  * What a free walk asks the person before: the control a click, Enter or Space, or a typed new line would
  * press that sends something, unless the server marked it or has opened writes for a deed its plan approved. Its name, or null.
+ * `around` runs the look (the badge hides for it).
  */
-export async function submitIn(name, req) {
+export async function submitIn(name, req, around = (look) => look()) {
   const tab = walk;
   if (!tab?.free || tab.writesOpen) return null;
   const clicks = name === 'mouse' && (req.action === 'click' || req.action === 'down');
   const keys = name === 'keyboard' && ((req.action === 'press' && ['Enter', ' ', 'Space'].includes(req.key)) || (req.action === 'type' && /[\r\n]/.test(String(req.text ?? ''))));
   if (!clicks && !keys) return null;
   const at = clicks ? (req.action === 'click' ? { x: Number(req.x), y: Number(req.y) } : { x: tab.mouse.x, y: tab.mouse.y }) : null;
-  const found = await inLookout(`(${submitsAt})(${JSON.stringify(at)}, ${keys && req.key !== ' ' && req.key !== 'Space'})`);
+  const found = await around(() => inLookout(`(${submitsAt})(${JSON.stringify(at)}, ${keys && req.key !== ' ' && req.key !== 'Space'})`));
   return typeof found?.value === 'string' && found.value ? found.value : null;
 }
 
