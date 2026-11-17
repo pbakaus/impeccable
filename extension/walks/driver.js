@@ -865,6 +865,7 @@ async function blank(on) {
 export async function signInStill(take, still) {
   const tab = walk;
   if (!tab || tab.signInStill === tab.loader) return undefined;
+  // Marked before it is tried: one dropped (a frame too slow to blank, a move) is not tried again on this document.
   tab.signInStill = tab.loader;
   // The page it paused on, and none after it: a sign-in done, or a move, while the picture is under way drops it.
   const on = samePage();

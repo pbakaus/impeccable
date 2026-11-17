@@ -162,8 +162,8 @@ export const COPY = {
    * look while it is paused; no screenshots are taken while it is paused.
    */
   signIn: 'Sign in yourself, then press I’ve signed in. While it’s paused, we don’t look at the page and take no screenshots.',
-  /** The same, once the empty sign-in page was pictured as the walk paused (control.js `stillAtSignIn`): that one picture said first. */
-  signInPictured: 'We kept one picture of the empty sign-in page. Sign in yourself, then press I’ve signed in. While you do, we don’t look or take pictures.',
+  /** The same, once the sign-in page was pictured, every field blank, as the walk paused (control.js `stillAtSignIn`): that one picture said first. */
+  signInPictured: 'We kept one picture of the sign-in page, every field blank. Sign in yourself, then press I’ve signed in. While you do, we don’t look or take pictures.',
   /** At that sign-in, once the tab sent something the pause held back: a sign-in with no press or key in the tab (a passkey, a phone, another site's frame). */
   signInHeld: 'Signing in another way? Press Stop, sign in, then start the journey again.',
   /** Continue or Hand back refused (control.js `attempt`), by why; `go` is the button's own name. */
