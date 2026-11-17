@@ -1,7 +1,7 @@
 // The walk's driver: the one tab a walk has, and every op the socket may ask of it (the walk protocol). It
 // decides nothing: the session engine on the other end does the thinking. worker.js holds the socket and answers;
 // guard.js says where the tab may be and what it may start.
-import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
+import { ASK_AFTER_INPUT_MS, MAX_OTHER_SITES, MAX_SITE_QUESTIONS, admit, isConsentPage, arm, askable, held, onSite, onlyThisTab, popupWatch, reads, refuseDownload, siteOrigins, stillHome, webOrigin } from './guard.js';
 import { COPY } from './panel/copy.js';
 import { helpers, newDocument, noSecrets, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
@@ -1133,8 +1133,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // Whether the walk was already held at a sign-in when this was asked: only then is it the person's (or the
       // page's), never the walk's own doing, and only then may it reach a sign-in page.
       const signIn = heldAtSignIn && isSignInPage(params.request?.url) ? [new URL(params.request.url).origin] : [];
-      const allowed = signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
       const top = params.resourceType === 'Document' && params.frameId === tab.mainFrame;
+      // A consent page, while the person's own agent drives: refused as a site it may not be on. The person, once they
+      // have the tab, may.
+      const consent = tab.agent && top && driver.by === null && isConsentPage(params.request?.url);
+      const allowed = consent ? [] : signIn.length ? [...tab.allowed, ...signIn] : tab.allowed;
       // A free walk's page may write to any origin but our own pages (guard.js `verdict`), from its own site: never a form
       // the top of the page sends off the site, nor anything on another site the person let it go to, where it only looks.
       const writable = [...tab.writable, ...signIn, ...(tab.free && !top && !lookOnly() ? [webOrigin(params.request?.url)] : [])];
