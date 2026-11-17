@@ -4,7 +4,7 @@
 // (the walk protocol, panel control).
 import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
+import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { ON_TAB, detachAction, isLive } from './view.js';
 
@@ -52,10 +52,13 @@ onSignIn(() => { pauseFor('sign-in'); });
 const shot = unseen('screenshot', ops.screenshot);
 /** The sign-in page the walk paused at, as it was before the person had it: its still, or none where it could not be taken safely. */
 async function stillAtSignIn() {
-  const still = await signInStill(() => shot({ format: 'png', plain: true }), () => current().state === 'paused' && current().held === 'sign-in');
-  if (still === undefined) return;
+  const on = samePage();
+  const taken = await signInStill(() => shot({ format: 'png', plain: true }), () => current().state === 'paused' && current().held === 'sign-in');
+  if (taken === undefined) return;
   // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
-  const title = still && walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
+  const title = taken && on() ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
+  // Still the page it paused on as it is told: else the picture, and its title, may be of the next one.
+  const still = taken && on() ? taken : null;
   if (still) dispatch({ type: 'pictured' });
   say({ event: 'sign-in-page', ...(still ? { still: still.data, ...(still.plain ? { plain: still.plain } : {}) } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
 }

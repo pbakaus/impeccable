@@ -841,18 +841,26 @@ export async function signInStill(take, still) {
   const tab = walk;
   if (!tab || tab.signInStill === tab.loader) return undefined;
   tab.signInStill = tab.loader;
+  // The page it paused on, and none after it: a sign-in done, or a move, while the picture is under way drops it.
+  const on = samePage();
   const seen = await look();
-  if (walk !== tab || !(seen?.password || seen?.filled) || !still()) return null;
+  if (!on() || !(seen?.password || seen?.filled) || !still()) return null;
   try {
     const blanked = await blank(true);
-    if (Date.now() >= blanked || !still()) return null;
+    if (Date.now() >= blanked || !on() || !still()) return null;
     const value = (await take())?.value;
-    return typeof value?.data === 'string' && Date.now() < blanked && walk === tab && still() ? value : null;
+    return typeof value?.data === 'string' && Date.now() < blanked && on() && still() ? value : null;
   } catch {
     return null;
   } finally {
     if (walk === tab) await blank(false);
   }
+}
+
+/** Whether the walked tab is still on the document and address it is on now: the check a sign-in's still is held to. */
+export function samePage() {
+  const tab = walk, loader = tab?.loader, url = tab?.url;
+  return () => Boolean(tab) && walk === tab && tab.loader === loader && tab.url === url;
 }
 
 /** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
