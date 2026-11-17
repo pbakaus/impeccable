@@ -71,41 +71,52 @@ export function lookInPage() {
   // a password on a page already signed in to (a settings page): not a sign-in. A lone one (asked again), or one beside
   // a name or an email (signing in, signing up), is.
   // A password field, one marked as one when seen, one that says it takes a password or a one-time code whatever
-  // its type, or a text field whose name, id, placeholder or label reads as a password: a "show password" toggle turns
-  // it to text, so each password field is marked at every look, before the person can show it (the cover keeps it
-  // covered by the same mark); a code step is a text field.
+  // its type, or a text field whose name, id, placeholder and label read as a password and not as an email (a reset
+  // field): a "show password" toggle turns it to text, so each password field is marked at every look, before the
+  // person can show it (the cover keeps it covered by the same mark); a code step is a text field.
   const MARK = 'data-secret-field';
   for (const root of roots) for (const field of root.querySelectorAll(`input[type="password" i]:not([${MARK}])`)) field.setAttribute(MARK, '');
   const NAMED = ['name', 'id', 'placeholder', 'aria-label'];
-  const named = (input) => String(input.type).toLowerCase() === 'text' && NAMED.some((name) => /passw|pwd/i.test(input.getAttribute?.(name) ?? ''));
+  const words = (input) => NAMED.map((name) => input.getAttribute?.(name) ?? '').join(' ');
+  const named = (input) => String(input.type).toLowerCase() === 'text' && /passw|pwd/i.test(words(input)) && !/mail/i.test(words(input));
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => String(input.type).toLowerCase() === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token)) || named(input);
-  // A "show password" button that swaps in a new text field instead: the form (or the box round a field without one)
-  // keeps how many password fields it has held (counted as the cover counts them), and its fields for the account's
-  // name (an email, a phone or a username) are marked; while it holds fewer and one of those is still there, each
-  // filled text field in it that names no account is marked as the password, so the walk stays paused on this page.
-  // A form whose next step replaces the sign-in, or an app drawn where its sign-in was, keeps none of them.
-  const HELD = 'data-secret-form';
+  // A "show password" button that swaps in a new text field instead puts it where the password field was: the element
+  // round each password field (and the one above, when that element is the field's own wrapper) keeps how many children
+  // it has and which of them hold a password field (counted as the cover counts them), and whether each held one. At
+  // the next look, with as many children, a text field in such a place (or alone in it) that names no account is marked
+  // if it holds something, so the walk stays paused on this page; one still empty and named for nothing, where the
+  // password field was empty too, waits to be typed into. Anything else ends it: a field that was beside the password,
+  // or a next step drawn where it was, is plain.
+  const SPOT = 'data-secret-spot';
   const passwordField = (f) => String(f.type).toLowerCase() === 'password' || f.getAttribute(MARK) !== null || /current-password|new-password/i.test(f.getAttribute('autocomplete') ?? '') || named(f);
-  const passwords = (box) => [...box.querySelectorAll('input')].filter(passwordField).length;
   const account = (f) => {
-    const said = [...NAMED, 'autocomplete'].map((name) => f.getAttribute(name) ?? '').join(' ');
+    const said = `${words(f)} ${f.getAttribute('autocomplete') ?? ''}`;
     return ['email', 'tel'].includes(String(f.type).toLowerCase()) || (/user|mail|login|phone|account/i.test(said) && !/pass|pwd/i.test(said));
   };
   for (const root of roots) {
     for (const f of root.querySelectorAll('input')) if (f.getAttribute(MARK) === null && passwordField(f)) f.setAttribute(MARK, '');
-    for (const box of root.querySelectorAll(`[${HELD}]`)) {
-      const inputs = [...box.querySelectorAll('input')];
-      if (passwords(box) >= Number(box.getAttribute(HELD)) || !inputs.some((f) => f.getAttribute(`${HELD}-name`) !== null)) continue;
-      for (const f of inputs) if (String(f.type).toLowerCase() === 'text' && f.value && visible(f) && !account(f)) f.setAttribute(MARK, '');
+    for (const box of root.querySelectorAll(`[${SPOT}]`)) {
+      const [count, ...at] = (box.getAttribute(SPOT) ?? '').split(' ');
+      const waits = Number(count) !== box.children.length ? [] : at.filter((i) => {
+        const el = box.children[parseInt(i, 10)];
+        const f = el?.tagName === 'INPUT' ? el : el?.querySelectorAll('input').length === 1 ? el.querySelectorAll('input')[0] : undefined;
+        if (!f || String(f.type).toLowerCase() !== 'text' || passwordField(f) || account(f)) return false;
+        if (f.value) f.setAttribute(MARK, '');
+        return !f.value && !i.endsWith('f') && !words(f).trim();
+      });
+      if (waits.length) box.setAttribute(SPOT, `${count} ${waits.join(' ')}`);
+      else box.removeAttribute(SPOT);
     }
+    // Its parent, and the one above when the parent is the field's own wrapper (a swap may replace the wrapper).
     for (const field of root.querySelectorAll('input')) {
       if (!passwordField(field)) continue;
-      let box = field.form ?? field.parentElement;
-      while (!field.form && box?.parentElement && box.querySelectorAll('input, button').length < 2) box = box.parentElement;
-      if (!box) continue;
-      box.setAttribute(HELD, String(Math.max(Number(box.getAttribute(HELD)) || 0, passwords(box))));
-      for (const f of box.querySelectorAll('input')) if (account(f)) f.setAttribute(`${HELD}-name`, '');
+      for (let el = field, box = field.parentElement, up = 0; box && up < 2; el = box, box = box.parentElement, up++) {
+        const i = [...box.children].indexOf(el);
+        const [, ...at] = (box.getAttribute(SPOT) ?? '').split(' ').filter((t, n) => n === 0 || parseInt(t, 10) !== i);
+        box.setAttribute(SPOT, [box.children.length, ...at, `${i}${field.value ? 'f' : ''}`].join(' '));
+        if (box.querySelectorAll('input').length > 1) break;
+      }
     }
   }
   const changing = (field, root) => {
