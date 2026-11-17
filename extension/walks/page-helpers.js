@@ -1707,11 +1707,16 @@ function coverSecrets(on, forMs) {
         covered += 1;
         if (f.style && (kept.has(f) || !worn(f))) {
           const was = kept.get(f) ?? { style: f.getAttribute("style"), css: f.style.cssText, after: null, props: {} };
-          if (!kept.has(f) && f.ownerDocument?.createElement) {
-            const [said, applied] = [f.ownerDocument.createElement("i"), f.ownerDocument.createElement("i")];
-            said.style.cssText = was.style ?? "";
-            applied.style.cssText = was.css;
-            was.refused = said.style.cssText !== applied.style.cssText || applied.style.cssText !== was.css;
+          if (!kept.has(f)) {
+            const make = () => f.ownerDocument?.createElementNS?.(html, "i");
+            const [said, applied] = [make(), make()];
+            if (!said?.style || !applied?.style)
+              was.refused = true;
+            else {
+              said.style.cssText = was.style ?? "";
+              applied.style.cssText = was.css;
+              was.refused = said.style.cssText !== applied.style.cssText || applied.style.cssText !== was.css;
+            }
           }
           if (kept.has(f) && f.getAttribute("style") !== was.after)
             was.changed = true;
@@ -1867,4 +1872,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'd9e420879f1d5765';
+export const HASH = 'fcdb5b4609b2901d';
