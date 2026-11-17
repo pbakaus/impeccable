@@ -554,6 +554,22 @@ documentation case also passes with main's unchanged `SKILL.src.md` and
 `init.md` plus this test file, so the coverage is the test, not a skill-text
 change.
 
+### Retried launcher before the notice (2026-11-17)
+
+By November the documentation case failed on claude-sonnet-5. The agent retried
+`impeccable context` once, sometimes with a no-op change such as `2>&1` or
+`--target`, and only then sent the notice. On `next` it passed 2 of 10 runs.
+Restoring only `## Setup` to its 9 Sep text passed 3 of 3. Restoring only step
+2's pre-split-playbook sentence (77651617a) also passed 3 of 3. Restoring the
+craft-floor clause (719a8fa94) passed 1 of 2 valid runs, and restoring the
+context-map parenthetical (4ef4a04fe) passed 2 of 3.
+
+The fix opens the fallback with "On the first refusal or failure, don't retry"
+and pays for it by dropping a redundant clause from step 2. The documentation
+case passed 5 of 5 alone, and failed once with a `--target` retry in one full
+scenario 19 run. That run's planning case failed on the older `polish.md` gap
+(#744). These are small samples on one model.
+
 ## Workflow-advice assertion fix (2026-09-24)
 
 On 2026-09-24 S16 and S17 failed on every provider, main included, for a test reason: the sentence-bounded matches used `[^.!?\n]`, so the dot in `index.html` ended the "sentence" and correct advice ("polish index.html to implement the fixes") could not match. A dot followed by a word character no longer ends a sentence. S16 also accepts the surface named as the landing page, this page, or the existing implementation; S17 counts a critique described as a diagnosis. Generic advice and invented critique prerequisites still fail. A live rerun on claude-sonnet-5 and gemini-3.7-flash went from 0/6 to 8/9 with the fix; the remaining case used "existing visual implementation", now accepted.
