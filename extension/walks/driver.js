@@ -404,10 +404,10 @@ async function roll({ format = 'jpeg', quality = 50, maxWidth, maxHeight }) {
         const seen = await look();
         if (signInShows(tab, seen)) { spotted(); continue; }
         if (!seen || blind(tab)) { await sleep(FILM_RETRY_MS); continue; }
-        // Not while the pointer acts (`pointer`).
-        if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Its secret fields covered first, and kept so from frame to frame (`cover`); one that could not be is not filmed.
         if (!(await cover(true))) { await sleep(FILM_RETRY_MS); continue; }
+        // Not while the pointer acts (`pointer`): nothing awaited between this and the picture.
+        if (pointing > 0) { await sleep(FILM_RETRY_MS); continue; }
         // Taken exactly as a still is (`screenshot`): the viewport, whole. It is made smaller here.
         const asked = cmd('Page.captureScreenshot', { format: 'jpeg', quality: 80, captureBeyondViewport: false });
         const taking = asked.then(() => undefined, () => undefined);
@@ -473,7 +473,7 @@ async function cut() {
   film.on = false;
   walk.film = null;
   await film.done;
-  await cover(false);
+  if (!stills) await cover(false);
 }
 
 /**
@@ -665,6 +665,8 @@ const COVER_MS = 2000;
 async function cover(on) {
   return (await inLookout(`(${helpers.coverSecrets})(${on}, ${COVER_MS})`)) !== null;
 }
+/** Stills being taken: the cover comes off only once none is, and no film keeps it on. */
+let stills = 0;
 
 /** An expression in the walk's own world on the top document: `{ value }`, or null when it could not be run. */
 async function inLookout(expression) {
@@ -1635,12 +1637,14 @@ export const ops = {
   // beyond the viewport is blank, as Chrome's own clip of it is.
   async screenshot({ format, quality, clip }) {
     // Its secret fields covered for the picture alone (`cover`): a page that could not be covered is not pictured.
-    if (!(await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
     let data;
+    stills += 1;
     try {
+      if (!(await cover(true))) throw fail('NotAllowed', 'a page whose secret fields could not be covered is not pictured');
       ({ data } = await cmd('Page.captureScreenshot', { format, ...(quality === undefined ? {} : { quality }), captureBeyondViewport: false }));
     } finally {
-      await cover(false);
+      stills -= 1;
+      if (!stills && !walk?.film) await cover(false);
     }
     const size = stillSize(walk);
     if (!clip && !size) return { value: { data: await seenAs(data, format, quality) } };
