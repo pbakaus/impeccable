@@ -1706,7 +1706,7 @@ function coverSecrets(on, forMs) {
       for (const f of Array.from(root.querySelectorAll(fields))) {
         covered += 1;
         if (f.style && (kept.has(f) || !worn(f))) {
-          const was = kept.get(f) ?? { style: f.getAttribute("style"), after: null, props: {} };
+          const was = kept.get(f) ?? { style: f.getAttribute("style"), css: f.style.cssText, after: null, props: {} };
           if (kept.has(f) && f.getAttribute("style") !== was.after)
             was.changed = true;
           for (const [name, value] of Object.entries(wear)) {
@@ -1754,9 +1754,9 @@ function coverSecrets(on, forMs) {
   };
   const off = () => {
     visit(g.document, g.CSSStyleSheet, false);
-    for (const [f, { style, after, changed, props }] of kept) {
+    for (const [f, { style, css, after, changed, props }] of kept) {
       if (!changed && f.style && f.getAttribute("style") === after) {
-        f.style.cssText = style ?? "";
+        f.style.cssText = css;
         if (style === null)
           f.removeAttribute?.("style");
         else if (f.getAttribute("style") !== style)
@@ -1861,4 +1861,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'b9b538ce99ddff0f';
+export const HASH = '3a0f1c70637c6cde';
