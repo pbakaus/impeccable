@@ -46,7 +46,7 @@ function pauseFor(why) {
 onSignIn(() => { pauseFor('sign-in'); });
 
 /** The ops that take something of the page: none runs on a page the walk could not check. */
-const LOOKING = new Set(['screenshot', 'evaluate']);
+const LOOKING = new Set(['screenshot', 'evaluate', 'hear']);
 
 /** Returns once the walk may act, and not at a sign-in: whether it had to wait for a pause. Throws while the person has the tab. */
 async function clear(name) {
@@ -65,7 +65,7 @@ async function clear(name) {
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
     // A password in a field: a script waits for the pause, and runs after Continue once no field is filled.
-    if (signIn && name === 'evaluate' && (await passwordIn())) {
+    if (signIn && (name === 'evaluate' || name === 'hear') && (await passwordIn())) {
       if (!pauseFor('sign-in')) throw fail('Paused', 'a journey runs no script while a password is in a field');
       continue;
     }
@@ -173,7 +173,8 @@ for (const [name, run] of Object.entries(ops)) {
         }
         if (at === fenced()) { if (failed) throw failed; return out; }
       }
-      if (ACTS.has(name)) throw overtaken();
+      // Focus a screen reader moved is a key's: not done on a page the person has used since.
+      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus')) throw overtaken();
     }
   };
 }

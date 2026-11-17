@@ -1172,6 +1172,78 @@ function expression({ fn, args, undef }) {
   return `(${fn}\n)(${args.map((arg, i) => (undef?.includes(i) ? 'undefined' : JSON.stringify(arg))).join(',')})`;
 }
 
+/* ------------------------------ what a screen reader hears ------------------------------ */
+
+/** Frames read with the page's own tree, nested ones too: each costs two more reads. */
+const FRAMES_MAX = 5;
+/** Fields checked for a secret one: past it, every field's value and the text inside it are left out. */
+const FIELDS_CHECKED = 200;
+const FIELD_ROLES = new Set(['textbox', 'searchbox', 'combobox', 'checkbox', 'radio', 'switch', 'slider', 'spinbutton', 'listbox']);
+const isFrameNode = (n) => (n.role?.value === 'Iframe' || n.role?.value === 'IframePresentational') && Number.isInteger(n.backendDOMNodeId);
+
+/** A password, payment card or one-time-code field, by its element's own attributes: the rule `lookInPage` (signin.js) keeps typing out by. */
+function secretField(node) {
+  const attrs = node?.attributes ?? [];
+  const attr = (name) => { for (let i = 0; i + 1 < attrs.length; i += 2) if (String(attrs[i]).toLowerCase() === name) return String(attrs[i + 1]).toLowerCase(); return ''; };
+  const tokens = attr('autocomplete').split(/\s+/);
+  return (node?.nodeName === 'INPUT' && attr('type') === 'password') || tokens.some((t) => t === 'current-password' || t === 'new-password' || t === 'one-time-code' || t.startsWith('cc-'));
+}
+
+/** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */
+async function withoutSecrets(nodes) {
+  const editable = (n) => n.properties?.some((p) => p.name === 'editable');
+  const fields = nodes.filter((n) => FIELD_ROLES.has(n.role?.value) || editable(n));
+  const secret = new Set();
+  await Promise.all(fields.map(async (n, i) => {
+    const node = i < FIELDS_CHECKED && Number.isInteger(n.backendDOMNodeId) ? (await cmd('DOM.describeNode', { backendNodeId: n.backendDOMNodeId }).catch(() => null))?.node : null;
+    if (!node || secretField(node)) secret.add(n.nodeId);
+  }));
+  if (!secret.size) return nodes;
+  const byId = new Map(nodes.map((n) => [n.nodeId, n]));
+  const drop = new Set();
+  const under = (id) => { for (const c of byId.get(id)?.childIds ?? []) if (!drop.has(c)) { drop.add(c); under(c); } };
+  for (const id of secret) under(id);
+  return nodes.filter((n) => !drop.has(n.nodeId)).map((n) => (secret.has(n.nodeId) ? { ...n, value: undefined, childIds: [] } : n));
+}
+
+/**
+ * The walked tab's accessibility tree, as a screen reader starts from it: the top document's, and each frame's of the
+ * same site by its frame element (another site's is listed as null, never read), with no secret field's value or text.
+ */
+async function hearTree() {
+  const { frameTree } = await cmd('Page.getFrameTree');
+  const urls = new Map();
+  const list = (t) => { urls.set(t.frame.id, t.frame.url); for (const c of t.childFrames ?? []) list(c); };
+  list(frameTree);
+  const home = webOrigin(frameTree.frame.url);
+  const ours = (url) => typeof url === 'string' && (url === 'about:blank' || url === 'about:srcdoc' || (home !== null && webOrigin(url) === home));
+  const nodes = (await cmd('Accessibility.getFullAXTree'))?.nodes ?? [];
+  const frames = [];
+  const queue = nodes.filter(isFrameNode);
+  while (queue.length && frames.length < FRAMES_MAX) {
+    const el = queue.shift().backendDOMNodeId;
+    const frameId = (await cmd('DOM.describeNode', { backendNodeId: el }).catch(() => null))?.node?.frameId;
+    const inner = frameId && ours(urls.get(frameId)) ? (await cmd('Accessibility.getFullAXTree', { frameId }).catch(() => null))?.nodes ?? null : null;
+    frames.push([el, inner && (await withoutSecrets(inner))]);
+    for (const n of inner ?? []) if (isFrameNode(n)) queue.push(n);
+  }
+  return { nodes: await withoutSecrets(nodes), frames };
+}
+
+/** The top document's element that has focus, by number (a frame, where focus is inside one), or null. Read in the walk's own reading world. */
+async function focusedNode() {
+  const tab = walk;
+  if (tab.reader?.loader !== tab.loader) {
+    const { executionContextId } = await cmd('Page.createIsolatedWorld', { frameId: tab.mainFrame, worldName: READER });
+    tab.reader = { loader: tab.loader, context: executionContextId };
+  }
+  const { result } = await cmd('Runtime.evaluate', { expression: 'document.activeElement', contextId: tab.reader.context }).catch(() => ({}));
+  if (!result?.objectId) return null;
+  const id = (await cmd('DOM.describeNode', { objectId: result.objectId }).catch(() => null))?.node?.backendNodeId ?? null;
+  await cmd('Runtime.releaseObject', { objectId: result.objectId }).catch(() => undefined);
+  return id;
+}
+
 /** The one picture a walk ever attaches: a plain square, drawn here. Nothing from the person's computer, nothing fetched. */
 const PHOTO = { name: 'photo.png', type: 'image/png', side: 192, rgb: [0xb8, 0xc4, 0xd6] };
 let photoData = null;
@@ -1626,6 +1698,18 @@ export const ops = {
 
   async waitForNetworkIdle({ idleTime, timeout }) {
     await idle(idleTime, timeout);
+    return {};
+  },
+
+  // A screen reader's reads, on this tab only and by number: never a protocol method or code from the server.
+  async hear({ what, node }) {
+    if (what === 'tree') return { value: await hearTree() };
+    if (what === 'focused') return { value: await focusedNode() };
+    if (!Number.isInteger(node) || node <= 0) throw fail('Error', 'hear needs a node by its number');
+    if (what === 'box') return { value: (await cmd('DOM.getBoxModel', { backendNodeId: node }).catch(() => null))?.model?.border ?? null };
+    if (what === 'show') await cmd('DOM.scrollIntoViewIfNeeded', { backendNodeId: node });
+    else if (what === 'focus') await cmd('DOM.focus', { backendNodeId: node });
+    else throw fail('NotSupported', `hear has no ${String(what).slice(0, 40)}`);
     return {};
   },
 

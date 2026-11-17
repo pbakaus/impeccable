@@ -255,7 +255,8 @@ onView(() => { void push(); });
  */
 export function unseen(name, run) {
   const draw = () => call(`veil(${hidden()})`);
-  if (name === 'screenshot') {
+  // A screen reader's tree is read without the badge too: its words are not the page's.
+  if (name === 'screenshot' || name === 'hear') {
     return async (req) => {
       const mine = veil;
       mine.shots += 1;

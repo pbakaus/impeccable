@@ -333,7 +333,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async personas({ url, app, faceless } = {}) {
       const at = issuer();
       const one = appOf(app);
-      const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
+      // `can`: this extension reads a page out (`hears`), so the server lists a persona who hears it too.
+      const query = `?${new URLSearchParams({ ...(one ? { workspace: app.workspace, repo: app.repo, app: app.app } : url ? { url } : {}), can: 'hears' })}`;
       const list = await read(at, `/personas${query}`);
       const rows = rowsOf(list, 'personas', (p) => typeof p?.name === 'string')?.slice(0, 100);
       if (!rows) return null;

@@ -52,7 +52,7 @@ describe('walk contract with the web app', () => {
     ['close reasons', 'link.js', /const CLOSED = (.+);/, "{ replaced: 'replaced', over: 'outing over', cancelled: 'cancelled', undriven: 'no driver came', switchedOff: 'switched off' }"],
     ['field limits', 'handoff.js', /const MAX = (.+);/, '{ name: 120, role: 200, errand: 120, goal: 2000, check: 300 }'],
     ['device names', 'handoff.js', /const DEVICES = (.+);/, "['desktop', 'mobile', 'tablet']"],
-    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers']"],
+    ['capabilities', 'worker.js', /const CAN = (.+);/, "['tab', 'ask', 'go', 'upload', 'hold', 'submit-ask', 'helpers', 'hears']"],
     ['most other sites a walk may go to', 'guard.js', /const MAX_OTHER_SITES = (.+);/, '8'],
   ]) {
     it(`keeps the ${what}`, () => { assert.equal(source(file).match(pattern)?.[1], expected); });
@@ -620,6 +620,49 @@ describe('walk worker', () => {
     }
   });
 
+  // A screen reader's reads: Chrome's tree of the walked tab and its same-site frames, never a secret field's value or
+  // text, never another site's frame, never another tab, and never a protocol method the server names.
+  it('hears the walked tab’s accessibility tree and its same-site frames, with no secret field’s value, and nothing else', async () => {
+    const { ops } = await walked();
+    page.seen = {};
+    const text = (id, name, parent) => ({ nodeId: id, role: { value: 'StaticText' }, name: { value: name }, childIds: [], parent });
+    const top = [
+      { nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2', '4', '6', '7'] },
+      { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Card number' }, value: { value: '4242 4242 4242 4242' }, backendDOMNodeId: 20, childIds: ['3'] }, text('3', '4242 4242 4242 4242'),
+      { nodeId: '4', role: { value: 'searchbox' }, name: { value: 'Search' }, value: { value: 'milk' }, backendDOMNodeId: 40, childIds: ['5'] }, text('5', 'milk'),
+      { nodeId: '6', role: { value: 'Iframe' }, backendDOMNodeId: 60, childIds: [] },
+      { nodeId: '7', role: { value: 'Iframe' }, backendDOMNodeId: 70, childIds: [] },
+    ];
+    const inner = [{ nodeId: '1', role: { value: 'RootWebArea' }, childIds: ['2'] }, { nodeId: '2', role: { value: 'textbox' }, name: { value: 'Code' }, value: { value: '123456' }, backendDOMNodeId: 90, childIds: [] }];
+    const elements = { 20: { nodeName: 'INPUT', attributes: ['autocomplete', 'cc-number'] }, 40: { nodeName: 'INPUT', attributes: ['type', 'search'] }, 60: { nodeName: 'IFRAME', frameId: 'own' }, 70: { nodeName: 'IFRAME', frameId: 'away' }, 90: { nodeName: 'INPUT', attributes: ['autocomplete', 'one-time-code'] } };
+    const was = { ...answers };
+    Object.assign(answers, {
+      'Page.getFrameTree': () => ({ frameTree: { frame: { id: 'main', loaderId: 'l1', url: 'http://localhost:3000/' }, childFrames: [{ frame: { id: 'own', url: 'http://localhost:3000/pay' } }, { frame: { id: 'away', url: 'https://cards.example/' } }] } }),
+      'Accessibility.getFullAXTree': (params) => ({ nodes: params?.frameId === 'own' ? inner : params?.frameId ? [text('1', 'another site')] : top }),
+      'DOM.describeNode': (params) => ({ node: elements[params.backendNodeId] }),
+    });
+    try {
+      const at = sent.length;
+      const { value } = await ops.hear({ what: 'tree' });
+      const byId = new Map(value.nodes.map((n) => [n.nodeId, n]));
+      assert.deepEqual([byId.get('2').value, byId.get('2').name.value, byId.has('3'), byId.get('4').value.value, byId.has('5')], [undefined, 'Card number', false, 'milk', true], 'the card field keeps its label, not its number');
+      assert.deepEqual(value.frames.map(([el, nodes]) => [el, nodes?.find((n) => n.nodeId === '2')?.value ?? (nodes ? 'read' : null)]), [[60, 'read'], [70, null]], 'the same site’s frame is read, its code field blank; another site’s is not');
+      assert.deepEqual(args.slice(at).filter((_, i) => sent[at + i] === 'Accessibility.getFullAXTree').map((p) => p?.frameId ?? 'top'), ['top', 'own']);
+      // One node by its number: its box, in view, focused. Nothing for another tab, a node by no number, or a method by name.
+      answers['DOM.getBoxModel'] = () => ({ model: { border: [1, 2, 3, 2, 3, 4, 1, 4] } });
+      assert.deepEqual(await ops.hear({ what: 'box', node: 40 }), { value: [1, 2, 3, 2, 3, 4, 1, 4] });
+      const moved = sent.length;
+      await ops.hear({ what: 'focus', node: 40 });
+      assert.deepEqual(args.slice(moved).filter((_, i) => sent[moved + i] === 'DOM.focus'), [{ backendNodeId: 40 }]);
+      await assert.rejects(async () => ops.hear({ what: 'tree', tabId: 3 }), { name: 'NotAllowed' });
+      await assert.rejects(async () => ops.hear({ what: 'focus', node: '#pay' }), { name: 'Error' });
+      await assert.rejects(async () => ops.hear({ what: 'Runtime.evaluate', node: 40, params: { expression: '1' } }), { name: 'NotSupported' });
+    } finally {
+      Object.assign(answers, was);
+      for (const key of ['Accessibility.getFullAXTree', 'DOM.describeNode', 'DOM.getBoxModel']) if (!(key in was)) delete answers[key];
+    }
+  });
+
   it('never moves or clicks the pointer while a film’s picture is being taken, nor takes one while the pointer acts', async () => {
     const { ops } = await walked();
     page.seen = {};
@@ -1081,13 +1124,15 @@ describe('walk worker', () => {
       assert.deepEqual(added.map((p) => p.source), [`(${helpers.browserLanguage}\n)("de")`, consentRules]);
       assert.match(consentRules, /autoconsent/);
       // A password, card or one-time-code field is never typed into or read, whatever the server says of `noSecrets`.
-      for (const attrs of [{ type: 'password' }, { autocomplete: 'section-pay cc-number' }, { autocomplete: 'one-time-code' }]) {
-        const field = { tagName: 'INPUT', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
+      for (const [attrs, kind] of [[{ type: 'password' }, 'password'], [{ autocomplete: 'section-pay cc-number' }, 'card'], [{ autocomplete: 'one-time-code' }, 'code']]) {
+        const field = { tagName: 'INPUT', type: attrs.type ?? 'text', value: 'kept', focused: false, getAttribute: (n) => attrs[n] ?? (n === 'placeholder' ? 'Secret' : null), getBoundingClientRect: () => ({ left: 0, top: 0, width: 9, height: 9 }), scrollIntoView() {}, focus() { field.focused = true; }, select() {} };
         world.document = { activeElement: field, querySelectorAll: () => [field], elementFromPoint: () => field };
         for (const [helper, args] of [['typeInto', ['Secret', 'hunter2', false]], ['typeInto', ['Secret', 'hunter2', true, false]], ['fieldReads', [{ x: 1, y: 1 }]], ['fieldReads', [null, false]]]) {
           assert.equal((await ops.evaluate({ helper, args })).value, null, `${helper} ${JSON.stringify(attrs)}`);
         }
         assert.deepEqual([field.value, field.focused], ['kept', false]);
+        // A screen reader's keys never go there either: the server asks first, by name.
+        assert.equal((await ops.evaluate({ helper: 'secretFocus', args: [] })).value, kind);
       }
     } finally {
       walk.named = false;

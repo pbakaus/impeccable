@@ -1181,7 +1181,324 @@ function markConsentSeen() {
   globalThis.__impeccableConsentSeen = true;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen });
+function collectA11ySample(probeFocus = true) {
+  const scope = globalThis;
+  const doc = scope.document;
+  const attr = (node, name) => {
+    try {
+      const getAttribute = node.getAttribute;
+      const value = typeof getAttribute === "function" ? getAttribute.call(node, name) : null;
+      return typeof value === "string" ? value : "";
+    } catch {
+      return "";
+    }
+  };
+  const hasAttr = (node, name) => {
+    try {
+      const hasAttribute = node.hasAttribute;
+      return typeof hasAttribute === "function" ? hasAttribute.call(node, name) === true : false;
+    } catch {
+      return false;
+    }
+  };
+  const text = (node) => {
+    if (!node)
+      return "";
+    const content = typeof node.textContent === "string" ? node.textContent : "";
+    return content.replace(/\s+/g, " ").trim().slice(0, 200);
+  };
+  const label = (node) => {
+    const tag = typeof node.tagName === "string" ? node.tagName.toLowerCase() : "element";
+    const id = attr(node, "id");
+    if (id)
+      return `${tag}#${id}`;
+    const className = attr(node, "class").trim();
+    if (className)
+      return `${tag}.${className.split(/\s+/)[0]}`;
+    const own = text(node);
+    return own ? `${tag} "${own.slice(0, 30)}"` : tag;
+  };
+  const labelledBy = (node) => {
+    const ids = attr(node, "aria-labelledby").trim();
+    if (!ids)
+      return "";
+    let out = "";
+    for (const id of ids.split(/\s+/)) {
+      try {
+        out += ` ${text(doc.getElementById(id))}`;
+      } catch {}
+    }
+    return out.trim();
+  };
+  const lang = doc.documentElement && typeof doc.documentElement.lang === "string" ? doc.documentElement.lang : "";
+  let mainLandmarks = 0;
+  try {
+    mainLandmarks = doc.querySelectorAll('main, [role="main"]').length;
+  } catch {
+    mainLandmarks = 0;
+  }
+  let headingCount = 0;
+  try {
+    headingCount = doc.querySelectorAll("h1, h2, h3, h4, h5, h6").length;
+  } catch {
+    headingCount = 0;
+  }
+  const bodyText = doc.body ? typeof doc.body.innerText === "string" ? doc.body.innerText : typeof doc.body.textContent === "string" ? doc.body.textContent : "" : "";
+  const textLength = bodyText.replace(/\s+/g, " ").trim().length;
+  const images = [];
+  const totals = { images: 0, controls: 0, fields: 0 };
+  try {
+    const nodes = doc.querySelectorAll("img");
+    totals.images = nodes.length;
+    for (let i = 0;i < nodes.length && images.length < 200; i++) {
+      const node = nodes[i];
+      const rect = node.getBoundingClientRect.call(node);
+      images.push({
+        selector: label(node),
+        hasAlt: hasAttr(node, "alt"),
+        altText: attr(node, "alt"),
+        ariaHidden: attr(node, "aria-hidden") === "true",
+        role: attr(node, "role").toLowerCase(),
+        width: rect.width,
+        height: rect.height
+      });
+    }
+  } catch {}
+  const controls = [];
+  try {
+    const nodes = doc.querySelectorAll('button, a[href], [role="button"], [role="link"], input[type="button"], input[type="submit"]');
+    totals.controls = nodes.length;
+    for (let i = 0;i < nodes.length && controls.length < 250; i++) {
+      const node = nodes[i];
+      const tag = typeof node.tagName === "string" ? node.tagName.toLowerCase() : "element";
+      let innerImageAlt = "";
+      try {
+        const inner = node.querySelectorAll.call(node, "img[alt], svg title");
+        for (let j = 0;j < inner.length; j++) {
+          innerImageAlt += ` ${attr(inner[j], "alt")} ${text(inner[j])}`;
+        }
+      } catch {}
+      const value = tag === "input" ? attr(node, "value") : "";
+      controls.push({
+        selector: label(node),
+        tag,
+        role: attr(node, "role").toLowerCase(),
+        text: `${text(node)} ${value}`.trim(),
+        ariaLabel: attr(node, "aria-label"),
+        labelledByText: labelledBy(node),
+        title: attr(node, "title"),
+        innerImageAlt: innerImageAlt.trim(),
+        ariaHidden: attr(node, "aria-hidden") === "true",
+        disabled: hasAttr(node, "disabled") || attr(node, "aria-disabled") === "true"
+      });
+    }
+  } catch {}
+  const fields = [];
+  try {
+    const nodes = doc.querySelectorAll("input, select, textarea");
+    totals.fields = nodes.length;
+    for (let i = 0;i < nodes.length && fields.length < 200; i++) {
+      const node = nodes[i];
+      const tag = typeof node.tagName === "string" ? node.tagName.toLowerCase() : "input";
+      const type = tag === "input" ? (attr(node, "type") || "text").toLowerCase() : tag;
+      let hasLabelElement = false;
+      try {
+        const id = attr(node, "id");
+        if (id) {
+          const labels = doc.querySelectorAll("label[for]");
+          for (let j = 0;j < labels.length; j++) {
+            if (attr(labels[j], "for") === id) {
+              hasLabelElement = true;
+              break;
+            }
+          }
+        }
+        if (!hasLabelElement) {
+          const closest = node.closest;
+          if (typeof closest === "function" && closest.call(node, "label"))
+            hasLabelElement = true;
+        }
+      } catch {
+        hasLabelElement = false;
+      }
+      fields.push({
+        selector: label(node),
+        type,
+        hasLabelElement,
+        ariaLabel: attr(node, "aria-label"),
+        labelledByText: labelledBy(node),
+        title: attr(node, "title"),
+        placeholder: attr(node, "placeholder"),
+        ariaHidden: attr(node, "aria-hidden") === "true"
+      });
+    }
+  } catch {}
+  const focus = [];
+  if (!probeFocus)
+    return { lang, mainLandmarks, textLength, headingCount, images, controls, fields, focus, totals };
+  const restoredSelectors = [];
+  const focusSelector = (selector) => {
+    let out = "";
+    let quote = "";
+    let attribute = false;
+    for (let i = 0;i < selector.length; i++) {
+      const ch = selector[i];
+      if (ch === "\\") {
+        out += ch + (selector[++i] ?? "");
+        continue;
+      }
+      if (quote) {
+        if (ch === quote)
+          quote = "";
+      } else if (ch === '"' || ch === "'")
+        quote = ch;
+      else if (ch === "[")
+        attribute = true;
+      else if (ch === "]")
+        attribute = false;
+      else if (!attribute && /^:focus-visible(?![-\w])/i.test(selector.slice(i))) {
+        out += ":focus";
+        i += ":focus-visible".length - 1;
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  };
+  const prepareFocusRules = (parent) => {
+    let rules;
+    try {
+      rules = parent.cssRules;
+    } catch {
+      return;
+    }
+    for (let i = 0;rules && i < rules.length; i++) {
+      const rule = rules[i];
+      try {
+        if (rule.selectorText) {
+          const selector = rule.selectorText;
+          const replacement = focusSelector(selector);
+          if (replacement !== selector) {
+            rule.selectorText = replacement;
+            restoredSelectors.push({ rule, selector, replacement: rule.selectorText });
+          }
+        }
+        prepareFocusRules(rule);
+        if (rule.styleSheet)
+          prepareFocusRules(rule.styleSheet);
+      } catch {}
+    }
+  };
+  const scrollX = typeof scope.scrollX === "number" ? scope.scrollX : 0;
+  const scrollY = typeof scope.scrollY === "number" ? scope.scrollY : 0;
+  try {
+    const sheets = doc.styleSheets;
+    for (let i = 0;sheets && i < sheets.length; i++)
+      prepareFocusRules(sheets[i]);
+    try {
+      doc.activeElement?.blur?.();
+    } catch {}
+    const nodes = doc.querySelectorAll("a[href], button, input, select, textarea, [tabindex]");
+    const read = (node) => {
+      const style = scope.getComputedStyle ? scope.getComputedStyle(node) : {};
+      return {
+        outlineWidth: style.outlineWidth ?? "",
+        outlineStyle: style.outlineStyle ?? "",
+        outlineColor: style.outlineColor ?? "",
+        boxShadow: style.boxShadow ?? "",
+        border: `${style.borderTopWidth ?? ""} ${style.borderTopColor ?? ""} ${style.borderBottomWidth ?? ""}`,
+        background: style.backgroundColor ?? "",
+        color: style.color ?? "",
+        textDecoration: style.textDecorationLine ?? ""
+      };
+    };
+    let probed = 0;
+    for (let i = 0;i < nodes.length && probed < 16; i++) {
+      const node = nodes[i];
+      const rect = node.getBoundingClientRect.call(node);
+      if (!(rect.width > 0) || !(rect.height > 0))
+        continue;
+      if (hasAttr(node, "disabled"))
+        continue;
+      const before = read(node);
+      const focusFn = node.focus;
+      if (typeof focusFn !== "function")
+        continue;
+      focusFn.call(node, { preventScroll: true });
+      const after = read(node);
+      probed += 1;
+      let changedOtherwise = false;
+      for (const key of ["boxShadow", "border", "background", "color", "textDecoration"]) {
+        if (before[key] !== after[key])
+          changedOtherwise = true;
+      }
+      focus.push({
+        selector: label(node),
+        outlineWidth: parseFloat(after.outlineWidth ?? "") || 0,
+        outlineStyle: after.outlineStyle ?? "",
+        changedOtherwise
+      });
+    }
+  } catch {} finally {
+    for (const { rule, selector, replacement } of restoredSelectors.reverse()) {
+      try {
+        if (rule.selectorText === replacement)
+          rule.selectorText = selector;
+      } catch {}
+    }
+    try {
+      const active = doc.activeElement;
+      if (active && typeof active.blur === "function")
+        active.blur();
+      if (typeof scope.scrollTo === "function")
+        scope.scrollTo(scrollX, scrollY);
+    } catch {}
+  }
+  return { lang, mainLandmarks, textLength, headingCount, images, controls, fields, focus, totals };
+}
+
+function documentTitle() {
+  return globalThis.document.title;
+}
+
+function letGoOfFocus() {
+  globalThis.document.activeElement?.blur?.();
+}
+
+function secretFocus() {
+  let el = globalThis.document.activeElement ?? null;
+  for (;; ) {
+    if (el?.shadowRoot?.activeElement) {
+      el = el.shadowRoot.activeElement;
+      continue;
+    }
+    if (el && (el.tagName === "IFRAME" || el.tagName === "FRAME")) {
+      let inner = null;
+      try {
+        inner = el.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+      if (!inner)
+        return "frame";
+      el = inner.activeElement ?? null;
+      continue;
+    }
+    break;
+  }
+  if (!el)
+    return null;
+  const tokens = String(el.getAttribute?.("autocomplete") ?? "").toLowerCase().split(/\s+/);
+  if (el.tagName === "INPUT" && (String(el.type).toLowerCase() === "password" || tokens.some((t) => t === "current-password" || t === "new-password")))
+    return "password";
+  if (tokens.some((t) => t.startsWith("cc-")))
+    return "card";
+  if (tokens.includes("one-time-code"))
+    return "code";
+  return null;
+}
+
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -1193,4 +1510,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'ce98cbe761224e07';
+export const HASH = 'ff1513913d599ad9';
