@@ -1920,8 +1920,14 @@ impl<'a> CssHostIndex<'a> {
     /// [`is_rule_rounded`](Self::is_rule_rounded) for a declaration at `pos`,
     /// a byte offset into the text the index was built on.
     pub fn is_declaration_rounded(&self, pos: usize) -> bool {
-        self.declaration_hosts(pos)
-            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+        self.declaration_rounding(pos).unwrap_or(false)
+    }
+
+    /// Whether the rules tied to the box the declaration at `pos` styles
+    /// round it once they all apply (a later `border-radius: 0` squares it),
+    /// or `None` when the index cannot name that box.
+    pub fn declaration_rounding(&self, pos: usize) -> Option<bool> {
+        self.declaration_hosts(pos).map(|hosts| self.corners_for_hosts(&hosts).rounds_any())
     }
 
     /// Whether a rule tied to the box the declaration at `pos` styles draws a

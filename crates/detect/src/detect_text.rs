@@ -9,7 +9,7 @@ use impeccable_core::checks::css_scan::{
 };
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
 use impeccable_core::checks::side_bar::{
-    is_typographic_selector, scan_css_text_for_side_bars, side_bar_stands_on, side_bar_thickness,
+    scan_css_text_for_side_bars, side_bar_stands, side_bar_thickness,
 };
 use impeccable_core::checks::rules::DeclaredCorners;
 use impeccable_core::findings::{finding, Finding};
@@ -2142,22 +2142,15 @@ fn pseudo_stripe_findings(
 }
 
 /// Every side bar a stylesheet's text paints with an inset box-shadow or a
-/// pseudo-element ([`scan_css_text_for_side_bars`]): at 2px or more on any
-/// box, thinner where the rules tied to its host round it. A square quote or
-/// code line is typography.
+/// pseudo-element ([`scan_css_text_for_side_bars`]) on a host the rules tied
+/// to it round.
 fn side_bar_findings(text: &str, file_path: &str, line_offset: usize) -> Vec<Finding> {
     let host_index = once_cell::unsync::OnceCell::new();
     scan_css_text_for_side_bars(text)
         .into_iter()
         .filter(|hit| {
             let thickness = side_bar_thickness(&hit.snippet).unwrap_or(0.0);
-            let typographic = is_typographic_selector(hit.selector.as_deref().unwrap_or(""));
-            side_bar_stands_on(thickness, false, typographic)
-                || side_bar_stands_on(
-                    thickness,
-                    host_index.get_or_init(|| CssHostIndex::new(text)).side_bar_on_rounded_host(hit),
-                    typographic,
-                )
+            side_bar_stands(thickness, host_index.get_or_init(|| CssHostIndex::new(text)).side_bar_on_rounded_host(hit))
         })
         .map(|hit| {
             let line = line_offset + line_of_offset(text, hit.index.unwrap_or(0));
@@ -2704,9 +2697,9 @@ function Thumb({ url }: { url?: string }) {
     }
 
     /// Every text-engine producer of `side-tab` reads a left or right bar
-    /// the way the static and browser engines do: 2px or more on any box in
-    /// any state and colour, a 1px bar where its box is rounded, by its own
-    /// rule or another rule for the same element.
+    /// the way the static and browser engines do: only where its box is
+    /// rounded, by its own rule or another rule for the same element, at any
+    /// width, in any state and colour. A bar on a square box is fine.
     #[test]
     fn every_inline_side_bar_is_a_side_tab_in_every_text_source() {
         let side_tabs = |src: &str, path: &str| -> Vec<String> {
@@ -2724,9 +2717,9 @@ function Thumb({ url }: { url?: string }) {
 .d { position: relative; }\n.d.is-selected::before { content: \"\"; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--text); }\n\
 .e[aria-pressed='true'] { box-shadow: inset 2px 0 0 var(--text); }\n\
 .f:not(.x) { box-shadow: inset -3px 0 0 #111; }\n";
-        assert_eq!(side_tabs(square, "/x/square.css").len(), 6, "{:?}", side_tabs(square, "/x/square.css"));
-        // A hairline needs a rounded box: its own rule, or the rule for the
-        // element its state selector styles.
+        assert!(side_tabs(square, "/x/square.css").is_empty(), "{:?}", side_tabs(square, "/x/square.css"));
+        // A rounded box: its own rule, or the rule for the element its state
+        // selector styles.
         let hairlines = ".h1 { border-left: 1px solid #ddd; }\n\
 .h2 { box-shadow: inset 1px 0 0 #ddd; }\n\
 .it { border: 0; border-radius: 6px; }\n.it[aria-pressed='true'] { box-shadow: inset 1px 0 0 var(--text); }\n.it.is-active { border-left: 1px solid #ddd; }\n\
@@ -2751,7 +2744,7 @@ function Thumb({ url }: { url?: string }) {
             vec![".it[aria-pressed='true'] — inset box-shadow 2px stripe (left)".to_string()]
         );
         // Markup: a utility class, a style object, square or rounded.
-        let tsx = "export const A = () => <a className=\"border-l-2 border-gray-300 p-4\" />;\n\
+        let tsx = "export const A = () => <a className=\"rounded-md border-l-2 border-gray-300 p-4\" />;\n\
 export const B = () => <div style={{ borderLeft: '1px solid #ddd', borderRadius: 12 }} />;\n\
 export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         assert_eq!(
@@ -2771,14 +2764,10 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
             side_tabs("<template>\n  <div class=\"card\" style=\"border-left: 1px solid #ddd;\">x</div>\n</template>\n<style>\n.card { border-radius: 6px; }\n</style>\n", "/x/m.vue"),
             vec!["border-left: 1px solid #ddd".to_string()]
         );
-        assert_eq!(
-            side_tabs("blockquote, .card { border-left: 3px solid #ddd; }\n.card:not(.quote) { box-shadow: inset 3px 0 0 #ddd; }\n", "/x/q.css").len(),
-            2
-        );
         // Review round two: a side its style turns off, a later square
         // radius, and an inline square radius.
         assert_eq!(
-            side_tabs(".x { border-right: 2px solid #ddd; border-right-style: none; border-left: 3px solid red; }\n", "/x/o.css"),
+            side_tabs(".x { border-radius: 6px; border-right: 2px solid #ddd; border-right-style: none; border-left: 3px solid red; }\n", "/x/o.css"),
             vec!["border-left: 3px solid red".to_string()]
         );
         let card = |css: &str, style: &str| format!("<template>\n  <div class=\"card\" style=\"{style}\">x</div>\n</template>\n<style>\n{css}\n</style>\n");
@@ -2798,8 +2787,16 @@ export const C = () => <div style={{ borderLeft: '1px solid #ddd' }} />;\n";
         // A spread in the style object may square the corners it does not name.
         let spread = "const square = { borderRadius: 0 };\nexport const A = () => (\n  <>\n    <style>{`.card { border-radius: 8px; }`}</style>\n    <div className=\"card\" style={{ ...square, borderLeft: '1px solid #ddd', borderTopLeftRadius: 0 }} />\n  </>\n);\n";
         assert!(side_tabs(spread, "/x/s.tsx").is_empty(), "{:?}", side_tabs(spread, "/x/s.tsx"));
-        // A quote's rule or a code line's gutter is typography on a square
-        // box and a tab on a rounded one.
+        // A later rule's `border-radius: 0` squares the box the bar's own
+        // rule rounded, in a stylesheet and in a component's style block.
+        let reset = ".card {\n  border-radius: 8px;\n  border-left: 3px solid red;\n}\n.card { border-radius: 0; }\n";
+        assert!(side_tabs(reset, "/x/reset.css").is_empty());
+        assert!(side_tabs(&format!("<div class=\"card\">x</div>\n<style>\n{reset}</style>\n"), "/x/Reset.svelte").is_empty());
+        // An `!important` radius in the bar's own rule outlasts the reset.
+        let important = ".card {\n  border-radius: 8px !important;\n  border-left: 3px solid red;\n}\n.card { border-radius: 0; }\n";
+        assert_eq!(side_tabs(important, "/x/important.css").len(), 1);
+        // A quote's rule or a code line's gutter on a square box is fine; on
+        // a rounded one it is a tab.
         let typography = "blockquote { border-left: 4px solid #ddd; }\npre .diff-add { box-shadow: inset 3px 0 0 #2a2; }\n.pullquote { border-left: 3px solid #ddd; border-radius: 8px; }\n";
         assert_eq!(side_tabs(typography, "/x/t.css"), vec!["border-left: 3px solid #ddd".to_string()]);
         // Not side bars: a frame (a hairline of another colour on one side of

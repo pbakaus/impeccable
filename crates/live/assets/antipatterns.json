@@ -3,7 +3,7 @@
     "id": "side-tab",
     "name": "Side-tab accent border",
     "category": "slop",
-    "description": "A bar down one side of a box. Use a full border, a background tint, or a leading icon or label instead."
+    "description": "A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead."
   },
   {
     "id": "border-accent-on-rounded",
