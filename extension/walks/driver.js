@@ -488,7 +488,8 @@ let heldAtSignIn = false;
 
 /**
  * The walk is paused: from here nothing is taken or told of the page, and the network is not heard, until
- * {@link unhold}. `signIn` when it is held at a sign-in.
+ * {@link unhold}, but for the one still of a sign-in page taken as it pauses (`signInStill`). `signIn` when it is held
+ * at a sign-in.
  */
 export async function hold(signIn = false) {
   heldAtSignIn = signIn;
@@ -780,14 +781,14 @@ function blankFields(on, forMs) {
     try { return globalThis.chrome?.dom?.openOrClosedShadowRoot?.(el) ?? null; } catch { return null; }
   };
   let seen = 0;
-  const visit = (root, on) => {
+  const visit = (root, on, Made = CSSStyleSheet) => {
     const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
     if (!on) {
       if (others.length !== root.adoptedStyleSheets.length) root.adoptedStyleSheets = others;
       for (const field of root.querySelectorAll(`[${filled}]`)) field.removeAttribute(filled);
     } else {
       if (others.length === root.adoptedStyleSheets.length) {
-        const sheet = new CSSStyleSheet();
+        const sheet = new Made();
         for (const rule of rules) { try { sheet.insertRule(rule, sheet.cssRules.length); } catch { /* a selector this Chrome lacks */ } }
         root.adoptedStyleSheets = [...others, sheet];
       }
@@ -796,7 +797,15 @@ function blankFields(on, forMs) {
         if (field.isContentEditable ? field.textContent.trim() : field.value) field.setAttribute(filled, '');
       }
     }
-    for (const el of root.querySelectorAll('*')) { const own = shadow(el); if (own) visit(own, on); }
+    for (const el of root.querySelectorAll('*')) {
+      const own = shadow(el);
+      if (own) visit(own, on, Made);
+      if (el.localName !== 'iframe' && el.localName !== 'frame') continue;
+      // A frame of this one's site, as a frame Chrome gives no script of its own (`about:blank`) is: from here.
+      let inner = null;
+      try { inner = el.contentDocument ?? null; } catch { inner = null; }
+      if (inner?.defaultView) visit(inner, on, inner.defaultView.CSSStyleSheet);
+    }
   };
   visit(document, on);
   const timer = Symbol.for('still-blank');
@@ -807,7 +816,9 @@ function blankFields(on, forMs) {
 
 /**
  * Every frame's fields drawn blank for a picture (`blankFields`), or put back. Put on, the time until which it surely
- * stays, as `cover` says it; 0 when a frame could not be reached, and then no picture is taken.
+ * stays, as `cover` says it; 0 when the page or a frame of a website could not be reached, and then no picture is
+ * taken. A frame no script reaches (another extension's, a password manager's) is drawn as one solid box by the
+ * picture's own cover (`coverFrames`), or the picture is not taken.
  */
 async function blank(on) {
   const from = Date.now();
@@ -816,7 +827,7 @@ async function blank(on) {
   const ran = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, injectImmediately: true, func: blankFields, args: [on, COVER_MS] }).catch(() => []);
   if (!on) return 0;
   const done = new Set(ran.filter((r) => typeof r.result === 'number').map((r) => r.frameId));
-  return frames?.length && frames.every((f) => f.errorOccurred || done.has(f.frameId)) ? from + COVER_MS : 0;
+  return frames?.length && frames.every((f) => f.errorOccurred || done.has(f.frameId) || (f.frameId !== 0 && !/^https?:/i.test(f.url ?? ''))) ? from + COVER_MS : 0;
 }
 
 /**

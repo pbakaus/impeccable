@@ -34,8 +34,9 @@ export function planned(on) { plannedWalk = on; }
 
 /**
  * Pauses the walk for a reason of its own (a sign-in). From walking, or from a person's pause or take-over: in every
- * case the walk is paused, and the other end told why each time that changes. Synchronous to the pause: nothing is
- * taken after it.
+ * case the walk is paused, and the other end told why each time that changes. Synchronous to the pause: nothing the
+ * server asks is done after it. The walk's own one still of a sign-in page it reached is the only picture after it,
+ * taken as it pauses, before the person has the tab (`stillAtSignIn`).
  */
 function pauseFor(why) {
   const was = current();
@@ -53,7 +54,8 @@ const shot = unseen('screenshot', ops.screenshot);
 async function stillAtSignIn() {
   const still = await signInStill(() => shot({ format: 'png' }), () => current().state === 'paused' && current().held === 'sign-in');
   if (still === undefined) return;
-  const title = walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
+  // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
+  const title = still && walk ? (await chrome.tabs.get(walk.tabId).catch(() => null))?.title : undefined;
   say({ event: 'sign-in-page', ...(still ? { still } : {}), ...(typeof title === 'string' && title ? { title: title.slice(0, 200) } : {}) });
 }
 
