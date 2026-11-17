@@ -156,6 +156,11 @@ fn local_page_name(io: &Io, url: &str) -> Option<String> {
     if !path.starts_with('/') || path.starts_with("//") {
         return None;
     }
+    // A Windows page from disk reads `/C:/Users/…`: a drive letter is never a served path.
+    let b = path.as_bytes();
+    if b.len() > 3 && b[1].is_ascii_alphabetic() && b[2] == b':' && b[3] == b'/' {
+        return Some(path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("page").to_string());
+    }
     let under = |dir: &str| !dir.is_empty() && dir != "/" && path.starts_with(dir.trim_end_matches('/'));
     let local = std::path::Path::new(path).is_file()
         || io.env.get("HOME").is_some_and(|h| under(h))
@@ -1513,9 +1518,12 @@ mod page_path_tests {
         std::fs::write(&file, "<p>x</p>").unwrap();
         let env = std::collections::HashMap::from([("HOME".to_string(), "/home/alice".to_string())]);
         let (io, _) = impeccable_common::Io::captured_reader(Box::new(std::io::empty()), dir.clone(), env);
-        let on_disk = file.to_string_lossy().into_owned();
+        // As the browser sends it: forward slashes, and a leading one before a Windows drive.
+        let on_disk = file.to_string_lossy().replace('\\', "/");
+        let on_disk = if on_disk.starts_with('/') { on_disk } else { format!("/{on_disk}") };
         for (url, want) in [
             (on_disk.as_str(), Some("page.html")),
+            ("/C:/Users/alice/site/page.html", Some("page.html")),
             ("/home/alice/site/gone.html?x", Some("gone.html")),
             ("/pricing", None),
             ("//evil.test/pricing", None),
