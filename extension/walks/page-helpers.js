@@ -1586,7 +1586,7 @@ function coverSecrets(on, forMs) {
     }
   };
   let covered = 0;
-  const visit = (root, Made) => {
+  const visit = (root, Made, on) => {
     const others = root.adoptedStyleSheets.filter((sheet) => !ours(sheet));
     if (!on) {
       if (others.length !== root.adoptedStyleSheets.length)
@@ -1600,7 +1600,7 @@ function coverSecrets(on, forMs) {
       covered += root.querySelectorAll(fields).length;
     for (const el of Array.from(root.querySelectorAll("*"))) {
       if (el.shadowRoot)
-        visit(el.shadowRoot, Made);
+        visit(el.shadowRoot, Made, on);
       if (el.tagName !== "IFRAME" && el.tagName !== "FRAME")
         continue;
       let inner = null;
@@ -1610,14 +1610,14 @@ function coverSecrets(on, forMs) {
         inner = null;
       }
       if (inner?.defaultView)
-        visit(inner, inner.defaultView.CSSStyleSheet);
+        visit(inner, inner.defaultView.CSSStyleSheet, on);
     }
   };
-  visit(g.document, g.CSSStyleSheet);
+  visit(g.document, g.CSSStyleSheet, on);
   const timer = Symbol.for("secret-cover");
   g.clearTimeout(g[timer]);
   if (on && forMs)
-    g[timer] = g.setTimeout(() => coverSecrets(false), forMs);
+    g[timer] = g.setTimeout(() => visit(g.document, g.CSSStyleSheet, false), forMs);
   return covered;
 }
 
@@ -1633,4 +1633,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'e39d6d565f8694be';
+export const HASH = '9d7e10517b6bb0ad';
