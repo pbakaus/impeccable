@@ -37,4 +37,29 @@
     if (answer?.ok) draw(answer);
   });
   void ask('status').then(draw);
+
+  // The sites the person always lets their own agent use (walks/agent.js), each with Remove.
+  const SITES = 'agentSites';
+  async function drawSites() {
+    const sites = (await chrome.storage.local.get(SITES))[SITES] ?? [];
+    $('agent-sites').hidden = sites.length === 0;
+    $('agent-sites-label').textContent = WORDS.agentSites;
+    $('agent-sites-list').replaceChildren(...sites.map((origin) => {
+      const row = document.createElement('li');
+      const host = document.createElement('span');
+      host.textContent = new URL(origin).host;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.textContent = WORDS.remove;
+      remove.setAttribute('aria-label', `${WORDS.remove} ${host.textContent}`);
+      remove.addEventListener('click', async () => {
+        const now = (await chrome.storage.local.get(SITES))[SITES] ?? [];
+        await chrome.storage.local.set({ [SITES]: now.filter((kept) => kept !== origin) });
+      });
+      row.append(host, remove);
+      return row;
+    }));
+  }
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[SITES]) void drawSites(); });
+  void drawSites();
 })();

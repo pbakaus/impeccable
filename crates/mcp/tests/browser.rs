@@ -108,6 +108,8 @@ fn relays_one_agent_at_a_time_and_tells_the_extension_when_it_leaves() {
 #[test]
 fn serves_only_the_impeccable_extension() {
     assert!(browser::is_extension_origin("chrome-extension://bdkgmiklpdmaojlpflclinlofgjfpabf/"));
+    // The developer build, its ID pinned by the manifest's key.
+    assert!(browser::is_extension_origin("chrome-extension://apffhogljdpdafpcjokfkgbcmhldjmpi/"));
     assert!(!browser::is_extension_origin("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"));
     assert!(!browser::is_extension_origin("mcp"));
 }

@@ -18,7 +18,8 @@
     "identity",
     "alarms",
     "notifications",
-    "declarativeNetRequestWithHostAccess"
+    "declarativeNetRequestWithHostAccess",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"

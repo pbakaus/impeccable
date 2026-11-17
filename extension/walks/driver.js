@@ -6,6 +6,7 @@ import { COPY } from './panel/copy.js';
 import { helpers, newDocument, noSecrets, pageWorld } from './page-helpers.js';
 import { asksForPassword, isSignInPage, lookInPage, signingIn } from './signin.js';
 import { seenAs } from './sight.js';
+import { INSPECTS } from './inspect.js';
 
 /** What filming a wait needs, and nothing that closes or steers a target. */
 const CDP_METHODS = new Set(['Page.startScreencast', 'Page.stopScreencast', 'Page.screencastFrameAck']);
@@ -1705,7 +1706,8 @@ export const ops = {
   // `helpers`: the server names this extension's own page helpers (`page-helpers.js`) and sends no code; an older
   // server never says it, and sends a function's source as ever.
   // `signInPage`: the server takes the one still of a sign-in page (`sign-in-page`); an older one never says it, and gets none.
-  async open({ url, name, allow, free, helpers: named, signInPage }) {
+  // `agent`: the person's own agent drives (agent.js), not a server: it is asked nothing before a submit (control.js).
+  async open({ url, name, allow, free, helpers: named, signInPage, agent }) {
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
     if (adopted) return adopt(name, allow, free, named, signInPage);
     const site = admit(url, allowedFor(allow));
@@ -1731,7 +1733,7 @@ export const ops = {
       still();
       await chrome.debugger.attach({ tabId: tab.id }, '1.3');
       still();
-      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
+      walk = { tabId: tab.id, name, url: 'about:blank', origin: site.origin, allowed: site.allowed, writable: site.allowed, free: free === true, agent: agent === true, named: named === true, signInPage: signInPage === true, mainFrame: undefined, loader: undefined, inflight: new Map(), quietSince: Date.now(), statuses: new Map(), watchers: new Set(), mouse: { x: 0, y: 0, down: false } };
       await cmd('Page.enable');
       await watchNetwork();
       await cmd('Page.setLifecycleEventsEnabled', { enabled: true });
@@ -1931,10 +1933,16 @@ export const ops = {
   },
 
   // Never while a film's picture is being taken (`pointer`).
-  async mouse({ action, x, y }) {
+  async mouse({ action, x, y, dx, dy }) {
     const at = fences;
     return pointer(async () => {
       const m = walk.mouse;
+      // A wheel turned where the pointer is: the page scrolls as it would for a person.
+      if (action === 'wheel') {
+        if (Number.isFinite(x) && Number.isFinite(y)) [m.x, m.y] = [x, y];
+        await cmd('Input.dispatchMouseEvent', { type: 'mouseWheel', x: m.x, y: m.y, deltaX: Number(dx) || 0, deltaY: Number(dy) || 0 });
+        return {};
+      }
       if (action === 'move' || action === 'click') {
         m.x = x;
         m.y = y;
@@ -1997,6 +2005,14 @@ export const ops = {
     const { result, exceptionDetails } = await cmd('Runtime.evaluate', { expression: expression({ fn: String(attach), args: [Number(x), Number(y), data, PHOTO.name, PHOTO.type] }), contextId: executionContextId, returnByValue: true, userGesture: true });
     if (exceptionDetails || !result?.value) throw fail('NotFound', 'nothing there takes a file');
     return { value: result.value };
+  },
+
+  // Fixed reads at a point, in the walk's own world: the element's computed styles, or its ink edges (inspect.js).
+  async inspect({ what, x, y }) {
+    const read = INSPECTS[what];
+    if (!read) throw fail('NotSupported', `inspect has no ${String(what).slice(0, 40)}`);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw fail('Error', 'inspect needs a point');
+    return { value: (await inLookout(`(${read})(${x}, ${y})`))?.value ?? null };
   },
 
   async waitForNetworkIdle({ idleTime, timeout }) {

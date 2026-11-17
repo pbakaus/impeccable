@@ -53,6 +53,7 @@ import { isStartPage } from './handoff.js';
 import { HASH as HELPERS } from './page-helpers.js';
 import './toolbar.js';
 import './net-hold.js';
+import './agent.js';
 
 // What the driver tells of the tab goes out the way a reply does.
 speak((message) => say(message));

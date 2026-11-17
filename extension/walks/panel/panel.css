@@ -66,6 +66,9 @@ b { font-weight: 500; }
 .btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
 .pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pair .btn { width: 100%; }
+/* Not now, under an agent's site question: a quiet text button, the panel's ink. */
+.btn-ghost { height: 32px; align-self: center; background: none; color: var(--muted); }
+.btn-ghost:hover { color: var(--ink); }
 /* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold. */
 .mic { width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; color: var(--ink); }
 .mic:hover { background: var(--gray); }
