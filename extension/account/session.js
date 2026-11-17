@@ -321,7 +321,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      */
     async me() {
       const me = await read(issuer(), '/me');
-      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true, ownApp: me.ownApp === true } : null;
+      return typeof me?.email === 'string' ? { email: me.email, name: typeof me.name === 'string' ? me.name : '', pro: me.pro === true, widths: me.widths === true, ownApp: me.ownApp === true, ownTraits: me.ownTraits === true } : null;
     },
 
     /**
@@ -333,7 +333,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     async personas({ url, app, faceless } = {}) {
       const at = issuer();
       const one = appOf(app);
-      const query = one ? `?${new URLSearchParams({ workspace: app.workspace, repo: app.repo, app: app.app })}` : url ? `?${new URLSearchParams({ url })}` : '';
+      // `can`: this extension reads a page out (`hears`), so the server lists a persona who hears it too.
+      const query = `?${new URLSearchParams({ ...(one ? { workspace: app.workspace, repo: app.repo, app: app.app } : url ? { url } : {}), can: 'hears' })}`;
       const list = await read(at, `/personas${query}`);
       const rows = rowsOf(list, 'personas', (p) => typeof p?.name === 'string')?.slice(0, 100);
       if (!rows) return null;
@@ -387,13 +388,14 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
     },
 
     /**
-     * Asks the server to make the person a persona of their own from `description`. The same `requestId` sent again
+     * Asks the server to make the person a persona of their own from `description`, on `device` and with `disability`
+     * where the person picked them. The same `requestId` sent again
      * is answered with the persona it made, never a second. `{ ok: true, persona }`, or `{ ok: false, why }`: `short`,
      * `scope` (signed in before personas could be created), `unavailable`, `limit` (with the server's `max`), `quota`,
      * `failed`.
      */
-    async createPersona({ description, requestId }) {
-      const answer = await call(issuer(), '/personas', { description, requestId }).catch(() => null);
+    async createPersona({ description, device, disability, requestId }) {
+      const answer = await call(issuer(), '/personas', { description, ...(device ? { device } : {}), ...(disability ? { disability } : {}), requestId }).catch(() => null);
       const made = [200, 201].includes(answer?.status) ? answer.json?.persona : null;
       if (typeof made?.name === 'string' && SLUG.test(made.slug)) return { ok: true, persona: personaOf({ ...made, mine: true }) };
       if (answer?.status === 400 && answer.json?.field === 'description') return { ok: false, why: 'short' };
@@ -416,7 +418,8 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
      * could be started), `failed`.
      */
     async startWalk(body) {
-      const answer = await call(issuer(), '/walks', body).catch(() => null);
+      // `can`: this extension reads a page out, so a persona who hears it may walk here (as `personas` says).
+      const answer = await call(issuer(), '/walks?can=hears', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
@@ -436,7 +439,7 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
 
     /** Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as `startWalk`. */
     async planWalk(body) {
-      const answer = await call(issuer(), '/walks/plan', body).catch(() => null);
+      const answer = await call(issuer(), '/walks/plan?can=hears', body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };

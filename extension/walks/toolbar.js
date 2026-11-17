@@ -54,7 +54,7 @@ export function signedIn(on) {
 
 onView((view) => {
   const off = view.state === 'failed' && view.failure?.reason === 'switched-off';
-  const now = view.state === 'paused' && view.held === 'sign-in' ? COPY.signIn : off ? COPY.failed['switched-off'] : TITLE;
+  const now = view.state === 'paused' && view.held === 'sign-in' ? (view.pictured ? COPY.signInPictured : COPY.signIn) : off ? COPY.failed['switched-off'] : TITLE;
   if (now !== title) {
     title = now;
     void chrome.action.setTitle({ title: now }).catch(() => undefined);

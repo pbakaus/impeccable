@@ -2,9 +2,9 @@
 // side panel; Stop, and Continue on a pause, also from the badge. Every op the socket asks passes through here first, so the server's engine
 // needs to know nothing of it: a paused op simply takes longer, and one refused says why by name
 // (the walk protocol, panel control).
-import { unseen, whenPressed } from './badge.js';
+import { unseen, whenPressed, withoutBadge } from './badge.js';
 import { resultLink } from './handoff.js';
-import { drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, say, seal, sealed, signInNow, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
+import { asWebp, drivenBy, endWalk, fail, fence, fenced, fresh, hold, hooks, letPast, letWrite, lookOnly, note, onAsk, onSignIn, ops, passwordIn, personHas, regain, samePage, say, seal, sealed, signInNow, signInStill, stopOpening, submitIn, unhold, unnote, walk, writesNow } from './driver.js';
 import { current, dispatch, onView } from './store.js';
 import { ON_TAB, detachAction, isLive } from './view.js';
 
@@ -34,19 +34,48 @@ export function planned(on) { plannedWalk = on; }
 
 /**
  * Pauses the walk for a reason of its own (a sign-in). From walking, or from a person's pause or take-over: in every
- * case the walk is paused, and the other end told why each time that changes. Synchronous to the pause: nothing is
- * taken after it.
+ * case the walk is paused, and the other end told why each time that changes. Synchronous to the pause: nothing the
+ * server asks is done after it. The walk's own one still of a sign-in page it reached is the only picture after it,
+ * taken as it pauses, before the person has the tab (`stillAtSignIn`).
  */
 function pauseFor(why) {
   const was = current();
   if (!dispatch({ type: 'pause', why })) return false;
   if (was.state !== 'paused' || was.held !== current().held) say({ event: 'paused', why: current().held });
+  // The walk itself reached a sign-in: its page pictured once, before the person has it, for a server that takes it.
+  if (why === 'sign-in' && was.state === 'walking' && walk?.signInPage) void stillAtSignIn();
   return true;
 }
 onSignIn(() => { pauseFor('sign-in'); });
 
+/** The longest message the server rejoins from its pieces: one past it ends the walk. */
+const MESSAGE_CHARS = 16 * 1024 * 1024 - 64 * 1024;
+/** A still taken as any is (the `screenshot` op, without the badge), for the sign-in page alone: kept before the ops below wrap it. */
+const shot = unseen('screenshot', ops.screenshot);
+/** The sign-in page the walk paused at, as it was before the person had it: its still, or none where it could not be taken safely. */
+async function stillAtSignIn() {
+  const on = samePage();
+  const taken = await signInStill(() => shot({ format: 'png', plain: true }), () => current().state === 'paused' && current().held === 'sign-in');
+  if (taken === undefined) return;
+  // Its title with its picture only: a sign-in host still loading, or a 401, leaves the tab on the page before.
+  const tab = taken && on() ? await chrome.tabs.get(walk.tabId).catch(() => null) : null;
+  // The still as taken, where the persona's sight drew the other: as WebP, as a step's is, for the journey map.
+  const plain = taken?.plain && on() ? await asWebp(taken.plain).catch(() => null) : null;
+  // After the last read, still the page it paused on as it is told: else the picture and its title may be of the next
+  // one, and neither goes.
+  const still = taken && on() ? taken : null;
+  const title = typeof tab?.title === 'string' && tab.title ? { title: tab.title.slice(0, 200) } : {};
+  const message = { event: 'sign-in-page' };
+  // Each picture only while the message still fits what the server rejoins: past that the walk would end, without
+  // them the page is a step all the same.
+  if (still && JSON.stringify({ ...message, ...title }).length + still.data.length + 16 < MESSAGE_CHARS) Object.assign(message, title, { still: still.data });
+  if (message.still && plain && JSON.stringify(message).length + plain.length + 16 < MESSAGE_CHARS) message.plain = plain;
+  if (message.still) dispatch({ type: 'pictured' });
+  say(message);
+}
+
 /** The ops that take something of the page: none runs on a page the walk could not check. */
-const LOOKING = new Set(['screenshot', 'evaluate']);
+const LOOKING = new Set(['screenshot', 'evaluate', 'hear']);
 
 /** Returns once the walk may act, and not at a sign-in: whether it had to wait for a pause. Throws while the person has the tab. */
 async function clear(name) {
@@ -65,7 +94,7 @@ async function clear(name) {
     const signIn = await signInNow();
     if (signIn === null && LOOKING.has(name)) throw fail('NotAllowed', 'the page could not be read');
     // A password in a field: a script waits for the pause, and runs after Continue once no field is filled.
-    if (signIn && name === 'evaluate' && (await passwordIn())) {
+    if (signIn && (name === 'evaluate' || name === 'hear') && (await passwordIn())) {
       if (!pauseFor('sign-in')) throw fail('Paused', 'a journey runs no script while a password is in a field');
       continue;
     }
@@ -141,7 +170,8 @@ for (const [name, run] of Object.entries(ops)) {
       if (!(await clear(name)) && at === fenced()) {
         if (!checked) {
           checked = true;
-          const control = await submitIn(name, req);
+          // Looked at as the press will be made, with the badge out of the way: else a submit under it goes unasked.
+          const control = await submitIn(name, req, withoutBadge);
           if (control) [ask, agreed] = [{ kind: 'send', what: `Submit "${control}"` }, false];
           continue;
         }
@@ -173,7 +203,8 @@ for (const [name, run] of Object.entries(ops)) {
         }
         if (at === fenced()) { if (failed) throw failed; return out; }
       }
-      if (ACTS.has(name)) throw overtaken();
+      // Focus a screen reader moved is a key's: not done on a page the person has used since.
+      if (ACTS.has(name) || (name === 'hear' && req?.what === 'focus')) throw overtaken();
     }
   };
 }

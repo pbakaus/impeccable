@@ -41,6 +41,12 @@ const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null
  * address (`localSite`) always has the six: an app chosen there is for that pick only, never kept.
  */
 Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
+/** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities), whether that list is open, and the intro's screen. */
+Object.assign(pre, { device: 'desktop', disability: 'none', needs: false, intro: 0 });
+/** Each disability's icon. */
+const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette', motor: 'hand', hearing: 'ear', cognitive: 'mind' };
+/** Whether the person has seen Create a persona's intro, or skipped it (chrome.storage.local `personaIntroSeen`). */
+let introSeen = true;
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
@@ -97,6 +103,11 @@ const ICONS = {
   eye: ['M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z', 'M9 12a3 3 0 1 0 6 0a3 3 0 1 0-6 0'],
   glasses: ['M3 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M14 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M10 14c.6-.8 1.3-1.2 2-1.2s1.4.4 2 1.2', 'M3.2 12.8L5.5 6.5h1.5M20.8 12.8L18.5 6.5H17'],
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
+  blind: ['M3 3l18 18', 'M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5', 'M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5-1.5', 'M9.9 9.9a3 3 0 0 0 4.2 4.2'],
+  hand: ['M8 13V6.5a1.5 1.5 0 0 1 3 0V11', 'M11 11V4.5a1.5 1.5 0 0 1 3 0V11', 'M14 11V6a1.5 1.5 0 0 1 3 0v6', 'M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.3a6 6 0 0 1-4.5-2l-3.4-3.8a1.6 1.6 0 0 1 2.3-2.2L8 14.5'],
+  ear: ['M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0', 'M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4'],
+  mind: ['M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8 4 4 0 0 0 .6 6.6A4 4 0 1 0 12 18z', 'M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8 4 4 0 0 1-.6 6.6A4 4 0 1 1 12 18z', 'M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4'],
+  person: ['M12 5.5a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z', 'M5 8l7 1.5L19 8', 'M12 9.5V14l-3 7M12 14l3 7'],
   plus: ['M12 5v14M5 12h14'],
   back: ['M19 12H5M11 6l-6 6 6 6'],
   close: ['M6 6l12 12M18 6L6 18'],
@@ -333,7 +344,7 @@ async function make(box) {
   pre.making = true;
   pre.note = '';
   render();
-  const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe }).catch(() => null);
+  const answer = await chrome.runtime.sendMessage({ account: 'create', description: pre.describe, device: pre.device, ...(pre.disability !== 'none' ? { disability: pre.disability } : {}) }).catch(() => null);
   pre.making = false;
   if (!answer?.ok) { if (answer?.why === 'limit' && Number.isInteger(answer.max)) ownMax = answer.max; pre.note = unmade(answer); render(); return; }
   pre.describe = '';
@@ -398,7 +409,7 @@ function useApp() {
 /** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
 // Escape closes the modal wherever the focus is, and the account popover; on Your personas it answers No.
-document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.menu) closeMenu(); else if (event.key === 'Escape' && pre.sure && screen() === 'personas') keep(pre.sure); });
+document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.needs && screen() === 'make') closeNeeds(); else if (event.key === 'Escape' && pre.menu) closeMenu(); else if (event.key === 'Escape' && pre.sure && screen() === 'personas') keep(pre.sure); });
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
 function appModal() {
@@ -449,7 +460,7 @@ function maker() {
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
   const create = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } });
-  const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }))
+  const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }), traits())
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
       : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
   const parts = [
@@ -460,6 +471,7 @@ function maker() {
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
+        el('div', { class: 'tabs' }, devices(), ...needs()),
         el('div', { class: 'field' }, box, voice ? listening(create) : el('div', { class: 'row' },
           Speech && !pre.making ? micButton() : null,
           el('span', { class: 'grow' }),
@@ -471,6 +483,35 @@ function maker() {
   for (const part of parts) part.setAttribute('inert', '');
   return [...parts, appModal()];
 }
+
+/** The persona's device on the left, as Home's Screen; on the right, one tab that opens the Disability list. */
+function devices() {
+  return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.make.device }, WIDTHS.map((device) => el('button', {
+    type: 'button', 'data-act': `device-${device}`, 'aria-pressed': pre.device === device ? 'true' : 'false', 'data-tip': COPY.home.widths[device], 'aria-label': COPY.home.widths[device], disabled: pre.making,
+    onclick: () => { pre.device = device; render(); },
+  }, icon(device))));
+}
+function needs() {
+  const chosen = pre.disability;
+  const label = `${COPY.make.disability}: ${COPY.make.disabilities[chosen][0]}`;
+  return [el('div', { class: 'widths sights' },
+    el('button', { class: 'needs-btn', type: 'button', 'data-act': 'needs', 'aria-haspopup': 'dialog', 'aria-expanded': pre.needs ? 'true' : 'false', 'aria-pressed': chosen !== 'none' ? 'true' : 'false', 'aria-label': label, 'data-tip': label, disabled: pre.making,
+      onclick: () => { if (pre.needs) closeNeeds(); else { pre.needs = true; render(); app.querySelector(`[data-act="need-${chosen}"]`)?.focus(); } } },
+    icon(NEEDS[chosen]), chosen === 'none' ? el('span', { class: 'needs-word', text: COPY.make.none }) : null, icon('down'))),
+    ...(pre.needs ? [el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeNeeds() }),
+      el('div', { class: 'acct needs-menu', role: 'dialog', 'aria-label': COPY.make.disability },
+        el('p', { class: 'needs-h', text: COPY.make.needs }),
+        Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', { class: 'need-row', type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false',
+          // The one chosen, picked again, goes back to none.
+          onclick: () => { pre.disability = key === chosen ? 'none' : key; closeNeeds(); } },
+        icon(NEEDS[key]), el('span', { class: 'need-t' }, el('b', { text: name }), line ? el('small', { text: line }) : null), key === chosen ? icon('check') : null)))] : [])];
+}
+/** Closes the Disability list; focus goes back to its tab. */
+function closeNeeds() { pre.needs = false; render(); app.querySelector('[data-act="needs"]')?.focus(); }
+/** Under the persona made: its device and disability, small. */
+const traits = () => el('p', { class: 'traits', 'data-device': pre.device, 'data-disability': pre.disability },
+  el('span', {}, icon(pre.device), COPY.home.widths[pre.device]),
+  pre.disability !== 'none' ? el('span', {}, icon(NEEDS[pre.disability]), COPY.make.disabilities[pre.disability][0]) : null);
 
 /**
  * Faces in rows, the second centred under the first, + last where there is one. Six personas or fewer, larger (`roomy`):
@@ -498,7 +539,12 @@ function cast() {
     }, face(each, sized(people)), el('span', { class: 'cast-name', text: each.name }))),
     // At the limit of their own with no app's personas to pick, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
-      : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => { Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined }); if (BUILD.account && !stubbed) void loadApps(); render(); } },
+      : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => {
+        Object.assign(pre, { screen: introSeen ? 'make' : 'intro', intro: 0, made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
+        if (BUILD.account && !stubbed) void loadApps();
+        render();
+        app.querySelector('[data-act="intro-next"]')?.focus();
+      } },
         el('span', { class: 'face' }, icon('plus'))),
   ], { role: 'group', 'aria-label': COPY.home.who }, people);
 }
@@ -739,7 +785,7 @@ function held() {
   const why = (go) => (Object.hasOwn(COPY.refused, pre.refused ?? '') ? el('p', { class: 'status', role: 'status', 'data-refused': pre.refused, text: COPY.refused[pre.refused](go) }) : null);
   if (view.state === 'paused') {
     const go = view.held === 'sign-in' ? COPY.controls.signedIn : COPY.controls.resume;
-    return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? COPY.signIn : COPY.paused.line(name()) }),
+    return el('div', { class: 'held' }, el('p', { class: 'status', role: 'status', text: view.held === 'sign-in' ? (view.pictured ? COPY.signInPictured : COPY.signIn) : COPY.paused.line(name()) }),
       view.withheld ? el('p', { class: 'status', role: 'status', 'data-hint': 'stop-and-restart', text: COPY.signInHeld }) : null,
       why(go), button('resume', go, 'gold'));
   }
@@ -1063,8 +1109,8 @@ function terminal() {
 /* ------------------------------ first run ------------------------------ */
 
 /** The first time the panel is signed in, before the home: two screens, then never again (chrome.storage.local `firstRunSeen`). */
-const foot = (on, action, text, onclick) => el('div', { class: 'fr-foot' },
-  el('div', { class: 'fr-dots', 'aria-hidden': true }, [0, 1].map((i) => el('i', { class: i === on ? 'on' : '' }))),
+const foot = (on, action, text, onclick, n = 2) => el('div', { class: 'fr-foot' },
+  el('div', { class: 'fr-dots', 'aria-hidden': true }, Array.from({ length: n }, (_, i) => el('i', { class: i === on ? 'on' : '' }))),
   button(action, text, 'gold full tall', onclick));
 
 function beforeYouStart() {
@@ -1087,6 +1133,46 @@ function tabGroup() {
       el('h2', { class: 'hd', text: words.title }), el('p', { class: 'fr-p', text: words.line })),
     foot(1, 'start-walking', words.next, () => { pre.screen = 'home'; void chrome.storage.local.set({ firstRunSeen: true }).catch(() => undefined); render(); }),
   ];
+}
+
+/**
+ * Create a persona's intro, the first time it opens: four screens, her face in the ring and a headline, then the box.
+ * Every picture and headline is drawn at once, one shown: the tallest headline keeps its room, so nothing moves, and a
+ * step swaps them in place (`stepIntro`) and they fade. Skip, or the last button, and it never shows again.
+ */
+function intro() {
+  const screens = COPY.intro.screens;
+  const on = pre.intro;
+  return [
+    el('div', { class: 'top' }, el('span', { class: 'grow' }), button('skip-intro', COPY.intro.skip, 'sec sm', endIntro)),
+    el('div', { class: 'fr-mid', 'data-step': String(on) },
+      el('span', { class: 'intro-pics', 'aria-hidden': true }, screens.map((_, i) => el('img', { class: `intro-pic${i === on ? ' on' : ''}`, src: `intro/intro-${i + 1}.webp`, alt: '' }))),
+      el('div', { class: 'intro-lines', 'aria-live': 'polite' }, screens.map(([line], i) => el('h2', { class: `hd intro-line${i === on ? ' on' : ''}`, id: `intro-line-${i}`, text: line })))),
+    describeIntro(foot(on, 'intro-next', screens[on][1], stepIntro, screens.length)),
+  ];
+}
+/** The button is heard with the headline shown above it: focus lands on it, and the headline alone would go unread. */
+function describeIntro(root = app) {
+  root.querySelector('[data-act="intro-next"]')?.setAttribute('aria-describedby', `intro-line-${pre.intro}`);
+  return root;
+}
+function stepIntro() {
+  const screens = COPY.intro.screens;
+  if (pre.intro >= screens.length - 1) { endIntro(); return; }
+  const on = (pre.intro += 1);
+  app.querySelector('.fr-mid')?.setAttribute('data-step', String(on));
+  app.querySelectorAll('.intro-pic').forEach((pic, i) => { pic.className = `intro-pic${i === on ? ' on' : ''}`; });
+  app.querySelectorAll('.intro-line').forEach((line, i) => { line.className = `hd intro-line${i === on ? ' on' : ''}`; });
+  [...(app.querySelector('.fr-dots')?.children ?? [])].forEach((dot, i) => { dot.className = i === on ? 'on' : ''; });
+  app.querySelector('[data-act="intro-next"]').textContent = screens[on][1];
+  describeIntro();
+}
+function endIntro() {
+  introSeen = true;
+  void Promise.resolve(chrome.storage.local.set({ personaIntroSeen: true })).catch(() => undefined);
+  pre.screen = 'make';
+  render();
+  app.querySelector('textarea')?.focus();
 }
 
 /* ------------------------------ drawing ------------------------------ */
@@ -1142,7 +1228,7 @@ function render() {
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.
-Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history, personas: yours });
+Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history, personas: yours, intro });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
@@ -1173,6 +1259,7 @@ async function start() {
   const stub = BUILD.devHosts ? params.get('stub') : null;
   const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
   if (WIDTHS.includes(walkWidth)) pre.width = ownWidth = walkWidth;
+  introSeen = (await Promise.resolve(chrome.storage?.local?.get('personaIntroSeen')).catch(() => null))?.personaIntroSeen === true;
   if (stub !== null) {
     const { STUBS, PRE, HISTORY, FEED } = await import('./stub.js');
     stubbed = true;
@@ -1223,7 +1310,8 @@ async function start() {
       settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
     };
     chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { hereUrl = change.url; moved(); if (pre.screen === 'home' && !isLive(view)) render(); } });
+    // Scan names the tab's site: drawn again only when the site changes, as a redraw moves its box.
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
     const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (just === true) connect();

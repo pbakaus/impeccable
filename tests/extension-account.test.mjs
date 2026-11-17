@@ -109,7 +109,7 @@ function harness({ grant = null, me = 401, launched, issuers = [ISSUER], gated =
       [`${at}/extension/v1/me`]: (init) => (init.headers?.authorization ? json(200, { email: 'mira@example.com', name: 'Mira', pro: true }) : json(401, {})),
       // The availability probe, marked so the server's logs tell its 401 from a real one.
       [`${at}/extension/v1/me?probe=1`]: () => json(me, {}),
-      [`${at}/extension/v1/personas`]: () => json(200, { personas: [] }),
+      [`${at}/extension/v1/personas?can=hears`]: () => json(200, { personas: [] }),
     });
   }
   const state = { use: issuers[0], now: 0 };
@@ -312,7 +312,12 @@ describe('account worker', () => {
     sidePanel: { async open(where) { panels.push(where); }, async setPanelBehavior({ openPanelOnActionClick }) { toolbar.push({ openPanelOnActionClick }); }, async setOptions({ enabled }) { offered.push(enabled); } },
     identity: { getRedirectURL: (path) => `https://ext.chromiumapp.org/${path}`, async launchWebAuthFlow() { return ''; } },
   };
-  const loaded = import('../extension/account/worker.js');
+  // The worker's start asks the server whether sign-in is on offer: told no here, before any test, so its start never
+  // checks in on a later test's server (nor reaches a real one).
+  let probed;
+  const started = new Promise((resolve) => { probed = resolve; });
+  globalThis.fetch = async (url) => { if (String(url).endsWith('/me?probe=1')) probed(); return json(404, {}); };
+  const loaded = import('../extension/account/worker.js').then(() => started);
   const ask = (message, sender) => new Promise((resolve) => { for (const listener of listeners) listener(message, sender, resolve); });
 
   const fromPanel = { id: 'ext', url: 'chrome-extension://ext/walks/panel/panel.html' };
@@ -351,8 +356,8 @@ describe('account worker', () => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-walk', refresh_token: 'refresh-walk-2', expires_in: 900 });
       if (url.endsWith('/cancel') && url.startsWith(`${ISSUER}/extension/v1/walks/`)) { cancelled.push([url.slice(ISSUER.length), init.method]); return json(204, null); }
-      if (url === `${ISSUER}/extension/v1/walks`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
-      if (url === `${ISSUER}/extension/v1/personas` && !init.method) return json(200, { personas: [{ ...PERSONA, role: 1 }] });
+      if (url === `${ISSUER}/extension/v1/walks?can=hears`) { posted.push({ body: JSON.parse(init.body), auth: init.headers.authorization, method: init.method }); return walks(); }
+      if (url === `${ISSUER}/extension/v1/personas?can=hears` && !init.method) return json(200, { personas: [{ ...PERSONA, role: 1 }] });
       if (url.startsWith(`${ISSUER}/extension/v1/personas`) && init.method) { made.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null }); return mine(); }
       return json(404, {});
     };
@@ -535,7 +540,7 @@ describe('account worker', () => {
       const served = globalThis.fetch;
       globalThis.fetch = async (url, init = {}) => {
         if (url === `${ISSUER}/extension/v1/me`) return json(503, {});
-        if (url === `${ISSUER}/extension/v1/walks/plan`) return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } });
+        if (url === `${ISSUER}/extension/v1/walks/plan?can=hears`) return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } });
         return served(url, init);
       };
       await chrome.storage.local.remove(`widths:${ISSUER}`);
@@ -586,6 +591,25 @@ describe('account worker', () => {
     assert.deepEqual([ids[1] === ids[0], ids[2] === ids[0]], [true, false]);
   });
 
+  // The device and disability picked go to the server only where its /me says it takes them (`ownTraits`): an older
+  // one refuses a key it does not know, so the persona is made from the words alone.
+  for (const [label, ownTraits, sent] of [['a server that takes them', true, { device: 'mobile', disability: 'low-vision' }], ['an older server', undefined, {}]]) {
+    it(`creates a persona on Phone with low vision, telling ${label} ${ownTraits ? 'both' : 'neither'}`, async () => {
+      await loaded;
+      startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
+      const served = globalThis.fetch;
+      globalThis.fetch = async (url, init = {}) => (url === `${ISSUER}/extension/v1/me` ? json(200, { email: 'mira@example.com', pro: true, widths: true, ownApp: true, ...(ownTraits ? { ownTraits } : {}) }) : served(url, init));
+      session.personaCreate = null;
+      const before = made.length;
+      await create('A night-shift nurse.');
+      assert.equal((await ask({ account: 'create', description: 'A night-shift nurse.', device: 'phone', disability: 'low-vision' }, fromPopup)).ok, true);
+      const [plain, picked] = made.slice(before).map((m) => m.body);
+      // The same words with a device and disability picked are another persona: a new id.
+      const { requestId, description, ...traits } = picked;
+      assert.deepEqual([requestId === plain.requestId, description, traits], [false, 'A night-shift nurse.', sent]);
+    });
+  }
+
   it('tells the next popup of a persona sent and never answered (the worker ended), and resends it with its request id', async () => {
     await loaded;
     startServer(() => json(404, {}), () => json(201, { persona: PERSONA }));
@@ -596,7 +620,7 @@ describe('account worker', () => {
   });
 
   // The side panel's home asks for the personas itself, and is told whether signing in again would help.
-  for (const [label, personas, token, answer, asked = {}, path = '/extension/v1/personas'] of [
+  for (const [label, personas, token, answer, asked = {}, path = '/extension/v1/personas?can=hears'] of [
     ['lists them', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] }],
     // One of the six everyone has: its `default:` slug, and how it sees, kept for the walk.
     ['lists a default persona', () => json(200, { personas: [{ name: 'Robert', role: '', profile: 'Retired.', slug: 'default:robert', default: true, sees: 'older-eyes' }] }), () => json(200, {}),
@@ -606,9 +630,9 @@ describe('account worker', () => {
       { ok: true, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true, device: 'mobile' }] }],
     // The tab's origin alone, never its path: the server answers the personas of the app at that host, or the defaults.
     ['for the tab’s address', () => json(200, { personas: [PERSONA], defaults: true, reason: 'no-app-here' }), () => json(200, {}), { ok: true, personas: [PERSONA] },
-      { url: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?url=https%3A%2F%2Ftidy.example'],
+      { url: 'https://tidy.example/todos/7?q=milk' }, '/extension/v1/personas?url=https%3A%2F%2Ftidy.example&can=hears'],
     ['for one app', () => json(200, { personas: [PERSONA] }), () => json(200, {}), { ok: true, personas: [PERSONA] },
-      { app: { workspace: 'acme', repo: 'tidy', app: 'web' } }, '/extension/v1/personas?workspace=acme&repo=tidy&app=web'],
+      { app: { workspace: 'acme', repo: 'tidy', app: 'web' } }, '/extension/v1/personas?workspace=acme&repo=tidy&app=web&can=hears'],
     ['says try again when the server fails', () => json(500, {}), () => json(200, {}), { ok: false, why: 'personas' }],
     ['says sign in again when the server ended the sign-in', () => json(401, {}), () => json(400, { error: 'invalid_grant' }), { ok: false, why: 'signed-out' }],
   ]) {
@@ -634,7 +658,7 @@ describe('account worker', () => {
     globalThis.fetch = async (url, init = {}) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-face', refresh_token: 'refresh-walk', expires_in: 900 });
-      if (url === `${ISSUER}/extension/v1/personas`) return json(200, { personas: ['Maya', 'Sam', 'Grace'].map((name, i) => ({ name, role: '', slug: `default:${name.toLowerCase()}`, default: true, face: { src: [door, away, `${door}x`][i], crop: { x: 0.17, y: 0.2, zoom: 3.6 } } })) });
+      if (url === `${ISSUER}/extension/v1/personas?can=hears`) return json(200, { personas: ['Maya', 'Sam', 'Grace'].map((name, i) => ({ name, role: '', slug: `default:${name.toLowerCase()}`, default: true, face: { src: [door, away, `${door}x`][i], crop: { x: 0.17, y: 0.2, zoom: 3.6 } } })) });
       asked.push(url);
       return url === door && init.headers?.authorization?.startsWith('Bearer ') ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/jpeg' } }) : new Response(null, { status: 404 });
     };
@@ -652,7 +676,7 @@ describe('account worker', () => {
     globalThis.fetch = async (url) => {
       if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
       if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-face', refresh_token: 'refresh-walk', expires_in: 900 });
-      if (url === `${ISSUER}/extension/v1/personas`) {
+      if (url === `${ISSUER}/extension/v1/personas?can=hears`) {
         return json(200, { personas: [['Nora', 'nora', true], ['Ada', 'ada', true], ['Maya', 'default:maya', false]].map(([name, slug, mine]) => ({ name, role: '', slug, ...(mine ? { mine } : { default: true }), face: { src: `${ISSUER}/extension/v1/faces?link=${name}`, crop: { x: 0, y: 0, zoom: 1 } } })) });
       }
       asked.push(url);
