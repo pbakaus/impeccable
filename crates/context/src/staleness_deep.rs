@@ -43,7 +43,8 @@ pub fn check_design_drift(design_path: Option<&str>, project_root: &str) -> Vec<
     }
     let Some(design) = safe_read(design_path) else { return vec![] };
     let rel_design = to_relative(Some(design_path), project_root).unwrap_or_else(|| "DESIGN.md".to_string());
-    let root = std::path::Path::new(project_root);
+    // Paths resolve beside DESIGN.md, as the map that `context` prints resolves them (design_map.rs `map`).
+    let root = std::path::Path::new(design_path).parent().unwrap_or(std::path::Path::new(project_root));
     let mut named: Vec<String> = Vec::new();
     for line in design.lines() {
         for p in crate::design_map::path_mentions(line) {
@@ -73,19 +74,16 @@ pub fn check_design_drift(design_path: Option<&str>, project_root: &str) -> Vec<
         .join("\n");
     if !tokens.is_empty() {
         let fm = parse_design_md(&design).frontmatter.unwrap_or_default();
-        let missing: Vec<String> = fm
+        let declared: Vec<(&String, &str)> = fm
             .get("colors")
             .and_then(Value::as_object)
-            .map(|colors| {
-                colors
-                    .iter()
-                    .filter_map(|(name, v)| v.as_str().map(|v| (name, v.trim())))
-                    .filter(|(_, v)| !v.is_empty() && !tokens.contains(&colour_key(v)))
-                    .map(|(name, v)| format!("{name} {v}"))
-                    .collect()
-            })
+            .map(|colors| colors.iter().filter_map(|(name, v)| v.as_str().map(|v| (name, v.trim()))).filter(|(_, v)| !v.is_empty()).collect())
             .unwrap_or_default();
-        if !missing.is_empty() {
+        let (found, missing): (Vec<_>, Vec<_>) = declared.iter().partition(|(_, v)| tokens.contains(&colour_key(v)));
+        let missing: Vec<String> = missing.iter().map(|(name, v)| format!("{name} {v}")).collect();
+        // Not one declared colour found means the two are written differently (hex over rgb(), #fff over #ffffff), not
+        // that every colour drifted: say nothing rather than flag them all on every boot.
+        if !found.is_empty() && !missing.is_empty() {
             out.push(finding(
                 "design-md-color-drift",
                 "DESIGN.md",
@@ -603,6 +601,10 @@ mod tests {
         assert_eq!(ids, ["design-md-dead-path", "design-md-color-drift"]);
         assert_eq!(found[0].summary, "DESIGN.md names files that no longer exist: `src/Card.tsx`, `src/nav/Nav.astro`.");
         assert_eq!(found[1].summary, "DESIGN.md declares a colour the token files it names no longer contain: `gold #d4af37`.");
+        // Written another way throughout (hex declared, rgb() in the tokens): no colour is found, so nothing is said.
+        write(&root, "styles/tokens.css", ":root { --brand: rgb(200 85 43); --ink: lab(20 0 0); --mist: lab(96 1 2); }\n");
+        let ids: Vec<String> = check_design_drift(Some(&path), &root).into_iter().map(|f| f.id).collect();
+        assert_eq!(ids, ["design-md-dead-path"]);
         // The map holds: no finding.
         write(&root, "src/Card.tsx", "export {};\n");
         write(&root, "src/nav/Nav.astro", "");
