@@ -2459,10 +2459,10 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   doesn't offer it yet`), or when the answer isn't `version: 1` with a
   `places` list.
 - The setup lines are at most four: `Connected: ...` (places `on`, and
-  `quiet` marked so), `Not connected yet: ...` (`off`, and `needs-pro`
-  marked `(Pro)`), the agent place's `fix.line` when the service sets one
+  `quiet` marked so), `Not connected yet: ...` (`off`; a `needs-pro` place
+  is left out while Pro isn't on sale), the agent place's `fix.line` when the service sets one
   (what a machine reported, such as an unfinished change), and
-  `Next: <label>[: <command>]`, or `Next: <label>:` with the https url alone on the next line, from the service's `next`. The places print in the service's order under the names
+  `Next: <label>[: <command>]`, or `Next: <label>:` with the https url alone on the next line, from the service's `next` (never an `upgrade` step). The places print in the service's order under the names
   Your agent, Agent tools, Loop, Chrome extension and GitHub pull requests;
   an unknown kind prints as sent, and an `unavailable` place or an unknown
   state is left out. The CLI never computes a next step and never rewrites a
@@ -3393,3 +3393,7 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   write, personas, Taste, journeys, `artifacts:write`) only when the service's
   metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in
   made before the service listed a scope signs in again on the next `login`.
+
+## Pro before it's on sale (17 Nov 2026)
+
+Until Pro is on sale, the CLI names Pro only to an account that has it. An account without Pro gets no Pro or pricing line: none from `login`, `whoami` or install's sign-in offer, no `Pro rules are off: this account doesn't include them` line on a scan, no `needs-pro` place and no `upgrade` next step among the setup lines. A world that needs Pro still says so when someone asks for it.

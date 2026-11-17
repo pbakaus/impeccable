@@ -163,12 +163,12 @@ fn whoami_shows_what_the_plan_includes_and_falls_back_without_the_catalog() {
     assert!(text.contains("Pro rules: included."), "{text}");
     // The account is named, and a non-production service shows its host.
     assert!(text.starts_with("Signed in to Impeccable (127.0.0.1:"), "{text}");
-    // Pro gets no pricing pointer; an account without Pro gets the one live page (launch CTA audit).
     assert!(!text.contains("impeccable.style/pricing"), "{text}");
+    // Pro isn't on sale yet: an account without it hears nothing about it (Paul, 17 Nov).
     fake.knobs.lock().unwrap().entitled = false;
     let out = impeccable(&env, &["whoami"]).output().unwrap();
     let free = String::from_utf8_lossy(&out.stdout);
-    assert!(free.ends_with("See impeccable.style/pricing\n"), "{free}");
+    assert!(!free.contains("Pro") && !free.contains("pricing"), "{free}");
     fake.knobs.lock().unwrap().entitled = true;
 
     let catalog = serde_json::json!({
@@ -331,7 +331,7 @@ fn login_and_status_draw_the_services_setup_read_for_this_project() {
     assert_eq!(out, "", "stdout carries the link alone");
     assert!(err.contains(
         "Connected: Your agent.\n\
-         Not connected yet: Agent tools, Loop, Chrome extension (Pro), GitHub pull requests.\n\
+         Not connected yet: Agent tools, Loop, GitHub pull requests.\n\
          Next: Add to GitHub:\n\
          https://github.com/apps/impeccable-critique/installations/new\n"
     ), "{err}");
