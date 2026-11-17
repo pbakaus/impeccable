@@ -512,10 +512,12 @@ function currentUrlOf() {
 
 function fieldReads(point, noSecrets = false) {
   const doc = globalThis.document;
-  const read = (el) => {
+  const secret = (el) => el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => el.getAttribute(a) ?? "").join(" "));
+  const holds = (el) => secret(el) || Array.from(el.shadowRoot?.querySelectorAll?.("*") ?? []).some((inner) => holds(inner));
+  const read = (el, through = []) => {
     if (!el)
       return null;
-    if (noSecrets && (el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || el.tagName === "INPUT" && /^(?:text)?$/i.test(el.getAttribute("type") ?? "") && ((said) => /passw|pwd/i.test(said) && !/mail/i.test(said))(["name", "id", "placeholder", "aria-label"].map((a) => el.getAttribute(a) ?? "").join(" "))))
+    if (noSecrets && [...through, el].some(holds))
       return null;
     if (typeof el.value === "string")
       return el.value;
@@ -523,7 +525,25 @@ function fieldReads(point, noSecrets = false) {
       return el.textContent ?? "";
     return null;
   };
-  const focused = read(doc.activeElement);
+  const through = [];
+  let at = doc.activeElement ?? null;
+  for (;; ) {
+    let inner = null;
+    if (at?.shadowRoot?.activeElement)
+      inner = at.shadowRoot;
+    else if (at && (at.tagName === "IFRAME" || at.tagName === "FRAME")) {
+      try {
+        inner = at.contentDocument ?? null;
+      } catch {
+        inner = null;
+      }
+    }
+    if (!at || !inner?.activeElement)
+      break;
+    through.push(at);
+    at = inner.activeElement;
+  }
+  const focused = read(at, through);
   if (focused !== null)
     return focused;
   const under = point && doc.elementFromPoint ? doc.elementFromPoint(point.x, point.y) : null;
@@ -1595,7 +1615,7 @@ function coverSecrets(on, forMs) {
   const spot = "data-impeccable-secret-spot";
   const named = ["name", "id", "placeholder", "aria-label"];
   const fields = `input[type="password" i], [${seen}], input:is([type="text" i], :not([type])):is(${named.flatMap((a) => ["passw", "pwd"].map((w) => `[${a}*="${w}" i]`)).join(", ")}):not(${named.map((a) => `[${a}*="mail" i]`).join(", ")}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
-  const rule = `${fields} { ${mark}: 1; filter: brightness(0) !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }`;
+  const rule = `@layer secret-cover { ${fields} { ${mark}: 1; filter: brightness(0) !important; background-color: #000 !important; box-shadow: inset 0 0 0 100vmax #000 !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; } }`;
   const g = globalThis;
   const ours = (sheet) => {
     try {
@@ -1710,4 +1730,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'a20c61410a3bf5d1';
+export const HASH = '976dcfc2b4e81870';
