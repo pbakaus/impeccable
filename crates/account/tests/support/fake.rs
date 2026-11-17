@@ -86,6 +86,8 @@ pub struct Record {
     pub designs: Vec<serde_json::Value>,
     /// The query of each browser landing on Your setup.
     pub setup_landings: Vec<String>,
+    /// The query of each `GET /cli/v1/agents`.
+    pub agents_reads: Vec<String>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
@@ -294,6 +296,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .or_default() += 1;
     if path == "/app/-/setup" {
         record.lock().unwrap().setup_landings.push(query.to_string());
+    }
+    if path == "/cli/v1/agents" {
+        record.lock().unwrap().agents_reads.push(query.to_string());
     }
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));

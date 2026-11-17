@@ -440,6 +440,20 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     std::fs::create_dir_all(&outside).unwrap();
     assert!(impeccable(&env, &["switches-refresh", "--now"]).current_dir(&outside).status().unwrap().success());
     assert!(on().ends_with(": wide, voice"), "{}", on());
+    // A repository's refresh sends its key; one outside any repository sends none.
+    let reads = fake.record.lock().unwrap().agents_reads.clone();
+    assert!(reads.first().is_some_and(|q| q.starts_with("repo=") && q.len() == 5 + 64), "{reads:?}");
+    assert_eq!(reads.last().map(String::as_str), Some(""), "{reads:?}");
+    // A notice arriving while another refresh runs waits its turn and still fetches.
+    let lock = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]).join("switches.lock");
+    std::fs::write(&lock, "").unwrap();
+    let before = fake.hits("/cli/v1/agents");
+    let mut waiting = impeccable(&env, &["switches-refresh", "--now"]).current_dir(&outside).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    assert_eq!(fake.hits("/cli/v1/agents"), before, "it waited");
+    std::fs::remove_file(&lock).unwrap();
+    assert!(waiting.wait().unwrap().success());
+    assert_eq!(fake.hits("/cli/v1/agents"), before + 1);
 }
 
 #[test]

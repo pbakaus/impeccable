@@ -137,7 +137,17 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
         return 0;
     }
     let Ok(account) = Account::from_env(&io.env) else { return 0 };
-    let Some(_worker) = worker_lock(&account) else { return 0 };
+    // A change notice (`--now`) must not be lost to a refresh already under way, which may
+    // have fetched before the change: it waits its turn (up to 15 s), then fetches again.
+    let now = args.iter().any(|a| a == "--now");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let _worker = loop {
+        match worker_lock(&account) {
+            Some(held) => break held,
+            None if now && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(200)),
+            None => return 0,
+        }
+    };
     let repo = repo(&io.cwd);
     let Some(mut link) = impeccable_account::switches::Link::open(io) else { return 0 };
     let Some(remote) = link.fetch(repo.as_deref()) else { return 0 };
