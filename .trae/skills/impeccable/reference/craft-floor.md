@@ -4,7 +4,7 @@ Load this after the direction is settled, and build without announcing the check
 
 ## Verify
 
-Each of these is a check on the built result, not an intention. Run them together in each batched look at the render, not as separate screenshot trips; the checks share one render.
+Each of these is a check on the built result, not an intention. Run them together in each batched look at the render (on the web, one `.trae/skills/impeccable/scripts/impeccable shot <page or url>`), not as separate screenshot trips; the checks share one render.
 
 - **Contrast:** body and placeholder text ≥4.5:1, large text ≥3:1. On colored surfaces tint secondary text from that hue or the foreground; never gray.
 - **Depth:** shadows carry an offset and a soft blur. A zero-offset colored halo is decoration.
