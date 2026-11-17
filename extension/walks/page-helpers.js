@@ -10,11 +10,17 @@ function clickByText(wanted, opts) {
   const doc = w.document;
   const norm = (s) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
   const stop = ["the", "a", "an", "button", "link", "in", "on", "header", "footer", "nav", "menu", "at", "top", "of", "to"];
+  const carts = (x) => /^(?:baskets?|bags?|carts?|trolleys?)$/.test(x) ? "(?:baskets?|bags?|carts?|trolleys?)" : x;
   const spoken = norm(wanted).split(" "), nextTo = / (?:next to|beside) /.test(` ${spoken.join(" ")} `);
-  const real = spoken.filter((x, i) => stop.indexOf(x) === -1 && !(x === "next" && spoken[i + 1] === "to"));
+  const lookAt = spoken.findIndex((x, i) => i > 0 && /^(?:for|under|in|inside|within|on|of)$/.test(x) && spoken.slice(0, i).some((y) => stop.indexOf(y) === -1));
+  const looks = (i) => (lookAt === -1 || i < lookAt) && /^(?:white|black|grey|gray|blue|red|green|yellow|orange|pink|purple|brown|beige|navy|silver|gold)$/.test(spoken[i]);
+  const lookOnly = /\b(?:buttons?|btn|icons?)\b/i.test(wanted) && !/\b(?:swatch(?:es)?|colou?rs?|options?|variants?|shades?)\b/i.test(wanted) && spoken.some((x, i) => !looks(i) && (lookAt === -1 || i < lookAt) && stop.indexOf(x) === -1);
+  const said = lookOnly ? spoken.map((x, i) => looks(i) ? "" : x) : spoken;
+  const real = said.filter((x, i) => x !== "" && stop.indexOf(x) === -1 && !(x === "next" && said[i + 1] === "to"));
   const wantsBeside = nextTo || /\b(?:icons?|arrows?|carets?|chevrons?|plus|minus)\b/i.test(wanted);
   const wantsMenu = /\b(?:hamburger|burger|menu (?:button|icon|toggle)|nav(?:igation)? (?:toggle|button|icon|menu)|toggle navigation)\b/i.test(wanted);
   const words = real.length > 0 || wantsMenu ? real : spoken.filter((x) => !/^(?:the|a|an|in|on|at|of|to)$/.test(x));
+  const placeOnly = new Set(lookAt === -1 ? [] : spoken.slice(lookAt + 1).filter((x) => said.indexOf(x) === -1 || said.indexOf(x) > lookAt));
   if (words.length === 0 && !wantsMenu)
     return null;
   const modals = Array.prototype.slice.call(doc.querySelectorAll(':modal, [role="dialog"][aria-modal="true"], [role="alertdialog"][aria-modal="true"]')).filter((el) => {
@@ -114,6 +120,8 @@ function clickByText(wanted, opts) {
   const wantsButton = /\b(?:buttons?|btn)\b/i.test(wanted);
   const wantsTick = /\b(?:circles?|checkbox(?:es)?|check ?marks?|ticks?|tick ?box(?:es)?|radio(?: button)?s?)\b/i.test(wanted);
   const isTick = (el) => /^(?:checkbox|radio|switch|menuitemcheckbox|menuitemradio)$/.test(el.getAttribute("role") ?? "") || el.tagName.toLowerCase() === "input" && /^(?:checkbox|radio)$/.test(el.getAttribute("type") ?? "");
+  const wantsSwatch = /\b(?:swatch(?:es)?|colou?r (?:option|choice|dot|circle)s?)\b/i.test(wanted);
+  const isChoice = (el) => /^(?:radio|option|menuitemradio)$/.test(el.getAttribute("role") ?? "") || el.tagName.toLowerCase() === "input" && el.getAttribute("type") === "radio" && el.getBoundingClientRect().width >= 2 || !/^(?:label|input)$/.test(el.tagName.toLowerCase()) && el.closest?.("label")?.control?.getAttribute("type") === "radio";
   const rowOf = (el) => {
     if (norm(`${el.innerText || el.textContent || ""}`) || isTick(el) && !wantsTick)
       return "";
@@ -165,8 +173,8 @@ function clickByText(wanted, opts) {
     let score = 0;
     let chrome = false;
     for (const x of words)
-      if (new RegExp(`(?:^|\\s)${x}(?:\\s|$)`).test(text))
-        score += 1;
+      if (new RegExp(`(?:^|\\s)${carts(x)}(?:\\s|$)`).test(text))
+        score += placeOnly.has(x) ? 0.5 : 1;
     if (score === 0)
       continue;
     const nameWords = label.split(" ").filter((x) => stop.indexOf(x) === -1), extra = words.filter((x) => !SHAPE.test(x) && ` ${text} `.indexOf(` ${x} `) === -1);
@@ -197,7 +205,7 @@ function clickByText(wanted, opts) {
       score += 2;
     if (wantsSlider && isSlider(el))
       score += 2;
-    if (wantsButton && isButton(el) || wantsIcon && !norm(`${el.innerText || el.textContent || ""}`) || wantsTick && isTick(el))
+    if (wantsButton && isButton(el) || wantsIcon && !norm(`${el.innerText || el.textContent || ""}`) || wantsTick && isTick(el) || wantsSwatch && isChoice(el))
       score += 1.5;
     const inView = rect.bottom > 0 && rect.top < w.innerHeight;
     if (inView)
@@ -241,10 +249,10 @@ function clickByText(wanted, opts) {
       ambiguous = true;
     best = pool.reduce((a, n) => n.score > a.score || n.score === a.score && n.text.length < a.text.length ? n : a);
   }
-  const prep = spoken.findIndex((x, i) => i > 0 && /^(?:for|under|in|inside|within|on|of)$/.test(x) && spoken.slice(0, i).some((y) => stop.indexOf(y) === -1));
+  const prep = lookAt;
   const tail = prep === -1 ? [] : spoken.slice(prep + 1).filter((x) => stop.indexOf(x) === -1 && !SHAPE.test(x));
-  const head = (prep === -1 ? spoken : spoken.slice(0, prep)).filter((x) => stop.indexOf(x) === -1 && !SHAPE.test(x));
-  const hits = (label) => head.filter((x) => ` ${label} `.indexOf(` ${x} `) !== -1).join(" ");
+  const head = (prep === -1 ? said : said.slice(0, prep)).filter((x) => x !== "" && stop.indexOf(x) === -1 && !SHAPE.test(x));
+  const hits = (label) => head.filter((x) => new RegExp(`(?:^|\\s)${carts(x)}(?:\\s|$)`).test(label)).join(" ");
   const bestLabel = best && scored.has(best.el) ? scored.get(best.el).label : "", bestHits = bestLabel ? hits(bestLabel) : "";
   const partial = bestHits.split(" ").length < head.length;
   const sort = bestHits ? tail.length > 0 || several === 0 ? bestHits : "" : tail.length > 0 ? [...scored.values()].map((s) => hits(s.label)).reduce((a, h) => h && (!a || h.split(" ").length > a.split(" ").length) ? h : a, "") : "";
@@ -1679,4 +1687,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '50fcef1b0b3ce198';
+export const HASH = '19e63a579dd7b3ae';
