@@ -175,6 +175,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
         "doctor" => impeccable_context::run_doctor(rest, io),
+        "design-compact" => impeccable_context::run_design_compact(rest, io),
         "concept-seed" => impeccable_context::run_concept_seed(rest, io),
         "telemetry" => impeccable_context::run_telemetry(rest, io),
         "generate-image" => impeccable_context::run_generate_image(rest, io),
@@ -186,6 +187,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         ),
         // comp-fidelity verbs (crates/comp-verbs over crates/comp)
         "first-viewport" => crate::first_viewport::run(rest, io),
+        "shot" => crate::shot::run(rest, io),
         "comp-spec" => impeccable_comp_verbs::run_comp_spec(rest, io),
         "comp-diff" => impeccable_comp_verbs::run_comp_diff(rest, io),
         "font-match" => {
@@ -238,7 +240,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             impeccable_hook::run_hook_before_edit_with_pack(rest, io, engines.html, pack.rule_pack)
         }
         "hooks" | "hook-admin" => impeccable_hook::run_hook_admin(rest, io),
-        v if v.starts_with("live") => impeccable_live::run(v, rest, io),
+        // A successful variant accept records the prototyping session (REN-1917), after its result is out.
+        v if v.starts_with("live") => impeccable_live::run_with_accepted(v, rest, io, &mut |io, a| {
+            impeccable_account::prototypes::after_accept(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms))
+        }),
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
         v if impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy()) => {
@@ -548,12 +553,14 @@ const KNOWN_VERBS: &[&str] = &[
     "signals",
     "context-signals",
     "doctor",
+    "design-compact",
     "concept-seed",
     "telemetry",
     "generate-image",
     "serve-question",
     "component-review",
     "first-viewport",
+    "shot",
     "comp-spec",
     "comp-diff",
     "font-match",

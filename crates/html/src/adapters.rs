@@ -29,7 +29,7 @@ use impeccable_core::checks::measures::{
     GptBorderShadowRowTree, OversizedH1Input, StyleMap, ICON_MAX_PX,
 };
 use impeccable_core::checks::rules::{
-    check_borders, check_colors_deduped_shaped, check_glow, check_hero_eyebrow, check_hover_contrast,
+    check_colors_deduped_shaped, check_glow, check_hero_eyebrow, check_hover_contrast,
     check_icon_tile, check_italic_serif, check_kicker_above_heading, check_motion,
     check_placeholder_colors, check_stripe_child, is_close_letter_text, is_emoji_only_text,
     is_glyph_only_text, is_heading_tag, is_icon_ligature_text, is_rounded_away_from_side,
@@ -643,7 +643,7 @@ pub fn check_element_borders(
     } else {
         None
     };
-    check_borders(
+    impeccable_core::checks::side_bar::check_borders_with_side_bars(
         tag,
         &widths,
         &colors,
@@ -657,7 +657,20 @@ pub fn check_element_borders(
             // radius only, so it leaves the circle test unread.
             box_size,
         },
+        static_is_typographic(el),
     )
+}
+
+/// Whether a static element is a quote or a code line
+/// ([`impeccable_core::checks::side_bar::is_typographic_box`]).
+pub fn static_is_typographic(el: &StaticElement<'_>) -> bool {
+    let mut tags = Vec::new();
+    let mut at = Some(*el);
+    while let Some(e) = at.filter(|_| tags.len() < 12) {
+        tags.push(e.tag_lower());
+        at = e.parent_element();
+    }
+    impeccable_core::checks::side_bar::is_typographic_box(el.class_name(), tags.iter().map(String::as_str))
 }
 
 /// The element's `color`, custom properties resolved first as the colour

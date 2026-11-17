@@ -52,8 +52,15 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
 
 /// One elapsed-time budget for this contents upload, separate from health.
 const UPLOAD_BUDGET: Duration = Duration::from_secs(2);
+
+/// The budget contains git's answers, so a test that raises git's deadline
+/// raises it to match (`health::test_git_deadline`, REN-2117).
+fn upload_budget() -> Duration {
+    super::test_git_deadline().map_or(UPLOAD_BUDGET, |git| git.max(UPLOAD_BUDGET))
+}
+
 fn remaining(started: std::time::Instant) -> Option<Duration> {
-    UPLOAD_BUDGET
+    upload_budget()
         .checked_sub(started.elapsed())
         .filter(|d| !d.is_zero())
 }
@@ -62,7 +69,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let started = std::time::Instant::now();
     let env = io.env.clone();
     let Some(local) =
-        crate::session::read_within(UPLOAD_BUDGET, move || Local::read(&env)).flatten()
+        crate::session::read_within(upload_budget(), move || Local::read(&env)).flatten()
     else {
         return;
     };

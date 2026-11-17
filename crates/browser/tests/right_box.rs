@@ -98,7 +98,7 @@ fn assert_cases(found: &[(String, String)], flag: &[&str], pass: &[&str], rule: 
 }
 
 #[test]
-fn a_thin_stripe_is_read_against_the_far_corners() {
+fn a_thin_stripe_names_the_far_corners_and_a_hairline_needs_any_radius() {
     let Some(engine) = engine() else { return };
     let port = serve();
     let mut found = findings(&engine, port, "side-tab-far-corners.html", "side-tab");
@@ -106,6 +106,8 @@ fn a_thin_stripe_is_read_against_the_far_corners() {
     assert_eq!(
         found,
         vec![
+            ("border-left: 1px + border-radius: 12px".to_string(), "div.card.flag-hairline-rounded-along-stripe".to_string()),
+            ("border-left: 1px + border-radius: 2px".to_string(), "div.card.flag-hairline-small-far-corner".to_string()),
             ("border-left: 2px + border-radius: 12px".to_string(), "div.card.flag-left-far-rounded".to_string()),
             ("border-left: 2px + border-radius: 6px".to_string(), "div.card.flag-left-uneven-far".to_string()),
             ("border-left: 4px".to_string(), "div.card.flag-left-wide-far-rounded".to_string()),

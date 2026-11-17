@@ -180,10 +180,21 @@ fn cli_url_runs_browser_hook() {
         use std::io::{Read, Write};
         while !stop.load(std::sync::atomic::Ordering::Relaxed) {
             if let Ok((mut stream, _)) = listener.accept() {
+                // On Windows an accepted socket inherits the listener's non-blocking
+                // mode: the read returned before the request arrived, and closing with
+                // it unread reset the connection (ERR_CONNECTION_ABORTED, REN-2117).
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(std::time::Duration::from_secs(1)))
                     .unwrap();
-                let _ = stream.read(&mut [0; 4096]);
+                let mut request = Vec::new();
+                let mut chunk = [0; 4096];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => request.extend_from_slice(&chunk[..n]),
+                    }
+                }
                 let body = "<!doctype html><html><body><p>PACK_MARKER</p></body></html>";
                 let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
             } else {
