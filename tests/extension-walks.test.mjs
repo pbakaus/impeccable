@@ -951,22 +951,25 @@ describe('walk worker', () => {
   }
 
   // The page's own `!important` rules can't show a filled field: each field's own style says it, important, and is put
-  // back as it was.
+  // back as it was, also where a frame's run and the run of the page round it both reach it.
   it('blanks a sign-in page’s fields through their own style, and puts it back', () => {
     const style = (init) => {
       const props = new Map(Object.entries(init));
       return { props, setProperty(prop, value, priority = '') { props.set(prop, [value, priority]); }, removeProperty(prop) { props.delete(prop); }, getPropertyValue: (prop) => props.get(prop)?.[0] ?? '', getPropertyPriority: (prop) => props.get(prop)?.[1] ?? '' };
     };
-    const field = (value, init = {}, autofill = false) => ({ value, isContentEditable: false, style: style(init), hasAttribute: () => true, getAttribute: () => 'x', matches: (sel) => autofill && sel === ':-webkit-autofill' });
+    const field = (value, init = {}, autofill = false) => {
+      const attrs = new Map([['style', 'x']]);
+      return { value, isContentEditable: false, style: style(init), hasAttribute: (n) => attrs.has(n), getAttribute: (n) => attrs.get(n) ?? null, setAttribute: (n, v) => attrs.set(n, String(v)), removeAttribute: (n) => attrs.delete(n), matches: (sel) => autofill && sel === ':-webkit-autofill' };
+    };
     const [typed, empty, autofilled] = [field('dana@example.com'), field('', { color: ['red', ''] }), field('', {}, true)];
     class Sheet { cssRules = []; insertRule(rule) { this.cssRules.push({ cssText: rule }); } }
     const document = { adoptedStyleSheets: [], querySelectorAll: (sel) => (sel === '*' ? [] : [typed, empty, autofilled]) };
-    const page = vm.createContext({ CSSStyleSheet: Sheet, setTimeout: () => 0, clearTimeout() {}, document });
+    const [page, frame] = [0, 1].map(() => vm.createContext({ CSSStyleSheet: Sheet, setTimeout: () => 0, clearTimeout() {}, document }));
     const of = (f) => Object.fromEntries([...f.style.props].map(([prop, [value, priority]]) => [prop, `${value}${priority ? ' !' : ''}`]));
-    assert.equal(vm.runInContext(`(${blankFields})(true, 0)`, page), 3);
+    for (const world of [page, frame]) assert.equal(vm.runInContext(`(${blankFields})(true, 0)`, world), 3);
     assert.deepEqual([of(typed).filter, of(typed)['-webkit-text-fill-color'], of(empty).filter, of(empty).color, of(autofilled).filter], ['brightness(0) !', 'transparent !', undefined, 'transparent !', 'brightness(0) !']);
-    vm.runInContext(`(${blankFields})(false)`, page);
-    assert.deepEqual([of(typed), of(empty), of(autofilled), document.adoptedStyleSheets.length], [{}, { color: 'red' }, {}, 0]);
+    for (const world of [page, frame]) vm.runInContext(`(${blankFields})(false)`, world);
+    assert.deepEqual([of(typed), of(empty), of(autofilled), [typed, empty, autofilled].some((f) => f.hasAttribute('data-impeccable-still-blank')), document.adoptedStyleSheets.length], [{}, { color: 'red' }, {}, false, 0]);
   });
 
   it('tells the other end again when the person’s pause becomes a sign-in pause', async () => {

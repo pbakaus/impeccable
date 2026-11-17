@@ -771,16 +771,25 @@ let stills = 0;
  * Run by the extension in a frame, for the one still of a sign-in page: what every field one types in holds drawn
  * blank, and a field already filled (typed, remembered, or filled in by Chrome, which shows a value no script reads) a
  * solid box, through shadow roots, closed ones too. Set on each field's own style as important, which no rule of the
- * site's, layered or not, outweighs; its placeholder still shows. `on` false puts each field's own style back, as it
- * comes off by itself after `forMs`. How many fields it saw.
+ * site's, layered or not, outweighs, and in a sheet beside it for a field that comes or a style the page rewrites
+ * meanwhile; its placeholder still shows. A field another world of this page already blanked (a frame's own run, and
+ * the run of the page round it) is that one's to put back. `on` false puts each field's own style back, as it comes off
+ * by itself after `forMs`. How many fields it saw.
  */
 function blankFields(on, forMs) {
   const mark = '--still-blank';
   const typed = 'input:not([type="hidden" i], [type="checkbox" i], [type="radio" i], [type="submit" i], [type="button" i], [type="reset" i], [type="image" i], [type="file" i], [type="range" i], [type="color" i]), textarea, [contenteditable]:not([contenteditable="false" i])';
+  const blanked = 'data-impeccable-still-blank';
   const text = { color: 'transparent', '-webkit-text-fill-color': 'transparent', 'text-shadow': 'none', 'caret-color': 'transparent' };
   const box = { filter: 'brightness(0)', 'box-shadow': 'inset 0 0 0 100vmax #000' };
-  // A placeholder is drawn in its own colour, never the field's: a pseudo-element no field's own style reaches.
-  const placeholder = `:is(${typed})::placeholder { ${mark}: 1; -webkit-text-fill-color: currentcolor !important; }`;
+  const css = (props) => Object.entries(props).map(([prop, value]) => `${prop}: ${value} !important;`).join(' ');
+  const rules = [
+    `:is(${typed}) { ${mark}: 1; ${css(text)} }`,
+    // A placeholder is drawn in its own colour, never the field's: a pseudo-element no field's own style reaches.
+    `:is(${typed})::placeholder { -webkit-text-fill-color: currentcolor !important; }`,
+    `:is(${typed})[${blanked}="filled"] { ${css(box)} }`,
+    `:is(${typed}):-webkit-autofill { ${css(box)} }`,
+  ];
   // Each field's own style as it was, to put back: kept in this frame's world between the two runs.
   const kept = (globalThis[Symbol.for('still-blank-kept')] ??= new Map());
   const ours = (sheet) => { try { return sheet.cssRules[0]?.cssText.includes(mark) === true; } catch { return false; } };
@@ -795,14 +804,16 @@ function blankFields(on, forMs) {
     if (on) {
       if (others.length === root.adoptedStyleSheets.length) {
         const sheet = new Made();
-        try { sheet.insertRule(placeholder); } catch { /* a selector this Chrome lacks */ }
+        for (const rule of rules) { try { sheet.insertRule(rule, sheet.cssRules.length); } catch { /* a selector this Chrome lacks */ } }
         root.adoptedStyleSheets = [...others, sheet];
       }
       for (const field of root.querySelectorAll(typed)) {
         seen += 1;
+        if (!kept.has(field) && field.hasAttribute(blanked)) continue;
         const filled = field.isContentEditable ? field.textContent.trim() : field.value || autofilled(field);
         const props = filled ? { ...text, ...box } : text;
         const was = kept.get(field) ?? { styled: field.hasAttribute('style'), props: {} };
+        field.setAttribute(blanked, filled ? 'filled' : '');
         for (const [prop, value] of Object.entries(props)) {
           if (!(prop in was.props)) was.props[prop] = [field.style.getPropertyValue(prop), field.style.getPropertyPriority(prop)];
           field.style.setProperty(prop, value, 'important');
@@ -828,6 +839,7 @@ function blankFields(on, forMs) {
         else field.style.removeProperty(prop);
       }
       if (!styled && field.getAttribute('style') === '') field.removeAttribute('style');
+      field.removeAttribute(blanked);
     }
     kept.clear();
   };
