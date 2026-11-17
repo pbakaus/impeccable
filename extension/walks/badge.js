@@ -193,10 +193,11 @@ let badge = null;
 /** Why the badge is out of sight right now: a film under way, and pictures being taken or points pressed. A new one for each walk. */
 let veil = { film: false, shots: 0 };
 /**
- * Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see.
+ * Hidden only from a walk that is walking: paused or in the person's hands, the badge and its Stop are theirs to see,
+ * but for the moment of the one still of a sign-in page the walk takes as it pauses there (control.js `stillAtSignIn`).
  * So is a question, film or not: a walk from the terminal films its steps, and the panel may not be open.
  */
-const hidden = () => (veil.film || veil.shots > 0) && current().state === 'walking' && !current().ask;
+const hidden = () => (veil.film || veil.shots > 0) && (current().state === 'walking' || (veil.shots > 0 && current().state === 'paused' && current().held === 'sign-in')) && !current().ask;
 let pressed = () => undefined;
 /** What a press on the badge does: it names the control, `stop` or `resume`. */
 export function whenPressed(act) { pressed = act; }
