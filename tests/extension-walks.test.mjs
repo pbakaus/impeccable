@@ -321,6 +321,8 @@ describe('walk lookout', () => {
     // Catches a field named password let through because its label names an email.
     ['a text field named password whose label names an email, holding one', doc({ passwords: [field({ name: 'password', 'aria-label': 'Password for your email account', value: 'x' })] }), { password: true, maybe: true, focus: null }],
     ['a page signed in with an email field', page(form(field({ type: 'email' }))), { password: false, focus: null }],
+    // Catches an ordinary page paused as a sign-in: a number field named for a password (a generator's length).
+    ['a number field named for a password, holding a length', doc({ passwords: [field({ type: 'number', name: 'password_length', value: '20' })] }), { password: false, focus: null }],
     // Catches an email field that names a password held past Continue: the walk would never type the email.
     ['an email field to reset a password, holding one', doc({ passwords: [field({ placeholder: 'Email to reset your password', value: 'dana@example.com' })] }), { password: true, maybe: true, focus: null }],
     ['focus on a shown password (a text field marked current-password)', doc({ active: field({ autocomplete: 'current-password' }) }), { password: false, focus: 'password' }],
@@ -369,6 +371,8 @@ describe('walk lookout', () => {
     ['a password a button swapped while empty beside a filled name, then typed into', 'beside', false, { filled: false, marked: true }],
     ['a text field named for a password a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password' }],
     ['a text field named user[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'user[password]' }],
+    // Catches a swap hidden by an email field named for a password mounted with it (Forgot password?): no fewer fields.
+    ['a password a button swapped while a reset email field mounts beside it', 'forgot', true, { filled: false, marked: true }],
     ['a text field named password_reset[password] a button swapped for a bare one', true, true, { filled: false, marked: true }, {}, { type: 'text', name: 'password_reset[password]' }],
     ['a company typed once the password field beside it was hidden', 'hide', true, { filled: false, marked: false }, { name: 'company' }],
   ]) {
@@ -382,6 +386,7 @@ describe('walk lookout', () => {
       else if (swap === 'next') fields.splice(0, 2, field({ name: 'first-name' }), text);
       else if (swap === 'line') fields.splice(1, 1, text, { tagName: 'SMALL' });
       else if (swap === 'gone') fields.splice(1, 1) && fields.unshift(text);
+      else if (swap === 'forgot') (fields[1] = text) && fields.push(Object.assign(field({ type: 'email', placeholder: 'Email to reset your password' }), { form: text.form, parentElement: text.form }));
       else if (swap === 'hide') (fields[1] = Object.assign(field({ type: 'password', 'data-impeccable-secret-field': '' }, 0), { form: text.form })) && fields.push(text);
       else if (swap) fields[1] = text;
       else fields.push(text);

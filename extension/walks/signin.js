@@ -82,10 +82,9 @@ export function lookInPage() {
   const MARK = 'data-impeccable-secret-field';
   const NAMED = ['name', 'id', 'placeholder', 'aria-label'];
   const kind = (f) => String(f.type).toLowerCase();
-  // A field the browser takes text in: any type but these (an empty, unknown or padded one is text, as the browser has it).
-  const OTHER = ['checkbox', 'radio', 'button', 'submit', 'hidden', 'file', 'range', 'color', 'image', 'reset', 'date', 'datetime-local', 'month', 'time', 'week'];
-  const textual = (input) => !OTHER.includes(kind(input));
-  const named = (input) => textual(input) && NAMED.some((name) => /passw|pwd/i.test(input.getAttribute?.(name) ?? ''));
+  // Plain text by the browser's own type (an empty, unknown or padded one is text): an email, number or search field
+  // named for a password is no sign-in.
+  const named = (input) => kind(input) === 'text' && NAMED.some((name) => /passw|pwd/i.test(input.getAttribute?.(name) ?? ''));
   const SECRET = ['current-password', 'new-password', 'one-time-code'];
   const secret = (input) => kind(input) === 'password' || input.getAttribute?.(MARK) != null || String(input.getAttribute?.('autocomplete') ?? '').toLowerCase().split(/\s+/).some((token) => SECRET.includes(token));
   // A "show password" button that swaps in a new text field instead, as the cover marks it: the boxes round each
@@ -119,7 +118,7 @@ export function lookInPage() {
       // One gone: any filled field may be the one swapped in. One only hidden: a shown clone, beside it or holding what it holds.
       const hidden = all.filter((f) => counts(f) && !shown(f));
       const clone = (f) => hidden.some((h) => h.parentElement === f.parentElement || (Boolean(h.value) && h.value === f.value));
-      for (const f of all) if (textual(f) && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null && (gone || clone(f))) f.setAttribute(MAYBE, '');
+      for (const f of all) if (kind(f) === 'text' && f.value && shown(f) && !account(f) && f.getAttribute(MARK) === null && (gone || clone(f))) f.setAttribute(MAYBE, '');
     }
     for (const field of inputs(root)) {
       if (!counts(field)) continue;
