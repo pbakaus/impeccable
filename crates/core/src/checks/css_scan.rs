@@ -1880,6 +1880,31 @@ impl<'a> CssHostIndex<'a> {
             .collect()
     }
 
+    /// Whether the rule whose selector starts at `pos` (a byte offset into
+    /// the comment-blanked text) styles a box its tied rules round at all,
+    /// any radius above zero: what a side bar under 2px needs
+    /// ([`crate::checks::side_bar`]). The rules tied to `.it` round
+    /// `.it[aria-pressed]`, `.it:hover` and `.it.is-active`. A host the index
+    /// cannot name is not known to be rounded.
+    pub fn is_rule_rounded(&self, pos: usize, selector: &str) -> bool {
+        self.hosts_at(pos, selector)
+            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a declaration at `pos`,
+    /// a byte offset into the text the index was built on.
+    pub fn is_declaration_rounded(&self, pos: usize) -> bool {
+        self.declaration_hosts(pos)
+            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding
+    /// from the text this index was built on.
+    pub fn side_bar_on_rounded_host(&self, finding: &PatternFinding) -> bool {
+        let pos = self.content_offset(finding.index.unwrap_or(0));
+        self.is_rule_rounded(pos, finding.selector.as_deref().unwrap_or(""))
+    }
+
     /// Whether a CSS-text finding from the text this index was built on
     /// survives the rounded-card gate. Anything but a
     /// `side-tab` stripe passes untouched.

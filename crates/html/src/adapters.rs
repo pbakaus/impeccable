@@ -29,7 +29,7 @@ use impeccable_core::checks::measures::{
     GptBorderShadowRowTree, OversizedH1Input, StyleMap, ICON_MAX_PX,
 };
 use impeccable_core::checks::rules::{
-    check_borders, check_colors_deduped_shaped, check_glow, check_hero_eyebrow, check_hover_contrast,
+    check_colors_deduped_shaped, check_glow, check_hero_eyebrow, check_hover_contrast,
     check_icon_tile, check_italic_serif, check_kicker_above_heading, check_motion,
     check_placeholder_colors, check_stripe_child, is_close_letter_text, is_emoji_only_text,
     is_glyph_only_text, is_heading_tag, is_icon_ligature_text, is_rounded_away_from_side,
@@ -643,7 +643,7 @@ pub fn check_element_borders(
     } else {
         None
     };
-    check_borders(
+    impeccable_core::checks::side_bar::check_borders_with_side_bars(
         tag,
         &widths,
         &colors,

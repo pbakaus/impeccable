@@ -405,13 +405,30 @@ fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
 }
 
 /// JS: css-cascade.mjs#applyStaticDeclaration(specified, node, prop, value, meta)
-pub fn apply_static_declaration<K: Hash + Eq>(
+pub fn apply_static_declaration<K: Hash + Eq + Clone>(
     specified: &mut SpecifiedStore<K>,
     node: K,
     prop: &str,
     value: &str,
     meta: &DeclMeta,
 ) {
+    // A logical inline border is the physical side it lands on in a
+    // left-to-right page: `border-inline-start` is `border-left`.
+    let lower = js::to_lower_case(prop);
+    for (logical, physical) in [
+        ("border-inline-start", &["border-left"][..]),
+        ("border-inline-end", &["border-right"][..]),
+        ("border-inline", &["border-left", "border-right"][..]),
+    ] {
+        if let Some(rest) = lower.strip_prefix(logical) {
+            if matches!(rest, "" | "-width" | "-style" | "-color") {
+                for side in physical {
+                    apply_static_declaration(specified, node.clone(), &format!("{side}{rest}"), value, meta);
+                }
+                return;
+            }
+        }
+    }
     let map = specified.map.entry(node).or_default();
     let mut expanded: Vec<(String, String, bool)> = expand_static_declaration(prop, value)
         .into_iter()

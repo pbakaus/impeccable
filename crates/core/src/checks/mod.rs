@@ -60,6 +60,7 @@ pub mod html_patterns;
 pub mod measures;
 pub mod row_stripe;
 pub mod rules;
+pub mod side_bar;
 pub mod sampled_contrast;
 pub mod text_context;
 pub mod text_rules;

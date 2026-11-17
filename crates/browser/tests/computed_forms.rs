@@ -129,12 +129,51 @@ fn a_side_border_on_a_status_row_or_cell_is_a_side_tab() {
     let snippets: Vec<&str> = found.iter().map(|(snippet, _)| snippet.as_str()).collect();
     for expected in [
         "border-left 3px stripe on a row or cell (left edge)",
-        "border-left 2px stripe on a row or cell (left edge)",
+        "border-left: 2px",
     ] {
         assert!(snippets.iter().any(|s| s.contains(expected)), "missing {expected} in {snippets:#?}");
     }
     for silent in ["td.bounded", "is-void"] {
         assert!(!snippets.iter().any(|s| s.contains(silent)), "unexpected {silent} in {snippets:#?}");
     }
-    assert_eq!(found.len(), 8, "{snippets:#?}");
+    assert_eq!(found.len(), 12, "{snippets:#?}");
+}
+
+/// `side-tab-every-variant.html`: every side bar form reads off the rendered
+/// box, square at 2px and up, rounded at 1px, in any state and colour; a
+/// square hairline, a frame, a transparent edge, a square band, a focus ring
+/// and a table's grid line pass.
+#[test]
+fn every_side_bar_variant_is_a_side_tab() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let found = findings(&engine, port, "side-tab-every-variant.html", "side-tab");
+    for id in [
+        "#flag-border-square",
+        "#flag-hairline-rounded",
+        "#flag-inline-start-neutral",
+        "#flag-inset-not",
+        "#flag-inset-hover",
+        "#flag-inset-selected",
+        "#flag-before",
+        "#flag-after",
+        "#flag-split",
+        "#flag-text-colour",
+        "#flag-quote",
+        "#flag-input",
+        "#flag-pressed",
+    ] {
+        assert!(found.iter().any(|(_, s)| s == id), "missing {id} in {found:#?}");
+    }
+    for id in [
+        "#pass-hairline-square",
+        "#pass-inset-hairline-square",
+        "#pass-full-border",
+        "#pass-transparent",
+        "#pass-band-square",
+        "#pass-focus",
+        "#pass-grid",
+    ] {
+        assert!(!found.iter().any(|(_, s)| s.starts_with(id)), "unexpected {id} in {found:#?}");
+    }
 }
