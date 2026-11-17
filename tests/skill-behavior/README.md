@@ -425,7 +425,7 @@ results remain the completed measurements.
 |---|---|---|
 | 1 | empty workspace | runs `impeccable context`; loads `reference/init.md` before implementation; automation is not an init bypass |
 | 2 | PRODUCT.md only | runs `impeccable context` 1-3 times; loads `reference/new-work.md` to resolve visual authority, establish a world when needed, and develop the surface |
-| 3 | PRODUCT.md + DESIGN.md | runs `impeccable context` 1-3 times; receives the committed design system and loads `reference/new-work.md` for the task-scoped concept |
+| 3 | PRODUCT.md + DESIGN.md | runs `impeccable context` 1-3 times; receives the committed design system (as written, or for a DESIGN.md over 1,600 bytes as its map, with PRODUCT.md as whole sections up to the budget, REN-2129; Setup tells the agent to read the full file's sections the task needs) and loads `reference/new-work.md` for the task-scoped concept |
 | 4 | PRODUCT.md + DESIGN.md, context already loaded in turn 1 | turn 2 does **not** re-run `impeccable context` |
 | 5 | PRODUCT.md without the legacy `## Register` field and no DESIGN.md | runs `impeccable context`; greenfield craft loads `reference/new-work.md`, not init, to establish the missing world |
 | 6 | PRODUCT.md + DESIGN.md + a minimal `index.html`; prompt is `/impeccable polish` | loads `reference/polish.md` |
@@ -553,6 +553,22 @@ Scenario 19 on this branch, all four cases, one run each on 2026-09-09:
 documentation case also passes with main's unchanged `SKILL.src.md` and
 `init.md` plus this test file, so the coverage is the test, not a skill-text
 change.
+
+### Retried launcher before the notice (2026-11-17)
+
+By November the documentation case failed on claude-sonnet-5. The agent retried
+`impeccable context` once, sometimes with a no-op change such as `2>&1` or
+`--target`, and only then sent the notice. On `next` it passed 2 of 10 runs.
+Restoring only `## Setup` to its 9 Sep text passed 3 of 3. Restoring only step
+2's pre-split-playbook sentence (77651617a) also passed 3 of 3. Restoring the
+craft-floor clause (719a8fa94) passed 1 of 2 valid runs, and restoring the
+context-map parenthetical (4ef4a04fe) passed 2 of 3.
+
+The fix opens the fallback with "On the first refusal or failure, don't retry"
+and pays for it by dropping a redundant clause from step 2. The documentation
+case passed 5 of 5 alone, and failed once with a `--target` retry in one full
+scenario 19 run. That run's planning case failed on the older `polish.md` gap
+(#744). These are small samples on one model.
 
 ## Workflow-advice assertion fix (2026-09-24)
 

@@ -7494,3 +7494,45 @@ New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to
 ## Recorded 2026-11-14: two cases from main take the `detect --changed` detector line
 
 `context-taste-ready` and `context-seeded-world-starter-css-with-product` arrived from main after this branch changed the `MANUAL_DETECTOR_REQUIRED` line to name `detect --json --changed`. Both were re-recorded from the branch binary and reviewed by hand: only that one stdout line changes in each; exit, stderr and files are unchanged.
+
+## Recorded 2026-11-16: `context` carries a long DESIGN.md as a map and a long PRODUCT.md as whole sections
+
+A PRODUCT.md or DESIGN.md longer than 1,600 bytes is no longer pasted in full or replaced by `DOCUMENT_NOT_INLINED`. DESIGN.md arrives under `# DESIGN.md (map; full file: <path>)` as a map built by fixed code (frontmatter name, colours and font families, the North Star, each named rule's first sentence, each Do and Don't lead, mentioned files that exist, and a `Full:` line); PRODUCT.md arrives under `# PRODUCT.md (sections; full file: <path>)` as whole sections up to the budget (the title and first section, then the anti-references, then the rest in order while they fit), the names of the sections left out, and a `Full:` line (`docs/CLI-CONTRACT.md`, `context`, **Long documents**). Files within the budget are carried as written, so every other `context` golden is unchanged. Re-recorded from the binary and reviewed by hand.
+
+- `context-full-oversized-design`: the padded DESIGN.md (no frontmatter, rules or bullets) now reads `# DESIGN.md (map; full file: DESIGN.md)` and `Full: DESIGN.md (read a section when you need its detail)` in place of the `DOCUMENT_NOT_INLINED` pointer. Every other byte, the exit code and the files are unchanged.
+- `context-full-long-product` (new): a 2.3 KB PRODUCT.md is carried as its title, schema stamp, `## Platform` and `## Anti-references` sections, then `More sections: Users.` and the `Full:` line; the rest of the boot matches `context-full`.
+
+## Recorded 2026-11-16: `side-tab` reads every side bar, square from 2px and rounded at any width
+
+A left or right bar (a one-sided border, an x-only inset box-shadow, a full-height `::before` / `::after`) is `side-tab` on any box from 2px and on a box rounded at any corner at any width, whatever state its selector styles and whatever its colour (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). Re-recorded from the binary and reviewed by hand with a decoded diff of every finding: no rule other than `side-tab` moved in any case, every finding added is a side bar of 2px or more or a 1px bar on a box with a radius above zero, and no hairline on a square box, frame or table grid line was added. Several older fixtures keep square, neutral, state and thin-on-rounded bars in their should-pass columns from the old rounded-card gate; those now report, as the decision asks.
+
+- `detect-fixture-{json,text}-astro-inset-shadow-stripe-astro`: the square, neutral (black, gray, dimgray, shorthand hex), current-colour, selected-state and 2px inset edges report.
+- `detect-fixture-{json,text}-border-baseline-html`, `-modern-color-borders-html`, `-named-color-borders-html`, `-linked-stylesheet-html`: square bars of 3px or more and 1px bars on rounded cards report; snippets keep the `border-left: Npx[ + border-radius: Rpx]` wording.
+- `detect-fixture-{json,text}-external-styles-css`: a neutral 4px left border reports.
+- `detect-fixture-{json,text}-pseudo-stripe-{css,html,vue}`: pseudo-element bars on square hosts, a neutral divider bar, a bar under a rounded stripe side, a timeline rail and a blockquote bar report.
+- `detect-fixture-{json,text}-side-accent-flat-vue`, `-side-accent-markup-square-{svelte,vue}`, `-side-accent-nested-{sass,scss,tsx}`, `-side-accent-producers-{css,html,jsx}`, `-side-accent-square-sheet-css`: square side accents in every producer report (the markup-square and square-sheet cases now exit 2).
+- `detect-fixture-{json,text}-side-tab-far-corners-html`: the thin cases are 1px now; a 1px bar on a box rounded along it or at one small far corner reports, a 1px bar on a square box or on corners with no vertical radius does not.
+- `detect-fixture-{json,text}-side-tab-status-rows-{html,svelte}`: selected, hover (read without its `:hover` in the static engine), neutral-token, data-state-selected and selected-wrapper rows report; the rounded row card reports from the row scan; the BEM row's logical border also reports as `border-left: 2px` from the borders check.
+- `detect-fixture-{json,text}-side-tab-stylesheet-forms-html`: square stylesheet forms report.
+- `detect-fixture-{json,text}-side-tab-every-variant-{html,css,svelte}` (new): every variant flags (a hover-only and a focus-within bar among them) and every control passes (a square hairline, a frame with a hairline of another colour on one side, a transparent edge, a CSS caret, a square band, a focus outline, a `td + td` grid line), including the pressed nav button whose radius sits on its base rule.
+- `legitimate-borders.html` lost the quote, nav, input, timeline and code-diff sections (they are side bars now and live in `side-tab-every-variant.html`); `should-pass.html`'s thin right border is 1px. Neither golden moved.
+
+## Recorded 2026-11-16: a square quote rule or code gutter is typography; the side-tab description names the fix
+
+A quote's rule (a `blockquote`, a box whose class names a quote) and a code line's gutter (inside a `pre`, `code` or `blockquote`, or a class naming a diff, a gutter or line numbers) on a square box are typography, not a side tab; rounded, they still report at any width (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). The `side-tab` description now reads "A bar down one side of a box. Use a full border, a background tint, or a leading icon or label instead." in place of the old "use a subtler accent" text. The description was replaced in place in every golden that carried it; replayed against the binary, every one of those cases matched except the six below, which were re-recorded from the binary and reviewed by hand (only these `side-tab` findings move):
+
+- `detect-fixture-{json,text}-pseudo-stripe-html`: `blockquote::before` (a 4px rule on a square quote) no longer reports.
+- `detect-fixture-{json,text}-side-tab-every-variant-html`: the square quote moved to the passing controls (with a square diff gutter inside `pre`); the new rounded quote reports `border-left: 3px + border-radius: 8px`.
+- `detect-fixture-{json,text}-side-tab-every-variant-css`: a rounded `.f-quote-rounded` reports; a square `blockquote` rule and `pre .diff-add` gutter pass; the pressed nav item moves down a line.
+- `legitimate-borders.html` has its blockquote and code-diff sections back; its golden did not move (still no findings).
+
+## Recorded 2026-11-17: design drift is what DESIGN.md contradicts, not a commit count (REN-2129)
+
+`design-md-drift` counted commits under the visual source directories since DESIGN.md last changed; a count is a
+suspicion, not a contradiction. Two structural findings replace it: `design-md-dead-path` (a file DESIGN.md names is
+gone) and `design-md-color-drift` (a frontmatter colour none of the token files it names still contains). Dead paths also
+reach `context`'s CONTEXT_STALE through the boot findings (existence checks only); colour drift reads the token
+files, so only `doctor` runs it.
+
+- `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
+  `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.

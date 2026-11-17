@@ -37,6 +37,22 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
 /// Each git question (top level, remote, branch).
 const GIT_DEADLINE: Duration = Duration::from_secs(2);
+
+/// [`GIT_DEADLINE`], unless a test raises it (see [`test_git_deadline`]).
+fn git_deadline() -> Duration {
+    test_git_deadline().unwrap_or(GIT_DEADLINE)
+}
+
+/// `IMPECCABLE_TEST_GIT_DEADLINE_MS`, set only by tests: a loaded CI runner has
+/// taken over 2 s to answer a git question (REN-2117). It lifts git's deadline
+/// and the DESIGN.md upload budget that contains those questions.
+fn test_git_deadline() -> Option<Duration> {
+    std::env::var("IMPECCABLE_TEST_GIT_DEADLINE_MS")
+        .ok()
+        .and_then(|ms| ms.parse().ok())
+        .map(Duration::from_millis)
+}
+
 /// How long a change to `health.json` waits for one in another process.
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
@@ -307,7 +323,7 @@ pub fn repo_top(dir: &str) -> Option<String> {
 /// [`repo_top`], telling a git that didn't answer in time (`Err`) from a folder
 /// outside any repository (`Ok(None)`).
 pub fn repo_top_in_time(dir: &str) -> Result<Option<String>, ()> {
-    git_run(dir, &["rev-parse", "--show-toplevel"], GIT_DEADLINE)
+    git_run(dir, &["rev-parse", "--show-toplevel"], git_deadline())
 }
 
 /// Remember that the repository at `root` had its sign-in scan.
@@ -605,10 +621,10 @@ impl Repo {
     }
 }
 
-/// One short git question, given at most [`GIT_DEADLINE`] and never
+/// One short git question, given at most [`git_deadline`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
-    git_with_timeout(dir, args, GIT_DEADLINE)
+    git_with_timeout(dir, args, git_deadline())
 }
 
 /// The repository at `root` as the service keys it (SHA-256 of its normalized origin, as every upload sends) and

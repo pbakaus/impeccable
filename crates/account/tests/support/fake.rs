@@ -75,6 +75,8 @@ pub struct Record {
     pub scans: Vec<serde_json::Value>,
     pub foundations: Vec<serde_json::Value>,
     pub critiques: Vec<serde_json::Value>,
+    /// Each prototype record, as `POST /cli/v1/prototypes` parsed it.
+    pub prototypes: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
@@ -84,6 +86,8 @@ pub struct Record {
     pub designs: Vec<serde_json::Value>,
     /// The query of each browser landing on Your setup.
     pub setup_landings: Vec<String>,
+    /// The query of each `GET /cli/v1/agents`.
+    pub agents_reads: Vec<String>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
@@ -215,6 +219,11 @@ impl Fake {
                 "file".to_string(),
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
+            // A loaded Windows runner has taken over git's 2 s to answer (REN-2117).
+            (
+                "IMPECCABLE_TEST_GIT_DEADLINE_MS".to_string(),
+                "15000".to_string(),
+            ),
             // Windows allows the file backend only inside the user profile.
             (
                 "USERPROFILE".to_string(),
@@ -287,6 +296,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .or_default() += 1;
     if path == "/app/-/setup" {
         record.lock().unwrap().setup_landings.push(query.to_string());
+    }
+    if path == "/cli/v1/agents" {
+        record.lock().unwrap().agents_reads.push(query.to_string());
     }
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
@@ -577,7 +589,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     }
                 }
             }
-            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget") => {
+            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget" | "/cli/v1/prototypes") => {
                 let k = knobs.lock().unwrap();
                 if !k.critiques {
                     (404, vec![], vec![])
@@ -595,6 +607,18 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (403, vec![], vec![])
                 } else if path.ends_with("/forget") {
                     json(200, serde_json::json!({"forgot": 1}))
+                } else if path.ends_with("/prototypes") {
+                    // As the service parses it: these keys only, nothing of the variants.
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let o = v.as_object().unwrap();
+                    assert!(o.keys().all(|k| ["prototypeId", "target", "repoKey", "variants", "createdAt"].contains(&k.as_str())), "{v}");
+                    assert_eq!(v["prototypeId"].as_str().unwrap().split('-').map(str::len).collect::<Vec<_>>(), [8, 4, 4, 4, 12]);
+                    assert!((1..=24).contains(&v["variants"].as_u64().unwrap()));
+                    assert!(v["createdAt"].as_str().unwrap().ends_with('Z'));
+                    let mut r = record.lock().unwrap();
+                    let repeat = r.prototypes.iter().any(|p| p["prototypeId"] == v["prototypeId"]);
+                    r.prototypes.push(v);
+                    json(200, serde_json::json!({"outcome": if repeat { "repeat" } else { "recorded" }}))
                 } else {
                     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
                     let allowed = [

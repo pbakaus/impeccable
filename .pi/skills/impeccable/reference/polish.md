@@ -19,7 +19,7 @@ Fix the cause at the narrowest correct level. Ask when a binding system principl
 
 ## 2. Gather the evidence
 
-Use the feature yourself at the surface's representative sizes: desktop and mobile on the web; on a native platform (`ios` / `android` / `adaptive`), the shipped device classes on the simulator, emulator, or hardware, captured per the platform reference's Verifying the build section. Determine:
+Use the feature yourself at the surface's representative sizes: desktop and mobile on the web (`.pi/skills/impeccable/scripts/impeccable shot <page or url>` captures both); on a native platform (`ios` / `android` / `adaptive`), the shipped device classes on the simulator, emulator, or hardware, captured per the platform reference's Verifying the build section. Determine:
 
 - whether the path is functionally complete;
 - the intended quality bar and time available;

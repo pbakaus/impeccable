@@ -334,7 +334,7 @@ Example (non-TTY):
 
 /abs/a.css
   line 3: [side-tab] .card — border-left: 4px solid #6366f1
-    → Thick colored border on one side of a card — ...
+    → A bar down one side of a box. Use a full border, a background tint, or a leading icon or label instead.
 
 1 anti-pattern found.
 
@@ -546,6 +546,8 @@ Scans a page of an app that is already running (Electron, NW.js, CEF, WebView2, 
 - Tests: `crates/browser/tests/cdp_attach.rs` (a headless Chrome the test launches, attached to as an outside client).
 
 #### Static and regex engines (only what affects the contract)
+
+- **`side-tab` reads every side bar** (all engines and the in-page bundle; decision 2026-11-16, `crates/core/src/checks/side_bar.rs`). A side bar is a left or right edge: a border on one inline side (`border-left`, `border-right`, `border-inline-start`, `border-inline-end`, at least 1px, every other side drawing nothing, or a 1px hairline under a bar of 2px or more, or a side at most half its width), an inset box-shadow layer offset along x alone with no blur and no spread, 1px to 12px, or an absolutely positioned `::before` / `::after` 1px to 12px wide against the left or right edge (`left: 0`, `right: 0`, the `inset` shorthand, `inset-inline*`) spanning the box's height (`top: 0; bottom: 0`, `inset-block: 0`, `height: 100%`, or top and bottom within 20px; in the URL engine at least half the box's height and within 44px of it). It reports on any box from 2px, and at any width on a box rounded at any corner, whether the radius is the bar rule's own or another rule's for the same element (`.it { border-radius: 6px }` rounds `.it[aria-pressed='true']`, `.it:hover` and `.it.is-active`). The state a selector styles (hover, focus, pressed, selected, current, active) and the bar's colour (an accent, a neutral, `currentColor`, a token that does not resolve) do not matter; a colour under 10% alpha or a transparent keyword paints nothing. A radius the engine cannot read (an unresolved `var()`, `calc()`, an unread stylesheet) is not known to round the box, so a 1px bar there stays silent. A bar in a hover or focus state reports on the elements its selector names with that state left out (static and URL engines). On a square box, a quote's rule and a code line's gutter are typography, not tabs: a `blockquote`, a box whose class names a quote (`quote`, `pullquote`), a box inside a `pre`, `code` or `blockquote`, or one whose class names a diff, a gutter or line numbers (the text engine reads the same off the rule's selector or the markup tag); rounded, they report at any width. Not side bars: a border on every side (a 1px bar beside a top or bottom border, in the same rule or a rule for the same element, belongs to that frame), a CSS triangle (a side drawn beside a transparent one, or a box declared `width: 0` / `height: 0`), a 1px hairline on a square box, a table's `tr`, `td` and `th` (their borders are grid lines; a status stripe on a row or cell is read by the row scan, which now counts selection, hover and current-item states and any colour that paints, and leaves out a cell placed by its siblings, `td + td`), `hr`, a circle's one-sided border (an arc), and outlines. Tags the older border check exempted (`a`, `button`, `li`, `span`, `input`, `blockquote`, `nav`, `pre`, `code`) and ancestors it skipped (a nav, a quote, a code block, a tab or selected item, a status region) carry side bars too. Top and bottom bands keep their rule (3px to 12px, an accent, a card rounded away from the band). The static engine reads `border-inline-start` / `-end` as the left and right border of a left-to-right page. The text engine's border matchers no longer need a radius in reach for 2px and up, and a declaration in a rule whose subject is a table row or cell is left to the row scan. Finding snippets keep their wording.
 
 - **`flat-type-hierarchy` is advisory when weight separates the roles** (Rust engine, corpus decision r4-p23-flat-type-hierarchy-commerce; static HTML and URL engines, which read computed weights). The rule reads each sampled element's computed `font-weight` (`normal` 400, `bold` 700, a number as itself); when at least four in five heading samples are set at least 200 heavier than the body samples' most common weight, the finding keeps reporting with `severity: 'advisory'` and its snippet's parenthesis ends `; weight separates headings from body text)`. Otherwise it reports as before. The static engine's cascade has no user-agent stylesheet, so a heading with no declared weight reads 400 there, where the URL engine reads the browser's bold.
 
@@ -852,11 +854,15 @@ followed by a single `\n`. Overwrites (one brief per slug).
      **No PRODUCT.md** branch, parts in order:
      - if `hasVisualImplementation`: four parts: `NO_PRODUCT_MD: This project has no PRODUCT.md yet, but it does have an incumbent visual implementation. For \`init\`, \`teach\`, \`shape\`, or any request to create a new surface or replacement visual world, load reference/init.md and create PRODUCT.md with the user first. After init writes PRODUCT.md, reference/new-work.md preserves and documents the incumbent system for an extension or replaces it with the user for a redesign/rebrand. Other narrow refinement commands may read the CSS, tokens, components, and assets and proceed without blocking, then offer \`${IMPECCABLE_COMMAND} init\` as a follow-up.` ; `BUILD_INIT_REQUIRED: Before shape or any new-surface/redesign flow, init must capture PRODUCT.md with the human or structured simulated user. Init writes product truth only; reference/new-work.md owns every visual decision.` ; `SCOPED_EXISTING_ALLOWED: Narrow refinement commands may use the incumbent implementation as authority without blocking on context setup; they must preserve it and offer init afterward.` ; `EXISTING_VISUAL_SYSTEM: For refinement or extension, code and assets are incumbent design authority and missing DESIGN.md is a documentation gap. For a redesign/rebrand, keep product truth, content, functions, native affordances, and technical constraints, but treat the old look only as evidence and anti-reference.`
      - else two parts: `NO_PRODUCT_MD: This project has no PRODUCT.md yet. For \`init\`, \`teach\`, \`shape\`, or wording that clearly maps to a from-scratch build/shape flow, load reference/init.md, complete its human or structured simulated-user interview, and write PRODUCT.md before designing. If no answer mechanism truly exists, init may infer only from the explicit brief and must label its assumptions. It never writes DESIGN.md. For any other (scoped) command against existing code, proceed using the code as context and offer \`${IMPECCABLE_COMMAND} init\` as a suggestion (do not block).` ; `PRODUCT_INIT_REQUIRED: No product context or visual authority was found. New builds and redesigns must finish reference/init.md for PRODUCT.md, then reference/new-work.md establishes the world and surface. Scoped fixes to existing code do not need the new-surface flow.`
-     - `# DESIGN.md\n\n<design.trim()>` if design present
+     - the DESIGN.md part (see **Long documents**) if design present
      - surface-brief part (below)
      - `RESOLVED_CONTEXT:\n<JSON>` (below)
      - `MANUAL_DETECTOR_REQUIRED` (cond.), `IMAGE_GEN_AVAILABLE` (cond.), `BUILD_PATH_DEFAULT` (cond.), `AUTONOMY_DIRECTIVE_CHECK` (always), `SUBAGENT_AUTHORIZATION` (always), `MONOREPO_TARGET_REQUIRED` (cond.), `IMAGE_TOOLS` (always), `CONTEXT_STALE` (cond.), `UPDATE_AVAILABLE` (cond.). Then `process.exit(0)`.
-     **PRODUCT.md** branch, in order: `# PRODUCT.md\n\n<product.trim()>`; `# DESIGN.md\n\n...` if present; surface-brief part; RESOLVED_CONTEXT; MANUAL_DETECTOR_REQUIRED; IMAGE_GEN_AVAILABLE; BUILD_PATH_DEFAULT; AUTONOMY_DIRECTIVE_CHECK; SUBAGENT_AUTHORIZATION; MONOREPO_TARGET_REQUIRED (cond.); if no DESIGN.md: `INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. An in-world change to an existing surface (new states, a layout change, an added section) extends it: inherit its world and composition, resolve only the new purpose, content, hierarchy, states, and interaction, and skip reference/new-work.md. Load reference/new-work.md only for shape, a whole new surface, or a redesign that replaces the world: a new surface documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.` (visual) or `WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.`; native reference parts, one per file: `# NATIVE PLATFORM REFERENCE: IOS (reference/ios.md)\n\n<content.trim()>` and/or `...ANDROID (reference/android.md)...` (`ios` -> ios; `android` -> android; `adaptive` -> ios then android; missing file skipped silently); IMAGE_TOOLS; CONTEXT_STALE (cond.); if platform unrecognized (extractPlatform null but a raw `## Platform` value exists): `WARNING: PRODUCT.md's \`## Platform\` value \`<raw>\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`; UPDATE_AVAILABLE (cond.). Natural exit 0.
+     **PRODUCT.md** branch, in order: the PRODUCT.md part; the DESIGN.md part if present (both per **Long documents**); surface-brief part; RESOLVED_CONTEXT; MANUAL_DETECTOR_REQUIRED; IMAGE_GEN_AVAILABLE; BUILD_PATH_DEFAULT; AUTONOMY_DIRECTIVE_CHECK; SUBAGENT_AUTHORIZATION; MONOREPO_TARGET_REQUIRED (cond.); if no DESIGN.md: `INCUMBENT_WORLD_UNDOCUMENTED: PRODUCT.md exists and DESIGN.md is missing, but code contains incumbent visual decisions. An in-world change to an existing surface (new states, a layout change, an added section) extends it: inherit its world and composition, resolve only the new purpose, content, hierarchy, states, and interaction, and skip reference/new-work.md. Load reference/new-work.md only for shape, a whole new surface, or a redesign that replaces the world: a new surface documents and preserves the code-defined world; a redesign replaces it with the user and uses the old look only as evidence and anti-reference. Narrow refinement commands may proceed using the implementation directly.` (visual) or `WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.`; native reference parts, one per file: `# NATIVE PLATFORM REFERENCE: IOS (reference/ios.md)\n\n<content.trim()>` and/or `...ANDROID (reference/android.md)...` (`ios` -> ios; `android` -> android; `adaptive` -> ios then android; missing file skipped silently); IMAGE_TOOLS; CONTEXT_STALE (cond.); if platform unrecognized (extractPlatform null but a raw `## Platform` value exists): `WARNING: PRODUCT.md's \`## Platform\` value \`<raw>\` is not recognized; treating the project as \`web\`. Valid values are \`web\`, \`ios\`, \`android\`, or \`adaptive\` (cross-platform, ships both). If this project is native, fix the field (name the design language the app renders, not the toolchain) and surface it to the user.`; UPDATE_AVAILABLE (cond.). Natural exit 0.
+     **Long documents**: a PRODUCT.md or DESIGN.md whose trimmed text is at most 1,600 bytes is carried as written, `# PRODUCT.md\n\n<product.trim()>` / `# DESIGN.md\n\n<design.trim()>`. A longer one is never inlined in full and never becomes `DOCUMENT_NOT_INLINED`:
+     - DESIGN.md becomes `# DESIGN.md (map; full file: <designPath>)\n\n<map>`, a map built by fixed code (`crates/context/src/design_map.rs`), one item per line: `Name: <name>`, `World: <world>`, `Colors: <name> <value>, ...` (cut near 240 bytes with ` (+N more in the frontmatter)`; when `.impeccable/design.json` beside DESIGN.md gives roles in `extensions.colorMeta`, `Colors: <role>: <name> <value>; ...` instead, the first colour of each role in the order primary, secondary, tertiary, surface, neutral, accent, state, then other roles, then each role's further colours, each with its frontmatter value or else the sidecar's `canonical`, cut near 200 bytes with ` (+N more in the sidecar)`), `Fonts: <first family> (<roles>); ...`, `Spacing: <name> <value>, ...` and `Radius: <name> <value>, ...` (from `spacing` and `rounded`, each cut near 200 bytes the same way) from the frontmatter; `North Star: <text>` from a `North Star:` line; a `Reference image:` line as written; `Rules:` with each bold lead ending in `Rule` plus its first sentence; `Elevation:` with each bold-led bullet under a heading that names shadow, elevation or depth (and its subheadings), as `<name>: <value>` when a backticked value follows the name (also in parentheses, as `document` writes `(`box-shadow: <value>`)`, without the `box-shadow:`), else its first sentence; `Don't:` and `Do:` with each bullet's first sentence (bullets under a `Do` / `Don't` / `Do Not` heading, or starting with `Do`, `Don't`, `Do not`); `Map: <path>` for up to 8 relative paths the file names in backticks or link targets that exist beside DESIGN.md; then `Full: <designPath> (read a section when you need its detail)`. Over 2,400 bytes (the map's own cap) the lists drop their last items, in this order: the Do list, to none (then left out); the Elevation items without a value; Rules; the Elevation values; then Don't; each of the last three keeps at least one and ends with `- (+N more)` for what it dropped; every line is at most 280 bytes (cut with `...`), and a map still over the cap keeps whole lines up to it and then the `Full:` line. The file itself is never changed.
+     - PRODUCT.md becomes `# PRODUCT.md (sections; full file: <productPath>)\n\n<sections>`: whole sections, in the file's order, chosen as the title and first \`## \` section (always), then the first section whose heading contains "anti-reference", then the rest in order while the chosen sections total at most 1,600 bytes. When the title and first section alone pass 3,200 bytes, the text is cut at the last line break within 3,200 bytes and ends `\n(cut here; the rest is in the full file)`. Then `\n\nMore sections: <names of the sections left out>.` when any are, then `\nFull: <productPath> (read a section when you need its detail)`. The same for every command.
+     - Surface briefs and native references keep the output budget below.
      **Output budget**: while the joined output would exceed 24,000 characters, the largest part whose size grows with the project takes its compact form. A document part (PRODUCT.md, DESIGN.md, the surface brief, or a native reference) becomes `<its heading>\n\nDOCUMENT_NOT_INLINED: <path> (<N> characters) ...`, a pointer telling the agent to read the file in full and not rerun `context`; `SURFACE_CONTEXT_AVAILABLE` and `RESOLVED_CONTEXT` replace their candidate list with `<N> candidates omitted for size; run \`<surface-brief cmd> list <projectRoot>\` to see every persisted brief` (the project root, shell-quoted like the launcher path, steers `list` to the same app) (in `RESOLVED_CONTEXT`, as the string value of `surfaceBriefCandidates`). Output under the budget is unchanged.
 
   Directive texts:
@@ -908,7 +914,9 @@ The user-facing sentence is fixed, like `UPDATE_AVAILABLE`'s: the findings thems
 Any exception in collection -> directive silently omitted.
 
 Tier 2 (`staleness-deep.mjs`, doctor only):
-- `checkDesignDrift({designPath, projectRoot, threshold=25})`: git (5 s timeout, stdout only) `rev-parse --is-inside-work-tree`; `log -1 --format=%H -- <relDesign>` (none -> []); dirs = existing of `src app pages components site styles public`; count lines of `log --oneline <hash>..HEAD -- <dirs>`; `>= 25` -> `design-md-drift` (route) with `%ad --date=short` date.
+- `check_design_dead_paths(design, designPath, projectRoot)` (also a boot finding, so it reaches CONTEXT_STALE): the files DESIGN.md names (backticked paths and link targets that contain `/`, not globs, a link's `#…`/`?…` cut off), resolved beside DESIGN.md; any missing -> `design-md-dead-path` (route), naming up to 5 and counting the rest. Existence checks only; it reads no file.
+- `check_design_colour_drift(design, designPath, projectRoot)` (doctor only): the named files that exist and are token files (`.css .scss .sass .less`, or `.json .js .ts .mjs .cjs .mts` whose name contains token/theme/tailwind/design) are read; each frontmatter `colors` value is looked for in them, compared lower-case, without whitespace, a leading `0.` as `.`, and short hex spelled out. Reported as `design-md-color-drift` (route) only when at least one declared colour is found and some are not.
+- `check_sprawl(design, designPath)` (doctor only): DESIGN.md longer than 1.6 KB -> `design-md-sprawl` (route), naming `impeccable design-compact`.
 - `checkDesignCoverage({design, designPath, parseDesignMd})`: seed marker `<!-- SEED: established with the user before implementation; re-run /impeccable document once there's code to capture the actual tokens and components. -->` (or `$impeccable`) -> required `colors, typography`; else `colors, typography, components`; missing = section null AND frontmatter[section] has no non-empty string leaf (empty `[]`/`{}` strings don't count; booleans/numbers don't count) -> `design-md-coverage` (mention).
 - `checkDetectorIgnores({projectRoot, knownRuleIds})`: per config file: `detector.ignoreRules` lowercased/trimmed, not `*`, not in registry -> `detector-ignore-rules-unknown` (mention; skipped when registry null); `detector.ignoreFiles` entries without `*` and not existing -> `detector-ignore-files-missing` (mention).
 - `checkHookInstallation({projectRoot, repoRoot, providerId})`: manifests per provider (same table as context); commands containing a marker; script token extraction: double-quoted path first, `'\''` -> unparseable (skip), single-quoted, else bare token `/([^\s"'|&;()]*skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs)/`; resolution: `$(`/backtick -> skip; `${CLAUDE_PROJECT_DIR}` -> root; any other `${VAR}`/`$VAR` -> skip; relative -> join(root). Missing -> `hook-script-missing` (mention). If any manifest installed and any config has `hook.enabled === false` -> `hook-enabled-conflict` (mention, returns after first). It also checks the provider's user-level manifest (Claude `~/.claude/settings.json`; Codex and agents the same `$CODEX_HOME/hooks.json` or `~/.codex/hooks.json` file context reads); a missing launcher there gets the fix `impeccable update --user` for Claude, and a by-hand fix for Codex and agents, whose `update --user` writes project hooks and never repoints a launcher entry in the home file. Provider `cursor` only: a manifest whose `hooks.preToolUse` still runs an Impeccable hook (the retired before-edit gate, either spelling) -> `cursor-hook-pre-edit-gate` (auto, path the manifest, summary `<rel> still runs the design hook as Cursor's \`preToolUse\` write gate, which is retired. Cursor now runs it after each edit on \`postToolUse\` and hands the findings to the agent as context.`, fix ``Move the entry to `postToolUse`: `impeccable doctor --fix`, `impeccable hooks on`, or the next `impeccable update` does it.``). It is emitted before any `hook-script-missing` for the same manifest.
@@ -924,7 +932,7 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 - **CLI args / flags**: `--json`, `--fix`, `--help`/`-h`, `--target <p>` (strict parse of remaining args; combinable). `--help` wins over everything and runs no checks. Malformed `--target` -> stderr message, exit 1.
 - **Env vars read**: everything `loadContext` reads (`IMPECCABLE_CONTEXT_DIR`); no update/staleness caches are touched (doctor does not call the notice layer or the update check).
 - **Inputs**: `loadContext(cwd, targetOptions)`; `resolveTargetSelection(cwd, targetOptions)` for workspace candidates (non-null only at a monorepo root without --target), without its UI-signal filter, so every workspace is swept; `.impeccable/config.json`/`config.local.json` at repoRoot for `projectRoots`; git; hook manifests; the detector registry (`<scripts>/detector/detect-antipatterns.mjs` or `<scripts>/../../cli/engine/detect-antipatterns.mjs`).
-- **Findings order**: checkProduct; checkNativePlatformEvidence (if product); checkDesignSidecar; checkDesignDrift; checkDesignCoverage; checkConfig; checkBuildPathUnset; checkDetectorIgnores; checkSurfaceBriefs; checkHookNotInstalled; checkHookInstallation (providerId = built provider); checkLegacyLiveState; checkProjectRoots (patterns from repoRoot configs, candidates = workspace candidates); workspace findings.
+- **Findings order**: checkProduct; checkNativePlatformEvidence (if product); checkDesignSidecar; design-md-dead-path; design-md-color-drift; design-md-sprawl; checkDesignCoverage; checkConfig; checkBuildPathUnset; checkDetectorIgnores; checkSurfaceBriefs; checkHookNotInstalled; checkHookInstallation (providerId = built provider); checkLegacyLiveState; checkProjectRoots (patterns from repoRoot configs, candidates = workspace candidates); workspace findings.
 - **Outputs**:
   - `--help`: usage text + `\n`, exit 0:
     ```
@@ -946,6 +954,12 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 - **Gotchas**: `rel()` returns posix repo-relative or the absolute path when outside. Workspaces list is empty unless run at a monorepo root without `--target`. `checkProjectRoots` always receives the candidates from selection (empty when target given), so `config-project-roots-match-nothing` can also fire when `--target` is passed and patterns exist (candidates=[]).
 
 ---
+
+#### `impeccable design-compact` (REN-2129)
+
+- **Invoked from**: `reference/doctor.md` Step 5, on a `design-md-sprawl` finding. Proposes; writes only with `--write`, which the agent passes after the person agrees.
+- **CLI args / flags**: `--write`, `--help`/`-h`, `--target <p>`.
+- **Behaviour**: no DESIGN.md -> one line naming `document`, exit 0. A DESIGN.md of 1.6 KB or less -> `<path> is already short (<n> bytes): it is carried whole, with nothing to compact.`, exit 0. Otherwise the proposal is the frontmatter as written minus YAML comments (whole-line ones, and a trailing ` # …` after a plain `key: value`; quoted values keep their `#`), then `# <the body's first heading>`, `<!-- impeccable:design-map -->`, and the map `context` carries, with `Full: .impeccable/design-full.md`. Block-scalar text in the frontmatter is kept exactly; the opening and closing `---` are whole lines, as `parse_design_md` reads them. `context` carries a DESIGN.md holding that marker as its body after the marker, within the map's 2.4 KB cap, never mapping it again. Without `--write`: the proposal, `---`, and the bytes before and after with the saving, exit 0, nothing written. With `--write`: the original is created at `.impeccable/design-full.md` beside DESIGN.md (refused, exit 1, nothing written, when anything is at that path, a link included), then the proposal goes to a fresh temporary file created exclusively and replaces DESIGN.md in one rename. A `--target` given is carried into the printed follow-up command.
 
 #### `pin.mjs` -> `impeccable pin`
 
@@ -2349,6 +2363,21 @@ this rule to an existing unsubmitted draft. It verifies stored image blobs and
 current source integrity, preserves any new reviewer decisions, records the
 prior approval revision, and leaves packet revisions and old receipts unchanged.
 
+## `shot` (skill-internal)
+
+`impeccable shot <page or url> [--viewport WxH[,WxH...]] [--full] [--out <dir>]`
+is the skill's look at a rendered page: a local HTML file (resolved against the
+working directory) or an http, https or file URL. Each viewport (default
+`1440x900,390x844`; `--viewport` takes a comma-separated list and may repeat)
+loads the page in its own tab, waits for load, images and fonts, and writes one
+PNG of the first viewport, `<W>x<H>.png`, or of the whole page from the top with
+`--full`, `<W>x<H>-full.png` (cut at 20000px). Files go to `--out`, else to
+`.impeccable/shots/`, whose `.gitignore` (`*`) the engine writes; a run
+overwrites the last. stdout is one path per line, relative to the working
+directory when inside it. Exit 2 on a missing page or bad arguments, 1 when no
+Chrome or Chromium is found (one stderr line) or a viewport fails to load (one
+stderr line each, the other viewports still written), else 0.
+
 ## `motion-capture` (skill-internal)
 
 `impeccable motion-capture <url> --click <selector> --out-dir <directory>`
@@ -2542,7 +2571,20 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   `.cursor/rules` or the rule is a symlink, when a rule of that name without this header
   is already there, or when git wouldn't ignore it (a repository `.gitignore` re-including
   it). Being per repository, it is never read as an edit: the sync only brings it to the
-  page's set. The switch sync writes the same files. `impeccable switches
+  page's set. The switch sync writes the same files with the person's own set: it reads
+  `GET /cli/v1/agents` with no repository, so `me` is their own choices over an all-on
+  team, wherever it runs. A team's switches reach agents through the repository's own
+  AGENTS.md block, never through these user-level files. Until they
+  have set their own (`meSet: false`; an older service's `me: null`), a block this machine
+  already holds is sent as their first set instead of overwritten. `context` starts it at most once
+  a minute; `impeccable switches-refresh [--now]` started directly (as Loop does on a change
+  notice) always runs, in a repository or not.
+  It prints one line: `synced` (files written or a change sent), `unchanged`, or
+  `skipped: <why>` (not signed in, Impeccable didn't answer, another refresh is running, a
+  rule file can't be read or written, Impeccable didn't take the change), and exits 0. `--help` prints `Usage: impeccable switches-refresh [--now]`;
+  any other argument prints it on stderr and exits 2.
+  It waits up to 4 s for the sign-in
+  lock, so a refresh started beside another worker runs after it, never skips. `impeccable switches
   --catalog` prints the catalog as one JSON object, `{schema: 1, start, end,
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.
@@ -3133,6 +3175,26 @@ including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only
 repos and invalid names omit `label`. No label is sent without a repo key.
 
+After a variant accept that succeeds (`live-accept --variant N`, directly or
+through `live-poll`, including a receipt replay; never `--discard`), the CLI
+records the prototyping session with one best-effort POST to
+`/cli/v1/prototypes` under the same preference, opt-outs, sign-in, scope,
+renewal, lock and two-second budget as a critique upload. Through `live-poll`
+it runs after the browser's reply and the printed event. The body is exactly
+`prototypeId`, `target`, `variants`, `createdAt` and optional `repoKey`:
+`prototypeId` is a UUID (version nibble 4) hashed from the app root and the
+session id, so a retry is a `repeat`; `target` is an http(s) page's path
+(no origin, query or fragment), or only the file name of a `file:` page (any
+case, with or without `//`); any other scheme sends nothing.
+`variants` is the session's arrived variant count, else its requested count;
+`createdAt` is the first accept's time from its receipt, so a replay sends the
+same time, and an accept older than 23 hours sends nothing; `repoKey` is the
+critique key. A session with no journal (current or legacy folder), no page
+URL, no count in 1-24, or an invalid target sends nothing. Nothing of
+the variants is sent. It prints nothing on success or signed out, and at most
+one `Prototype not saved to Impeccable: <reason>` line on stderr, so the
+accept's stdout JSON is unchanged.
+
 ### Taste
 
 The CLI reads standing design preferences with
@@ -3311,6 +3373,40 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   extension: `{"id","agent","tool","arguments"}`; answers:
   `{"id","result"}` or `{"id","error"}`. Sites, Pro and every end of a
   session are the extension's to decide.
+- **Registering the host with Chrome** (macOS and Linux). After a successful
+  `install` (or `skills install`), and not for `-h`/`--help` or when `CI` is
+  set, and once `<home>/bin` holds an engine the launcher would run (a bundled
+  engine fills no cache, so that install registers nothing until one does), the
+  CLI writes `<IMPECCABLE_HOME>/browser/host`
+  (0700, its folder 0700): a `sh` launcher with the home folder written in
+  (Chrome starts hosts with a bare environment). Each time it runs it picks the
+  highest `x.y.z` folder under `<home>/bin` whose `impeccable` is executable
+  and has an `impeccable.verified` stamp whose size field matches the binary
+  and that isn't older than it, and execs it with its arguments and `IMPECCABLE_HOME` set to that home. With none, it
+  prints `Impeccable: no verified engine in <home>/bin. Run npx impeccable
+  install.` to stderr and exits 1. It names no version, so `update` never
+  touches it. Then, for each of Chrome, Chrome Beta, Chrome Canary (macOS),
+  Chromium, Edge and Brave whose profile folder exists (on Linux under
+  `$XDG_CONFIG_HOME` when set, else `~/.config`), it writes
+  `NativeMessagingHosts/style.impeccable.browser.json` atomically
+  (`type: stdio`, `path` the launcher, `allowed_origins` the store build's
+  origin). A file of that name naming another path or origins is left alone,
+  with one line saying so. Snap and Flatpak Chromium builds are named and
+  skipped, since they can't start a program outside their sandbox. The CLI
+  prints one line naming the browsers it registered with, and nothing when all
+  was already in place. Failures are named and never fail install or update.
+  Nothing is written on Windows.
+- **`artifact.asset` is answered locally** (REN-2123). In `tools/list`, the
+  service's `artifact.asset` (which takes `sha256`, `bytes`, `contentType`) is
+  replaced by one taking `{path, workspace?}`: a file absolute or relative to the
+  working folder, a regular file (never a symlink), 1 byte to 50 MB, typed by its
+  extension (png, jpg, jpeg, webp, gif, avif, svg, mp4, webm, mp3, woff2, woff,
+  css, js, mjs, json). The process hashes it (SHA-256) and calls the service's
+  `artifact.asset`. On `{key, exists: true}` it answers `{key}`; on
+  `{key, upload: {url}}` it PUTs the bytes to `url` (on the account service's own
+  origin, exact `Content-Length`, the type as `Content-Type`, no bearer), then
+  answers `{key}`. Any refusal is the tool's error text. The bytes never pass
+  through the agent.
 - **Scopes.** `impeccable login` asks for the MCP scopes (Needs you read and
   write, personas, Taste, journeys, `artifacts:write`) only when the service's
   metadata says `impeccable_cli_mcp: true`, and only those it lists. A sign-in

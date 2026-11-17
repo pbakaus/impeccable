@@ -160,7 +160,16 @@ pub struct Store {
 }
 
 /// Held while a lifecycle step runs; the OS releases it if the process dies.
-pub struct Lock(#[allow(dead_code)] fs::File);
+pub struct Lock(fs::File);
+
+/// Unlock explicitly rather than by closing: a process another thread is
+/// spawning holds a copy of this handle until it execs, and the lock lasts
+/// as long as any copy does, so a close alone can leave it held for a moment.
+impl Drop for Lock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
 
 impl Store {
     pub fn new(account: &Account) -> Store {
@@ -826,5 +835,28 @@ mod size_tests {
         };
         let bytes = serde_json::to_vec(&secret).unwrap();
         assert!(bytes.len() <= MAX_SECRET, "{} > {MAX_SECRET}", bytes.len());
+    }
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    #[test]
+    fn a_dropped_lock_is_free_while_a_copy_of_its_handle_lives_on() {
+        // Catches (REN-2117): a stale-grant notice skipped on Linux CI because a
+        // process spawned on another thread still held a copy of the lock's handle.
+        let home =
+            std::env::temp_dir().join(format!("lock-copy-{}", crate::oauth::random_b64(12)));
+        let store = Store::new(&Account {
+            home: home.clone(),
+            issuer: "http://127.0.0.1:1".into(),
+        });
+        let lock = store.lock().unwrap();
+        let copy = lock.0.try_clone().unwrap();
+        drop(lock);
+        assert!(store.lock_for(Duration::ZERO).is_ok());
+        drop(copy);
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

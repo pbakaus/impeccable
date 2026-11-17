@@ -92,7 +92,10 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider: &crate::provi
     findings.extend(boot.product);
     findings.extend(boot.native_platform);
     findings.extend(boot.design_sidecar);
-    findings.extend(check_design_drift(abs_design_path.as_deref(), &project_root, 25));
+    findings.extend(boot.design_drift);
+    // Reads the token files DESIGN.md names, so doctor runs it and the boot does not.
+    findings.extend(check_design_colour_drift(ctx.design.as_deref(), abs_design_path.as_deref(), &project_root));
+    findings.extend(crate::design_compact::check_sprawl(ctx.design.as_deref(), ctx.design_path.as_deref()));
     findings.extend(check_design_coverage(ctx.design.as_deref(), ctx.design_path.as_deref()));
     findings.extend(boot.config);
     findings.extend(boot.build_path);

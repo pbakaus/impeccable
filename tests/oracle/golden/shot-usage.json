@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable shot <page or url> [--viewport WxH[,WxH...]] [--full] [--out <dir>]\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

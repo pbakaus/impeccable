@@ -85,18 +85,6 @@ pub(crate) fn decide(page: Option<&[String]>, base: Option<&[String]>, files: &[
     }
 }
 
-/// The repository's key, the one health uploads use: SHA-256 of its normalized
-/// `origin`, so the service learns no repository name it can't already see.
-fn repo(cwd: &Path) -> Option<String> {
-    use sha2::{Digest, Sha256};
-    let out = std::process::Command::new("git")
-        .args(["config", "--get", "remote.origin.url"])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
-    let url = impeccable_account::health::resolve_remote(String::from_utf8_lossy(&out.stdout).trim())?;
-    Some(Sha256::digest(url.as_bytes()).iter().map(|b| format!("{b:02x}")).collect())
-}
 
 /// One worker at a time: a lock file in the Impeccable home, stale after two minutes.
 /// `None` when another worker holds it.
@@ -129,15 +117,43 @@ fn worker_lock(account: &Account) -> Option<impl Drop> {
 
 /// Hidden detached worker: silent and best effort. Anything it can't read or check
 /// leaves the files, the page and the base as they were.
+/// The sync itself. `context` throttles it to once a minute (`schedule`); started
+/// directly it always runs. `--now` is how Loop starts it on a change notice (REN-2056):
+/// accepted, and the same as no flag.
 pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
-    if !args.is_empty() {
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        io.out("Usage: impeccable switches-refresh [--now]\n");
         return 0;
     }
-    let Ok(account) = Account::from_env(&io.env) else { return 0 };
-    let Some(_worker) = worker_lock(&account) else { return 0 };
-    let Some(repo) = repo(&io.cwd) else { return 0 };
-    let Some(mut link) = impeccable_account::switches::Link::open(io) else { return 0 };
-    let Some(remote) = link.fetch(&repo) else { return 0 };
+    if args.iter().any(|a| a != "--now") {
+        io.err("Usage: impeccable switches-refresh [--now]\n");
+        return 2;
+    }
+    // One line says what happened, for Loop's log: `synced`, `unchanged`, or `skipped: <why>`.
+    let said = refresh(args, io);
+    io.out(&format!("{said}\n"));
+    0
+}
+
+fn refresh(args: &[String], io: &mut Io) -> &'static str {
+    let Ok(account) = Account::from_env(&io.env) else { return "skipped: no account" };
+    // A change notice (`--now`) must not be lost to a refresh already under way, which may
+    // have fetched before the change: it waits its turn (up to 15 s), then fetches again.
+    let now = args.iter().any(|a| a == "--now");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let _worker = loop {
+        match worker_lock(&account) {
+            Some(held) => break held,
+            None if now && std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(200)),
+            None => return "skipped: another refresh is running",
+        }
+    };
+    // User-level files hold only the person's own set: read with no repository, the team
+    // set is all on, so `me` is their own choices. A team's switches reach agents through
+    // the repository's own AGENTS.md block instead (REN-2056), so refreshes from different
+    // repositories never rewrite these files back and forth.
+    let Some(mut link) = impeccable_account::switches::Link::open(io) else { return "skipped: not signed in" };
+    let Some(remote) = link.fetch() else { return "skipped: Impeccable didn't answer" };
     let cache = read_cache(&account);
     let base: Option<Vec<String>> = cache
         .as_ref()
@@ -163,7 +179,7 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
             Ok(Some(ids)) => sets.push(Some(ids.into_iter().map(str::to_string).collect::<Vec<_>>())),
             Ok(None) if known.contains(&f.display().to_string()) => sets.push(Some(vec![])),
             Ok(None) => sets.push(None),
-            Err(_) => return 0,
+            Err(_) => return "skipped: a rule file can't be read",
         }
     }
     let catalog: Vec<&str> = agent_block::CATALOG.iter().map(|(id, _, _)| *id).collect();
@@ -183,31 +199,53 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     };
     // What this refresh sent and the service took, if anything: Cursor's rule follows it.
     let mut pushed: Option<Vec<String>> = None;
-    let synced: Option<Vec<String>> = match decide(remote.me.as_deref(), base.as_deref(), &sets) {
+    // The page's set for this person (the service already falls back to the team's,
+    // switch by switch). Until they've set their own, a block this machine already holds
+    // (from `loop connect` or `install`) is sent as their first set instead of overwritten.
+    let holds_block = sets.iter().any(|s| s.as_ref().is_some_and(|v| !v.is_empty()));
+    // Only a block no sync has written yet (no base saved) is migrated; one this sync wrote
+    // from the team's set keeps following the page.
+    let migrate = !remote.me_set && holds_block && base.is_none();
+    let page: Option<Vec<String>> = if migrate { None } else { remote.me.clone() };
+    let mut said = "unchanged";
+    let synced: Option<Vec<String>> = match decide(page.as_deref(), base.as_deref(), &sets) {
         Step::Seed(on) | Step::Push(on) => {
-            let first = remote.me.is_none();
+            let first = !remote.me_set;
             let refs: Vec<&str> = on.iter().map(String::as_str).collect();
             let sent = link.push(&catalog, &refs, first);
             if sent.is_some() {
                 pushed = Some(on.clone());
+                said = "synced";
             }
             match sent {
                 Some(_) if write_all(&on, &link) => Some(on),
-                Some(_) => Some(on),
+                Some(_) => {
+                    said = "skipped: a rule file couldn't be written";
+                    Some(on)
+                }
                 // Not sent: the base stays, so the next refresh still sees the change.
-                None => base.clone(),
+                None => {
+                    said = "skipped: Impeccable didn't take the change";
+                    base.clone()
+                }
             }
         }
         Step::Write(on) => {
-            if write_all(&on, &link) { Some(on) } else { base.clone() }
+            if write_all(&on, &link) {
+                said = "synced";
+                Some(on)
+            } else {
+                said = "skipped: a rule file couldn't be written";
+                base.clone()
+            }
         }
-        Step::Nothing => remote.me.clone().or(base.clone()),
+        Step::Nothing => page.clone().or(base.clone()),
     };
     // Cursor's rule in this repository ends at the set this refresh settled on (what it
     // just sent, or the page's), whatever the step; a repository that can't take it is
     // skipped without touching the shared state.
     // The retry base is never Cursor's target: a set just sent, else the page's.
-    let settled = pushed.or_else(|| remote.me.clone());
+    let settled = pushed.or_else(|| page.clone());
     if let (Some(set), Some(cursor)) = (settled, agent_block::cursor_personal_file(io)) {
         if link.still_current() {
             let refs: Vec<&str> = set.iter().map(String::as_str).filter(|id| catalog.contains(id)).collect();
@@ -242,7 +280,7 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
     }
     next["files"] = json!(seen);
     let _ = impeccable_account::store::write_private(&cache_path(&account), next.to_string().as_bytes());
-    0
+    said
 }
 
 #[cfg(test)]

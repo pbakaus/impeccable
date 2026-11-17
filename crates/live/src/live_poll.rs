@@ -494,18 +494,19 @@ fn augment_event_with_accept_handling(
     base: &str,
     token: &str,
     io: &Io,
-) {
+) -> Option<crate::Accepted> {
     let ty = event
         .get("type")
         .and_then(|t| t.as_str())
         .unwrap_or("")
         .to_string();
     if ty != "accept" && ty != "discard" {
-        return;
+        return None;
     }
     let args = build_accept_script_args(event);
     let (mut child_io, captured) = Io::captured("", io.cwd.clone(), io.env.clone());
-    let code = crate::live_accept::run(&args, &mut child_io);
+    let mut accepted = None;
+    let code = crate::live_accept::run_with_accepted(&args, &mut child_io, &mut |_, a| accepted = Some(a));
     let out = String::from_utf8_lossy(&captured.stdout.borrow()).into_owned();
     let accept_result: Value = if code != 0 {
         json!({ "handled": false, "mode": "error", "error": format!("Command failed: {} {}", script_cmd(&io.env, &io.cwd.to_string_lossy(), "live-accept"), args.join(" ")) })
@@ -568,6 +569,7 @@ fn augment_event_with_accept_handling(
         )
     });
     event.insert("_completionAck".into(), ack);
+    accepted
 }
 
 /// JS: manualApplyPollBanner(event)
@@ -638,12 +640,18 @@ fn requires_agent_reply(event: &Value) -> bool {
         .unwrap_or(false)
 }
 
-fn handle_event(mut event: Value, base: &str, token: &str, io: &mut Io) -> Value {
+/// The accept goes to `accepted` last, once the browser and the agent both have it.
+fn handle_event(mut event: Value, base: &str, token: &str, io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -> Value {
+    let mut done = None;
     if let Value::Object(obj) = &mut event {
-        augment_event_with_accept_handling(obj, base, token, io);
+        done = augment_event_with_accept_handling(obj, base, token, io);
         write_carbonize_banner(obj, io);
     }
     print_poll_event(&mut event, io);
+    if let Some(a) = done {
+        let _ = std::io::Write::flush(&mut io.stdout);
+        accepted(io, a);
+    }
     event
 }
 
@@ -693,7 +701,7 @@ fn arg_value_int(args: &[String], prefix: &str, default: i64) -> i64 {
     }
 }
 
-pub fn run(args: &[String], io: &mut Io) -> i32 {
+pub fn run(args: &[String], io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
     if let Err(code) = enter_live_root(&mut argv, io) {
         return code;
@@ -741,7 +749,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 if then_poll {
                     // One round trip instead of two: the reply is in, so wait
                     // for what the browser does next (usually the accept).
-                    return one_shot_poll(&argv, &base, &token, Some(ack), io);
+                    return one_shot_poll(&argv, &base, &token, Some(ack), io, accepted);
                 }
                 println(io, &serde_json::to_string(&ack).unwrap_or_default());
                 0
@@ -780,7 +788,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 Ok(e) => e,
                 Err(e) => return handle_poll_error(e, io),
             };
-            let event = handle_event(event, &base, &token, io);
+            let event = handle_event(event, &base, &token, io, accepted);
             let _ = std::io::Write::flush(&mut io.stdout);
             if event.get("type").and_then(|t| t.as_str()) == Some("exit") {
                 return 0;
@@ -812,14 +820,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
 
-    one_shot_poll(&argv, &base, &token, None, io)
+    one_shot_poll(&argv, &base, &token, None, io, accepted)
 }
 
 /// The default mode: block until one event (or the `--timeout=` deadline),
 /// handle it, print it. `reply_ack` is the `--then-poll` case: the reply
 /// that just went out rides along as `_replyAck` on the printed event so
 /// the caller sees both halves of its one call.
-fn one_shot_poll(argv: &[String], base: &str, token: &str, reply_ack: Option<Value>, io: &mut Io) -> i32 {
+fn one_shot_poll(argv: &[String], base: &str, token: &str, reply_ack: Option<Value>, io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -> i32 {
     let types_arg = argv
         .iter()
         .find(|a| a.starts_with("--types="))
@@ -841,7 +849,7 @@ fn one_shot_poll(argv: &[String], base: &str, token: &str, reply_ack: Option<Val
                 }
                 obj.insert("_replyAck".into(), ack);
             }
-            handle_event(event, base, token, io);
+            handle_event(event, base, token, io, accepted);
             0
         }
         Err(e) => {

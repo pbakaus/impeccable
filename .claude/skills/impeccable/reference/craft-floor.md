@@ -4,7 +4,7 @@ Load this after the direction is settled, and build without announcing the check
 
 ## Verify
 
-Each of these is a check on the built result, not an intention. Run them together in each batched look at the render, not as separate screenshot trips; the checks share one render.
+Each of these is a check on the built result, not an intention. Run them together in each batched look at the render (on the web, one `.claude/skills/impeccable/scripts/impeccable shot <page or url>`), not as separate screenshot trips; the checks share one render.
 
 - **Contrast:** body and placeholder text ≥4.5:1, large text ≥3:1. On colored surfaces tint secondary text from that hue or the foreground; never gray.
 - **Depth:** shadows carry an offset and a soft blur. A zero-offset colored halo is decoration.
@@ -32,7 +32,7 @@ Surface habits:
 
 - Gradient text. Emphasis comes from weight or size.
 - Glass and blur as decoration rather than as a specific effect.
-- A colored `border-left` or `border-right` above 1px on cards, list items, callouts, or alerts.
+- A bar down one side of a box (a one-sided border, inset shadow or pseudo-element), any colour, any state. Use a full border, a background tint, or a leading icon or label.
 - Hard offset shadows (`box-shadow: 4px 4px 0`) outside a world that is actually neobrutalist. The zero-blur block shadow is a costume, not a depth system; a world that did not choose it never earns it as a default.
 - Sparklines, progress rings, and soft-shadowed rounded rectangles standing in for content.
 - Monospace as a costume for "technical" rather than for code, data, or measurement.
