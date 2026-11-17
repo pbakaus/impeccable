@@ -110,16 +110,20 @@ fn sidecar_entries(sidecar: &Value, at: &str, out: &mut Vec<Entry>) {
 }
 
 /// Each custom property a token file declares (`--name: value`, wherever it sits on a line and however many share one;
-/// a value over several lines joined), with the line it starts on.
+/// a value over several lines joined), with the line it starts on. Commented-out declarations are not tokens. The value
+/// is kept whole, so a term deep in a long value still matches; only the printed line is clipped.
 fn custom_properties(css: &str, rel: &str, out: &mut Vec<Entry>) {
     static DECL: once_cell::sync::Lazy<regex::Regex> =
         once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?:^|[\s{;])--([A-Za-z0-9_-]+)\s*:").unwrap());
-    for c in DECL.captures_iter(css) {
+    static COMMENT: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| regex::Regex::new(r"(?s)/\*.*?\*/").unwrap());
+    // Comments blanked to spaces, newlines kept, so every line number still points at the file.
+    let css = COMMENT.replace_all(css, |c: &regex::Captures| c[0].chars().map(|ch| if ch == '\n' { '\n' } else { ' ' }).collect::<String>());
+    for c in DECL.captures_iter(&css) {
         let (name, whole) = (c.get(1).unwrap(), c.get(0).unwrap());
         let rest = &css[whole.end()..];
-        let value = &rest[..rest.find([';', '}']).unwrap_or(rest.len()).min(ENTRY_SIZE * 2)];
+        let value = &rest[..rest.find([';', '}']).unwrap_or(rest.len())];
         let line = css[..name.start()].matches('\n').count() + 1;
-        out.push(Entry { name: format!("--{}", name.as_str()), text: clip(value.trim(), ENTRY_SIZE), at: format!("{rel}:{line}") });
+        out.push(Entry { name: format!("--{}", name.as_str()), text: value.split_whitespace().collect::<Vec<_>>().join(" "), at: format!("{rel}:{line}") });
     }
 }
 
@@ -356,6 +360,17 @@ mod tests {
         let out = lookup(design, "DESIGN.md", &dir, &["elevation".into(), "shadows".into()]);
         assert!(out.contains("```\nAfter the fence.\n(DESIGN.md:3)"), "{out}");
         assert_eq!(out.matches("## Elevation shadows").count(), 1, "{out}");
+    }
+
+    #[test]
+    fn a_long_multibyte_value_never_panics_and_still_matches_deep_inside_and_comments_are_not_tokens() {
+        let long = format!("url(\"data:image/svg+xml,{}é{}needle\")", "a".repeat(1199), "b".repeat(700));
+        let css = format!("/* --old: red; */\n:root {{\n  --icon: {long};\n  --ink: black;\n}}\n");
+        let design = "# D\n\nTokens: `styles/tokens.css`.\n";
+        let dir = dir_with("long", &[("styles/tokens.css", &css)]);
+        let out = lookup(design, "DESIGN.md", &dir, &["needle".into()]);
+        assert!(out.starts_with("--icon: url(") && out.contains("(styles/tokens.css:3)"), "{out}");
+        assert!(lookup(design, "DESIGN.md", &dir, &["--old".into()]).starts_with("Nothing matches"));
     }
 
     #[test]
