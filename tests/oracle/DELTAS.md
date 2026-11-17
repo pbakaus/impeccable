@@ -7513,5 +7513,5 @@ DESIGN.md and `.impeccable/design.json` described the departed site's dark lacqu
 extension's paper-and-instruments tokens (`extension/shared/kinpaku.css`). Two detect cases scan a fixture from the
 repo root, so they read that palette.
 
-- `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and 16px are no
-  longer in the palette or type ramp, so they report as advisories beside `#33d17a`.
+- `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and its greys are
+  no longer in the palette, so they report as advisories beside `#33d17a`.

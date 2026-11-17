@@ -25,6 +25,25 @@ colors:
   rule: "oklch(13% 0 0 / 0.08)"
   edge: "oklch(13% 0 0 / 0.45)"
 typography:
+  scale:
+    "9": "0.5625rem"
+    "10": "0.625rem"
+    "11": "0.6875rem"
+    "12": "0.75rem"
+    "13": "0.8125rem"
+    "14": "0.875rem"
+    "15": "0.9375rem"
+    "16": "1rem"
+    "17": "1.0625rem"
+    "20": "1.25rem"
+    "22": "1.375rem"
+    "24": "1.5rem"
+    "25.6": "1.6rem"
+    "36": "2.25rem"
+    "40": "2.5rem"
+    "48": "3rem"
+    "52": "3.25rem"
+    "104": "6.5rem"
   display:
     fontFamily: '"Alumni Sans", var(--ks-font-wordmark)'
     fontWeight: 200
@@ -44,6 +63,9 @@ typography:
     fontSize: "12px"
     fontWeight: 400
     lineHeight: 1.5
+  bundled:
+    fontFamily: '"Albert Sans", var(--ks-font)'
+    fontWeight: 400
   label:
     fontFamily: 'ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace'
     fontSize: "11px"
@@ -56,8 +78,13 @@ typography:
     lineHeight: 1
     letterSpacing: "0.06em"
 rounded:
+  xs: "2px"
   sm: "3px"
+  md: "8px"
   button: "10px"
+  panel: "12px"
+  card: "14px"
+  sheet: "16px"
   pill: "999px"
 spacing:
   xs: "4px"
@@ -112,11 +139,11 @@ Surfaces are neutral paper (chroma 0) and type is ink: no warm cast, no dark sec
 ## Colors
 
 ### Named Rules
-**The Gold Is Jewelry Rule.** Kinpaku fills the mark, a hairline, the lit dot on a control, the tag and the one primary button. It never carries text on paper and never fills a panel.
+**The Gold Is Jewelry Rule.** Kinpaku fills the mark, a hairline, the lit dot on a control, the tag and the extension's one primary button; it never carries text on paper and never fills a panel. (The vendored site kit's primary button is ink-filled; keep it so.)
 
 **The Gold Text Is a Bug Rule.** Gold at 84% lightness lands under 2:1 on paper. Text that has to be colored is patina-deep, which clears 4.5:1. Text on a gold fill is on-gold.
 
-**The Severity Rule.** One mapping, everywhere. AI tell: the gold tag and a lit gold dot. Quality: a patina dot and patina-deep text, never competing with the gold. Failure: vermilion, only for a scan that did not run.
+**The Severity Rule.** AI tell is the gold tag and a lit gold dot, quality is a patina dot with patina-deep text, failure is vermilion. In the detector surfaces (popup, DevTools panel and sidebar) vermilion marks only a scan that did not run; the walks panel also uses it for a risky step and a failed walk.
 
 ## Typography
 
@@ -135,7 +162,7 @@ Flat by default. Depth exists only on instruments.
 
 ## Shapes
 
-Small and exact: 3px on tags, chips, rows and tool caps; pill on the switch track; 10px on popup and walks-panel buttons. Focus is a 2px patina outline at 2px offset.
+Small and exact on the detector surfaces: 3px on tags, chips, rows and tool caps (2px inside a segmented track); pill on the switch track; 10px on popup and walks-panel buttons. The walks panel's softer cards and sheets take 8, 12, 14 and 16px. Focus is a 2px patina outline at 2px offset.
 
 ## Components
 
@@ -154,7 +181,7 @@ Small and exact: 3px on tags, chips, rows and tool caps; pill on the switch trac
 ### Don't:
 - **Don't** set gold text on paper.
 - **Don't** add a dark theme or a dark section background; tune the seam instead.
-- **Don't** use vermilion for anything but a failed scan.
+- **Don't** use vermilion for anything but a failure, or a risky step in the walks panel.
 
 ## Where it lives
 
