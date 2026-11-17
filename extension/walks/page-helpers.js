@@ -516,10 +516,10 @@ function fieldReads(point, noSecrets = false) {
 
 function focusedText() {
   const doc = globalThis.document, roots = [doc];
-  let focused = doc.activeElement ?? null;
+  let focused = doc.activeElement ?? null, deep = false;
   for (;; ) {
     if (focused?.shadowRoot?.activeElement) {
-      roots.push(focused.shadowRoot);
+      deep = true;
       focused = focused.shadowRoot.activeElement;
       continue;
     }
@@ -532,11 +532,23 @@ function focusedText() {
       }
       if (!inner)
         return null;
-      roots.push(inner);
+      deep = true;
       focused = inner.activeElement ?? null;
       continue;
     }
     break;
+  }
+  for (let at = 0;deep && at < roots.length; at++) {
+    for (const el of Array.from(roots[at].querySelectorAll?.("*") ?? [])) {
+      if (el.shadowRoot)
+        roots.push(el.shadowRoot);
+      if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+        try {
+          if (el.contentDocument)
+            roots.push(el.contentDocument);
+        } catch {}
+      }
+    }
   }
   const key = (t) => (t ?? "").normalize("NFKC").toLowerCase().trim().replace(/[.,]$/, "").split(/\s+/).filter(Boolean).join(" ");
   const shownOf = (el) => {
@@ -1573,4 +1585,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'd9858d0ebf63f54a';
+export const HASH = '9ae33fba945bc81e';
