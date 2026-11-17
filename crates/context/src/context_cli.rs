@@ -1012,7 +1012,9 @@ fn append_design(parts: &mut Parts, ctx: &Ctx) {
     parts.push(format!("# DESIGN.md (map; full file: {path})\n\n{}", design_map::map(design, root, path)));
 }
 
-/// PRODUCT.md as written, or past the map budget, its title and first section with the path to the rest.
+/// PRODUCT.md as written, or past the map budget, whole sections up to it: the title and first section, then the
+/// anti-references (the guardrails a design most often breaks), then the rest in order while they fit, and the names
+/// of any that don't with the path to them.
 fn append_product(parts: &mut Parts, ctx: &Ctx) {
     let path = ctx.product_path.as_deref().unwrap_or_default();
     let product = js_trim(ctx.product.as_deref().unwrap_or_default());
@@ -1020,24 +1022,41 @@ fn append_product(parts: &mut Parts, ctx: &Ctx) {
         parts.doc("# PRODUCT.md".to_string(), path, product);
         return;
     }
-    let mut head = Vec::new();
-    let mut rest = Vec::new();
-    let mut sections = 0;
+    // The title (anything before the first `## `), then each `## ` section whole.
+    let mut sections: Vec<String> = vec![String::new()];
     for line in product.lines() {
         if line.starts_with("## ") {
-            sections += 1;
+            sections.push(String::new());
         }
-        if sections <= 1 {
-            head.push(line);
-        } else if let Some(name) = line.strip_prefix("## ") {
-            rest.push(name.trim());
+        let last = sections.last_mut().expect("one section");
+        last.push_str(line);
+        last.push('\n');
+    }
+    let name = |s: &str| s.lines().next().and_then(|l| l.strip_prefix("## ")).unwrap_or("").trim().to_string();
+    let mut order: Vec<usize> = vec![0];
+    if sections.len() > 1 {
+        order.push(1);
+    }
+    if let Some(at) = (2..sections.len()).find(|&i| name(&sections[i]).to_lowercase().contains("anti-reference")) {
+        order.push(at);
+    }
+    let later: Vec<usize> = (2..sections.len()).filter(|i| !order.contains(i)).collect();
+    order.extend(later);
+    let (mut kept, mut left, mut used) = (vec![false; sections.len()], Vec::new(), 0);
+    for (n, &i) in order.iter().enumerate() {
+        // The title and first section always go, so the file is never reduced to its name alone.
+        if n < 2 || used + sections[i].len() <= MAP_BUDGET {
+            used += sections[i].len();
+            kept[i] = true;
+        } else {
+            left.push(name(&sections[i]));
         }
     }
-    let mut text = js_trim(&head.join("\n")).to_string();
-    if !rest.is_empty() {
-        text.push_str(&format!("\n\nMore sections: {}.", rest.join(", ")));
+    let mut text = js_trim(&(0..sections.len()).filter(|&i| kept[i]).map(|i| sections[i].as_str()).collect::<String>()).to_string();
+    if !left.is_empty() {
+        text.push_str(&format!("\n\nMore sections: {}.", left.join(", ")));
     }
-    parts.push(format!("# PRODUCT.md (first section; full file: {path})\n\n{text}\nFull: {path} (read a section when you need its detail)"));
+    parts.push(format!("# PRODUCT.md (sections; full file: {path})\n\n{text}\nFull: {path} (read a section when you need its detail)"));
 }
 
 fn append_taste(parts: &mut Parts, env: &Env) {
@@ -1919,7 +1938,9 @@ mod seeded_world_tests {
         let product = include_str!("../../../demos/landing-demo/PRODUCT.md");
         let out = boot_with(long, Some(product), false);
         assert!(out.contains("# DESIGN.md (map; full file: DESIGN.md)\n\nName: Lumina\n"), "{out}");
-        assert!(out.contains("# PRODUCT.md (first section; full file: PRODUCT.md)\n\n# Lumina\n\n## Register\n\nbrand\n\nMore sections: Users,"), "{out}");
+        // Whole sections up to the budget, the anti-references always among them.
+        assert!(out.contains("# PRODUCT.md (sections; full file: PRODUCT.md)\n\n# Lumina\n\n## Register\n\nbrand\n"), "{out}");
+        assert!(out.contains("## Anti-references\n"), "{out}");
         assert!(!out.contains("DOCUMENT_NOT_INLINED"), "{out}");
         assert!(!out.contains("Accessibility & Inclusion\n\nWCAG"), "{out}");
         let out = boot_with(SEED, None, false);
