@@ -24,12 +24,35 @@ fn enabled(io: &Io) -> bool {
 }
 
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
-fn payload(snapshot: &SavedReport) -> Option<Value> {
+/// What a saved report is: a critique (ten heuristics out of 40) or an audit
+/// (five dimensions out of 20, none n/a, no heuristics). The cloud keeps
+/// both in the person's critique history and marks audits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Report {
+    Critique,
+    Audit,
+}
+
+impl Report {
+    fn noun(self) -> &'static str {
+        match self {
+            Report::Critique => "critique",
+            Report::Audit => "audit",
+        }
+    }
+}
+
+/// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
+fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
     let m = &snapshot.meta;
     let total = m.get("total_score")?.as_u64()?;
     let max = m.get("max_score")?.as_u64()?;
     // The storage parser reads a single N/A index as a number, a list as text.
-    let na: Vec<u64> = match m.get("na_heuristics")? {
+    if report == Report::Audit && (max != 20 || m.get("na_heuristics").is_some()) {
+        return None;
+    }
+    // The storage parser reads a single N/A index as a number, a list as text.
+    let na: Vec<u64> = match m.get("na_heuristics").unwrap_or(&Value::String(String::new())) {
         Value::Number(n) => vec![n.as_u64()?],
         Value::String(s) if s.is_empty() => vec![],
         Value::String(s) => s
@@ -42,7 +65,7 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
     if na.len() > 9
         || unique.len() != na.len()
         || na.iter().any(|n| !(1..=10).contains(n))
-        || max != 4 * (10 - na.len() as u64)
+        || (report == Report::Critique && max != 4 * (10 - na.len() as u64))
         || total > max
     {
         return None;
@@ -80,26 +103,31 @@ fn payload(snapshot: &SavedReport) -> Option<Value> {
         return None;
     }
     let created_at = format!("{}:{}:{}Z", &stamp[..13], &stamp[14..16], &stamp[17..19]);
-    Some(json!({
+    let mut out = json!({
         "version": 1, "critiqueId": id, "createdAt": created_at,
         "target": target, "score": { "total": total, "max": max }, "na": na,
         "heuristics": null, "counts": { "p0": p0, "p1": p1, "p2": count("p2_count"), "p3": count("p3_count") },
         "body": body
-    }))
+    });
+    // Only an audit names its kind: a critique's upload stays as every server so far reads it.
+    if report == Report::Audit {
+        out["kind"] = "audit".into();
+    }
+    Some(out)
 }
 
 /// One line on stdout, where the person's agent reads it, after a saved
 /// critique (journey 3): where it went, why it didn't, or once a day per
 /// project while signed out, how to keep its history. Nothing when sync is off,
 /// in CI, under an opt-out, or with `--json`/`--quiet`/`--github`.
-pub fn after_save(io: &mut Io, snapshot: &SavedReport, quiet: bool) {
+pub fn after_save(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) {
     // Quiet saves still upload; they only say nothing, and spend no once-only line.
-    if let Some(line) = upload(io, snapshot, quiet).filter(|_| !quiet) {
+    if let Some(line) = upload(io, snapshot, report, quiet).filter(|_| !quiet) {
         io.out(&line);
     }
 }
 
-const RELOGIN: &str = "sign in again with npx impeccable login";
+pub(crate) const RELOGIN: &str = "sign in again with npx impeccable login";
 
 fn not_saved(reason: impl std::fmt::Display) -> Option<String> {
     Some(format!("Not saved to Impeccable: {reason}\n"))
@@ -115,7 +143,7 @@ fn project_root(snapshot: &SavedReport) -> Option<&std::path::Path> {
 
 /// Signed out: at most once a day per project, so a run of critiques costs the
 /// customer's agent one line, not one per report.
-fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option<String> {
+fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: Report) -> Option<String> {
     use sha2::{Digest, Sha256};
     let project = root.map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
     let digest = Sha256::digest(project.as_bytes());
@@ -133,63 +161,66 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>) -> Option
         _ => {}
     }
     let _ = std::fs::remove_file(marker(today.saturating_sub(1)));
-    Some("Keep this critique's history: npx impeccable login\n".into())
+    Some(format!("Keep this {}'s history: npx impeccable login\n", report.noun()))
 }
 
-fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
-    let started = Instant::now();
+/// Why an upload stopped before an answer. Each caller words its own line.
+pub(crate) enum Stop {
+    /// Sync off, CI, an opt-out, or a sign-in the service would not widen: say nothing.
+    Silent,
+    SignedOut(Account),
+    NoAccount(String),
+    Slow,
+    Unreadable,
+    Expired,
+    Switched,
+    Busy,
+    /// This sign-in lacks `critiques:write` and signing in again would grant it.
+    NoScope,
+}
+
+/// The opt-outs and the sign-in an upload needs before it builds a body:
+/// sync on, not CI, no telemetry opt-out (here or at `root`), signed in.
+pub(crate) fn ready(io: &Io, root: Option<&std::path::Path>) -> Result<(Account, crate::store::State), Stop> {
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
         || impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
             .is_some()
     {
-        return None;
+        return Err(Stop::Silent);
     }
-    let account = match Account::from_env(&io.env) {
-        Ok(account) => account,
-        Err(e) => return not_saved(e),
-    };
-    // Also honor an opt-out at the report's project root.
-    let root = project_root(snapshot);
+    let account = Account::from_env(&io.env).map_err(Stop::NoAccount)?;
+    // Also honor an opt-out at the project root.
     if root.is_some_and(|root| {
         impeccable_context::telemetry::opt_out_reason(&io.env, &root.to_string_lossy()).is_some()
     }) {
-        return None;
+        return Err(Stop::Silent);
     }
-    let state = crate::store::Store::new(&account).state();
-    let Some(state) = state.filter(|s| s.signed_in) else {
-        return if quiet {
-            None
-        } else {
-            signed_out_nudge(&account, root)
-        };
-    };
-    let Some(mut body) = payload(snapshot) else {
-        return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
-    };
-    if let Some(root) = root {
-        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
-            body["repoKey"] = key.into();
-            if let Some(label) = label {
-                body["label"] = label.into();
-            }
-        }
+    match crate::store::Store::new(&account).state().filter(|s| s.signed_in) {
+        Some(state) => Ok((account, state)),
+        None => Err(Stop::SignedOut(account)),
     }
-    if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
-        return not_saved("the report is over 80 KB; save a shorter report");
-    }
+}
+
+/// Posts `body` to `path` on the account service within two seconds of
+/// `started`, the way every critique-scoped upload does: a readable session
+/// with `critiques:write`, renewed if it expired, the same sign-in it started
+/// with, and the upload lock. `quiet` keeps the shared scope notice owed.
+pub(crate) fn send(
+    io: &mut Io,
+    started: Instant,
+    (account, state): &(Account, crate::store::State),
+    path: &str,
+    body: Value,
+    quiet: bool,
+) -> Result<(Result<Value, crate::http::ApiError>, u64), Stop> {
     let left = || {
         Duration::from_secs(2)
             .checked_sub(started.elapsed())
             .filter(|d| !d.is_zero())
     };
-    const SLOW: &str = "the account service took too long; the report is saved locally and the next critique will upload";
-    let Some(wait) = left() else {
-        return not_saved(SLOW);
-    };
-    let Some(session) = Session::load_for_upload(&account, wait) else {
-        return not_saved(format!("your sign-in couldn't be read; {RELOGIN}"));
-    };
+    let wait = left().ok_or(Stop::Slow)?;
+    let session = Session::load_for_upload(&account, wait).ok_or(Stop::Unreadable)?;
     let has_scope =
         |s: &crate::store::State| s.scopes.iter().any(|s| s == crate::oauth::CRITIQUES_SCOPE);
     // A service that does not take critiques at all has nothing to sign in for.
@@ -215,60 +246,106 @@ fn upload(io: &mut Io, snapshot: &SavedReport, quiet: bool) -> Option<String> {
         if say && !quiet {
             crate::stale_grant::mark_shown(&account, state.login);
         }
-        say.then(|| {
-            format!("Not saved to Impeccable: this sign-in can't save critiques; {RELOGIN}\n")
-        })
+        if say { Stop::NoScope } else { Stop::Silent }
     };
     if !has_scope(&state) {
-        return missing_scope(io);
+        return Err(missing_scope(io));
     }
     let session = if session.existing_access_token().is_none() {
         match crate::session::renew_for_upload(io, &account, started, "critiques-refresh") {
             Some(fresh) => fresh,
             // Out of time, the refresh carries on and may still succeed.
-            None if left().is_none() => return not_saved(SLOW),
-            None => return not_saved(format!("your sign-in expired; {RELOGIN}")),
+            None if left().is_none() => return Err(Stop::Slow),
+            None => return Err(Stop::Expired),
         }
     } else {
         session
     };
     if !session.matches_upload(&state) {
-        return not_saved("you signed in or out while it was saving; save the critique again");
+        return Err(Stop::Switched);
     }
-    let Some(token) = session.existing_access_token() else {
-        return not_saved(format!("your sign-in expired; {RELOGIN}"));
-    };
+    let token = session.existing_access_token().ok_or(Stop::Expired)?;
     let Ok(_admission) = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO)
     else {
-        return not_saved("another critique was uploading; save this one again to upload it");
+        return Err(Stop::Busy);
     };
     if !enabled(io) {
-        return None;
+        return Err(Stop::Silent);
     }
     if !has_scope(&session.state) {
-        return missing_scope(io);
+        return Err(missing_scope(io));
     }
-    let Some(wait) = left() else {
-        return not_saved(SLOW);
-    };
+    let wait = left().ok_or(Stop::Slow)?;
     let answer = Client::with_deadline(&account, wait).post_json(
-        &format!("{}/cli/v1/critiques", account.issuer),
+        &format!("{}{path}", account.issuer),
         token,
         body,
     );
+    Ok((answer, session.state.login))
+}
+
+fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> Option<String> {
+    let started = Instant::now();
+    let root = project_root(snapshot);
+    const SLOW: &str = "the account service took too long; the report is saved locally and the next critique will upload";
+    let stopped = |stop: Stop| match stop {
+        Stop::Silent => None,
+        Stop::SignedOut(account) => {
+            if quiet {
+                None
+            } else {
+                signed_out_nudge(&account, root, report)
+            }
+        }
+        Stop::NoAccount(e) => not_saved(e),
+        Stop::Slow => not_saved(SLOW),
+        Stop::Unreadable => not_saved(format!("your sign-in couldn't be read; {RELOGIN}")),
+        Stop::Expired => not_saved(format!("your sign-in expired; {RELOGIN}")),
+        Stop::Switched => not_saved("you signed in or out while it was saving; save the critique again"),
+        Stop::Busy => not_saved("another critique was uploading; save this one again to upload it"),
+        Stop::NoScope => {
+            Some(format!("Not saved to Impeccable: this sign-in can't save critiques; {RELOGIN}\n"))
+        }
+    };
+    let signed_in = match ready(io, root) {
+        Ok(signed_in) => signed_in,
+        Err(stop) => return stopped(stop),
+    };
+    let Some(mut body) = payload(snapshot, report) else {
+        return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
+    };
+    if let Some(root) = root {
+        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
+            body["repoKey"] = key.into();
+            if let Some(label) = label {
+                body["label"] = label.into();
+            }
+        }
+    }
+    if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
+        return not_saved("the report is over 80 KB; save a shorter report");
+    }
+    let (answer, login) = match send(io, started, &signed_in, "/cli/v1/critiques", body, quiet) {
+        Ok(sent) => sent,
+        Err(stop) => return stopped(stop),
+    };
     use crate::http::ApiError;
     match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
-                && crate::upload_notice::first(&account, session.state.login, crate::upload_notice::Kind::Critique);
+                && crate::upload_notice::first(&signed_in.0, login, if report == Report::Audit {
+                    crate::upload_notice::Kind::Audit
+                } else {
+                    crate::upload_notice::Kind::Critique
+                });
             let at = v["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://"));
             let mut line = match at {
                 Some(url) => format!("Saved to Impeccable: {url}"),
                 None => "Saved to Impeccable.".to_string(),
             };
             if first {
-                line.push_str(" Every critique you save uploads; to stop: impeccable critiques off");
+                line.push_str(&format!(" Every {} you save uploads; to stop: impeccable critiques off", report.noun()));
             }
             Some(line + "\n")
         }

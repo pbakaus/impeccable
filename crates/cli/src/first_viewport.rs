@@ -58,15 +58,27 @@ const MEASURE_JS: &str = r##"((selectors) => {
   // scrolling or clipped body) does not cut, since the full-page capture
   // unrolls its scroller; the thesis and action keep every clip.
   const pageScroller = (a) => a.clientHeight >= innerHeight * 0.9;
+  // An ancestor that gives fixed descendants their containing block.
+  const holdsFixed = (cs) => cs.transform !== 'none' || cs.perspective !== 'none' || cs.filter !== 'none'
+    || ['translate', 'rotate', 'scale'].some((p) => (cs[p] || 'none') !== 'none')
+    || (cs.backdropFilter || 'none') !== 'none' || /paint|layout|strict|content/.test(cs.contain)
+    || /transform|translate|rotate|scale|perspective|filter/.test(cs.willChange);
   const shownBox = (el, forMedia = false) => {
     const b = el.getBoundingClientRect();
     let box = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+    // Only ancestors in the containing-block chain clip: a fixed box escapes all until
+    // one holds fixed boxes; an absolute one escapes until a positioned ancestor (#1497).
+    let pos = getComputedStyle(el).position;
     for (let a = el.parentElement; a; a = a.parentElement) {
       const cs = getComputedStyle(a);
+      const contains = pos === 'fixed' ? holdsFixed(cs)
+        : pos === 'absolute' ? cs.position !== 'static' || holdsFixed(cs) : true;
+      if (!contains) continue;
       if ((cs.overflowX !== 'visible' || cs.overflowY !== 'visible') && !(forMedia && pageScroller(a))) {
         const ab = a.getBoundingClientRect();
         box = clip(box, { l: ab.left, t: ab.top, r: ab.right, b: ab.bottom });
       }
+      pos = cs.position === 'fixed' || cs.position === 'absolute' ? cs.position : 'static';
     }
     return { whole: { l: b.left, t: b.top, r: b.right, b: b.bottom }, box };
   };
@@ -172,8 +184,14 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
     const background = (r) => busy.get(r.target)?.has(key(r));
     const href = location.href, y = scrollY;
     let changed = false, submitted = false, scrolled = false, navigating = false;
-    // Navigation counts when it starts, however slowly the next page answers.
-    const navStarted = () => { navigating = true; };
+    // Navigation counts when it starts, however slowly the next page answers, unless the
+    // page cancels it.
+    // The event is read once its dispatch is over, so a listener the click itself adds
+    // has run too.
+    const navStarted = (e) => {
+      if (!e) { navigating = true; return; }
+      setTimeout(() => { if (!e.defaultPrevented) navigating = true; }, 0);
+    };
     if (window.navigation) navigation.addEventListener('navigate', navStarted, { once: true });
     else addEventListener('beforeunload', navStarted, { once: true });
     const mo = new MutationObserver((rs) => { if (rs.some((r) => !background(r))) changed = true; });
@@ -189,7 +207,7 @@ const CLICK_JS: &str = r#"((sel) => new Promise((resolve) => {
   go();
 }))"#;
 
-fn launch(io: &Io) -> Result<Browser, String> {
+pub(crate) fn launch(io: &Io) -> Result<Browser, String> {
     let exe = discovery::find_browser(&io.env)?;
     let mut user_args: Vec<String> = Vec::new();
     if io.env.get("CI").map(|v| !v.is_empty()).unwrap_or(false) {
@@ -203,13 +221,13 @@ fn launch(io: &Io) -> Result<Browser, String> {
 
 /// A `file://` URL for an absolute path, on Windows too (without the `\\?\\`
 /// prefix `canonicalize` adds there).
-fn file_url(path: &std::path::Path) -> String {
+pub(crate) fn file_url(path: &std::path::Path) -> String {
     let shown = path.display().to_string();
     let plain = std::path::PathBuf::from(shown.strip_prefix(r"\\?\").unwrap_or(&shown));
     url::Url::from_file_path(&plain).map(|u| u.to_string()).unwrap_or_else(|_| format!("file://{shown}"))
 }
 
-fn parse_viewport(s: &str) -> Option<Viewport> {
+pub(crate) fn parse_viewport(s: &str) -> Option<Viewport> {
     let (w, h) = s.split_once('x')?;
     Some(Viewport { width: w.trim().parse().ok()?, height: h.trim().parse().ok()? })
 }
@@ -237,9 +255,18 @@ fn capture_name(vp: Viewport) -> String {
     }
 }
 
+/// A decoded full-page capture as PNG bytes.
+pub(crate) fn full_page_png(width: u32, height: u32, rgb: &[u8]) -> Result<Vec<u8>, String> {
+    let rgba: Vec<u8> = rgb.chunks(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
+    impeccable_comp::png_io::encode_png(
+        &impeccable_comp::raster::Image { width: width as usize, height: height as usize, data: rgba },
+        &[],
+    )
+}
+
 /// Let the page finish arriving: lazy images loaded (below the fold they would
 /// capture as blank boxes), fonts ready, and a short beat for late scripts.
-fn settle(page: &mut Page<'_>) {
+pub(crate) fn settle(page: &mut Page<'_>) {
     let _ = page.evaluate(
         "(async () => { for (const i of document.querySelectorAll('img[loading=lazy]')) i.loading = 'eager'; \
          await Promise.all([...document.images].map((i) => i.complete ? null : new Promise((r) => { i.addEventListener('load', r, { once: true }); i.addEventListener('error', r, { once: true }); setTimeout(r, 5000); }))); \
@@ -311,11 +338,7 @@ fn check(page: &mut Page<'_>, url: &str, vp: Viewport, o: &Options<'_>) -> Resul
     let shot = fullpage::capture_full_page(page, MAX_CAPTURE_HEIGHT, 90).map_err(|e| e.message)?;
     let img = fullpage::decode_jpeg(&shot.jpeg_base64).ok_or("the full-page capture did not decode")?;
     if let Some(dir) = o.capture {
-        let rgba: Vec<u8> = img.as_raw().chunks(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
-        let png = impeccable_comp::png_io::encode_png(
-            &impeccable_comp::raster::Image { width: img.width() as usize, height: img.height() as usize, data: rgba },
-            &[],
-        )?;
+        let png = full_page_png(img.width(), img.height(), img.as_raw())?;
         let path = dir.join(capture_name(vp));
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         std::fs::write(&path, png).map_err(|e| e.to_string())?;

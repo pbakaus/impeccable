@@ -80,6 +80,23 @@ export default [
   { id: 'hook-edit-tsx-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.tsx'), files: CACHE_FILES },
   { id: 'hook-edit-css-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), files: CACHE_FILES },
   { id: 'hook-edit-html-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/page.html'), files: CACHE_FILES },
+  // The edit hook never decodes an image (#560): white copy on an uncached
+  // light photo gets no sampled verdict from the hook, `detect` samples the
+  // photo and writes the sample cache under the isolated home, and the
+  // next hook run takes the verdict from that cache without opening the
+  // image.
+  {
+    id: 'hook-edit-html-image-cache', workspace: 'hook-project', files: CACHE_FILES,
+    setup(ws) {
+      fs.copyFileSync(new URL('../../fixtures/antipatterns/sampled-images/light.png', import.meta.url), `${ws}/src/hero.png`);
+      fs.writeFileSync(`${ws}/src/hero.html`, '<!doctype html><html><head><style>.hero{background:url(hero.png);padding:24px} p{color:#fdfdfd}</style></head><body><div class="hero"><p>White copy on a light photo</p></div></body></html>\n');
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/hero.html') },
+      { verb: 'detect', args: ['src/hero.html'] },
+      { verb: 'hook', stdin: claudeEdit('src/hero.html') },
+    ],
+  },
   { id: 'hook-edit-clean-tsx', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Clean.tsx'), files: CACHE_FILES },
   { id: 'hook-edit-non-ui-ts', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/util.ts'), files: CACHE_FILES },
   { id: 'hook-edit-missing-file', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/nope.tsx'), files: CACHE_FILES },

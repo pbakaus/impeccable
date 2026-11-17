@@ -117,7 +117,7 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     let first = run(&env, &root, &["detect", "--json", "."]);
     let body = scans(&fake).pop().expect("one upload");
     assert_eq!(body["coverage"], "full");
-    // The repo's name from its remote, never the folder's (Paul, REN-1553, 10 Nov).
+    // The repo's name from its remote, not its folder's.
     assert_eq!(body["label"], "my-site", "{body}");
     assert_eq!(body["filesScanned"], 4);
     assert!(body["findings"].as_u64().unwrap() >= 2, "{body}");
@@ -197,7 +197,7 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "sync off");
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health"));
     // The first upload (above) said so once; a second never does.
-    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Design health: this scan's counts were saved"));
+    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Saved this scan's counts to your"));
     assert!(run(&env, &root, &["health", "on"]).status.success());
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 2);
@@ -297,7 +297,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     // Catches (review, Cursor): `detect --quiet` sending counts and using up the one notice that says so.
     let (fake, env) = signed_in("health-quiet");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(notice));
@@ -317,7 +317,7 @@ fn each_service_gives_its_own_notice() {
     // Catches (review, Greptile): a staging upload's notice hiding production's for the same sign-in count.
     let (staging, env) = signed_in("health-two-issuers");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     assert!(String::from_utf8_lossy(&run(&env, &root, &["detect", "."]).stderr).contains(notice));
     assert_eq!(staging.hits("/cli/v1/health/scans"), 1);
 
@@ -600,7 +600,7 @@ fn foundations_review_json_alias_preserves_the_health_notice() {
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health:"));
     let out = run(&env, &root, &["detect", "."]);
     assert!(String::from_utf8_lossy(&out.stderr)
-        .contains("Design health: this scan's counts were saved"));
+        .contains("Saved this scan's counts to your"));
 }
 
 #[test]
@@ -748,7 +748,9 @@ fn design_forget_fences_a_late_success_response() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-forget-race");
+    let mut env = fake.env("design-forget-race");
+    // `forget` waits 3 s for an upload holding the lock: the real budget must end first.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -898,7 +900,9 @@ fn design_has_one_two_second_response_budget() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-response-budget");
+    let mut env = fake.env("design-response-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -926,7 +930,9 @@ fn design_refresh_can_finish_safely_after_detect_stops_waiting() {
         k.design = true;
         k.access_ttl = 0;
     }
-    let env = fake.env("design-renew-budget");
+    let mut env = fake.env("design-renew-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     fake.knobs.lock().unwrap().access_ttl = 900;
     let root = repo(&env, None);
@@ -998,7 +1004,8 @@ fn design_sync_reuses_health_repo_labels_and_omits_missing_ones() {
     for (i, (remote, expected)) in [
         (Some("git@GitHub.com:acme/my-site.git"), Some("my-site")),
         (Some("git@gitlab.com:group/sub/tool.git"), Some("tool")),
-        (None, None),
+        // No remote: the folder's name (Paul, REN-2028).
+        (None, Some("<folder>")),
         (Some("git@github.com:acme/repo\\secret.git"), None),
     ]
     .into_iter()
@@ -1029,6 +1036,7 @@ fn design_sync_reuses_health_repo_labels_and_omits_missing_ones() {
         let health = scans(&fake).pop().unwrap();
         assert_eq!(doc.get("label"), health.get("label"));
         match expected {
+            Some("<folder>") => assert_eq!(doc["label"].as_str(), root.file_name().and_then(|n| n.to_str())),
             Some(name) => assert_eq!(doc["label"], name),
             None => assert!(
                 doc.get("label").is_none(),
@@ -1113,7 +1121,7 @@ fn design_notice_is_once_after_success_and_again_after_sign_in() {
     let env = fake.env("design-notice");
     login(&env);
     let root = repo(&env, None);
-    let notice = "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n";
+    let notice = "Saved your DESIGN.md to your account, and again whenever it changes.\nTo stop: impeccable health design off\n";
     let hook = run(&env, &root, &["hook-before-edit"]);
     assert!(!String::from_utf8_lossy(&hook.stdout).contains(notice));
     assert!(!String::from_utf8_lossy(&hook.stderr).contains(notice));
@@ -1316,15 +1324,15 @@ fn a_telemetry_opt_out_still_gets_the_sign_in_scan_and_is_told_what_was_sent() {
 }
 
 #[test]
-fn a_sign_in_in_a_repo_without_a_remote_says_no_name_was_sent() {
-    // Catches: the line claiming a name went when a repository without a remote has none to send.
+fn a_sign_in_in_a_repo_without_a_remote_sends_its_folders_name() {
+    // Catches: two local repositories both called "Local repository" in the app (Paul, REN-2028).
     let fake = Fake::start();
     fake.knobs.lock().unwrap().health = true;
     let env = fake.env("first-signin-noremote");
     let root = repo(&env, None);
     let err = login_in(&env, &root);
-    assert!(err.contains("Sent finding counts and foundations checks, never your code or file names."), "{err}");
-    assert!(scans(&fake)[0].get("label").is_none());
+    assert!(err.contains("Sent its name, finding counts and foundations checks, never your code or file names."), "{err}");
+    assert_eq!(scans(&fake)[0]["label"].as_str(), root.file_name().and_then(|n| n.to_str()));
 }
 
 #[test]
@@ -1344,7 +1352,7 @@ fn the_sign_in_scan_leaves_design_md_to_detect() {
     assert_eq!(fake.hits("/cli/v1/design"), 0);
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/design"), 1);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("Uploaded your DESIGN.md"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Saved your DESIGN.md"));
 }
 
 #[test]

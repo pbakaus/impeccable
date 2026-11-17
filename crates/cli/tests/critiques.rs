@@ -555,14 +555,15 @@ fn invalid_service_settings_never_prevent_local_optout() {
 }
 
 #[test]
-fn repo_labels_use_the_remote_name_and_are_omitted_when_unavailable() {
+fn repo_labels_use_the_remote_or_folder_name_and_are_omitted_when_invalid() {
     for (name, remote, expected) in [
         (
             "named",
             Some("git@GitHub.com:acme/remote-repo.git"),
             Some("remote-repo"),
         ),
-        ("local", None, None),
+        // No remote: the folder's name (Paul, REN-2028).
+        ("local", None, Some("<folder>")),
         ("invalid", Some("git@github.com:acme/bad\\name.git"), None),
     ] {
         let (fake, env) = setup(&format!("critique-label-{name}"));
@@ -589,6 +590,7 @@ fn repo_labels_use_the_remote_name_and_are_omitted_when_unavailable() {
         assert_eq!(record.critiques.len(), 1);
         let body = &record.critiques[0];
         assert!(body["repoKey"].as_str().is_some());
+        let expected = if expected == Some("<folder>") { root.file_name().and_then(|n| n.to_str()) } else { expected };
         assert_eq!(
             body.get("label").and_then(serde_json::Value::as_str),
             expected
@@ -865,4 +867,90 @@ fn unavailable_metadata_keeps_plain_status_and_leaves_notice_owed() {
         .dir()
         .join(format!("stale-grant-notice-{}", state.login))
         .exists());
+}
+
+// Catches an audit saved but never uploaded, uploaded unmarked (it would read as a critique out of 40), one whose
+// score cannot be an audit's reaching the account, or a linked file uploaded as an audit.
+#[test]
+fn a_saved_audit_uploads_marked_as_an_audit() {
+    let (fake, env) = setup("audit-upload");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    assert!(impeccable(&env, root, &["critiques", "on"]).output().unwrap().status.success());
+    let audit = |meta: &str| {
+        impeccable(&env, root, &["audit-storage", "write", ".", "report.md"])
+            .env("IMPECCABLE_REPORT_META", meta)
+            .output()
+            .unwrap()
+    };
+    let out = audit(r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":2,"p2_count":3,"p3_count":1}"#);
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("audit"));
+    assert!(audit(r#"{"target":".","total_score":30,"max_score":40,"p0_count":0,"p1_count":0}"#).status.success());
+    // An audit uploads now, so a link in place of its report is refused as a critique's is.
+    #[cfg(unix)]
+    {
+        let outside = std::env::temp_dir().join(format!("audit-outside-{}.md", std::process::id()));
+        std::fs::write(&outside, "Not a report").unwrap();
+        std::fs::remove_file(root.join("report.md")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("report.md")).unwrap();
+        assert!(!audit(r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":0}"#).status.success());
+        std::fs::remove_file(outside).unwrap();
+    }
+    let r = fake.record.lock().unwrap();
+    assert_eq!(r.critiques.len(), 1);
+    let c = &r.critiques[0];
+    assert_eq!((c["kind"].as_str(), c["score"]["max"].as_u64(), c["counts"]["p2"].as_u64()), (Some("audit"), Some(20), Some(3)));
+    assert!(r.critiques.iter().all(|c| c["na"] == serde_json::json!([])));
+}
+
+#[test]
+fn an_accepted_variant_records_the_prototype_once_and_never_when_opted_out() {
+    let (fake, env) = setup("prototype-accept");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let id = "ab12cd34";
+    std::fs::write(
+        root.join("index.html"),
+        format!(
+            "<!-- impeccable-variants-start {id} -->\n<div data-impeccable-variants=\"{id}\" data-impeccable-variant-count=\"3\" style=\"display: contents\">\n<div data-impeccable-variant=\"original\"><h1>Old</h1></div>\n<div data-impeccable-variant=\"1\"><h1>New</h1></div>\n</div>\n<!-- impeccable-variants-end {id} -->\n"
+        ),
+    )
+    .unwrap();
+    let sessions = root.join(".impeccable/live/sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    std::fs::write(
+        sessions.join(format!("{id}.jsonl")),
+        format!("{}\n", serde_json::json!({"seq": 1, "id": id, "type": "generate", "ts": "2026-11-16T10:00:00.000Z",
+            "event": {"id": id, "type": "generate", "pageUrl": "http://localhost:5173/pricing?plan=pro#top", "count": 3}})),
+    )
+    .unwrap();
+    let accept = || impeccable(&env, root, &["live-accept", "--id", id, "--variant", "1"]).output().unwrap();
+    // The accept's stdout stays one JSON result and nothing is said on stderr.
+    let first = accept();
+    assert!(first.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(result["handled"], true);
+    assert!(first.stderr.is_empty(), "{}", String::from_utf8_lossy(&first.stderr));
+    // A replayed accept sends the same id, so the service counts it once.
+    assert!(accept().status.success());
+    let sent = fake.record.lock().unwrap().prototypes.clone();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[0]["prototypeId"], sent[1]["prototypeId"]);
+    assert_eq!((sent[0]["target"].as_str(), sent[0]["variants"].as_u64()), (Some("/pricing"), Some(3)));
+    // Exactly these keys: no repoKey outside a repository, nothing of the variants.
+    let mut keys: Vec<_> = sent[0].as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["createdAt", "prototypeId", "target", "variants"]);
+    // The replay keeps the first accept's time.
+    assert_eq!(sent[0]["createdAt"], sent[1]["createdAt"]);
+    impeccable(&env, root, &["critiques", "off"]).output().unwrap();
+    assert!(accept().status.success());
+    assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
+    // An accept older than the service's one-day window sends nothing.
+    impeccable(&env, root, &["critiques", "on"]).output().unwrap();
+    let receipt = root.join(format!(".impeccable/live/accept-receipts/{id}.json"));
+    let mut r: serde_json::Value = serde_json::from_slice(&std::fs::read(&receipt).unwrap()).unwrap();
+    r["completedAt"] = "2026-01-01T00:00:00.000Z".into();
+    std::fs::write(&receipt, r.to_string()).unwrap();
+    assert!(accept().status.success());
+    assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
 }

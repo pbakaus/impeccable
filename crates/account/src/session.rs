@@ -70,6 +70,28 @@ impl Session {
         })
     }
 
+    /// [`Session::load`] that never prompts (no macOS Keychain dialog): for a process an agent started, which nobody
+    /// is watching. A secret that can only be read with a prompt reads as not signed in.
+    pub fn load_quietly(account: &Account) -> Result<Session, SessionError> {
+        let store = Store::new(account);
+        let state = store
+            .try_state()
+            .map_err(SessionError::Local)?
+            .filter(|s| s.signed_in)
+            .ok_or(SessionError::NotSignedIn)?;
+        let secret = store
+            .try_secret_noninteractive(&state)
+            .map_err(SessionError::Local)?
+            .ok_or(SessionError::NotSignedIn)?;
+        Ok(Session {
+            client: Client::new(account),
+            store,
+            state,
+            secret,
+            noninteractive: true,
+        })
+    }
+
     /// Read existing credentials without prompting, with a caller-owned deadline.
     /// The worker only reads; timing out cannot rotate tokens or upload later.
     pub(crate) fn load_for_upload(account: &Account, wait: std::time::Duration) -> Option<Session> {
@@ -77,6 +99,20 @@ impl Session {
         read_within(wait, move || {
             let store = Store::new(&account);
             let _lock = store.lock_for(std::time::Duration::ZERO).ok()?;
+            Self::load_for_upload_locked(&account)
+        })
+        .flatten()
+    }
+
+    /// `load_for_upload`, waiting up to `wait` for the sign-in lock instead of trying it once:
+    /// for a worker another worker may be starting beside (`context` starts the switch and
+    /// taste refreshes together), so the second waits its turn rather than skipping (REN-2056 walk).
+    pub(crate) fn load_for_upload_waiting(account: &Account, wait: std::time::Duration) -> Option<Session> {
+        let account = account.clone();
+        let lock_wait = wait.saturating_sub(std::time::Duration::from_millis(250));
+        read_within(wait, move || {
+            let store = Store::new(&account);
+            let _lock = store.lock_for(lock_wait).ok()?;
             Self::load_for_upload_locked(&account)
         })
         .flatten()

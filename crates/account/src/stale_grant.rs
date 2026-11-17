@@ -48,7 +48,7 @@ fn offered(m: &oauth::Metadata, scope: &str) -> bool {
         oauth::CRITIQUES_SCOPE => m.critiques,
         oauth::WORLDS_SCOPE => m.worlds,
         "setup:write" => m.setup,
-        _ => false,
+        other => m.mcp.contains(&other),
     }
 }
 
@@ -83,8 +83,10 @@ fn holds(account: &Account, state: &State, scope: &str) -> bool {
 /// then `login` signs in again rather than saying it already is.
 /// Every scope `oauth::scopes` can ask for is checked, against one metadata read.
 pub(crate) fn fresh_sign_in_adds(account: &Account, state: &State) -> bool {
+    // The MCP scopes (`impeccable mcp`, REN-2053) too, where the service offers them.
     let missing: Vec<&str> = OPTIONAL
         .into_iter()
+        .chain(oauth::MCP_SCOPES)
         .filter(|scope| !holds(account, state, scope))
         .collect();
     if missing.is_empty() {

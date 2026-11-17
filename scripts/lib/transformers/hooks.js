@@ -280,8 +280,45 @@ export function buildGeminiHooksManifest() {
   } };
 }
 
+// Antigravity (`agy` CLI, IDE, 2.0) discovers workspace hooks from
+// `.agents/hooks.json` (or global `~/.gemini/config/hooks.json`). Top-level
+// keys are named hooks (`"impeccable": { PostToolUse, Stop }`). Commands run
+// with cwd set to the directory containing `hooks.json` (`.agents/` for a
+// workspace install), so the workspace skill launcher sits at
+// `../.agent/skills/impeccable/scripts/impeccable`.
+const ANTIGRAVITY_PROJECT_SCRIPTS = '../.agent/skills/impeccable/scripts';
+
+export function buildAntigravityHooksManifest() {
+  const command = guardedLauncher(launcherIn(ANTIGRAVITY_PROJECT_SCRIPTS));
+  return {
+    impeccable: {
+      PostToolUse: [
+        {
+          matcher: 'write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content',
+          hooks: [
+            {
+              type: 'command',
+              command,
+              timeout: TIMEOUT_SECONDS,
+            },
+          ],
+        },
+      ],
+      Stop: [
+        {
+          type: 'command',
+          command,
+          timeout: STOP_TIMEOUT_SECONDS,
+        },
+      ],
+    },
+  };
+}
+
 export function hooksJsonFor(provider, options = {}) {
   switch (provider) {
+    case 'antigravity':
+      return buildAntigravityHooksManifest();
     case 'claude':
       return buildClaudeSettingsManifest();
     case 'codex':

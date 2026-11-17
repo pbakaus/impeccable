@@ -11,7 +11,7 @@
 //! it prints the exact command for the person to run. Agent tokens are never seen or
 //! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
-use crate::loop_taste;
+use crate::agent_block;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -103,10 +103,6 @@ const MCP_NAME: &str = "impeccable";
 const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
-/// The instruction connect keeps in the agent's own rule file (~/.claude/CLAUDE.md,
-/// ~/.codex/AGENTS.md) as an engine-managed block, so agents bring questions to Loop
-/// instead of waiting in a terminal. Disconnect removes the block with the hooks.
-const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
 const APP: &str = "Applications/Impeccable Loop.app";
 const HELPER: &str = "Contents/MacOS/loop-hook";
 /// Where Loop's helper keeps its state (the old name stays until Loop migrates it).
@@ -121,6 +117,9 @@ const LOCK_WAIT: Duration = Duration::from_secs(10);
 const ADD_WAIT: Duration = Duration::from_secs(300);
 
 type Result<T> = std::result::Result<T, String>;
+
+/// The first Loop whose helper holds a Codex turn open for an answer (REN-2057).
+const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 
 const AGENTS: [(&str, &str); 2] = [("claude", "Claude Code"), ("codex", "Codex")];
 
@@ -275,20 +274,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
-    let version = helper
-        .parent()
-        .and_then(Path::parent)
-        .and_then(|c| {
-            Command::new("/usr/bin/plutil")
-                .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
-                .arg(c.join("Info.plist"))
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .ok()
-        })
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let version = bundle_version(&helper);
     let support = SUPPORT
         .iter()
         .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
@@ -316,11 +302,11 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
                         .as_array()
                         .is_some_and(|r| r.iter().all(|x| x["state"] != "conflict"))
             });
-        let rules = agent.root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" });
-        let shadow = root_override(harness, &agent.root);
         // Present only where the agent reads it: under an override, the override must carry it.
-        let instruction = fs::read_to_string(shadow.as_deref().unwrap_or(&rules))
-            .is_ok_and(|t| t.contains(INSTRUCTION));
+        // The Impeccable block's loop line, or an older CLI's engine block holding the same
+        // line until the next connect folds it in.
+        let instruction = agent_block::present(&rule_file(harness, &agent.root), "loop")
+            || fs::read_to_string(rule_file(harness, &agent.root)).is_ok_and(|t| t.contains(agent_block::LOOP));
         // The wake record is shared per agent; it speaks for this folder only when it names it.
         let root = agent.root.display().to_string();
         let connected = read_record(&support, harness).is_some_and(|r| {
@@ -333,11 +319,10 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
             "mcp": mcp, "hooks": hooks, "instruction": instruction, "connected": connected,
-            "instructionShadowed": shadow.is_some() && !instruction,
         }));
     }
     Ok(json!({
-        "loop": { "installed": loop_installed, "version": version },
+        "loop": { "installed": loop_installed, "version": version, "blocked": loop_installed && blocked(&helper) },
         "agents": agents,
     }))
 }
@@ -351,6 +336,9 @@ pub(crate) fn agent_connected(a: &Value) -> bool {
 /// The plain-text form of `status`.
 pub(crate) fn status_text(v: &Value) -> String {
     let mut out = match v["loop"]["version"].as_str() {
+        _ if v["loop"]["blocked"] == true => {
+            "Loop: macOS is blocking it. Run impeccable loop update to reinstall it.\n".to_string()
+        }
         Some(ver) if v["loop"]["installed"] == true => format!("Loop {ver}: installed.\n"),
         _ if v["loop"]["installed"] == true => "Loop: installed.\n".to_string(),
         _ => "Loop: not installed. Run impeccable loop install.\n".to_string(),
@@ -366,13 +354,7 @@ pub(crate) fn status_text(v: &Value) -> String {
                 "{label}: not connected (MCP server {}, hooks {}, instruction {}). Run impeccable loop connect.\n",
                 a["mcp"].as_str().unwrap_or("absent"),
                 if a["hooks"] == true { "present" } else { "missing" },
-                if a["instruction"] == true {
-                    "present"
-                } else if a["instructionShadowed"] == true {
-                    "hidden by AGENTS.override.md"
-                } else {
-                    "missing"
-                },
+                if a["instruction"] == true { "present" } else { "missing" },
             ));
         }
     }
@@ -499,6 +481,12 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     if let Err(e) = note_target(support, agent) {
         return Err(with_mcp(e));
     }
+    // A rule file whose markers are broken would refuse the loop line after the engine had
+    // already taken an older CLI's block out: refuse before anything changes instead.
+    let block_file = rule_file(agent.harness, &agent.root);
+    if let Err(e) = agent_block::writable(&block_file) {
+        return Err(with_mcp(format!("couldn't add the Loop line to {}: {e}", block_file.display())));
+    }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
     // An installation whose state can't be read is never treated as absent: a failure
@@ -548,7 +536,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
         ));
     }
-    let mut manual: Vec<String> = status["manualActions"]
+    let manual: Vec<String> = status["manualActions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -557,9 +545,9 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
                 .collect()
         })
         .unwrap_or_default();
-    // The engine wrote the instruction, but Codex reads AGENTS.override.md in its place.
-    if status["effective"] == false {
-        manual.push(shadowed_advice(&agent.root));
+    // 4. The "ask through Loop" line, in the file the agent reads.
+    if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
+        return Err(rollback(format!("couldn't add the Loop line to its rule file: {e}")));
     }
     Ok(manual)
 }
@@ -571,12 +559,6 @@ fn root_override(harness: &str, root: &Path) -> Option<PathBuf> {
     (harness == "codex" && p.exists()).then_some(p)
 }
 
-fn shadowed_advice(root: &Path) -> String {
-    format!(
-        "add this line to {}, which Codex reads instead of AGENTS.md: {INSTRUCTION}",
-        root.join("AGENTS.override.md").display()
-    )
-}
 
 /// `loop disconnect`: every installation connect made (from the engine's journals, not
 /// today's environment), each on its own. Waking stops first; the hooks go; MCP servers
@@ -596,8 +578,42 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // The taste block goes before the engine's undo, so the engine finds each rule file
     // exactly as it wrote it and cleans up after itself (a file it created goes too).
     let every: Vec<&Spec> = found.pending.iter().chain(&found.committed).collect();
-    let (taste_ok, created) = remove_taste(&home, &support, &every, &mut out);
+    // The files a connect created, read before remove_taste prunes the list.
+    let new_files: Vec<Value> = read_json(&support.join(TARGETS))
+        .and_then(|n| n[TASTE_NEW_KEY].as_array().cloned())
+        .unwrap_or_default();
+    let (taste_ok, mut created) = remove_taste(&home, &support, &every, &mut out);
     failed |= !taste_ok;
+    // The "ask through Loop" line goes with the hooks: from every file connect may have
+    // written it to (Codex's AGENTS.md and its override both, since the override can come
+    // or go after a connect). An installation whose line couldn't come out keeps its
+    // hooks and journal, so the next disconnect visits it again.
+    let mut kept: Vec<(String, PathBuf)> = Vec::new();
+    for spec in &every {
+        let files = if spec.harness == "codex" {
+            vec![spec.root.join("AGENTS.override.md"), spec.root.join("AGENTS.md")]
+        } else {
+            vec![rule_file(&spec.harness, &spec.root)]
+        };
+        for file in files {
+            match agent_block::set(&file, "loop", false) {
+                Ok(_) => {
+                    if new_files.contains(&json!(file.display().to_string())) && !created.contains(&file) {
+                        created.push(file);
+                    }
+                }
+                Err(e) => {
+                    failed = true;
+                    kept.push((spec.harness.clone(), spec.root.clone()));
+                    out.push_str(&format!(
+                        "{}: the Loop line in {} was left in place, and so were its hooks: {e}\n",
+                        label(&spec.harness),
+                        tilde(&home, &file)
+                    ));
+                }
+            }
+        }
+    }
     let mut rolled_back = Vec::new();
     for spec in &found.pending {
         let label = label(&spec.harness);
@@ -625,7 +641,11 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
             path.display()
         ));
     }
-    let specs = found.committed;
+    let specs: Vec<Spec> = found
+        .committed
+        .into_iter()
+        .filter(|s| !kept.iter().any(|(h, r)| *h == s.harness && *r == s.root))
+        .collect();
     // A rolled-back first connect has no journal left, but may have added the MCP
     // server and Loop's record: stop the waking and say how to remove the server.
     for spec in rolled_back {
@@ -969,17 +989,10 @@ fn quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', r"'\''"))
 }
 
-/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
-/// Whether the Loop that owns `helper` (…/Contents/MacOS/loop-hook) is 0.1.1 or later,
-/// read from its bundle's CFBundleShortVersionString. Unknown counts as no.
-fn supports_context(helper: &Path) -> bool {
-    let Some(plist) = helper
-        .parent()
-        .and_then(Path::parent)
-        .map(|c| c.join("Info.plist"))
-    else {
-        return false;
-    };
+/// The CFBundleShortVersionString of the Loop that owns `helper`
+/// (…/Contents/MacOS/loop-hook). None when it can't be read.
+fn bundle_version(helper: &Path) -> Option<String> {
+    let plist = helper.parent()?.parent()?.join("Info.plist");
     Command::new("/usr/bin/plutil")
         .args(["-extract", "CFBundleShortVersionString", "raw", "-o", "-"])
         .arg(plist)
@@ -988,13 +1001,69 @@ fn supports_context(helper: &Path) -> bool {
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| semver::Version::parse(String::from_utf8_lossy(&o.stdout).trim()).ok())
-        .is_some_and(|v| v >= semver::Version::new(0, 1, 1))
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
 }
 
+/// The first Loop whose own reading of the hooks (its Settings and first-run panel)
+/// accepts the guarded command below. An older Loop would read guarded hooks as missing,
+/// so it keeps the plain command.
+const GUARDED_SINCE: semver::Version = semver::Version::new(0, 1, 3);
+
+/// A quarantine flags field (the xattr's first `;`-separated part, four hex digits) with
+/// 0x40, the person's approval, clear: macOS would refuse to run the helper.
+const UNAPPROVED: &str = "^[0-9a-fA-F]{2}[0-389abAB][0-9a-fA-F];";
+
+/// Whether macOS will refuse to run `helper`: it carries a quarantine flag the person never
+/// approved. Loop is signed but not notarized, so it runs only without one. Read with
+/// getxattr, no process; the same test as the guarded hook command's.
+pub(crate) fn blocked(helper: &Path) -> bool {
+    quarantine(helper).is_some_and(|q| {
+        let flags = q.split(';').next().unwrap_or_default();
+        flags.len() == 4 && u16::from_str_radix(flags, 16).is_ok_and(|f| f & 0x40 == 0)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn quarantine(path: &Path) -> Option<String> {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut buf = [0u8; 256];
+    // SAFETY: both strings are NUL-terminated and buf is as long as the size passed.
+    let n = unsafe {
+        libc::getxattr(
+            path.as_ptr(),
+            c"com.apple.quarantine".as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+            0,
+            0,
+        )
+    };
+    (n >= 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).into_owned())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn quarantine(_: &Path) -> Option<String> {
+    None
+}
+
+/// Loop's hooks for one agent (Needs you's helper contract, 10 Nov).
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let harness = agent.harness;
-    let command = |kind: &str| format!("{} {harness} {kind}", quote(helper));
+    // Unknown counts as old.
+    let version = bundle_version(helper).and_then(|v| semver::Version::parse(&v).ok());
+    let guarded = version.as_ref().is_some_and(|v| *v >= GUARDED_SINCE);
+    let helper_q = quote(helper);
+    // Guarded, a helper macOS would refuse is never run: running it shows the "damaged"
+    // dialog at every session start and tool call. The hook then exits 0 with no output
+    // and the session goes on; loop status says how to fix it.
+    let command = |kind: &str| {
+        if guarded {
+            format!("/usr/bin/xattr -p com.apple.quarantine {helper_q} 2>/dev/null | /usr/bin/grep -Eq '{UNAPPROVED}' || exec {helper_q} {harness} {kind}")
+        } else {
+            format!("{helper_q} {harness} {kind}")
+        }
+    };
     let hook = |event: &str, matcher: Option<&str>, kind: &str, timeout: u64, wake: bool| Hook {
         event: event.into(),
         matcher: matcher.map(Into::into),
@@ -1020,8 +1089,16 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
     // Tells a new session that Loop will wake it, so it stops polling for answers.
     // Synchronous: it prints at most one line within its own 400 ms probe and always
     // exits 0. Only Loop 0.1.1 and later have it; an older helper would fail every start.
-    if supports_context(helper) {
+    if version.as_ref().is_some_and(|v| *v >= semver::Version::new(0, 1, 1)) {
         hooks.push(hook("SessionStart", None, "context", 5, false));
+    }
+    // Codex has no background wake: at the end of a turn this holds, synchronously, until
+    // Loop has an answer for a card the session asked, then hands Codex a follow-up
+    // prompt (REN-2057). The helper exits at once when nothing is pending. Only a Loop
+    // whose helper knows the hold gets it; an older one would treat the event as plain
+    // lifecycle.
+    if harness == "codex" && version.as_ref().is_some_and(|v| *v >= STOP_HOLD) {
+        hooks.push(hook("Stop", None, "lifecycle", 3600, false));
     }
     Spec {
         version: 1,
@@ -1040,7 +1117,9 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
         } else {
             vec![]
         },
-        instruction: Some(INSTRUCTION.into()),
+        // The "ask through Loop" line lives in the one Impeccable block (agent_block),
+        // not in an engine-managed block of its own (REN-2056).
+        instruction: None,
     }
 }
 
@@ -1294,10 +1373,12 @@ fn forget_missing_rule_file(support: &Path, file: &Path) {
     }
 }
 
-/// The agent's user-level rule file in this config folder, the one the engine's
-/// instruction block lives in.
+/// The agent's user-level rule file in this config folder, the one the Impeccable block
+/// lives in: Codex's AGENTS.override.md when there is one, since Codex then reads it
+/// instead of AGENTS.md.
 fn rule_file(harness: &str, root: &Path) -> PathBuf {
-    root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
+    root_override(harness, root)
+        .unwrap_or_else(|| root.join(if harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" }))
 }
 
 fn tilde(home: &Path, path: &Path) -> String {
@@ -1338,7 +1419,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     let note = read_json(&support.join(TARGETS)).unwrap_or_else(|| json!({}));
     let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) =
-        targets.into_iter().partition(|f| loop_taste::present(f));
+        targets.into_iter().partition(|f| agent_block::present(f, "taste"));
     // Asked about: files with no answer yet, and with --taste every file without the block.
     let ask: Vec<PathBuf> = absent
         .into_iter()
@@ -1351,7 +1432,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
         Taste::Ask if io.stdin_is_tty && std::io::stdout().is_terminal() => {
             let files: Vec<String> = ask.iter().map(|f| tilde(&home, f)).collect();
             io.out(&format!(
-                "Let your agents use your Impeccable taste? This adds 3 lines to {}. [Y/n] ",
+                "Let your agents use your Impeccable taste? This adds a line to {}. [Y/n] ",
                 files.join(" and ")
             ));
             let _ = std::io::Write::flush(&mut io.stdout);
@@ -1383,7 +1464,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     let answered = |f: &Path| note[TASTE_KEY][f.display().to_string()].is_string();
     let (present, absent): (Vec<PathBuf>, Vec<PathBuf>) = taste_targets(io, &home, agents)
         .into_iter()
-        .partition(|f| loop_taste::present(f));
+        .partition(|f| agent_block::present(f, "taste"));
     let ask: Vec<PathBuf> = absent
         .into_iter()
         .filter(|f| asked.contains(f) && (choice == Taste::Yes || !answered(f)))
@@ -1398,7 +1479,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     for file in &present {
         let shown = tilde(&home, file);
         if choice == Taste::No {
-            match loop_taste::take_out(file) {
+            match agent_block::set(file, "taste", false) {
                 Ok(_) => {
                     record(file, "off");
                     out.push_str(&format!("Taste: removed from {shown}.\n"));
@@ -1412,7 +1493,7 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
             continue;
         }
         // Rewritten in place, so a block from an older wording is brought up to date.
-        match loop_taste::add(file) {
+        match agent_block::set(file, "taste", true) {
             Ok(changed) => {
                 record(file, "on");
                 if changed {
@@ -1428,16 +1509,10 @@ pub(crate) fn offer_taste(io: &mut Io, agents: &[String], choice: Taste) -> (Str
     for file in &ask {
         let shown = tilde(&home, file);
         match yes {
-            Some(true) => match loop_taste::add(file) {
+            Some(true) => match agent_block::set(file, "taste", true) {
                 Ok(_) => {
                     record(file, "on");
                     out.push_str(&format!("Taste: added to {shown}.\n"));
-                    if let Some(over) = file.parent().and_then(|root| root_override("codex", root)).filter(|_| file.ends_with("AGENTS.md")) {
-                        out.push_str(&format!(
-                            "  Codex reads {} instead; copy the taste lines there too.\n",
-                            tilde(&home, &over)
-                        ));
-                    }
                     rows.push(row(file, "added"));
                 }
                 Err(e) => {
@@ -1497,7 +1572,7 @@ fn remove_taste(
     let (mut created, mut kept, mut kept_new) = (Vec::new(), serde_json::Map::new(), Vec::new());
     for file in &files {
         let key = file.display().to_string();
-        match loop_taste::take_out(file) {
+        match agent_block::set(file, "taste", false) {
             Ok(taken) => {
                 if taken {
                     out.push_str(&format!("  Removed the taste lines from {}.\n", tilde(home, file)));

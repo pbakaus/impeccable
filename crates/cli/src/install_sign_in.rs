@@ -78,10 +78,25 @@ fn offer_sign_in(
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
-    io.err(OFFER);
-    if !ask(io, "Sign in now?") {
-        io.err("Later: npx impeccable login\n");
-        init_next(io);
+    // At a terminal, install's own choice; anything else the plain question.
+    let yes = match impeccable_common::steps::Steps::new(io) {
+        Some(mut steps) => {
+            io.err("\n");
+            steps.details(io, &OFFER.trim().lines().map(str::to_string).collect::<Vec<_>>());
+            let options = [("Sign in", Some("opens your browser")), ("Not now", Some("later: npx impeccable login"))];
+            steps.choose(io, "Sign in now?", &options, 0).unwrap_or(1) == 0
+        }
+        None => {
+            io.err(OFFER);
+            ask(io, "Sign in now?")
+        }
+    };
+    if !yes {
+        // At a terminal, Done just said the init step; the plain path says it again after its question.
+        if impeccable_common::steps::Steps::new(io).is_none() {
+            io.err("Later: npx impeccable login\n");
+            init_next(io);
+        }
         return;
     }
     let impeccable_account::LoginOutcome::SignedIn(account) =
@@ -111,9 +126,9 @@ fn offer_sign_in(
     let installed = crate::loop_install::installed_app(io).is_some();
     if loop_offered(cfg!(target_os = "macos"), includes_loop, installed) {
         io.err("\nImpeccable Loop is a Mac app that keeps every question your agents ask in one place.\n");
-        if ask(io, "Install Loop?") {
+        if offer(io, "Install Loop?", ("Install Loop", "the Mac app, connected to your agents"), "later: impeccable loop install") {
             crate::loop_install::run(&["install".into(), "--connect".into()], io);
-        } else {
+        } else if impeccable_common::steps::Steps::new(io).is_none() {
             io.err("Later: impeccable loop install\n");
         }
     } else {
@@ -124,6 +139,15 @@ fn offer_sign_in(
     // Read after the steps above, so the lines include what they just connected.
     if let Some(v) = impeccable_account::setup_status::read_for(io, &account) {
         impeccable_account::setup_status::print(io, &v);
+    }
+    crate::router::sign_in_summary(io);
+}
+
+/// A yes/no step: install's own choice at a terminal (Enter takes the first option), the plain `[Y/n]` question elsewhere.
+fn offer(io: &mut Io, question: &str, yes: (&str, &str), later: &str) -> bool {
+    match impeccable_common::steps::Steps::new(io) {
+        Some(mut steps) => steps.choose(io, question, &[(yes.0, Some(yes.1)), ("Not now", Some(later))], 0).unwrap_or(1) == 0,
+        None => ask(io, question),
     }
 }
 

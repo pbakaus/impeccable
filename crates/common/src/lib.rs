@@ -8,14 +8,19 @@
 
 #[cfg(feature = "fingerprint")]
 pub mod design_fingerprint;
+
+pub mod flow;
 pub mod fsx;
 pub mod git;
 pub mod http;
 pub mod jsp;
 pub mod launcher;
 pub mod proc;
+pub mod prompt;
 #[cfg(feature = "seed")]
 pub mod seed;
+pub mod steps;
+pub mod text;
 
 use std::collections::HashMap;
 use std::ffi::OsString;

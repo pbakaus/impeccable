@@ -254,6 +254,7 @@ const cases = [
   { id: 'context-product-only', verb: 'context', workspace: 'ctx-product-only', env: env(), files: IMPECCABLE_FILES },
   { id: 'context-full', verb: 'context', workspace: 'ctx-full', setup: sidecarNewer, env: env(), files: IMPECCABLE_FILES },
   { id: 'context-full-oversized-design', verb: 'context', workspace: 'ctx-full', setup: (ws) => { write(ws, 'DESIGN.md', '# Design System: Oversized\n\n' + 'A deliberately long paragraph that pads DESIGN.md past the output budget.\n\n'.repeat(300)); sidecarNewer(ws); }, env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-full-long-product', verb: 'context', workspace: 'ctx-full', setup: (ws) => { write(ws, 'PRODUCT.md', '# Long Product\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nweb\n\n## Users\n\n' + 'A deliberately long paragraph that pads PRODUCT.md past the map budget.\n\n'.repeat(30) + '## Anti-references\n\nNo glass.\n'); sidecarNewer(ws); }, env: env(), files: IMPECCABLE_FILES },
   { id: 'context-full-many-briefs', platforms: ['linux', 'darwin'], verb: 'context', workspace: 'ctx-full', setup: (ws) => { for (let i = 0; i < 150; i++) write(ws, `.impeccable/surfaces/route-page-${i}.md`, `---\nversion: 1\nslug: "route-page-${i}"\nprimary_target: "route:/page-${i}"\nrelated_targets: []\n---\n\n# Surface brief: Page ${i}\n`); sidecarNewer(ws); }, env: env() },
   { id: 'context-full-target-brief', verb: 'context', workspace: 'ctx-full', setup: sidecarNewer, args: ['--target', 'src/pages/index.astro'], env: env(), files: IMPECCABLE_FILES },
   { id: 'context-full-target-related', verb: 'context', workspace: 'ctx-full', setup: sidecarNewer, args: ['-t', 'src/components/Hero.astro'], env: env(), files: IMPECCABLE_FILES },
@@ -538,18 +539,31 @@ const cases = [
   { id: 'doctor-hook-not-installed-skill-above-cwd', verb: 'doctor', workspace: 'ctx-product-only', cwd: 'web', setup: (ws) => { gitBoundary(ws, '.'); write(ws, '.claude/skills/impeccable/SKILL.md', ''); write(ws, 'web/package.json', JSON.stringify({ name: 'web' }) + '\n'); }, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
   { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
+    // What DESIGN.md contradicts (REN-2129): a component it names that is gone, a colour its token file lost.
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
     setup: (ws) => {
-      write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n');
-      gitInit(ws);
-      for (let i = 0; i < 26; i++) {
-        write(ws, `src/c${i}.tsx`, `export const C${i} = () => null;\n`);
-        git(ws, 'add', '.');
-        git(ws, 'commit', '-qm', `change ${i}`);
-      }
+      write(ws, 'styles/tokens.css', ':root { --brand: #c8552b; }\n');
+      write(ws, 'DESIGN.md', '---\ncolors:\n  brand: "#c8552b"\n  gold: "#d4af37"\n---\n# D\n\nTokens: `styles/tokens.css`. Cards: `src/Card.tsx`.\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n');
     },
     args: ['--json'], env: env(),
   },
+  // `design-compact` (REN-2129, S3): proposes a long DESIGN.md as its map and writes only with --write, never over an
+  // archive that exists. The long fixture's frontmatter carries a comment, a quoted hex and a rule the map keeps.
+  ...(() => {
+    const LONG = '---\nname: Oracle\n# All values mirror tokens.css.\ncolors:\n  brand: "#c8552b"   # the accent\n  ink: "oklch(14% 0 0)"\n---\n\n# Oracle Design\n\n**The One Accent Rule.** Brand stays under 10% of any screen.\n\n## Don\'ts\n\n- Don\'t add drop shadows to cards.\n\n' + 'A long paragraph of history that a map leaves in the original.\n\n'.repeat(40);
+    const long = (ws) => write(ws, 'DESIGN.md', LONG);
+    const files = ['DESIGN.md', '.impeccable/design-full.md'];
+    return [
+      { id: 'design-compact-short', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => write(ws, 'DESIGN.md', '# D\n\nShort.\n'), env: env(), files },
+      { id: 'design-compact-propose', verb: 'design-compact', workspace: 'ctx-signals', setup: long, env: env(), files },
+      { id: 'design-compact-write', verb: 'design-compact', workspace: 'ctx-signals', setup: long, args: ['--write'], env: env(), files },
+      // A planted link where the archive goes is never followed: refused, nothing written through it.
+      { id: 'design-compact-write-archive-link', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); fs.mkdirSync(`${ws}/.impeccable`, { recursive: true }); fs.symlinkSync(`${ws}/elsewhere.md`, `${ws}/.impeccable/design-full.md`); }, args: ['--write'], env: env(), files: ['DESIGN.md', 'elsewhere.md'] },
+      // A DESIGN.md design-compact wrote is carried as written, even past the map budget: never a map of a map.
+      { id: 'context-compacted-design', verb: 'context', workspace: 'ctx-signals', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Oracle\ncolors:\n' + Array.from({ length: 60 }, (_, i) => `  tone-${i}: "oklch(${i}% 0.01 95)"\n`).join('') + '---\n\n# Oracle Design\n\n<!-- impeccable:design-map -->\nRules:\n- The One Accent Rule. Brand stays under 10% of any screen.\nMap: src/tokens.css\nFull: .impeccable/design-full.md (read a section when you need its detail)\n'), env: env() },
+      { id: 'design-compact-write-archive-exists', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); write(ws, '.impeccable/design-full.md', 'An earlier original.\n'); }, args: ['--write'], env: env(), files },
+    ];
+  })(),
   { id: 'doctor-design-no-drift', verb: 'doctor', workspace: 'ctx-signals', setup: (ws) => { write(ws, 'DESIGN.md', '# D\n\n## Colors\n- x\n\n## Typography\n- y\n\n## Components\n- z\n'); gitInit(ws); }, args: ['--json'], env: env() },
 
   // ======================================================================

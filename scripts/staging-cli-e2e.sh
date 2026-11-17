@@ -104,7 +104,7 @@ if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
   info "setup: the Home link check runs against staging's issuer only"
 elif [ $health = 1 ]; then
   check "setup: the sign-in's first scan names Foundations" 'grep -qF "See it in Foundations: $HOME_URL/-/foundations" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
-  check "setup: a repository with no remote goes up without a name" 'grep -q "Sent finding counts and foundations checks" "$H/login.err"'
+  check "setup: a repository with no remote goes up under its folder's name" 'grep -q "Sent its name, finding counts and foundations checks" "$H/login.err"'
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
 

@@ -75,8 +75,11 @@
 //!   parse in the same process).
 
 use super::csstree::{self, Important, Node};
-use super::shorthand::{expand_static_box_values, expand_static_declaration, Expanded};
+use super::shorthand::{
+    background_longhands, expand_static_box_values, expand_static_declaration, Expanded,
+};
 use super::values::split_css_tokens;
+use impeccable_common::jsp;
 use impeccable_core::js;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
@@ -258,9 +261,6 @@ impl<K: Hash + Eq> SpecifiedStore<K> {
     }
 }
 
-/// Layout properties the stripe-child static adapter needs that are not in
-/// the frozen `expandStaticDeclaration` allowlist. Applied here so the
-/// recorded vectors stay byte-equal.
 /// The alignment values in a `place-*` shorthand, one per axis. An overflow
 /// keyword (`safe`, `unsafe`) belongs to the position after it and a
 /// `first`/`last` to the `baseline` after it, so `safe center` is one value
@@ -305,6 +305,10 @@ mod place_alignment_tests {
     }
 }
 
+/// Properties the static adapters need that are not in the frozen
+/// `expandStaticDeclaration` allowlist: layout for the stripe-child adapter,
+/// `text-indent` for the sampled-contrast path. Applied here so the recorded
+/// vectors stay byte-equal.
 fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
     let p = js::to_lower_case(prop);
     let v = js::trim(value);
@@ -317,6 +321,14 @@ fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
         "align-self" => vec![("alignSelf".into(), v.to_string())],
         "justify-content" => vec![("justifyContent".into(), v.to_string())],
         "justify-items" => vec![("justifyItems".into(), v.to_string())],
+        // How image-replacement text leaves its box, and a blend or a filter
+        // the sampled path cannot reproduce (#560).
+        "text-indent" => vec![("textIndent".into(), v.to_string())],
+        "mix-blend-mode" => vec![("mixBlendMode".into(), v.to_string())],
+        "filter" => vec![("filter".into(), v.to_string())],
+        "backdrop-filter" | "-webkit-backdrop-filter" => {
+            vec![("backdropFilter".into(), v.to_string())]
+        }
         // cramped-padding's walk through a transparent shell (#963) stops at
         // a shell a transform moves, and reads a float as a box that holds
         // its children's margins. Unset, both read as "".
@@ -393,13 +405,35 @@ fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
 }
 
 /// JS: css-cascade.mjs#applyStaticDeclaration(specified, node, prop, value, meta)
-pub fn apply_static_declaration<K: Hash + Eq>(
+pub fn apply_static_declaration<K: Hash + Eq + Clone>(
     specified: &mut SpecifiedStore<K>,
     node: K,
     prop: &str,
     value: &str,
     meta: &DeclMeta,
 ) {
+    // A logical inline border is the physical side it lands on in a
+    // left-to-right page: `border-inline-start` is `border-left`.
+    let lower = js::to_lower_case(prop);
+    for (logical, physical) in [
+        ("border-inline-start", &["border-left"][..]),
+        ("border-inline-end", &["border-right"][..]),
+        ("border-inline", &["border-left", "border-right"][..]),
+    ] {
+        if let Some(rest) = lower.strip_prefix(logical) {
+            if matches!(rest, "" | "-width" | "-style" | "-color") {
+                // `border-inline-width: 0 4px` gives start and end their own
+                // values; the shorthand gives both one.
+                let parts = split_css_tokens(value);
+                let pair = physical.len() == 2 && !rest.is_empty() && parts.len() == 2;
+                for (i, side) in physical.iter().enumerate() {
+                    let v = if pair { parts[i].as_str() } else { value };
+                    apply_static_declaration(specified, node.clone(), &format!("{side}{rest}"), v, meta);
+                }
+                return;
+            }
+        }
+    }
     let map = specified.map.entry(node).or_default();
     let mut expanded: Vec<(String, String, bool)> = expand_static_declaration(prop, value)
         .into_iter()
@@ -409,6 +443,14 @@ pub fn apply_static_declaration<K: Hash + Eq>(
         .map(|(p, v)| (p, v, false))
         .collect();
     expanded.extend(super::shorthand::expand_background_color_reset(prop, value));
+    // The sampled path's background longhands (#560) come after the reset:
+    // a literal color they read beside the image names the slot, so it is
+    // not a reset the shorthand implies, and a later entry wins the key.
+    expanded.extend(
+        background_longhands(prop, value)
+            .into_iter()
+            .map(|(p, v)| (p, v, false)),
+    );
     for (expanded_prop, expanded_value, shorthand_reset) in expanded {
         let existing = map.get(&expanded_prop).map(|d| &d.meta);
         if compare_static_priority(existing, meta) {
@@ -584,20 +626,127 @@ fn star_empty_compounds(s: &str) -> String {
 
 /// JS: css-cascade.mjs#collectStaticCssRules(cssText, csstree)
 pub fn collect_static_css_rules(css_text: &str) -> Vec<CssRule> {
+    collect_static_css_rules_from(css_text, 0, None)
+}
+
+/// `collect_static_css_rules` for one stretch of a page's CSS: `order_start`
+/// continues the cascade order of the stretches before it, and `url_base`,
+/// set for a stylesheet linked from another directory, resolves that sheet's
+/// relative `url()`s against the sheet (see [`UrlBase`]).
+pub fn collect_static_css_rules_from(
+    css_text: &str,
+    order_start: i64,
+    url_base: Option<&UrlBase>,
+) -> Vec<CssRule> {
     let mut rules: Vec<CssRule> = Vec::new();
     let ast = match csstree::parse_stylesheet(css_text) {
         Ok(ast) => ast,
         Err(_) => return rules,
     };
-    let mut order: i64 = 0;
+    let mut order: i64 = order_start;
     let Node::StyleSheet { children } = &ast else {
         return rules;
     };
-    walk_list(children, &[], &mut rules, &mut order);
+    walk_list(children, &[], &mut rules, &mut order, url_base);
     rules
 }
 
-fn walk_list(list: &[Node], at_rule_stack: &[String], rules: &mut Vec<CssRule>, order: &mut i64) {
+static URL_SCHEME_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9+.-]*:").expect("URL_SCHEME_RE"));
+
+/// Where a linked stylesheet lives relative to the page that links it. A
+/// relative `url()` in a stylesheet is relative to the sheet, while the
+/// cascade keeps one computed style per element with no memory of which
+/// sheet a value came from, so the url is restated relative to the page as
+/// its declaration is read: on the parsed `Url` node, where css-tree has
+/// already decoded it, never on the stylesheet text. The path math is POSIX
+/// on both directories, since a CSS url is POSIX on every OS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UrlBase {
+    sheet_dir: String,
+    page_dir: String,
+}
+
+impl UrlBase {
+    pub fn new(sheet_dir: &str, page_dir: &str) -> Self {
+        UrlBase {
+            sheet_dir: jsp::to_posix(sheet_dir),
+            page_dir: jsp::to_posix(page_dir),
+        }
+    }
+
+    /// `url` restated relative to the page, or `None` when it already means
+    /// the same thing from both directories: root-relative, remote, `data:`,
+    /// a fragment, or empty.
+    fn rebase(&self, url: &str) -> Option<String> {
+        let target = js::trim(url);
+        if target.is_empty()
+            || target.starts_with('#')
+            || target.starts_with('/')
+            || URL_SCHEME_RE.is_match(target)
+        {
+            return None;
+        }
+        let cut = target.find(['?', '#']).unwrap_or(target.len());
+        let (path, suffix) = target.split_at(cut);
+        let absolute = jsp::posix::resolve("/", &[&self.sheet_dir, path]);
+        let relative = jsp::posix::relative("/", &self.page_dir, &absolute);
+        if relative.is_empty() || relative == path {
+            return None;
+        }
+        Some(format!("{relative}{suffix}"))
+    }
+}
+
+/// `node` with every `Url` beneath it rebased, or `None` when nothing in it
+/// changes, so the common declaration is generated without a copy. A custom
+/// property's value is `Raw` to the stylesheet parse; one that mentions a
+/// url is read as a value first, so `--hero: url(../img/hero.jpg)` follows
+/// its sheet like any other declaration.
+fn rebase_urls(node: &Node, base: &UrlBase) -> Option<Node> {
+    let children_of = |children: &[Node]| -> Option<Vec<Node>> {
+        let mut out: Option<Vec<Node>> = None;
+        for (i, child) in children.iter().enumerate() {
+            if let Some(rebased) = rebase_urls(child, base) {
+                out.get_or_insert_with(|| children.to_vec())[i] = rebased;
+            }
+        }
+        out
+    };
+    match node {
+        Node::Url { value } => base.rebase(value).map(|value| Node::Url { value }),
+        Node::Raw { value } => {
+            let mentions_url = value
+                .as_bytes()
+                .windows(4)
+                .any(|window| window.eq_ignore_ascii_case(b"url("));
+            if !mentions_url {
+                return None;
+            }
+            rebase_urls(&csstree::parse_value(value).ok()?, base)
+        }
+        Node::Value { children } => children_of(children).map(|children| Node::Value { children }),
+        Node::Parentheses { children } => {
+            children_of(children).map(|children| Node::Parentheses { children })
+        }
+        Node::Brackets { children } => {
+            children_of(children).map(|children| Node::Brackets { children })
+        }
+        Node::Function { name, children } => children_of(children).map(|children| Node::Function {
+            name: name.clone(),
+            children,
+        }),
+        _ => None,
+    }
+}
+
+fn walk_list(
+    list: &[Node],
+    at_rule_stack: &[String],
+    rules: &mut Vec<CssRule>,
+    order: &mut i64,
+    url_base: Option<&UrlBase>,
+) {
     for node in list {
         match node {
             Node::Rule { prelude, block } => {
@@ -618,7 +767,9 @@ fn walk_list(list: &[Node], at_rule_stack: &[String], rules: &mut Vec<CssRule>, 
                             value,
                         } = child
                         {
-                            let generated = csstree::generate_declaration_value(value);
+                            let rebased = url_base.and_then(|base| rebase_urls(value, base));
+                            let generated =
+                                csstree::generate_declaration_value(rebased.as_ref().unwrap_or(value));
                             declarations.push(RuleDecl {
                                 prop: property.clone(),
                                 value: js::trim(&generated).to_string(),
@@ -673,7 +824,7 @@ fn walk_list(list: &[Node], at_rule_stack: &[String], rules: &mut Vec<CssRule>, 
                     if let Node::Block { children } = &**block {
                         let mut stack: Vec<String> = at_rule_stack.to_vec();
                         stack.push(lower);
-                        walk_list(children, &stack, rules, order);
+                        walk_list(children, &stack, rules, order, url_base);
                     }
                 }
             }

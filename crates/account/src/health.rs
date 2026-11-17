@@ -37,6 +37,22 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
 /// Each git question (top level, remote, branch).
 const GIT_DEADLINE: Duration = Duration::from_secs(2);
+
+/// [`GIT_DEADLINE`], unless a test raises it (see [`test_git_deadline`]).
+fn git_deadline() -> Duration {
+    test_git_deadline().unwrap_or(GIT_DEADLINE)
+}
+
+/// `IMPECCABLE_TEST_GIT_DEADLINE_MS`, set only by tests: a loaded CI runner has
+/// taken over 2 s to answer a git question (REN-2117). It lifts git's deadline
+/// and the DESIGN.md upload budget that contains those questions.
+fn test_git_deadline() -> Option<Duration> {
+    std::env::var("IMPECCABLE_TEST_GIT_DEADLINE_MS")
+        .ok()
+        .and_then(|ms| ms.parse().ok())
+        .map(Duration::from_millis)
+}
+
 /// How long a change to `health.json` waits for one in another process.
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
@@ -256,10 +272,11 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             synced.health = true;
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
-                io.err(&format!(
-                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                    account.display_host()
-                ));
+                // In the person's words, not a feature's name: what was kept, where, and how to stop.
+                // A sign-in other than production's names its account (as the Loop question does); Home only where one is hosted.
+                let whose = if account.issuer == crate::config::DEFAULT_ACCOUNT_URL { "your account".to_string() } else { format!("your {} account", account.display_name()) };
+                let trend = if account.home_url().is_some() { "so Home shows this repository's trend" } else { "so you can follow this repository's trend" };
+                io.err(&format!("Saved this scan's counts to {whose}, {trend}. Never your code or file names.\nTo stop: impeccable health off\n"));
                 let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
@@ -301,6 +318,12 @@ pub fn first_scan_done(env: &std::collections::HashMap<String, String>, root: &s
 /// (or when git can't answer in time).
 pub fn repo_top(dir: &str) -> Option<String> {
     git(dir, &["rev-parse", "--show-toplevel"])
+}
+
+/// [`repo_top`], telling a git that didn't answer in time (`Err`) from a folder
+/// outside any repository (`Ok(None)`).
+pub fn repo_top_in_time(dir: &str) -> Result<Option<String>, ()> {
+    git_run(dir, &["rev-parse", "--show-toplevel"], git_deadline())
 }
 
 /// Remember that the repository at `root` had its sign-in scan.
@@ -581,8 +604,8 @@ impl Repo {
         if !same(&top, root) {
             return None;
         }
-        let remote = git(root, &["config", "--get", "remote.origin.url"])
-            .and_then(|r| normalize_remote(&r));
+        let configured = git(root, &["config", "--get", "remote.origin.url"]);
+        let remote = configured.as_deref().and_then(resolve_remote);
         let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
@@ -593,17 +616,21 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        // The repo's name from its remote, never the folder's: a folder name
-        // can say more than the person meant to share (Paul, REN-1553).
-        let label = remote.as_deref().and_then(repo_label);
+        let label = repo_name(&top, configured.is_some(), remote.as_deref());
         Some(Repo { key, stream, label })
     }
 }
 
-/// One short git question, given at most [`GIT_DEADLINE`] and never
+/// One short git question, given at most [`git_deadline`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
-    git_with_timeout(dir, args, GIT_DEADLINE)
+    git_with_timeout(dir, args, git_deadline())
+}
+
+/// The repository at `root` as the service keys it (SHA-256 of its normalized origin, as every upload sends) and
+/// its label: what an agent's presence record names its repository by (REN-2124).
+pub fn repo_key(root: &str, env: &std::collections::HashMap<String, String>) -> Option<(String, Option<String>)> {
+    critique_repo(root, env)
 }
 
 /// Critiques use the same repo identity, including for native projects and subdirectories.
@@ -617,6 +644,18 @@ pub(crate) fn critique_repo(
     repo_identity(&top, remote, env)
 }
 
+/// The repo's name as the service shows it: from its remote; with none, its folder's
+/// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
+/// Only a repository with no remote at all: one whose remote can't be read as a
+/// host's URL (a local path) sends no name rather than its folder's.
+fn repo_name(top: &str, configured: bool, remote: Option<&str>) -> Option<String> {
+    match (remote, configured) {
+        (Some(remote), _) => repo_label(remote),
+        (None, true) => None,
+        (None, false) => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
+    }
+}
+
 /// The key and label from the remote read's outcome. A read that timed out is
 /// not a repo without a remote: falling back to the local id then would name a
 /// different project, so it sends no key.
@@ -625,8 +664,9 @@ fn repo_identity(
     remote: Result<Option<String>, ()>,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
-    let remote = remote.ok()?.and_then(|r| normalize_remote(&r));
-    let label = remote.as_deref().and_then(repo_label);
+    let configured = remote.ok()?;
+    let remote = configured.as_deref().and_then(resolve_remote);
+    let label = repo_name(top, configured.is_some(), remote.as_deref());
     let identity = remote.or_else(|| local_repo_id(top, env))?;
     Some((hex(&Sha256::digest(identity.as_bytes())), label))
 }
@@ -638,14 +678,30 @@ fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<Strin
 /// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
 /// answered with a failure or nothing.
 fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
-    let mut child = Command::new("git")
-        .args(["-c", "core.fsmonitor=false", "-C", dir])
-        .args(args)
+    let mut git = Command::new("git");
+    git.args(["-c", "core.fsmonitor=false", "-C", dir]).args(args);
+    output_within(git, timeout, false)
+}
+
+/// A command's trimmed stdout, given at most `timeout`: `Err` when it didn't
+/// answer in time (or couldn't start), `Ok(None)` on a failure or no output.
+/// With `drain`, stdout is read while it runs, for output that can pass the
+/// pipe's buffer (`ssh -G` on a large config); git's answers here never do.
+fn output_within(mut command: Command, timeout: Duration, drain: bool) -> Result<Option<String>, ()> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| ())?;
+    let read = |mut stdout: std::process::ChildStdout| {
+        let mut out = String::new();
+        std::io::Read::read_to_string(&mut stdout, &mut out).ok().map(|_| out)
+    };
+    let reader = match drain {
+        true => child.stdout.take().map(|o| std::thread::spawn(move || read(o))),
+        false => None,
+    };
     let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
@@ -660,11 +716,11 @@ fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>
             }
         }
     };
-    let mut out = String::new();
-    let Some(mut stdout) = child.stdout.take() else { return Ok(None) };
-    if std::io::Read::read_to_string(&mut stdout, &mut out).is_err() {
-        return Ok(None);
-    }
+    let out = match reader {
+        Some(reader) => reader.join().ok().flatten(),
+        None => child.stdout.take().and_then(read),
+    };
+    let Some(out) = out else { return Ok(None) };
     let s = out.trim().to_string();
     Ok((status.success() && !s.is_empty()).then_some(s))
 }
@@ -704,6 +760,63 @@ fn publish_id(file: &Path, id: &str) -> Option<String> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => read_id(file),
         Err(_) => None,
     }
+}
+
+/// The `origin` remote as [`normalize_remote`] spells it, after reading an SSH
+/// host alias as the host it stands for, so a clone of `git@work:org/repo`
+/// (`Host work` with `HostName github.com` in the SSH config) is keyed as its
+/// repository (REN-2058).
+pub fn resolve_remote(raw: &str) -> Option<String> {
+    normalize_remote(&unalias(raw, ssh_hostname))
+}
+
+/// `raw` with its SSH host replaced by what `hostname` says it stands for.
+/// Any other remote, or a host `hostname` can't resolve, is unchanged.
+fn unalias(raw: &str, hostname: impl Fn(&str, &str) -> Option<String>) -> String {
+    let raw = raw.trim();
+    if !raw.contains("://") {
+        // scp-like: [user@]host:path
+        let Some((login, path)) = raw.split_once(':') else { return raw.to_string() };
+        let (user, host) = login.rsplit_once('@').map_or(("", login), |(u, h)| (u, h));
+        return match hostname(user, host) {
+            Some(real) if !login.contains('/') && real != host => {
+                let at = if user.is_empty() { "" } else { "@" };
+                format!("{user}{at}{real}:{path}")
+            }
+            _ => raw.to_string(),
+        };
+    }
+    let Ok(mut url) = url::Url::parse(raw) else { return raw.to_string() };
+    if !matches!(url.scheme(), "ssh" | "git+ssh") {
+        return raw.to_string();
+    }
+    let user = url.username().to_string();
+    match url.host_str().and_then(|h| hostname(&user, h)) {
+        Some(real) if url.set_host(Some(&real)).is_ok() => url.to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+/// The host `ssh` connects to for `alias` as `user` (the remote's login, which a
+/// `Match user` block can depend on), from the SSH config (`ssh -G`, which reads
+/// it and connects nowhere). `None` for anything that isn't a plain name or when
+/// ssh can't say within half a second.
+fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
+    let plain = |v: &str| {
+        !v.starts_with('-') && v.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    };
+    if alias.is_empty() || !plain(alias) || !plain(user) {
+        return None;
+    }
+    let mut ssh = Command::new("ssh");
+    ssh.arg("-G");
+    if !user.is_empty() {
+        ssh.args(["-l", user]);
+    }
+    ssh.arg(alias);
+    let out = output_within(ssh, Duration::from_millis(500), true).ok()??;
+    let real = out.lines().find_map(|l| l.strip_prefix("hostname "))?.trim().to_lowercase();
+    (!real.is_empty()).then_some(real)
 }
 
 /// The `origin` remote in one spelling, so every clone of a repo hashes the
@@ -956,6 +1069,29 @@ mod tests {
     }
 
     #[test]
+    fn an_ssh_host_alias_reads_as_the_host_it_stands_for() {
+        // Catches (REN-2058): a clone through an SSH host alias never matching its repository.
+        let config = |user: &str, host: &str| match (user, host) {
+            ("git", "work") | (_, "github.com-work") => Some("github.com".to_string()),
+            (_, other) => Some(other.to_lowercase()),
+        };
+        for raw in ["git@work:a/b.git", "github.com-work:a/b", "ssh://git@work/a/b.git", "git+ssh://git@github.com-work:22/a/b"] {
+            assert_eq!(normalize_remote(&unalias(raw, config)).as_deref(), Some("https://github.com/a/b"), "{raw}");
+        }
+        // Not SSH, a local path, or a host ssh can't resolve: unchanged.
+        for raw in ["https://work/a/b", "/srv/work:a/b", "git@unknown:a/b"] {
+            assert_eq!(unalias(raw, |_, _| None), raw);
+        }
+        assert_eq!(unalias("https://work/a/b", config), "https://work/a/b");
+        // The remote's login reaches the lookup, for a `Match user` block.
+        assert_eq!(normalize_remote(&unalias("deploy@work:a/b", config)).as_deref(), Some("https://work/a/b"));
+        // Only plain names reach ssh.
+        assert_eq!(ssh_hostname("git", "-oProxyCommand=x"), None);
+        assert_eq!(ssh_hostname("-oProxyCommand=x", "work"), None);
+        assert_eq!(ssh_hostname("", "a b"), None);
+    }
+
+    #[test]
     fn a_github_clone_is_keyed_as_the_cloud_keys_its_repository() {
         // Catches: the repository key drifting from the one the account service computes
         // to show a person's local critiques on their team's repository (pristine
@@ -1106,7 +1242,7 @@ mod tests {
         // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
         assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
-        // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
+        // A remote names the repository by its own name, never its host or owner.
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
         assert_eq!(repo_label("https://gitlab.com/group/sub/tool").as_deref(), Some("tool"));
         assert_eq!(repo_label("https://github.com"), None);
@@ -1187,7 +1323,12 @@ mod repo_identity_tests {
         let top = top.to_string_lossy().into_owned();
         assert_eq!(repo_identity(&top, Err(()), &env), None);
         let local = repo_identity(&top, Ok(None), &env).expect("local id");
-        assert_eq!(local.1, None);
+        // No remote: named after its folder (Paul, REN-2028).
+        assert_eq!(local.1.as_deref(), Some("repo"));
+        // A remote that is a local path is still a remote: no name, never the folder's.
+        for path in ["/srv/repos/site.git", "file:///srv/repos/site.git"] {
+            assert_eq!(repo_identity(&top, Ok(Some(path.into())), &env).expect("local id").1, None, "{path}");
+        }
         assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
         let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
         assert_ne!(remote.0, local.0);

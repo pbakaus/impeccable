@@ -22,6 +22,8 @@ fn main() {
         impeccable_detect::detect_text::run_text_content_analyzers(content, file_path, None)
     };
     let opts = DetectHtmlOptions {
+        image_samples: Default::default(),
+        sample_cache_dir: None,
         inline_ignores_disabled: !inline,
         text_content_analyzers: Some(&analyzers),
         ..Default::default()

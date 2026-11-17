@@ -58,14 +58,13 @@ fn place_name(kind: &str) -> String {
 /// One step as the service wrote it: its label, then what to run or open.
 fn step_line(step: &Value) -> Option<String> {
     let label = step["label"].as_str().map(clean).filter(|l| !l.is_empty())?;
-    let action = step["command"]
-        .as_str()
-        .or_else(|| step["url"].as_str().filter(|u| u.starts_with("https://")))
-        .map(clean)
-        .filter(|a| !a.is_empty());
-    Some(match action {
-        Some(a) => format!("{label}: {a}"),
-        None => label.to_string(),
+    let command = step["command"].as_str().map(clean).filter(|a| !a.is_empty());
+    let url = step["url"].as_str().filter(|u| u.starts_with("https://")).map(clean).filter(|a| !a.is_empty());
+    // A command reads inline; a link goes on a line of its own, where a wrap can't split it inside the sentence.
+    Some(match (command, url) {
+        (Some(c), _) => format!("{label}: {c}"),
+        (None, Some(u)) => format!("{label}:\n{u}"),
+        (None, None) => label.to_string(),
     })
 }
 
@@ -144,7 +143,20 @@ pub fn print(io: &mut Io, v: &Value) {
     if text.lines().any(|l| l.starts_with("Next: ") && l.contains("impeccable loop connect")) {
         NAMED_LOOP_CONNECT.store(true, std::sync::atomic::Ordering::Relaxed);
     }
-    io.err(&text);
+    if let Some(steps) = impeccable_common::steps::Steps::new(io) {
+        // One step, its places as lines under it, and the next step's link on a line of its own.
+        steps.done(io, "Your setup", &[]);
+        let mut lines = text.lines().peekable();
+        while let Some(line) = lines.next() {
+            match lines.next_if(|n| n.starts_with("https://")) {
+                Some(url) => steps.link(io, line, url),
+                None => steps.details(io, &[line.to_string()]),
+            }
+        }
+        return;
+    }
+    // Set apart from the sign-in lines above it.
+    io.err(&format!("\n{text}"));
 }
 
 /// Whether the answer's plan includes Loop: Pro, Team and Enterprise do, Free doesn't.
@@ -156,6 +168,13 @@ const USAGE: &str = "Usage: impeccable status [--json]\n\nShows what Impeccable 
 
 /// `impeccable status [--json]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with(args, io, &|_| String::new())
+}
+
+/// `run`, with `local` building (only when text output prints it) what this machine knows that the service doesn't, such as the
+/// Impeccable block in each agent's rule file) printed after the project line and before
+/// the service's own lines, so the next step stays last. The JSON form never carries it.
+pub fn run_with(args: &[String], io: &mut Io, local: &dyn Fn(&Io) -> String) -> i32 {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         io.out(USAGE);
         return 0;
@@ -202,6 +221,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if let Some(line) = project_line(&v) {
         io.out(&line);
     }
+    // Built only here, where it prints: help, --json and errors never read the files.
+    let local = local(io);
+    io.out(&local);
     io.out(&lines(&v));
     0
 }
@@ -234,7 +256,8 @@ mod tests {
             lines(&example()),
             "Connected: Your agent, Loop (quiet), telepathy.\n\
              Not connected yet: Agent tools, Chrome extension (Pro).\n\
-             Next: Add to GitHub: https://github.com/apps/impeccable-critique/installations/new\n"
+             Next: Add to GitHub:\n\
+             https://github.com/apps/impeccable-critique/installations/new\n"
         );
     }
 
@@ -279,7 +302,7 @@ mod tests {
     fn a_server_string_never_carries_a_terminal_escape() {
         let mut v = example();
         v["next"]["label"] = "Add\u{1b}[31m to\nGitHub".into();
-        assert!(lines(&v).ends_with("Next: Add[31m toGitHub: https://github.com/apps/impeccable-critique/installations/new\n"));
+        assert!(lines(&v).ends_with("Next: Add[31m toGitHub:\nhttps://github.com/apps/impeccable-critique/installations/new\n"));
     }
 
     #[test]

@@ -270,3 +270,36 @@ fn a_sign_in_that_cannot_be_read_says_so_instead_of_signed_out() {
     assert!(matches!(loaded, Some(SessionError::Local(_))), "{loaded:?}");
     assert!(Session::load(&account).is_ok());
 }
+
+/// The Your setup landings the fake has seen, once the browser thread has had time to land.
+fn landings(fake: &Fake, want: usize) -> Vec<String> {
+    let until = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let seen = fake.record.lock().unwrap().setup_landings.clone();
+        if seen.len() >= want || std::time::Instant::now() >= until {
+            return seen;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_finished_sign_in_lands_the_browser_on_your_setup() {
+    // Catches: the browser left on "you can close this tab" instead of the account's setup page.
+    let fake = Fake::start();
+    let env = fake.env("lands-on-setup");
+    login(&env, &mut |url| browser(url), WAIT).expect("login");
+    assert_eq!(landings(&fake, 1), vec!["signed-in=cli".to_string()]);
+}
+
+#[test]
+fn a_sign_in_that_fails_after_the_callback_never_lands_on_your_setup() {
+    // Catches: the browser told it worked (and sent on to Your setup) when the code exchange
+    // that follows the callback failed and nothing was saved.
+    let fake = Fake::start();
+    fake.route("POST", "/oauth/token", 400, vec![], r#"{"error":"invalid_grant"}"#);
+    let env = fake.env("exchange-fails");
+    assert!(login(&env, &mut |url| browser(url), WAIT).is_err());
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(landings(&fake, 0).is_empty());
+}

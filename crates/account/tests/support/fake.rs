@@ -34,6 +34,8 @@ pub struct Knobs {
     pub critiques_denied: bool,
     /// `scopes_supported` lists `worlds:read`.
     pub worlds: bool,
+    /// The service's CLI sign-in also serves /mcp (`impeccable_cli_mcp`), listing the MCP scopes.
+    pub cli_mcp: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -73,6 +75,8 @@ pub struct Record {
     pub scans: Vec<serde_json::Value>,
     pub foundations: Vec<serde_json::Value>,
     pub critiques: Vec<serde_json::Value>,
+    /// Each prototype record, as `POST /cli/v1/prototypes` parsed it.
+    pub prototypes: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
     pub refused: Vec<(String, serde_json::Value)>,
     pub forgets: usize,
@@ -80,6 +84,10 @@ pub struct Record {
     /// The `Impeccable-Project` header of each setup read (`GET /cli/v1/setup`).
     pub setup_projects: Vec<Option<String>>,
     pub designs: Vec<serde_json::Value>,
+    /// The query of each browser landing on Your setup.
+    pub setup_landings: Vec<String>,
+    /// The query of each `GET /cli/v1/agents`.
+    pub agents_reads: Vec<String>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
@@ -211,6 +219,11 @@ impl Fake {
                 "file".to_string(),
             ),
             ("HOME".to_string(), home.to_string_lossy().into_owned()),
+            // A loaded Windows runner has taken over git's 2 s to answer (REN-2117).
+            (
+                "IMPECCABLE_TEST_GIT_DEADLINE_MS".to_string(),
+                "15000".to_string(),
+            ),
             // Windows allows the file backend only inside the user profile.
             (
                 "USERPROFILE".to_string(),
@@ -281,6 +294,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .hits
         .entry(path.to_string())
         .or_default() += 1;
+    if path == "/app/-/setup" {
+        record.lock().unwrap().setup_landings.push(query.to_string());
+    }
+    if path == "/cli/v1/agents" {
+        record.lock().unwrap().agents_reads.push(query.to_string());
+    }
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
     }
@@ -332,8 +351,14 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         if k.worlds { scopes.push("worlds:read"); }
+                        if k.cli_mcp {
+                            for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start", "artifacts:write"] {
+                                if !scopes.contains(&s) { scopes.push(s); }
+                            }
+                        }
                         scopes
                     }),
+                    "impeccable_cli_mcp": knobs.lock().unwrap().cli_mcp,
                 }),
             ),
             ("GET", "/app/oauth/authorize") => {
@@ -349,9 +374,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiques:write" => k.critiques,
                         "setup:write" => k.setup,
                         "foundations:write" => k.foundations,
-                        "taste:read" => k.taste,
+                        "taste:read" => k.taste || k.cli_mcp,
                         "design:write" => k.design,
                         "worlds:read" => k.worlds,
+                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" | "artifacts:write" => k.cli_mcp,
                         _ => false,
                     })
                 };
@@ -563,7 +589,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     }
                 }
             }
-            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget") => {
+            ("POST", "/cli/v1/critiques" | "/cli/v1/critiques/forget" | "/cli/v1/prototypes") => {
                 let k = knobs.lock().unwrap();
                 if !k.critiques {
                     (404, vec![], vec![])
@@ -581,6 +607,18 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     (403, vec![], vec![])
                 } else if path.ends_with("/forget") {
                     json(200, serde_json::json!({"forgot": 1}))
+                } else if path.ends_with("/prototypes") {
+                    // As the service parses it: these keys only, nothing of the variants.
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    let o = v.as_object().unwrap();
+                    assert!(o.keys().all(|k| ["prototypeId", "target", "repoKey", "variants", "createdAt"].contains(&k.as_str())), "{v}");
+                    assert_eq!(v["prototypeId"].as_str().unwrap().split('-').map(str::len).collect::<Vec<_>>(), [8, 4, 4, 4, 12]);
+                    assert!((1..=24).contains(&v["variants"].as_u64().unwrap()));
+                    assert!(v["createdAt"].as_str().unwrap().ends_with('Z'));
+                    let mut r = record.lock().unwrap();
+                    let repeat = r.prototypes.iter().any(|p| p["prototypeId"] == v["prototypeId"]);
+                    r.prototypes.push(v);
+                    json(200, serde_json::json!({"outcome": if repeat { "repeat" } else { "recorded" }}))
                 } else {
                     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
                     let allowed = [
@@ -595,6 +633,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "heuristics",
                         "counts",
                         "body",
+                        "kind",
                     ];
                     assert!(v
                         .as_object()
@@ -604,7 +643,12 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["version"], 1);
                     let na = v["na"].as_array().unwrap();
                     let max = v["score"]["max"].as_u64().unwrap();
-                    assert_eq!(max, 4 * (10 - na.len() as u64));
+                    // As the service parses it: an audit is out of 20 with nothing n/a.
+                    match v.get("kind").and_then(|k| k.as_str()) {
+                        Some("audit") => assert!(max == 20 && na.is_empty()),
+                        None => assert_eq!(max, 4 * (10 - na.len() as u64)),
+                        Some(other) => panic!("unknown kind {other}"),
+                    }
                     assert!(v["score"]["total"].as_u64().unwrap() <= max);
                     for k in ["p0", "p1"] {
                         assert!(v["counts"][k].as_u64().unwrap() <= 100);
