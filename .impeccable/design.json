@@ -24,6 +24,18 @@
           "oklch(98% 0.035 84)"
         ]
       },
+      "kinpaku-rich": {
+        "role": "state",
+        "displayName": "Kinpaku Rich",
+        "canonical": "oklch(77% 0.13 82)",
+        "description": "The pressed primary action and severity medium: the gold a CTA settles on when active."
+      },
+      "kinpaku-pale": {
+        "role": "state",
+        "displayName": "Kinpaku Pale",
+        "canonical": "oklch(86% 0.07 84)",
+        "description": "The hover lift on gold controls, and pale gold fills."
+      },
       "verdigris-patina": {
         "role": "secondary",
         "displayName": "Verdigris Patina",
