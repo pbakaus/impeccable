@@ -43,7 +43,11 @@ function clickByText(wanted, opts) {
       return false;
     return (typeof el.onclick === "function" || style?.cursor === "pointer" && (!el.parentElement || w.getComputedStyle?.(el.parentElement)?.cursor !== "pointer")) && (worded || !!beside(el));
   });
-  const semantic = Array.prototype.slice.call(doc.querySelectorAll(opts?.any ? `${hoverable}${opts.files ? ", div, section" : ""}` : clickable));
+  const pane = (el) => {
+    const box = el;
+    return !opts?.any && typeof box.matches === "function" && !box.matches(clickable.replace(', [tabindex]:not([tabindex="-1"])', "")) && !!box.querySelector?.(clickable);
+  };
+  const semantic = Array.prototype.slice.call(doc.querySelectorAll(opts?.any ? `${hoverable}${opts.files ? ", div, section" : ""}` : clickable)).filter((el) => !pane(el));
   const visible = [...new Set([...semantic, ...informal])].filter((el) => {
     const style = w.getComputedStyle?.(el);
     return (!modal || !!modal.contains?.(el)) && style?.visibility !== "hidden" && style?.visibility !== "collapse" && style?.display !== "none";
@@ -148,7 +152,10 @@ function clickByText(wanted, opts) {
   for (const el of candidates) {
     const asked = requestedName(el);
     const rect = el.getBoundingClientRect();
-    if ((rect.width < 2 || rect.height < 2) && !(el.tagName.toLowerCase() === "input" && /^(?:checkbox|radio)$/.test(el.getAttribute("type") ?? "") && rect.width > 0 && rect.height > 0))
+    if ((rect.width < 2 || rect.height < 2) && !(el.tagName.toLowerCase() === "input" && /^(?:checkbox|radio)$/.test(el.getAttribute("type") ?? "") && (rect.width > 0 && rect.height > 0 || labelsOf(el).some((l) => {
+      const b = l.getBoundingClientRect();
+      return b.width >= 2 && b.height >= 2;
+    }))))
       continue;
     const label = norm(`${el.innerText || el.textContent || ""}`) || norm(el.getAttribute("aria-label") ?? "");
     const labelled = Array.prototype.map.call(el.labels ?? [], (l) => l.innerText || l.textContent || "").join(" ");
@@ -181,7 +188,8 @@ function clickByText(wanted, opts) {
         score -= 1;
       chrome = inChrome || inSiteNav;
     }
-    if (label === asked)
+    const ariaWhole = label !== asked && norm(el.getAttribute("aria-label") ?? "") === asked;
+    if (label === asked || ariaWhole)
       score += 4;
     else if (` ${label} `.indexOf(` ${asked} `) !== -1)
       score += 2;
@@ -198,7 +206,7 @@ function clickByText(wanted, opts) {
       score += wantsBeside ? 0.25 : -0.25;
     const inViewBoth = inView && (typeof w.innerWidth !== "number" || rect.left + rect.width > 0 && rect.left < w.innerWidth);
     const name = label || norm(labelled) || text, own = { el, score, text: name.slice(0, 60), size: name.length };
-    scored.set(el, { own, label });
+    scored.set(el, { own, label: ariaWhole ? asked : label });
     const captioned = el.tagName.toLowerCase() === "input" && /^(?:submit|reset|button)$/i.test(el.getAttribute("type") ?? "");
     if (label.replace(/^(?:step )?\d+ /, "") === asked || norm(el.getAttribute("aria-label") ?? "") === asked || captioned && norm(el.value ?? "") === asked)
       named.push({ ...own, inView: inViewBoth, chrome, leads: true });
@@ -1671,4 +1679,4 @@ export const newDocument = Object.freeze(["browserLanguage","installSystemFace",
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '49429671fe204937';
+export const HASH = '50fcef1b0b3ce198';
