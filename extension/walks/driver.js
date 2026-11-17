@@ -1191,7 +1191,8 @@ function secretField(node) {
 
 /** A tree without what a secret field holds: its value and the text inside it go, its name stays. One that can't be described counts as one. */
 async function withoutSecrets(nodes) {
-  const editable = (n) => n.properties?.some((p) => p.name === 'editable');
+  // An editable region by its focusable root only: what is inside a rich-text editor is editable too, and no field.
+  const editable = (n) => n.properties?.some((p) => p.name === 'editable') && n.properties?.some((p) => p.name === 'focusable' && p.value?.value === true);
   const fields = nodes.filter((n) => FIELD_ROLES.has(n.role?.value) || editable(n));
   const secret = new Set();
   await Promise.all(fields.map(async (n, i) => {

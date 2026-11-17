@@ -258,6 +258,7 @@ export function unseen(name, run) {
   // A screen reader's tree is read without the badge too: its words are not the page's.
   if (name === 'screenshot' || name === 'hear') {
     return async (req) => {
+      if (name === 'hear' && req?.what !== 'tree') return run(req);
       const mine = veil;
       mine.shots += 1;
       await draw();
