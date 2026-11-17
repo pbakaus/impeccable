@@ -846,6 +846,39 @@ describe('walk worker', () => {
 
   // Each sign on a document of its own, as Chrome commits it: the still is taken once a document.
   const fresh = (loaderId) => fire('Page.frameNavigated', { frame: { id: 'main', loaderId, url: `http://localhost:3000/${loaderId}` } });
+  // A sign-in page drawn for a persona's sight goes with the picture as taken, as WebP, while the message fits what the
+  // server rejoins (16 Mi characters); past that without it, the walk going on. A 10M-character still at a screen's density.
+  for (const [label, webpBytes, kept] of [['beside it as WebP', 600_000, true], ['without it where both would not fit', 6_000_000, false]]) {
+    it(`sends a sign-in page seen with older eyes with the picture as taken ${label}`, async () => {
+      const { ops, command, current } = await walked();
+      const { handoff } = await chrome.storage.session.get('handoff');
+      const was = { shot: answers['Page.captureScreenshot'], bitmap: globalThis.createImageBitmap, canvas: globalThis.OffscreenCanvas };
+      answers['Page.captureScreenshot'] = () => ({ data: 'Q'.repeat(10_000_000) });
+      globalThis.createImageBitmap = async () => ({ width: 2, height: 1, close() {} });
+      globalThis.OffscreenCanvas = class {
+        getContext() { const px = new Uint8ClampedArray(8); return { drawImage() {}, getImageData: () => ({ data: px }), putImageData() {} }; }
+        async convertToBlob({ type }) { return type === 'image/webp' ? new Blob(['RIFF', new Uint8Array(webpBytes)]) : new Blob([new Uint8Array(7_500_000)]); }
+      };
+      await chrome.storage.session.set({ handoff: { ...handoff, sees: 'older' } });
+      const heard = told.length;
+      let asked;
+      try {
+        fresh(`s9-${webpBytes}`);
+        page.seen = { password: true };
+        asked = ops.url();
+        for (let turn = 0; turn < 400 && !told.slice(heard).some((m) => m.event === 'sign-in-page'); turn++) await settle(5);
+      } finally {
+        await chrome.storage.session.set({ handoff });
+        answers['Page.captureScreenshot'] = was.shot;
+        Object.assign(globalThis, { createImageBitmap: was.bitmap, OffscreenCanvas: was.canvas });
+      }
+      const message = told.slice(heard).find((m) => m.event === 'sign-in-page');
+      assert.deepEqual([current().state, message.still.length, message.plain === undefined ? null : atob(message.plain.slice(0, 8)).slice(0, 4), JSON.stringify(message).length < 16 * 1024 * 1024], ['paused', 10_000_000, kept ? 'RIFF' : null, true]);
+      page.seen = {};
+      assert.equal(await command('resume'), true);
+      await asked;
+    });
+  }
   // Each sign of a sign-in pauses the walk before anything else is done, and Continue keeps it paused while a 401 holds.
   // The page is pictured once as it pauses, every field blank, where it shows one to sign in with (`pictured`), and
   // never where a frame of it could not be drawn blank (`unblank`): a field Chrome filled would show, nor where the tab

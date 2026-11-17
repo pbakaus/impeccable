@@ -469,6 +469,14 @@ async function smaller(data, width, height, format, quality, { from, keep } = {}
   return btoa(text);
 }
 
+/** A picture (base64) again as WebP at `quality`, its own size: as a step's small copy is. */
+export async function asWebp(data, quality = 80) {
+  const picture = await createImageBitmap(new Blob([Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0))]));
+  const { width, height } = picture;
+  picture.close();
+  return smaller(data, width, height, 'webp', quality);
+}
+
 /** Ends the film under way, if there is one: no frame of it is sent once this has returned. */
 async function cut() {
   const film = walk?.film;
