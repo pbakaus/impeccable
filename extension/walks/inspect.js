@@ -34,7 +34,11 @@ function stylesAt(x, y) {
   for (const name of [...named].slice(0, 40)) tokens[name] = cs.getPropertyValue(name).trim().slice(0, 200);
   const tag = el.tagName.toLowerCase();
   const classes = typeof el.className === 'string' && el.className ? `.${el.className.trim().split(/\s+/).slice(0, 3).join('.')}` : '';
-  const text = ['input', 'textarea', 'select'].includes(tag) ? '' : (el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  // Its own words only: never a field's, nor a script's (a textarea's starting text is its child), nor the page's code.
+  let text = '';
+  const words = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, { acceptNode: (node) => (node.parentElement?.closest('textarea, select, option, input, script, style, noscript, template, [contenteditable]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  for (let node = words.nextNode(); node && text.length < 120; node = words.nextNode()) text += ` ${node.textContent}`;
+  text = text.trim().replace(/\s+/g, ' ').slice(0, 80);
   return { element: `${tag}${classes}`, ...(text ? { text } : {}), styles, tokens };
 }
 

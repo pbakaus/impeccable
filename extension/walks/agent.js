@@ -67,14 +67,18 @@ async function alwaysSites() {
  * scheme, host and port: one site's Allow covers none of its neighbours.
  */
 async function mayUse(origin) {
-  if (session.allowed.includes(origin)) return true;
-  if (!askNext && (await alwaysSites()).includes(origin)) { session.allowed.push(origin); return true; }
+  if (session.allowed.includes(origin)) return allow(origin);
+  if (!askNext && (await alwaysSites()).includes(origin)) return allow(origin);
   const said = await askSite(new URL(origin).host);
   if (said === 'once' || said === 'always') askNext = false;
   if (said === 'always') await chrome.storage.local.set({ [SITES_KEY]: [...new Set([...(await alwaysSites()), origin])] });
   if (said !== 'once' && said !== 'always') return false;
-  session.allowed.push(origin);
-  if (walk?.agent) walk.allowed.push(origin);
+  return allow(origin);
+}
+/** The session may use `origin`, and so may its open tab (guard.js holds the tab to `walk.allowed`). */
+function allow(origin) {
+  if (!session.allowed.includes(origin)) session.allowed.push(origin);
+  if (walk?.agent && !walk.allowed.includes(origin)) walk.allowed.push(origin);
   return true;
 }
 

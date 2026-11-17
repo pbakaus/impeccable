@@ -208,6 +208,15 @@ describe('agent session', () => {
     assert.deepEqual((await chrome.storage.local.get('agentSites')).agentSites, ['https://linear.app']);
   });
 
+  it('goes to another always-allowed site with no question', async () => {
+    const { current } = await loaded;
+    await chrome.storage.local.set({ agentSites: ['https://linear.app', 'https://figma.com'] });
+    const result = await call('browser_act', { op: 'goto', url: 'https://figma.com/file/x' });
+    assert.equal(result.isError, undefined, said(result));
+    assert.equal(current().ask, null);
+    assert.equal(url, 'https://figma.com/file/x');
+  });
+
   it('forgets an Allow once when the session ends', async () => {
     const { current } = await loaded;
     assert.equal(said(await call('browser_end')), 'Ended. The tab is the person’s again.');
