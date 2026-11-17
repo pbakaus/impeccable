@@ -1123,8 +1123,12 @@ pub fn side_tab_match_stands<'s>(
     }
     let classes = tag.map(tag_classes).unwrap_or_default();
     let rounded = || {
+        // The stylesheet's rules for the box, once they all apply, outrank
+        // the bar's own rule: a later `border-radius: 0` squares it.
+        if let Some(r) = index().and_then(|index| index.declaration_rounding(pos)) {
+            return r;
+        }
         side_tab_scope_corners(m, source, i, sass).rounds_any()
-            || index().is_some_and(|index| index.is_declaration_rounded(pos))
             || tag.zip(markup_text).is_some_and(|(t, text)| {
                 // The tag's own radii apply over the stylesheet's, corner by corner.
                 // A spread may bring in any radius: `None`.

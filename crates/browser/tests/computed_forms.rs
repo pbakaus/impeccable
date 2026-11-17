@@ -164,13 +164,14 @@ fn every_side_bar_variant_is_a_side_tab() {
     }
     // A bar in a hover or focus state reads from the stylesheet, on the
     // elements its selector names in any state.
-    for form in [".f-inset-hover:hover —", ".f-inset-focus:focus-within —"] {
+    for form in [".f-inset-hover:hover —", ".f-inset-focus:focus-within —", ".f-hover-rounded:hover —"] {
         assert!(found.iter().any(|(snippet, _)| snippet.starts_with(form)), "missing {form} in {found:#?}");
     }
     for id in [
         "#pass-border-square",
         "#pass-inset-square",
         "#pass-before-square",
+        "#pass-reset-square",
         "#pass-hairline-square",
         "#pass-inset-hairline-square",
         "#pass-full-border",

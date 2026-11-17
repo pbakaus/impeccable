@@ -36,6 +36,7 @@
   .f-before, .f-after { border-radius: 8px; }
   .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
   .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
+  .f-hover-rounded:hover { border-radius: 8px; border-left: 3px solid #2563eb; }
   .f-split { border-radius: 6px; }
   .f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
   .f-text-colour { border-left: 2px solid var(--text); border-radius: 8px; }
@@ -49,6 +50,11 @@
   .p-border-square { border-left: 3px solid #0d9488; }
   .p-inset-square { box-shadow: inset 3px 0 0 #6366f1; }
   .p-before-square::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: #9ca3af; }
+  .p-reset-square {
+    border-radius: 8px;
+    border-left: 3px solid #0d9488;
+  }
+  .p-reset-square { border-radius: 0; }
   .p-hairline-square { border-left: 1px solid #d4d4d4; }
   .p-inset-hairline-square { box-shadow: inset 1px 0 0 #d4d4d4; }
   .p-full-border { border: 2px solid #0d9488; border-radius: 8px; }
@@ -78,6 +84,7 @@
   <div class="card f-inset-selected is-selected" id="flag-inset-selected">Selected item, inset bar on the right</div>
   <div class="card f-before" id="flag-before">A ::before bar on the left</div>
   <div class="card f-after" id="flag-after">An ::after bar on the right</div>
+  <div class="card f-hover-rounded" id="flag-hover-rounded">Square at rest, rounded with a bar on hover</div>
   <div class="card f-split is-active" id="flag-split">Hairline bar, radius in another rule</div>
   <div class="card f-text-colour" id="flag-text-colour">Bar in the text colour</div>
   <blockquote class="card f-quote-rounded" id="flag-quote-rounded">A rounded quote with a 3px rule</blockquote>
@@ -89,6 +96,7 @@
   <div class="card p-border-square" id="pass-border-square">Square card, 3px left border</div>
   <div class="card p-inset-square" id="pass-inset-square">Square card, 3px inset bar</div>
   <div class="card p-before-square" id="pass-before-square">Square card, 3px ::before bar</div>
+  <div class="card p-reset-square" id="pass-reset-square">Rounded, then squared by a later rule</div>
   <div class="card p-hairline-square" id="pass-hairline-square">A 1px divider on a square box</div>
   <div class="card p-inset-hairline-square" id="pass-inset-hairline-square">A 1px inset divider on a square box</div>
   <div class="card p-full-border" id="pass-full-border">A border on every side</div>

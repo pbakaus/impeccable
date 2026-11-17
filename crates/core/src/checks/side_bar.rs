@@ -66,6 +66,13 @@ pub fn side_bar_stands(thickness: f64, rounded: bool) -> bool {
     rounded && thickness >= 1.0
 }
 
+/// Whether a side bar finding's selector styles a state (`:hover`,
+/// `:focus-within`): its own rule may round the box only in that state, so
+/// the engines that read the box at rest ask the rule as well.
+pub fn is_state_side_bar(finding: &PatternFinding) -> bool {
+    finding.selector.as_deref().is_some_and(|s| without_state_pseudos(s) != s)
+}
+
 /// Whether a side `px` wide is a bar beside other sides at most `other` px:
 /// drawn alone, or 2px or more beside hairlines or sides at most half its
 /// width. Equal sides are a frame.

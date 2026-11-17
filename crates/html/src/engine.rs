@@ -457,7 +457,8 @@ pub fn detect_html_source(
                     } else {
                         hosts.iter().any(|el| {
                             side_bar_stands(thickness, corners_round(corners(el).as_ref()))
-                        })
+                        }) || (impeccable_core::checks::side_bar::is_state_side_bar(&f)
+                            && side_bar_stands(thickness, index().side_bar_on_rounded_host(&f)))
                     }
                 } else if hosts.is_empty() {
                     index().side_stripe_on_rounded_host(&f)

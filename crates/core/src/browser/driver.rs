@@ -1193,6 +1193,7 @@ struct PatternItem {
 fn pattern_finding_stands(
     dom: &dyn Dom,
     f: &crate::checks::css_scan::PatternFinding,
+    style_text: &str,
 ) -> Option<Option<Vec<ElId>>> {
     let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) else {
         return Some(None);
@@ -1241,7 +1242,11 @@ fn pattern_finding_stands(
                     thickness,
                     crate::checks::side_bar::corners_round(corners(el).as_ref()),
                 )
-            })
+            }) || (crate::checks::side_bar::is_state_side_bar(f)
+                && crate::checks::side_bar::side_bar_stands(
+                    thickness,
+                    crate::checks::css_scan::CssHostIndex::new(style_text).side_bar_on_rounded_host(f),
+                ))
         } else {
             matches
                 .iter()
@@ -1457,7 +1462,7 @@ fn html_pattern_items(
         &html,
         Some(&corpora),
         context,
-        &|f| pattern_finding_stands(dom, f).is_some(),
+        &|f| pattern_finding_stands(dom, f, &corpora.style_text).is_some(),
     );
     // Left and right side bars are read by the side bar scan, whatever state
     // or colour; the recorded stripe scans keep the top and bottom bands.
@@ -1483,7 +1488,7 @@ fn html_pattern_items(
                 continue;
             }
         }
-        let Some(resolved) = pattern_finding_stands(dom, &f) else {
+        let Some(resolved) = pattern_finding_stands(dom, &f, &corpora.style_text) else {
             continue;
         };
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());

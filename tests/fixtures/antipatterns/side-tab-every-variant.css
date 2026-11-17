@@ -18,6 +18,7 @@
 .f-before, .f-after { border-radius: 8px; }
 .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
 .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
+.f-hover-rounded:hover { border-radius: 8px; border-left: 3px solid #2563eb; }
 .f-split { border-radius: 6px; }
 .f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
 .f-text-colour { border-left: 2px solid var(--text); border-radius: 8px; }
@@ -27,6 +28,11 @@
 .it[aria-pressed='true'] { background: var(--surface-inset); box-shadow: inset 2px 0 0 var(--text); font-weight: 600; }
 
 /* Should pass */
+.p-reset-square {
+  border-radius: 8px;
+  border-left: 3px solid #0d9488;
+}
+.p-reset-square { border-radius: 0; }
 .p-border-square { border-left: 3px solid #0d9488; }
 .p-inset-square { box-shadow: inset 3px 0 0 #6366f1; }
 .p-before-square::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: #9ca3af; }
