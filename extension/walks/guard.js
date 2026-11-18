@@ -95,12 +95,24 @@ const OWN_PATHS = ['/app/oauth/authorize'];
  */
 const STAGING_APP = 'app.staging.impeccable.style';
 const STAGING_REFUSED = [
-  /^\/(login|log-in|sign-in|sign-up|join|billing|admin|ops)(\/|$)/,
-  /^\/app\/(login|logout|callback|setup|sign-in-as|oauth|cli)(\/|$)/,
-  /^\/app\/[^/]+\/(account|setup|onboard|needs-you|billing|pro|settings)(\/|$)/,
-  /^\/app\/[^/]+\/api\/(setup-token|needs-you|capture-login|walk-sign-ins)(\/|$)/,
-  /^\/app\/-\/(me|api)(\/|$)/,
+  // The host's own sign-in, billing, admin and machine doors.
+  /^\/(login|log-in|sign-in|sign-up|join|billing|pro|admin|ops|oauth|cli|mcp|api|extension|mac|webhooks|\.well-known)(\/|$)/,
+  // Signing in and out, consent, the CLI's authorize and token, GitHub's setup return, Discord links.
+  /^\/app\/(login|logout|callback|setup|sign-in-as|oauth|cli|discord)(\/|$)/,
+  // A person's or team's account, plan, members and invites, seats, terms, setup and Needs you.
+  /^\/app\/[^/]+\/(account|setup|onboard|needs-you|billing|pro|settings|team|teams|invites|join|connect|terms|me)(\/|$)/,
+  // Their writes and reads under the APIs: credentials minted or revoked, Needs-you answers, account settings, terms,
+  // a repository's preview credentials, and the account's own RPC.
+  /^\/app\/[^/]+\/api\/(setup-token|needs-you|capture-login|walk-sign-ins|account|terms)(\/|$)/,
+  /^\/app\/[^/]+\/api\/repos\/[^/]+\/(preview-auth|before-sign-in)(\/|$)/,
+  /^\/app\/[^/]+\/-\/rpc\/(account|admit)(\/|$)/,
+  /^\/app\/-\/api(\/|$)/,
 ];
+/** Whether an address is on our staging app's host, where the agent's exception applies. */
+function onStagingApp(url) {
+  try { return new URL(url).hostname.toLowerCase().replace(/\.$/, '') === STAGING_APP; } catch { return false; }
+}
+
 /** A path as the server routes it: decoded once, in lower case, with repeated slashes as one; null for one that won't decode. */
 function routed(pathname) {
   try { return decodeURIComponent(pathname).toLowerCase().replace(/\/{2,}/g, '/'); } catch { return null; }
@@ -244,6 +256,9 @@ const READS = ['GET', 'HEAD', 'OPTIONS'];
  */
 export function verdict(paused, mainFrame, allowed, writable = allowed, agent = false) {
   const url = paused.request?.url;
+  // The person's own agent on our staging app: a refused page is refused whatever asks for it and however, a read, a
+  // frame or a script's GET as much as a write (some of its GETs act: sign out, open a billing portal).
+  if (agent && onStagingApp(url) && isOwnPage(url, true)) return paused.resourceType === 'Document' && paused.frameId === mainFrame ? 'block' : 'refuse';
   const writes = !reads(paused) && !(writable.includes(webOrigin(url)) && !isOwnPage(url, agent));
   // A form sent from the top of the page is a write too.
   if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed, agent) && !writes ? 'continue' : 'block';

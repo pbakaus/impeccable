@@ -44,13 +44,21 @@ describe('agent on our staging app', async () => {
     for (const path of ['/app/acme', '/app/acme/runs/r1', '/app/-/worlds', '/app/acme/personas/mira']) assert.equal(isOwnPage(`${STAGING}${path}`, true), false, path);
     for (const path of ['/app/login', '/app/logout', '/app/oauth/authorize', '/app/cli/authorize', '/app/-/account', '/app/-/account/grants', '/app/acme/account', '/app/-/billing/checkout',
       '/app/acme/setup', '/app/-/setup', '/app/acme/needs-you', '/app/-/needs-you', '/app/acme/api/setup-token', '/app/acme/api/needs-you/answer', '/app/-/api/needs-you/answer',
-      '/app/-/me/agent', '/billing/portal/1', '/app/ACME/Account', '/app/acme//account', '/app/%61cme/%61ccount', '/app/acme/account/', '/join']) {
+      '/app/-/me/agent', '/billing/portal/1', '/app/ACME/Account', '/app/acme//account', '/app/%61cme/%61ccount', '/app/acme/account/', '/join',
+      '/app/-/team', '/app/-/team/invite', '/app/-/team/seat', '/app/-/invites/accept', '/app/-/join', '/app/-/connect', '/app/discord/connect', '/app/-/terms/accept', '/app/acme/api/terms/accept',
+      '/app/acme/api/account/identity', '/app/acme/api/repos/web/preview-auth/basic', '/app/acme/api/repos/web/before-sign-in', '/app/acme/-/rpc/account', '/pro/welcome', '/cli/v1/x', '/mcp']) {
       assert.equal(isOwnPage(`${STAGING}${path}`, true), true, path);
     }
   });
   it('refuses a write to a refused page from an allowed one, and lets the app’s own work through', () => {
     const write = (path) => verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}${path}`, method: 'POST' } }, 'main', [STAGING], [STAGING], true);
     assert.deepEqual([write('/app/acme/api/needs-you/answer'), write('/app/acme/api/setup-token'), write('/app/acme/api/attention/put-off')], ['refuse', 'refuse', 'continue']);
+    // A refused page is refused to a script's or a frame's GET too (some act: sign out, a billing portal), and blocked as the page.
+    const ask = (path, resourceType, method = 'GET', frameId = 'main') => verdict({ resourceType, frameId, request: { url: `${STAGING}${path}`, method } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([ask('/app/logout', 'Fetch'), ask('/billing/portal/1', 'Document', 'GET', 'sub'), ask('/app/acme/-/rpc/account', 'XHR'), ask('/app/-/account', 'Document'), ask('/app/acme/runs', 'Fetch')],
+      ['refuse', 'refuse', 'refuse', 'block', 'continue']);
+    // A persona walk's reads are as they were.
+    assert.equal(verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}/app/logout`, method: 'GET' } }, 'main', ['http://localhost:3000'], ['http://localhost:3000']), 'continue');
   });
   it('keeps production, the API and admin hosts, http and other ports, and every persona walk refused', () => {
     for (const url of ['https://app.impeccable.style/app/acme', 'https://api.staging.impeccable.style/mcp', 'https://admin.staging.impeccable.style/admin/today', 'https://staging.impeccable.reviews/app/acme',
