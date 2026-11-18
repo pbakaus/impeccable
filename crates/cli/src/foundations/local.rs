@@ -30,9 +30,9 @@ impl Source for Disk {
         if self.top_config {
             return (self.config_files(), false);
         }
-        impeccable_foundations_scan::walk(|dir| {
+        impeccable_foundations_scan::walk(|dir, budget| {
             let entries = std::fs::read_dir(self.root.join(dir)).ok()?;
-            let mut entries: Vec<_> = entries.flatten().collect();
+            let mut entries: Vec<_> = entries.flatten().take(budget).collect();
             entries.sort_by_key(|e| e.file_name());
             Some(
                 entries

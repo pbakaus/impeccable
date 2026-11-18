@@ -140,16 +140,20 @@ pub const TOP_CONFIG: &[&str] = &[
 
 /// The bounded walk every source lists through: depth first in name order,
 /// skipping build output, dependencies and hidden folders, stopping at
-/// [`MAX_FILES`] files or [`MAX_ENTRIES`] entries. `list` gives a folder's
-/// entries (`""` is the root) in name order, or `None` when it can't be
-/// read. Returns the files, sorted, and whether a cap stopped the walk.
-pub fn walk(mut list: impl FnMut(&str) -> Option<Vec<(String, Kind)>>) -> (Vec<String>, bool) {
+/// [`MAX_FILES`] files or [`MAX_ENTRIES`] entries. `list(dir, budget)`
+/// gives a folder's entries (`""` is the root) in name order, or `None`
+/// when it can't be read; past `budget` entries it may stop reading, since
+/// the walk stops there. Returns the files, sorted, and whether a cap
+/// stopped the walk.
+pub fn walk(
+    mut list: impl FnMut(&str, usize) -> Option<Vec<(String, Kind)>>,
+) -> (Vec<String>, bool) {
     let mut files = Vec::new();
     let mut truncated = false;
     let mut stack = vec![String::new()];
     let mut seen = 0usize;
     'walk: while let Some(dir) = stack.pop() {
-        let Some(entries) = list(&dir) else {
+        let Some(entries) = list(&dir, MAX_ENTRIES - seen + 1) else {
             continue;
         };
         if seen + entries.len() > MAX_ENTRIES {

@@ -82,3 +82,16 @@ fn a_capped_listing_fails_nothing_on_absence() {
         assert_eq!(out.items.get(id), None, "{id}: {:?}", out.items);
     }
 }
+
+#[test]
+fn a_pass_wants_no_more_than_the_secrets_budget() {
+    // Catches: the first pass asking a host to fetch every tracked file
+    // whatever their combined size, when the scan would stop at its budget.
+    let mb = 1024 * 1024;
+    let files: Vec<(String, u64)> = ["a.txt", "b.txt", "c.txt"]
+        .iter()
+        .map(|p| (p.to_string(), 200 * mb))
+        .collect();
+    let out = scan_listing(&files, &BTreeMap::new(), false);
+    assert_eq!(out.wanted, ["a.txt", "b.txt"]);
+}

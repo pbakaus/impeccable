@@ -2,7 +2,7 @@
 //! fetch files themselves and can't hand the scan a callback.
 
 use crate::{walk, Kind, Source, State, Tracked, MAX_BYTES, MAX_FILE};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One pass of [`scan_listing`].
@@ -34,7 +34,9 @@ pub struct Outcome {
 /// until `wanted` comes back empty. That pass's `items` is the answer.
 /// Each pass is deterministic, and `wanted` only ever names listed paths
 /// not yet in `contents`, so the loop ends. Files over 2 MB are never
-/// wanted by the content checks (only the secrets scan reads them).
+/// wanted by the content checks (only the secrets scan reads them), and a
+/// pass wants whole files for the secrets scan only up to the scan's
+/// 256 MB budget, plus the one file that would end it.
 pub fn scan_listing(
     files: &[(String, u64)],
     contents: &BTreeMap<String, Option<String>>,
@@ -61,6 +63,12 @@ struct Listing<'a> {
     contents: &'a BTreeMap<String, Option<String>>,
     capped: bool,
     wanted: RefCell<BTreeSet<String>>,
+    /// Bytes of the whole reads wanted this pass, which the scan counts as
+    /// none until they're fetched.
+    pending: Cell<u64>,
+    /// A wanted whole read past the secrets budget: the scan may stop
+    /// there, so nothing after it is wanted this pass.
+    over: Cell<bool>,
 }
 
 impl<'a> Listing<'a> {
@@ -74,6 +82,8 @@ impl<'a> Listing<'a> {
             contents,
             capped,
             wanted: RefCell::default(),
+            pending: Cell::default(),
+            over: Cell::default(),
         }
     }
 
@@ -111,9 +121,14 @@ impl Source for Listing<'_> {
             }
             dirs.entry(dir).or_default().insert(&path[at..], Kind::File);
         }
-        let (files, truncated) = walk(|dir| {
-            dirs.get(dir)
-                .map(|entries| entries.iter().map(|(n, k)| (n.to_string(), *k)).collect())
+        let (files, truncated) = walk(|dir, budget| {
+            dirs.get(dir).map(|entries| {
+                entries
+                    .iter()
+                    .take(budget)
+                    .map(|(n, k)| (n.to_string(), *k))
+                    .collect()
+            })
         });
         (files, truncated || self.capped)
     }
@@ -127,10 +142,25 @@ impl Source for Listing<'_> {
     }
 
     fn read_whole(&self, path: &str, limit: u64) -> Option<Vec<u8>> {
-        self.sizes.get(path)?;
-        let text = self.text(path)?.as_bytes();
-        let limit = usize::try_from(limit).unwrap_or(usize::MAX);
-        Some(text[..text.len().min(limit)].to_vec())
+        let size = *self.sizes.get(path)?;
+        match self.contents.get(path) {
+            Some(text) => {
+                let text = text.as_deref()?.as_bytes();
+                let limit = usize::try_from(limit).unwrap_or(usize::MAX);
+                Some(text[..text.len().min(limit)].to_vec())
+            }
+            // Wanted only within the budget the scan has left (`limit` is
+            // that plus one), so a pass never asks for more than the scan
+            // would read, plus the one file that ends it.
+            None if self.over.get() => None,
+            None => {
+                let pending = self.pending.get().saturating_add(size);
+                self.pending.set(pending);
+                self.over.set(pending >= limit);
+                self.wanted.borrow_mut().insert(path.to_string());
+                None
+            }
+        }
     }
 
     fn tracked(&self) -> Tracked {
