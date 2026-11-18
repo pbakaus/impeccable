@@ -35,6 +35,42 @@ describe('agent host', () => {
   });
 });
 
+// The decider, 15 Nov: the person's own agent may use our staging app, but never its pages that sign in, consent,
+// mint or revoke a credential, hold the account or billing, or answer Needs you; never production; never for a persona.
+describe('agent on our staging app', async () => {
+  const { isOwnPage, verdict } = await import('../extension/walks/guard.js');
+  const STAGING = 'https://app.staging.impeccable.style';
+  it('opens the staging app for an agent, and none of its sensitive pages, however the path is written', () => {
+    for (const path of ['/app/acme', '/app/acme/runs/r1', '/app/-/worlds', '/app/acme/personas/mira', '/app/-/me', '/app/acme/apps/web']) assert.equal(isOwnPage(`${STAGING}${path}`, true), false, path);
+    for (const path of ['/app/login', '/app/logout', '/app/oauth/authorize', '/app/cli/authorize', '/app/-/account', '/app/-/account/grants', '/app/acme/account', '/app/-/billing/checkout',
+      '/app/acme/setup', '/app/-/setup', '/app/acme/needs-you', '/app/-/needs-you', '/app/acme/api/setup-token', '/app/acme/api/needs-you/answer', '/app/-/api/needs-you/answer',
+      '/app/-/me/agent', '/app/-/me/trial', '/billing/portal/1', '/app/ACME/Account', '/app/acme//account', '/app/%61cme/%61ccount', '/app/acme/account/', '/join',
+      '/app/-/team', '/app/-/team/invite', '/app/-/team/seat', '/app/-/invites/accept', '/app/-/join', '/app/-/connect', '/app/discord/connect', '/app/-/terms/accept', '/app/acme/api/terms/accept',
+      '/app/acme/api/account/identity', '/app/acme/api/repos/web/preview-auth/basic', '/app/acme/api/repos/web/before-sign-in', '/app/acme/-/rpc/account', '/pro/welcome', '/cli/v1/x', '/mcp']) {
+      assert.equal(isOwnPage(`${STAGING}${path}`, true), true, path);
+    }
+  });
+  it('refuses a write to a refused page from an allowed one, and lets the app’s own work through', () => {
+    const write = (path) => verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}${path}`, method: 'POST' } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([write('/app/acme/api/needs-you/answer'), write('/app/acme/api/setup-token'), write('/app/acme/api/attention/put-off')], ['refuse', 'refuse', 'continue']);
+    // A refused page is refused to a script's or a frame's GET too (some act: sign out, a billing portal), and blocked as the page.
+    const ask = (path, resourceType, method = 'GET', frameId = 'main') => verdict({ resourceType, frameId, request: { url: `${STAGING}${path}`, method } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([ask('/app/logout', 'Fetch'), ask('/billing/portal/1', 'Document', 'GET', 'sub'), ask('/app/acme/-/rpc/account', 'XHR'), ask('/app/-/account', 'Document'), ask('/app/acme/runs', 'Fetch')],
+      ['refuse', 'refuse', 'refuse', 'block', 'continue']);
+    // Pages the agent may look at, never write to: an app's credentials and test accounts (form actions in the query),
+    // a repository taken out, the person's notifications, support and Home.
+    assert.deepEqual([ask('/app/acme/apps/web?/accountEdit', 'Document', 'POST'), ask('/app/acme/apps/web/site?/lock', 'Fetch', 'POST'), ask('/app/acme/repos?/remove', 'Fetch', 'POST'),
+      ask('/app/-/notifications', 'Fetch', 'POST'), ask('/app/-/support', 'Fetch', 'POST'), ask('/app/acme/apps/web', 'Document'), ask('/app/-/me', 'Document')], ['block', 'refuse', 'refuse', 'refuse', 'refuse', 'continue', 'continue']);
+    // A persona walk's reads are as they were.
+    assert.equal(verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}/app/logout`, method: 'GET' } }, 'main', ['http://localhost:3000'], ['http://localhost:3000']), 'continue');
+  });
+  it('keeps production, the API and admin hosts, http and other ports, and every persona walk refused', () => {
+    for (const url of ['https://app.impeccable.style/app/acme', 'https://api.staging.impeccable.style/mcp', 'https://admin.staging.impeccable.style/admin/today', 'https://staging.impeccable.reviews/app/acme',
+      'http://app.staging.impeccable.style/app/acme', 'https://app.staging.impeccable.style:8443/app/acme']) assert.equal(isOwnPage(url, true), true, url);
+    assert.equal(isOwnPage(`${STAGING}/app/acme`), true, 'a persona walk');
+  });
+});
+
 describe('agent session', () => {
   const listeners = {};
   const event = (name) => ({ addListener(callback) { (listeners[name] ??= []).push(callback); } });
@@ -341,6 +377,30 @@ describe('agent session', () => {
     await session();
     assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[], [], empty]);
     panel.windows = [];
+    toExtension({ type: 'agent-gone' });
+  });
+
+  // Through the driver, not the guard alone: an agent's session opens our staging app, and the guard holds its
+  // refused pages there, as a held request and as a move the agent asks for.
+  it('drives our staging app through the driver, and holds its refused pages there', async () => {
+    const { current } = await loaded;
+    const opening = call('browser_open', { url: 'https://app.staging.impeccable.style/app/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question');
+    assert.equal(current().ask.what, 'app.staging.impeccable.style');
+    await press('once');
+    const opened = await opening;
+    assert.equal(opened.isError, undefined, said(opened));
+    const at = sent.length;
+    const ask = (requestId, path, method = 'GET') => fire('Fetch.requestPaused', { requestId, resourceType: 'Document', frameId: 'main', request: { url: `https://app.staging.impeccable.style${path}`, method } });
+    ask('account', '/app/-/account');
+    ask('runs', '/app/acme/runs');
+    ask('lock', '/app/acme/apps/web?/lock', 'POST');
+    await until(() => sent.slice(at).filter((m) => m.startsWith('Fetch.')).length >= 3, 'all three answered');
+    const answered = Object.fromEntries(args.slice(at).map((p, i) => [p?.requestId, sent[at + i]]).filter(([id]) => id));
+    assert.deepEqual([answered.account, answered.runs, answered.lock], ['Fetch.failRequest', 'Fetch.continueRequest', 'Fetch.failRequest']);
+    const refused = await call('browser_act', { op: 'goto', url: 'https://app.staging.impeccable.style/app/-/account' });
+    assert.equal(refused.isError, true);
+    await call('browser_end');
     toExtension({ type: 'agent-gone' });
   });
 

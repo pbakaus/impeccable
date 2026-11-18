@@ -159,7 +159,7 @@ const hostPath = (url) => { try { const u = new URL(url); return `${u.host}${u.p
 async function open(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
-  if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isOwnPage(url, true)) return refused('Impeccable’s own pages don’t open for agents.');
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (walk?.agent) return go(url);
   if (isLive(current())) return refused('A journey is using the browser right now. Try again when it has finished.');
@@ -233,7 +233,7 @@ function leavePanel() {
 async function go(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
-  if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isOwnPage(url, true)) return refused('Impeccable’s own pages don’t open for agents.');
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (!(await mayUse(origin))) return refused(`The person didn’t allow ${new URL(origin).host}.`);
   await ops.goto({ url, waitUntil: 'load', timeout: LOAD_MS });
