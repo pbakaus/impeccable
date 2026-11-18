@@ -80,12 +80,17 @@ pub fn is_state_side_bar(finding: &PatternFinding) -> bool {
 pub fn inline_style_squares_box(style: Option<&str>) -> bool {
     let mut corners = crate::checks::rules::DeclaredCorners::default();
     corners.set_all(Some(Corners { top_left: 1.0, top_right: 1.0, bottom_right: 1.0, bottom_left: 1.0 }));
-    for decl in style.unwrap_or("").split(';') {
-        if let Some((prop, value)) = decl.split_once(':') {
-            let prop = js::trim(prop).to_ascii_lowercase();
-            if crate::checks::rules::is_radius_property(&prop) {
-                corners.apply(&prop, js::trim(value), NOMINAL_INLINE_WIDTH_PX);
-            }
+    let decls: Vec<(String, &str)> = style
+        .unwrap_or("")
+        .split(';')
+        .filter_map(|d| d.split_once(':'))
+        .map(|(p, v)| (js::trim(p).to_ascii_lowercase(), js::trim(v)))
+        .filter(|(p, _)| crate::checks::rules::is_radius_property(p))
+        .collect();
+    // Normal declarations first, then `!important` ones, each in source order.
+    for important in [false, true] {
+        for (prop, value) in decls.iter().filter(|(_, v)| v.to_ascii_lowercase().contains("!important") == important) {
+            corners.apply(prop, value, NOMINAL_INLINE_WIDTH_PX);
         }
     }
     corners.squares_all()
@@ -618,6 +623,8 @@ mod tests {
         assert!(!inline_style_squares_box(Some("border-top-left-radius: 0")));
         assert!(!inline_style_squares_box(Some("border-radius: var(--r)")));
         assert!(!inline_style_squares_box(None));
+        assert!(inline_style_squares_box(Some("border-radius:0!important;border-radius:8px")));
+        assert!(!inline_style_squares_box(Some("border-radius:0;border-radius:8px")));
     }
 
     #[test]
