@@ -1581,11 +1581,15 @@ impl<'a> Project<'a> {
         static CAPTURE: OnceLock<Regex> = OnceLock::new();
         let capture = re(
             &CAPTURE,
-            r#"\bcapture_exceptions\b|\bposthog\??\.captureException\b|["'`]\$exception["'`]|\bsentry-cdn\.com/|\.ingest\.(?:[a-z]{2}\.)?sentry\.io\b|\b_rollbarConfig\b|\bDD_RUM\.init\b|\bdatadoghq-browser-agent\b|\bcdn\.logrocket\.(?:io|com)/|\bjs\.honeybadger\.io/|\bbugsnag(?:\.min)?\.js\b"#,
+            r#"\bcapture_exceptions["']?\s*[:=]\s*(?:true|True|\{)|\bposthog\??\.captureException\b|["'`]\$exception["'`]|\bsentry-cdn\.com/|\.ingest\.(?:[a-z]{2}\.)?sentry\.io\b|\b_rollbarConfig\b|\bDD_RUM\.init\b|\bdatadoghq-browser-agent\b|\bcdn\.logrocket\.(?:io|com)/|\bjs\.honeybadger\.io/|\bbugsnag(?:\.min)?\.js\b"#,
         );
         self.files
             .iter()
-            .filter(|f| CODE.contains(&ext(f)) && !is_test_path(f) && !is_minified(f))
+            .filter(|f| {
+                (CODE.contains(&ext(f)) || TEMPLATE_EXTS.contains(&ext(f)))
+                    && !is_test_path(f)
+                    && !is_minified(f)
+            })
             .any(|f| {
                 self.read(f)
                     .is_some_and(|t| capture.is_match(&evidence_text(f, &t)))
@@ -2279,9 +2283,24 @@ fn evidence_text(file: &str, text: &str) -> String {
     };
     let slash = matches!(
         ext(file),
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "vue" | "svelte" | "astro" | "scss" | "less"
+        "js" | "jsx"
+            | "ts"
+            | "tsx"
+            | "mjs"
+            | "cjs"
+            | "vue"
+            | "svelte"
+            | "astro"
+            | "scss"
+            | "less"
+            | "go"
+            | "rs"
+            | "php"
     );
-    let hash = matches!(ext(file), "yml" | "yaml" | "sh" | "py" | "rb" | "toml");
+    let hash = matches!(
+        ext(file),
+        "yml" | "yaml" | "sh" | "py" | "rb" | "toml" | "php" | "ex" | "exs"
+    );
     text.lines()
         .filter(|l| {
             let l = l.trim_start();
