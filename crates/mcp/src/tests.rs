@@ -86,6 +86,31 @@ fn starts_without_signing_in_and_answers_no_notification() {
     assert_eq!(frames[0]["result"]["protocolVersion"], "2025-03-26");
 }
 
+// Catches an agent's tool list waiting on a sign-in: its start never opens a browser, and the list answers at once.
+#[test]
+fn lists_without_signing_in() {
+    let mut up = script(vec![Err(Failure::Auth)], Ok(()));
+    let (frames, err) = talk(&[json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })], &mut up);
+    assert_eq!(up.signed, 0);
+    assert_eq!(frames[0]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].clone()).collect::<Vec<_>>(), [json!(SIGN_IN_TOOL)]);
+    assert!(!err.contains(WAITING));
+}
+
+// Catches a signed-out agent left without Impeccable's tools after it signs in: the sign-in tool signs in, then the
+// agent hears its tools changed.
+#[test]
+fn signs_in_from_its_tool_and_says_the_tools_changed() {
+    let mut up = script(vec![Err(Failure::Auth), Ok(json!({ "tools": [{ "name": TOOL }] }))], Ok(()));
+    let ask = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": SIGN_IN_TOOL, "arguments": {}, "_meta": { "progressToken": "p3" } } });
+    let (frames, _) = talk(&[ask], &mut up);
+    assert_eq!(up.signed, 1);
+    // The wait is heard on the caller's own progress token.
+    assert_eq!((frames[0]["method"].as_str(), frames[0]["params"]["progressToken"].as_str()), (Some("notifications/progress"), Some("p3")));
+    assert_eq!(frames[1]["method"], "notifications/tools/list_changed");
+    assert_eq!(frames[2]["id"], 3);
+    assert_eq!(frames[2]["result"]["isError"], Value::Null);
+}
+
 // Catches a failure that is not about the sign-in opening the browser.
 #[test]
 fn leaves_other_failures_to_the_agent() {
@@ -99,4 +124,11 @@ fn opens_no_browser_over_ssh() {
     let env = |k: &str| [(k.to_string(), "1".to_string())].into_iter().collect::<HashMap<_, _>>();
     assert!(!can_open_browser(&env("SSH_CONNECTION")));
     assert!(!can_open_browser(&env("SSH_TTY")));
+    // Nor where the person said so, as `impeccable login` reads it.
+    assert!(!can_open_browser(&env("IMPECCABLE_NO_BROWSER")));
+    // Read as `impeccable login` reads it: false or 0 leaves the browser on.
+    for off in ["false", "0", "no"] {
+        let env: HashMap<String, String> = [("IMPECCABLE_NO_BROWSER".to_string(), off.to_string())].into_iter().collect();
+        assert_eq!(can_open_browser(&env), !cfg!(target_os = "linux"), "{off}");
+    }
 }
