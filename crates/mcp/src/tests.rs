@@ -86,6 +86,16 @@ fn starts_without_signing_in_and_answers_no_notification() {
     assert_eq!(frames[0]["result"]["protocolVersion"], "2025-03-26");
 }
 
+// Catches an agent's tool list waiting on a sign-in: its start never opens a browser, and the list answers at once.
+#[test]
+fn lists_without_signing_in() {
+    let mut up = script(vec![Err(Failure::Auth)], Ok(()));
+    let (frames, err) = talk(&[json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })], &mut up);
+    assert_eq!(up.signed, 0);
+    assert_eq!(frames[0]["result"]["tools"], json!([]));
+    assert!(!err.contains(WAITING));
+}
+
 // Catches a failure that is not about the sign-in opening the browser.
 #[test]
 fn leaves_other_failures_to_the_agent() {
@@ -99,4 +109,6 @@ fn opens_no_browser_over_ssh() {
     let env = |k: &str| [(k.to_string(), "1".to_string())].into_iter().collect::<HashMap<_, _>>();
     assert!(!can_open_browser(&env("SSH_CONNECTION")));
     assert!(!can_open_browser(&env("SSH_TTY")));
+    // Nor where the person said so, as `impeccable login` reads it.
+    assert!(!can_open_browser(&env("IMPECCABLE_NO_BROWSER")));
 }

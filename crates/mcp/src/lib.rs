@@ -310,7 +310,17 @@ fn answer(request: &Value, out: &mut dyn Write, err: &mut dyn Write, upstream: &
             }
             Some(ok(result))
         }
-        "tools/list" | "tools/call" => Some(held(request, out, err, upstream)),
+        // A list is part of every agent's start, which never opens a browser: signed out, the local tools are the list,
+        // and the first remote call asks for the sign-in.
+        "tools/list" => Some(match upstream.call(request) {
+            Ok(reply) => reply,
+            Err(Failure::Auth) => {
+                let _ = writeln!(err, "impeccable mcp: not signed in; Impeccable's tools sign in on first use");
+                ok(json!({ "tools": [] }))
+            }
+            Err(f) => failed(&id, f),
+        }),
+        "tools/call" => Some(held(request, out, err, upstream)),
         _ => Some(match upstream.call(request) {
             Ok(reply) => reply,
             Err(f) => failed(&id, f),
@@ -456,10 +466,11 @@ impl Upstream for Service {
     }
 }
 
-/// Whether a browser can open here: not over SSH, and on Linux only with a display.
+/// Whether a browser can open here: not over SSH, not where `IMPECCABLE_NO_BROWSER` says so (as `login` reads it), and
+/// on Linux only with a display.
 pub fn can_open_browser(env: &HashMap<String, String>) -> bool {
     let set = |k: &str| env.get(k).is_some_and(|v| !v.is_empty());
-    if set("SSH_CONNECTION") || set("SSH_TTY") {
+    if set("SSH_CONNECTION") || set("SSH_TTY") || env.get("IMPECCABLE_NO_BROWSER").is_some_and(|v| !v.is_empty() && v != "0") {
         return false;
     }
     !cfg!(target_os = "linux") || set("DISPLAY") || set("WAYLAND_DISPLAY")
