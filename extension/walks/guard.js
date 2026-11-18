@@ -95,6 +95,25 @@ export function isOwnPage(url) {
   return OWN_HOSTS.some((own) => own.test(host)) || OWN_PATHS.some((own) => path === own || path.startsWith(`${own}/`));
 }
 
+/**
+ * Where a click grants another app access beyond the page: OAuth consent and app installs (REN-2053, the captain, 17
+ * Nov). The person's own agent never opens them, even on a site it is allowed on; the person can, once they take the
+ * tab. By path: GitHub's OAuth authorize and device code, its app installs and their settings, and Google's OAuth
+ * consent (all of accounts.google.com is a sign-in page already, signin.js).
+ */
+const CONSENT = [
+  { host: 'github.com', path: /^\/(login\/oauth\/authorize|login\/device|apps\/[^/]+\/installations|settings\/installations|organizations\/[^/]+\/settings\/(installations|oauth_application_policy)|settings\/connections\/applications|settings\/apps\/authorizations|github-copilot\/signup)(\/|$)/ },
+  { host: 'accounts.google.com', path: /^\/(o\/oauth2|signin\/oauth)(\/|$)/ },
+];
+
+/** Whether an address is a consent page no agent opens. */
+export function isConsentPage(url) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+  return CONSENT.some((page) => (host === page.host || host === `www.${page.host}`) && page.path.test(parsed.pathname));
+}
+
 /** The origin of a web address, or null for anything that is not http or https. */
 export function webOrigin(url) {
   try {

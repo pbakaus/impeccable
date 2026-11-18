@@ -67,7 +67,7 @@ FEATURES
 - Scans when you open the panel; opt in to scanning the moment DevTools opens
 - Grouped findings: AI tells vs. quality issues
 - Click-to-inspect: jump from a finding to the element
-- Toggle overlays on/off from the panel or the toolbar popup
+- Toggle overlays on/off from the DevTools panel or the side panel
 - Per-rule settings: disable detections you don't care about
 - Re-scans on navigation, including SPA route changes
 - Works on any website, including pages with a strict Content Security Policy

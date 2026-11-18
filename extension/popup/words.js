@@ -7,6 +7,8 @@ globalThis.IMPECCABLE_WORDS = {
     signedIn: 'Signed in as',
     signedOut: 'Not signed in.',
     signOut: 'Sign out',
+    agentSites: 'Sites your agent may always use',
+    remove: 'Remove',
     failed: 'Couldn’t sign in. Try again.',
     notPro: 'This account doesn’t have Impeccable Pro.',
   },

@@ -66,6 +66,9 @@ b { font-weight: 500; }
 .btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
 .pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pair .btn { width: 100%; }
+/* Not now, under an agent's site question: a quiet text button, the panel's ink. */
+.btn-ghost { height: 32px; align-self: center; background: none; color: var(--muted); }
+.btn-ghost:hover { color: var(--ink); }
 /* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold. */
 .mic { width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; color: var(--ink); }
 .mic:hover { background: var(--gray); }
@@ -195,6 +198,10 @@ b { font-weight: 500; }
 .walk-head { flex: none; display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 24px; text-align: center; }
 .walk-head .hd { font-size: 2.25rem; }
 .ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
+/* A secondary button on the yellow card is a shade of that yellow: two hues of near-equal lightness blend (the decider's
+   taste, 18 Nov), so the card's grey would read as part of it. */
+.ask .btn-sec, .held .btn-sec { background: var(--gold-pale); color: var(--on-gold); }
+.ask .btn-sec:hover, .held .btn-sec:hover { background: color-mix(in oklch, var(--gold-pale), var(--gold-rich)); }
 .ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
 .sofar { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 24px; }
 /* A walk fills the panel exactly: the header and Stop stay put, and only the steps scroll. */
@@ -228,6 +235,8 @@ b { font-weight: 500; }
 .btn-sec .ic { color: var(--muted); }
 .btn-sec:disabled { color: var(--mute-deep); }
 .scan-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+/* Under Scan on the screens before Pro: the account's part, as the popup's footer had it. */
+.foot { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); text-align: center; }
 .scan { display: flex; flex-direction: column; gap: 20px; }
 .scan[hidden] { display: none; }
 .scan .err { min-height: 18px; text-align: center; }

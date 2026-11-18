@@ -7521,3 +7521,20 @@ repo root, so they read that palette.
 
 - `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and its greys are
   no longer in the palette, so they report as advisories beside `#33d17a`.
+
+## Recorded 2026-11-17: `side-tab` reports only on a rounded box
+
+Paul, 17 Nov: the rule is about a one-sided bar on a box with a border
+radius. A bar on a square box is fine at any width and was never the tell.
+This undoes the square-box half of the 2026-11-16 entry above and the quote
+and gutter carve-out, which only mattered on square boxes. Status stripes on
+table rows and cells (the row scan, #1133) are unchanged. Each golden was
+decoded and compared finding by finding: every finding that leaves is a
+`side-tab` on a square box, and the findings added are the rounded flag cases
+the every-variant fixtures now carry. The registry description now reads
+"A bar down one side of a rounded box. …", which is the only change in the
+other goldens listed.
+
+- `detect-fixture-*` (44 goldens): square-box `side-tab` findings dropped; `side-tab-every-variant.{html,css,svelte}` flag cases rounded and square pass cases added.
+- `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
+- `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.

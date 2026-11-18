@@ -172,8 +172,11 @@ pub fn register(user_home: &Path, impeccable_home: &Path, config_home: Option<&P
             if theirs["path"] == ours["path"] && theirs["allowed_origins"] == ours["allowed_origins"] {
                 continue;
             }
-            lines.push(format!("{name} already has another {HOST_NAME} host at {}; left it as it is.", path.display()));
-            continue;
+            // One an older impeccable wrote points at our own launcher: brought up to this version's origins.
+            if theirs["path"] != ours["path"] {
+                lines.push(format!("{name} already has another {HOST_NAME} host at {}; left it as it is.", path.display()));
+                continue;
+            }
         }
         match std::fs::create_dir_all(&hosts).and_then(|()| write_atomically(&path, body.as_bytes(), 0o644)) {
             Ok(()) => added.push(name),

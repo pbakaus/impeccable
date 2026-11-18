@@ -277,36 +277,15 @@ function stagedStore() {
   return path.join(dir, 'extension');
 }
 
-for (const [label, account, asked, store] of [
-  ['a browser without sign-in (Firefox)', undefined, false],
-  ['a store-like build whose server answers 404', { status: { ok: true, available: false } }, true],
-  // The store build has no account: its popup asks nothing, even of a server that takes sign-ins.
-  ['the store build', { status: { ok: true, available: true, signedIn: true, email: 'mira@example.com' } }, false, true],
-]) {
-  test(`the popup is the detector alone in ${label}`, async () => {
-    const h = await popup({ account, ...(store ? { root: stagedStore() } : {}) });
-    assert.equal(h.messages.some((m) => m.account), asked);
-    if (store) assert.equal(readFileSync(path.join(stagedStore(), 'popup/popup.html'), 'utf8').includes('btn-pro'), false, 'no Impeccable Pro button');
-    // The detector works as it always has.
-    await h.click('btn-copy-all');
-    assert.match(h.writes[0], /Total findings: 2/);
-  });
-}
-
-// Impeccable Pro, at the popup's foot: signed out it signs in, through the worker; before the server takes sign-ins it says so on the line.
-for (const [label, status, asks] of [
-  ['the server takes sign-ins', { ok: true, available: true, signedIn: false }, true],
-  ['a build loaded unpacked, before the server takes sign-ins', { ok: true, available: false, unpacked: true, server: 'https://api.impeccable.style' }, false],
-  // Signed in, and the server says the account has no Impeccable Pro: no side panel, and no second sign-in.
-  ['an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, false],
-]) {
-  test(`Impeccable Pro signs in: ${label}`, async () => {
-    const h = await popup({ account: { status, 'sign-in': { ok: false } } });
-    await h.click('btn-pro');
-    assert.equal(h.messages.some((m) => m.account === 'sign-in'), asks);
-    assert.notEqual(h.node('scan-error').textContent, '', 'it says why nothing happened');
-  });
-}
+// The popup is Firefox's alone (Chrome has the side panel, which holds Scan): the detector, asking nothing of an
+// account even where one answers.
+test('the popup is the detector alone, with no account', async () => {
+  const h = await popup({ account: { status: { ok: true, available: true, signedIn: true, email: 'mira@example.com' } } });
+  assert.equal(h.messages.some((m) => m.account), false);
+  assert.equal(readFileSync(path.join(SOURCE, 'popup/popup.html'), 'utf8').includes('btn-pro'), false, 'no Impeccable Pro button');
+  await h.click('btn-copy-all');
+  assert.match(h.writes[0], /Total findings: 2/);
+});
 
 // The walk side panel (walks/panel/panel.js), run as a module against a stub DOM and a stubbed Chrome.
 const where = (h) => h.app.querySelector('span.where')?.children[0]?.textContent ?? '';
@@ -690,7 +669,8 @@ for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' },
   });
 }
 
-// No walk running: never a dead end. Signed out, the panel signs in and then shows the personas; with no account, the terminal.
+// No walk running: never a dead end. Scan leads, as the popup's did (the panel is the whole extension in Chrome).
+// Signed out, the panel signs in and then shows the personas; with no account, the terminal.
 for (const [label, status, offers] of [
   ['signed out', { ok: true, available: true, signedIn: false }, ['settings', 'sign-in']],
   ['a server that takes no sign-ins', { ok: true, available: false }, ['copy']],
@@ -701,6 +681,7 @@ for (const [label, status, offers] of [
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
     assert.deepEqual(h.acts(), offers);
+    assert.equal(h.app.querySelector('section[id="panel-scan"]')?.hidden, false, 'Scan is on the screen');
     if (offers[0] === 'get-pro') {
       assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
       await h.press('get-pro');

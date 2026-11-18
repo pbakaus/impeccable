@@ -537,6 +537,7 @@ dependencies = [
  "impeccable-context",
  "impeccable-core",
  "impeccable-detect",
+ "impeccable-foundations-scan",
  "impeccable-hook",
  "impeccable-html",
  "impeccable-live",
@@ -702,6 +703,16 @@ dependencies = [
  "precomputed-hash",
  "regex",
  "selectors",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "impeccable-foundations-scan"
+version = "0.1.25"
+dependencies = [
+ "impeccable-html",
+ "regex",
  "serde",
  "serde_json",
 ]

@@ -13,7 +13,7 @@ export const COPY = {
   command: 'npx @impeccable/reviews walk',
 
   /** No account to start from here (the store build): the terminal. */
-  idle: { line: 'No journey running.', how: 'Start one from your terminal:' },
+  idle: { how: 'Start a journey from your terminal:' },
   copy: { action: 'Copy command', done: 'Copied' },
 
   /** Signed in, and the server says the account has no Impeccable Pro. */
@@ -179,6 +179,25 @@ export const COPY = {
     go: (name, host) => `Let ${name || 'your persona'} go to ${host}?`,
     yes: 'Yes',
     no: 'No',
+    /** The person's own agent asks for a site (agent.js). */
+    site: (name, host) => `Let ${name || 'your agent'} use ${host}?`,
+    once: 'Allow once',
+    always: 'Always allow',
+    notNow: 'Not now',
+  },
+  /** The person's own agent driving their browser (agent.js): its line, and each step in the live log. */
+  yourAgent: {
+    line: (name) => `${name || 'Your agent'} is using your browser`,
+    wants: (name) => `${name || 'Your agent'} wants to use your browser`,
+    first: (name) => `${name || 'Your agent'} is looking at the page.`,
+    opened: (where) => `Opened ${where}`,
+    back: 'Went back',
+    viewport: (width, height) => `Set the page to ${width} × ${height}`,
+    clicked: (what) => `Clicked “${what}”`,
+    clickedAt: (x, y) => `Clicked at ${x}, ${y}`,
+    typed: (what, into) => `Typed “${what}”${into ? ` into “${into}”` : ''}`,
+    pressed: (key) => `Pressed ${key}`,
+    scrolled: 'Scrolled',
   },
   takeover: { line: (name) => `Your turn. ${name || 'Your persona'} picks up where you leave off.` },
 

@@ -10,7 +10,6 @@ import { adopt, opensPanel } from '../walks/link.js';
 import { planned } from '../walks/control.js';
 import { current, ready } from '../walks/store.js';
 import { faceOf, isLive } from '../walks/view.js';
-import { offerPanel, signedIn as pointToolbar, withoutPro } from '../walks/toolbar.js';
 import { PRODUCTION, issuerAllowed, randomText } from './flow.js';
 import { PLAN_ID, appOf, createSession, idbStore } from './session.js';
 import { ALARM, checkIns } from './waiting.js';
@@ -57,9 +56,6 @@ const checkedIn = (answer, how) => { if (proOf(answer) === true) void agent.chec
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
-  // The server says who has Impeccable Pro (`pro`), on this and every request: without it, the popup alone.
-  pointToolbar(signedIn && answer.pro !== false);
-  withoutPro(signedIn && answer.pro === false);
   void agent.keep(signedIn ? proOf(answer) : false).catch(() => undefined);
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
@@ -269,7 +265,6 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!Object.hasOwn(ANSWERS, message.account)) { respond({ ok: false, why: 'unknown' }); return false; }
   // At once, while Chrome still counts the popup's click: whether the side panel opened is said in the answer.
   if (message.account === 'walk' && Number.isInteger(message.tabId)) {
-    offerPanel();
     const panel = chrome.sidePanel.open({ tabId: message.tabId }).then(() => true, () => false);
     void chosen.then(() => walk(message, panel)).then(respond, () => respond({ ok: false, why: 'failed' }));
     return true;

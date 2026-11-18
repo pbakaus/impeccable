@@ -43,6 +43,17 @@ const MORE = [
   { n: 12, did: 'Opened “Settings”', said: 'Small grey text. Hard to read.' },
 ];
 const walkingLong = run(walking, MORE.map((step) => ({ type: 'step', step })));
+/** The person's own agent (agent.js): asking for its first site, then driving with its live log. */
+const AGENT = { type: 'agent', name: 'Claude Code', site: 'https://linear.app' };
+const AGENT_STEPS = [
+  { n: 1, did: 'Opened linear.app/acme/team/REN/active' },
+  { n: 2, did: 'Clicked “REN-2053”' },
+  { n: 3, did: 'Set the page to 390 × 844' },
+  { n: 4, did: 'Scrolled' },
+  { n: 5, did: 'Clicked “Comment”' },
+  { n: 6, did: 'Typed “Walked it at 390: the header wraps.” into “Leave a comment…”' },
+];
+const agentWalking = run(emptyView(true), [AGENT, { type: 'opened', name: 'Claude Code', site: AGENT.site }, ...AGENT_STEPS.map((step) => ({ type: 'step', step }))]);
 /** A walk under way that gains a step every 1.5 s (panel.js), to watch the list grow: two steps, then the rest. */
 const walkingLive = run(waiting, [{ type: 'opened', name: 'Robert', site: HANDOFF.site }, ...STEPS.slice(0, 2).map((step) => ({ type: 'step', step }))]);
 export const FEED = { 'walking-live': [...STEPS.slice(2), ...MORE] };
@@ -72,6 +83,9 @@ export const STUBS = {
   asking: run(walking, [{ type: 'ask', ask: { kind: 'delete', what: 'Delete the to-do “Buy oat milk and bread”' } }]),
   'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a photo to the to-do’s picture field' } }]),
   'asking-go': run(walking, [{ type: 'ask', ask: { kind: 'go', what: 'oat-milk-deals.example' } }]),
+  'agent-asking': run(emptyView(true), [AGENT, { type: 'ask', ask: { kind: 'site', what: 'linear.app' } }]),
+  'agent-walking': agentWalking,
+  'agent-asking-more': run(agentWalking, [{ type: 'ask', ask: { kind: 'site', what: 'github.com' } }]),
   done: run(walking, [finish([])]),
   'done-issues': run(walking, [finish(ISSUES)]),
   stopped: run(walking, [{ type: 'stop' }]),
