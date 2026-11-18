@@ -311,8 +311,24 @@ pub fn scan(src: &dyn Source) -> Report {
         put("app-icons", Some(w.app_icons()));
         put("not-found-page", w.not_found_page());
         put("social-previews", Some(w.social_previews()));
-        put("legal-pages", Some(w.legal_pages()));
-        put("error-tracking", Some(w.error_tracking()));
+        // A web app in a folder of its own often isn't all that the site
+        // serves: legal pages and error capture may live beside it (a backend
+        // at the repository's top, its `legal/` texts). Either place lays them.
+        let either = |a: State, b: &dyn Fn() -> State| {
+            if a == State::Checked || (view.is_some() && b() == State::Checked) {
+                State::Checked
+            } else {
+                a
+            }
+        };
+        put(
+            "legal-pages",
+            Some(either(w.legal_pages(), &|| p.legal_pages())),
+        );
+        put(
+            "error-tracking",
+            Some(either(w.error_tracking(), &|| p.error_tracking())),
+        );
     }
     let (ignores, unresolved) = p.page_hints();
     r.inline_ignores = ignores;
@@ -1544,12 +1560,36 @@ impl<'a> Project<'a> {
         ];
         let found = js.iter().any(|d| self.any_dep(d))
             || js_prefixes.iter().any(|p| self.dep_prefix(p))
-            || other.iter().any(|(m, w)| self.other_dep(m, w));
+            || other.iter().any(|(m, w)| self.other_dep(m, w))
+            || self.captures_errors();
         if found {
             State::Checked
         } else {
             State::Failing
         }
+    }
+
+    /// Error capture with no package to show for it: a provider's loader
+    /// script in a page, or exceptions sent from code over the provider's
+    /// own API (PostHog's `$exception` events and `capture_exceptions`, a
+    /// Sentry ingest address). Comments don't count.
+    fn captures_errors(&self) -> bool {
+        const CODE: &[&str] = &[
+            "js", "jsx", "ts", "tsx", "mjs", "cjs", "svelte", "vue", "astro", "html", "htm", "py",
+            "rb", "go", "php", "erb", "ex", "exs", "rs",
+        ];
+        static CAPTURE: OnceLock<Regex> = OnceLock::new();
+        let capture = re(
+            &CAPTURE,
+            r#"\bcapture_exceptions\b|\bposthog\??\.captureException\b|["'`]\$exception["'`]|\bsentry-cdn\.com/|\.ingest\.(?:[a-z]{2}\.)?sentry\.io\b|\b_rollbarConfig\b|\bDD_RUM\.init\b|\bdatadoghq-browser-agent\b|\bcdn\.logrocket\.(?:io|com)/|\bjs\.honeybadger\.io/|\bbugsnag(?:\.min)?\.js\b"#,
+        );
+        self.files
+            .iter()
+            .filter(|f| CODE.contains(&ext(f)) && !is_test_path(f) && !is_minified(f))
+            .any(|f| {
+                self.read(f)
+                    .is_some_and(|t| capture.is_match(&evidence_text(f, &t)))
+            })
     }
 
     fn reduced_motion(&self) -> Option<State> {
