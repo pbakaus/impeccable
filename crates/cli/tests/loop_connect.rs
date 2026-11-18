@@ -1736,3 +1736,69 @@ fn copilot_connect_roundtrip_merges_and_gates_hooks() {
         assert!(!root.join("hooks").exists());
     }
 }
+
+#[test]
+fn codex_trusts_exactly_the_hooks_connect_wrote_and_disconnect_takes_it_back() {
+    // Codex runs a hook from hooks.json only once it is trusted (REN-2057). This fake
+    // app server lists hooks the way Codex 0.165 keys them (file:event:group:hook) and
+    // keeps trust in trusted.list, so the test sees exactly which keys connect wrote.
+    let b = Box::new("codex-trust");
+    b.install_loop();
+    script(
+        &b.root.join("bin/codex"),
+        r#"#!/bin/sh
+home="${CODEX_HOME:-$HOME/.codex}"
+f="$home/config.toml"
+t="$home/trusted.list"
+if [ "$1" = app-server ]; then
+  touch "$t"
+  while IFS= read -r line; do
+    id=$(printf '%s' "$line" | jq '.id // empty')
+    [ -n "$id" ] || continue
+    case $(printf '%s' "$line" | jq -r .method) in
+    hooks/list) r=$(jq -c --arg p "$home/hooks.json" --rawfile t "$t" '{data:[{hooks:[.hooks|to_entries[]|.key as $e|.value|to_entries[]|.key as $g|.value.hooks|to_entries[]|($p+":"+($e|gsub("(?<a>[a-z])(?<b>[A-Z])";"\(.a)_\(.b)")|ascii_downcase)+":"+($g|tostring)+":"+(.key|tostring)) as $k|{key:$k,sourcePath:$p,currentHash:("h-"+$k),trustStatus:(if ($t|split("\n")|index($k)) then "trusted" else "untrusted" end)}]}]}' "$home/hooks.json");;
+    config/batchWrite)
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value!=null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' >> "$t"
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value==null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' | while IFS= read -r k; do grep -vxF "$k" "$t" > "$t.n"; mv "$t.n" "$t"; done
+      r='{}';;
+    *) r='{}';;
+    esac
+    printf '{"id":%s,"result":%s}\n' "$id" "$r"
+  done
+  exit 0
+fi
+case "$2" in
+add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+esac
+exit 0
+"#,
+    );
+    // The person's own hook comes first, so Loop's sit at shifted places.
+    let codex = b.home().join(".codex");
+    fs::write(
+        codex.join("hooks.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"/bin/echo mine"}]}]}}"#,
+    )
+    .unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "codex", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("/hooks"), "trusted, so no /hooks step: {}", text(&out));
+    let trusted = fs::read_to_string(codex.join("trusted.list")).unwrap();
+    let keys: Vec<&str> = trusted.lines().collect();
+    let hooks: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(codex.join("hooks.json")).unwrap()).unwrap();
+    let loop_hooks = hooks["hooks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|g| g.as_array().unwrap())
+        .flat_map(|g| g["hooks"].as_array().unwrap())
+        .filter(|h| h["command"] != "/bin/echo mine")
+        .count();
+    assert_eq!(keys.len(), loop_hooks, "{trusted}");
+    assert!(!keys.iter().any(|k| k.ends_with(":session_start:0:0")), "the person's own hook stays theirs: {trusted}");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(fs::read_to_string(codex.join("trusted.list")).unwrap().trim(), "", "disconnect takes the trust back");
+}
