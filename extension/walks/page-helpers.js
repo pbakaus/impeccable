@@ -480,7 +480,7 @@ function confirmingControl(at, enter = false, wide = false) {
     const raw = [el.getAttribute("aria-label") ?? "", `${el.innerText || el.textContent || ""}`, el.getAttribute("title") ?? "", tag === "input" && /^(?:submit|button)$/.test(type) ? el.value ?? "" : ""], own = norm(raw[1]);
     const said = [norm(raw[0]), own.length <= 40 ? own : "", norm(raw[2]), norm(raw[3])].filter((s) => s.length > 0), told = whole(raw, said);
     const link = tag === "a" && el.getAttribute("href") !== null && !el.getAttribute("role");
-    const deed = said.some((s) => changes.test(s) || wide && !link && /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe|subscription|purchase|upgrade|donate|erase|trash|deactivate|close (?:my |your |the )?account)\b/.test(s));
+    const deed = said.some((s) => changes.test(s) || wide && !link && /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe|subscription|purchase|upgrade|donate|erase|trash|deactivate|close (?:my |your |the )?account)\b|^(?:proceed to )?check out(?: now)?$/.test(s));
     const field = wide && enter && tag !== "button" && !(tag === "input" && /^(?:submit|button|image)$/.test(type));
     if (deed && !field)
       return wide ? told.join(`
@@ -1878,4 +1878,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'f6f33e19039ec284';
+export const HASH = '80ed7cbfeb56e6c2';
