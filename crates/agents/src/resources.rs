@@ -59,7 +59,8 @@ pub(super) fn apply(
     if s.harness == "opencode" && (s.wake_plugin.is_some() || old.is_some_and(|j| j.spec.wake_plugin.is_some())) {
         let path = render::hooks_file(s);
         if let Ok(current) = fs::read(&path) {
-            let expected = old.and_then(|j| j.snapshots.iter().find(|x| x.path == path))
+            let physical = canonical_target(&path)?;
+            let expected = old.and_then(|j| j.snapshots.iter().find(|x| x.path == physical))
                 .map(|x| x.last_written_value.as_slice())
                 .or_else(|| s.wake_plugin.as_deref().map(str::as_bytes));
             if expected != Some(current.as_slice()) {
@@ -122,7 +123,7 @@ pub(super) fn apply(
                 };
                 if let Some(updated) = render::remove_owned(
                     &old_spec,
-                    &physical,
+                    &path,
                     base.as_deref().unwrap_or_default(),
                     original,
                 )? {
@@ -695,16 +696,23 @@ pub(super) fn undo(
             }
             removed.push(snap.path.clone())
         } else {
+            // Select the format from the logical target, even when a parent is linked.
+            let logical = targets(&j.spec).into_iter()
+                .find(|p| canonical_target(p).is_ok_and(|physical| physical == snap.path))
+                .unwrap_or_else(|| snap.path.clone());
             // What was written, not what the caller asks about now.
             match render::remove_owned(
                 &j.spec,
-                &snap.path,
+                &logical,
                 current.as_deref().unwrap_or_default(),
                 snap.before.as_deref(),
             )? {
                 Some(updated) if current.as_deref() != Some(updated.as_slice()) => {
                     safe_write(&snap.path, current.as_deref(), &updated)?;
                     removed.push(snap.path.clone());
+                    for server in render::drifted_http_servers(&j.spec, &logical, &updated, snap.before.as_deref()) {
+                        conflicts.push(json!(format!("{}#mcp:{server}", snap.path.display())));
+                    }
                     // A hook the person edited stays; report it, not just the file.
                     for hook in render::drifted_hooks(&j.spec, &updated, snap.before.as_deref()) {
                         conflicts.push(json!(format!("{}#{hook}", snap.path.display())));

@@ -1138,6 +1138,17 @@ fn list_reports_every_installation_without_paths_and_marks_edited_entries() {
         list(&temp().join("absent")).unwrap()["installations"],
         json!([])
     );
+    for harness in ["cursor", "copilot", "opencode"] {
+        let home = temp();
+        let mut s = spec(harness, temp());
+        s.instruction = None;
+        s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+        let path = home.join("http.json");
+        let j = apply(&s, None, &home, &path, None).unwrap();
+        write_journal(&path, &j).unwrap();
+        assert_eq!(list(&home).unwrap()["installations"][0]["mcpServers"], json!(["impeccable"]));
+    }
+
 }
 fn approve(servers: &[&str], mode: &str) -> Vec<McpApproval> {
     servers
@@ -1669,4 +1680,25 @@ fn opencode_plugin_is_owned_as_a_file_and_its_directory_recovers() {
     assert_eq!(apply(&s, Some(&j), &home, &journal_path, None).unwrap_err().0, "plugin_drift");
     assert!(!undo(&s, Some(&j), &home).unwrap()["conflicts"].as_array().unwrap().is_empty());
     assert_eq!(fs::read_to_string(path).unwrap(), "// My edited plugin\n");
+}
+
+#[test]
+fn partial_http_server_cleanup_reports_the_edited_entry() {
+    for (harness, file, section) in [("cursor", "mcp.json", "mcpServers"), ("copilot", "mcp-config.json", "mcpServers"), ("opencode", "opencode.json", "mcp")] {
+        let home = temp();
+        let root = temp();
+        let mut s = spec(harness, root.clone());
+        s.instruction = None;
+        s.http_mcp_servers = [("unchanged".into(), "https://original/one".into()), ("edited".into(), "https://original/two".into())].into();
+        let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+        let path = root.join(file);
+        let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        config[section]["edited"]["url"] = json!("https://mine");
+        let edited = config[section]["edited"].clone();
+        fs::write(&path, serde_json::to_vec(&config).unwrap()).unwrap();
+        let result = undo(&s, Some(&j), &home).unwrap();
+        assert!(result["conflicts"].as_array().unwrap().iter().any(|v| v.as_str().unwrap().ends_with("#mcp:edited")), "{result}");
+        let remaining: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        assert_eq!(remaining[section], json!({"edited": edited}));
+    }
 }

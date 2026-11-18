@@ -1878,3 +1878,25 @@ fn opencode_connect_journals_the_plugin_and_preserves_config_and_rule_fallback()
         else { assert!(!rule.exists()); }
     }
 }
+
+#[test]
+fn opencode_reconnects_with_a_linked_plugin_directory() {
+    let b = Box::new("opencode-linked-plugin");
+    script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+    b.install_loop_version("0.2.0");
+    let root = b.home().join(".config/opencode");
+    let target = b.root.join("dotfiles/opencode-plugins");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    fs::write(target.join("mine.ts"), "// My plugin\n").unwrap();
+    std::os::unix::fs::symlink(&target, root.join("plugin")).unwrap();
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(fs::symlink_metadata(root.join("plugin")).unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_to_string(target.join("mine.ts")).unwrap(), "// My plugin\n");
+    assert_eq!(fs::read_dir(target).unwrap().count(), 1);
+}

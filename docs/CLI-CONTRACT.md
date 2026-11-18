@@ -1363,7 +1363,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
   - `IMPECCABLE_HOOK_DEPTH` (snapshotted from parent BEFORE the script sets it to `'1'` for children); `CLAUDE_HOOK_DEPTH` — re-entrancy guard: `depthIsSet(v)` = non-empty string that is TRUTHY or a positive integer → return silently (`audit.reentrant=true`).
   - `IMPECCABLE_HOOK_DISABLED` truthy → skip `'env-disabled'`.
   - `IMPECCABLE_HOOK_QUIET` truthy → quiet mode (no clean/pending acks; findings still emitted).
-  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|cursor|copilot|opencode|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
+  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|grok|claude|codex|gemini|hermes|antigravity` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
   - `IMPECCABLE_HOOK_LOG` = audit NDJSON path (overrides `hook.auditLog`).
   - `IMPECCABLE_HOOK_DEBUG` set → unexpected top-level exceptions written to stderr as `[impeccable-hook] <err>\n`.
   - `CURSOR_PROJECT_DIR` — project dir fallback for cursor/github events.

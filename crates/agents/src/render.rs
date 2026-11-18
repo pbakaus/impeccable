@@ -860,6 +860,29 @@ pub(super) fn render_rule(
     Ok(text.into_bytes())
 }
 
+fn http_entry(s: &Spec, url: &str) -> Value {
+    match s.harness.as_str() {
+        "cursor" => json!({"url":url}),
+        "copilot" => json!({"type":"http", "url":url, "tools":["*"]}),
+        "opencode" => json!({"type":"remote", "url":url, "enabled":true}),
+        _ => unreachable!(),
+    }
+}
+
+/// Edited HTTP entries must keep the journal even when other entries were removed.
+pub(super) fn drifted_http_servers(s: &Spec, path: &Path, current: &[u8], original: Option<&[u8]>) -> Vec<String> {
+    if !json_entries_file(s, path) || path.ends_with("cli-config.json") { return vec![]; }
+    let Ok(current) = parse_unique_json(current) else { return vec![] };
+    let original = original.and_then(|b| parse_unique_json(b).ok());
+    let section = if s.harness == "opencode" { "mcp" } else { "mcpServers" };
+    s.http_mcp_servers.iter().filter_map(|(name, url)| {
+        let wanted = http_entry(s, url);
+        let prior = original.as_ref().and_then(|v| v.get(section)).and_then(|v| v.get(name));
+        let entry = current.get(section).and_then(|v| v.get(name));
+        (prior != Some(&wanted) && entry.is_some_and(|v| v != &wanted)).then(|| name.clone())
+    }).collect()
+}
+
 /// Journal-owned JSON resources. Undo removes only values absent in the baseline.
 pub(super) fn render_json_entries(
     s: &Spec,
@@ -889,12 +912,7 @@ pub(super) fn render_json_entries(
             .as_object_mut()
             .ok_or_else(|| invalid_toml("mcpServers must be an object"))?;
         for (name, url) in &s.http_mcp_servers {
-            let wanted = match s.harness.as_str() {
-                "cursor" => json!({"url":url}),
-                "copilot" => json!({"type":"http", "url":url, "tools":["*"]}),
-                "opencode" => json!({"type":"remote", "url":url, "enabled":true}),
-                _ => unreachable!(),
-            };
+            let wanted = http_entry(s, url);
             if undo {
                 if prior.get(section).and_then(|v| v.get(name)).is_none()
                     && servers.get(name) == Some(&wanted)

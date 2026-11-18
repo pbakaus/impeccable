@@ -239,7 +239,7 @@ pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
             "harness":j.spec.harness,
             "hooks":j.spec.hooks.iter().map(|h| json!({"event":h.event,"matcher":h.matcher})).collect::<Vec<_>>(),
             "instruction":j.spec.instruction.is_some(),
-            "mcpServers":j.spec.mcp_servers.iter().map(|m| m.name.clone()).collect::<Vec<_>>(),
+            "mcpServers":j.spec.mcp_servers.iter().map(|m| m.name.clone()).chain(j.spec.http_mcp_servers.keys().cloned()).collect::<Vec<_>>(),
             "mcpApprovals":j.spec.mcp_approvals.iter().map(|a| a.server.clone()).collect::<Vec<_>>(),
             "resources":resources,
         }));
