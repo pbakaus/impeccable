@@ -101,12 +101,14 @@ fn lists_without_signing_in() {
 #[test]
 fn signs_in_from_its_tool_and_says_the_tools_changed() {
     let mut up = script(vec![Err(Failure::Auth), Ok(json!({ "tools": [{ "name": TOOL }] }))], Ok(()));
-    let ask = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": SIGN_IN_TOOL, "arguments": {} } });
+    let ask = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": SIGN_IN_TOOL, "arguments": {}, "_meta": { "progressToken": "p3" } } });
     let (frames, _) = talk(&[ask], &mut up);
     assert_eq!(up.signed, 1);
-    assert_eq!(frames[0]["method"], "notifications/tools/list_changed");
-    assert_eq!(frames[1]["id"], 3);
-    assert_eq!(frames[1]["result"]["isError"], Value::Null);
+    // The wait is heard on the caller's own progress token.
+    assert_eq!((frames[0]["method"].as_str(), frames[0]["params"]["progressToken"].as_str()), (Some("notifications/progress"), Some("p3")));
+    assert_eq!(frames[1]["method"], "notifications/tools/list_changed");
+    assert_eq!(frames[2]["id"], 3);
+    assert_eq!(frames[2]["result"]["isError"], Value::Null);
 }
 
 // Catches a failure that is not about the sign-in opening the browser.

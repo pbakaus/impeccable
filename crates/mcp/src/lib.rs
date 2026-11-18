@@ -329,7 +329,9 @@ fn answer(request: &Value, out: &mut dyn Write, err: &mut dyn Write, upstream: &
         }),
         // Signing in is the held path's own: a list to check it worked, which a sign-in makes possible.
         "tools/call" if request.pointer("/params/name").and_then(Value::as_str) == Some(SIGN_IN_TOOL) => {
-            let probe = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list" });
+            // With the caller's `_meta`: its progress token hears the wait for the person.
+            let meta = request.pointer("/params/_meta").cloned().unwrap_or_else(|| json!({}));
+            let probe = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list", "params": { "_meta": meta } });
             let reply = held(&probe, out, err, upstream);
             Some(if reply.get("result").is_some() {
                 frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
