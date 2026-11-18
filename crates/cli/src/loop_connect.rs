@@ -122,7 +122,7 @@ type Result<T> = std::result::Result<T, String>;
 /// The first Loop whose helper holds a Codex turn open for an answer (REN-2057).
 const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 
-// TODO(REN-2057): the first Loop release with the Cursor, Copilot and opencode helpers (pristine #6967, #6968, and the opencode helper PR)
+// Loop 0.2.0 is the first release with the Cursor, Copilot and opencode wake helpers (REN-2057).
 const CLI_WAKE: semver::Version = semver::Version::new(0, 2, 0);
 
 /// All harness-specific policy lives here; orchestration below uses these descriptions.
