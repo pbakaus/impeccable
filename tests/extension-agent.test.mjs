@@ -35,6 +35,30 @@ describe('agent host', () => {
   });
 });
 
+// The decider, 15 Nov: the person's own agent may use our staging app, but never its pages that sign in, consent,
+// mint or revoke a credential, hold the account or billing, or answer Needs you; never production; never for a persona.
+describe('agent on our staging app', async () => {
+  const { isOwnPage, verdict } = await import('../extension/walks/guard.js');
+  const STAGING = 'https://app.staging.impeccable.style';
+  it('opens the staging app for an agent, and none of its sensitive pages, however the path is written', () => {
+    for (const path of ['/app/acme', '/app/acme/runs/r1', '/app/-/worlds', '/app/acme/personas/mira']) assert.equal(isOwnPage(`${STAGING}${path}`, true), false, path);
+    for (const path of ['/app/login', '/app/logout', '/app/oauth/authorize', '/app/cli/authorize', '/app/-/account', '/app/-/account/grants', '/app/acme/account', '/app/-/billing/checkout',
+      '/app/acme/setup', '/app/-/setup', '/app/acme/needs-you', '/app/-/needs-you', '/app/acme/api/setup-token', '/app/acme/api/needs-you/answer', '/app/-/api/needs-you/answer',
+      '/app/-/me/agent', '/billing/portal/1', '/app/ACME/Account', '/app/acme//account', '/app/%61cme/%61ccount', '/app/acme/account/', '/join']) {
+      assert.equal(isOwnPage(`${STAGING}${path}`, true), true, path);
+    }
+  });
+  it('refuses a write to a refused page from an allowed one, and lets the app’s own work through', () => {
+    const write = (path) => verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}${path}`, method: 'POST' } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([write('/app/acme/api/needs-you/answer'), write('/app/acme/api/setup-token'), write('/app/acme/api/attention/put-off')], ['refuse', 'refuse', 'continue']);
+  });
+  it('keeps production, the API and admin hosts, http and other ports, and every persona walk refused', () => {
+    for (const url of ['https://app.impeccable.style/app/acme', 'https://api.staging.impeccable.style/mcp', 'https://admin.staging.impeccable.style/admin/today', 'https://staging.impeccable.reviews/app/acme',
+      'http://app.staging.impeccable.style/app/acme', 'https://app.staging.impeccable.style:8443/app/acme']) assert.equal(isOwnPage(url, true), true, url);
+    assert.equal(isOwnPage(`${STAGING}/app/acme`), true, 'a persona walk');
+  });
+});
+
 describe('agent session', () => {
   const listeners = {};
   const event = (name) => ({ addListener(callback) { (listeners[name] ??= []).push(callback); } });

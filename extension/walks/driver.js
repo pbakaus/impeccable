@@ -1112,7 +1112,7 @@ function noteDocument(tab, { type, frame }) {
 
 /** Fails closed: a walked tab seen off its site is no longer walked. The guard holds every request, so this is the net under it. */
 function escaped(url) {
-  if (!walk || stillHome(url, walk.allowed) || (heldAtSignIn && isSignInPage(url))) return;
+  if (!walk || stillHome(url, walk.allowed, walk.agent) || (heldAtSignIn && isSignInPage(url))) return;
   void endWalk({ event: 'stopped', by: 'guard', url: String(url).slice(0, 500) }, 'left-site');
 }
 
@@ -1150,7 +1150,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       void asking.then(() => held(sendTo(tab.tabId), params, tab.mainFrame, allowed, writable, (url) => {
         for (const listener of tab.watchers) listener({ kind: 'refused', url });
         say({ event: 'blocked', what: 'navigation', url });
-      }, holds).then((became) => {
+      }, holds, tab.agent).then((became) => {
         if (became === 'refused' && !reads(params)) tab.refusedWrites = (tab.refusedWrites ?? 0) + 1;
         if (became === 'held') {
           tab.heldWrites = (tab.heldWrites ?? 0) + 1;
@@ -1721,7 +1721,7 @@ export const ops = {
     const agent = req[AGENT] === true;
     if (walk || opening) throw fail('NotSupported', 'an outing has one tab');
     if (adopted && !agent) return adopt(name, allow, free, named, signInPage);
-    const site = admit(url, agent ? allow : allowedFor(allow));
+    const site = admit(url, agent ? allow : allowedFor(allow), agent);
     const me = { stopped: false };
     opening = me;
     // Stopped or let go at any point from here: the walk never starts, and the tab made for it goes.
@@ -1774,7 +1774,7 @@ export const ops = {
 
   async goto({ url, waitUntil, timeout }) {
     // Never a question: only a click of the walk's own reaches a new site.
-    if (!stillHome(url, walk.allowed)) {
+    if (!stillHome(url, walk.allowed, walk.agent)) {
       say({ event: 'blocked', what: 'navigation', url: String(url).slice(0, 500) });
       throw fail('NotAllowed', `a journey stays on ${walk.origin}`);
     }
