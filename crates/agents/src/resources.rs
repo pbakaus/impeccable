@@ -41,7 +41,7 @@ pub(super) fn apply(
             ));
         }
     }
-    if let Some(old) = old.filter(|o| ["cursor", "copilot"].contains(&o.spec.harness.as_str())) {
+    if let Some(old) = old.filter(|o| ["cursor", "copilot", "opencode"].contains(&o.spec.harness.as_str())) {
         for path in targets(&old.spec)
             .into_iter()
             .filter(|p| render::json_entries_file(&old.spec, p))
@@ -53,6 +53,17 @@ pub(super) fn apply(
                     "MCP configuration changed outside the engine".into(),
                     4,
                 ));
+            }
+        }
+    }
+    if s.harness == "opencode" && (s.wake_plugin.is_some() || old.is_some_and(|j| j.spec.wake_plugin.is_some())) {
+        let path = render::hooks_file(s);
+        if let Ok(current) = fs::read(&path) {
+            let expected = old.and_then(|j| j.snapshots.iter().find(|x| x.path == path))
+                .map(|x| x.last_written_value.as_slice())
+                .or_else(|| s.wake_plugin.as_deref().map(str::as_bytes));
+            if expected != Some(current.as_slice()) {
+                return Err(("plugin_drift", "The opencode Loop plugin was changed; it was left alone".into(), 4));
             }
         }
     }
@@ -173,11 +184,9 @@ pub(super) fn apply(
             }
         }
     }
-    let new_dirs = if s.harness == "copilot" && !s.hooks.is_empty()
-        && matches!(fs::symlink_metadata(s.root.join("hooks")), Err(e) if e.kind() == io::ErrorKind::NotFound)
-    {
-        vec![canonical_target(&s.root.join("hooks"))?]
-    } else { vec![] };
+    let new_dirs = render::dedicated_wake_file(s).and_then(|p| p.parent().map(Path::to_path_buf))
+        .filter(|p| matches!(fs::symlink_metadata(p), Err(e) if e.kind() == io::ErrorKind::NotFound))
+        .map(|p| canonical_target(&p)).transpose()?.into_iter().collect::<Vec<_>>();
     let mut created_dirs = old.map(|j| j.created_dirs.clone()).unwrap_or_default();
     for dir in &new_dirs { if !created_dirs.contains(dir) { created_dirs.push(dir.clone()); } }
     let pending_path = home.join(format!("{}.pending.json", installation_id(s)));
@@ -348,6 +357,11 @@ pub(super) fn build_resource_records(
             };
             let before = snap.before.as_deref().unwrap_or_default();
             let after = snap.last_written_value.as_slice();
+            if s.wake_plugin.is_some() && path == render::hooks_file(s) {
+                add("plugin", "wake", &physical.display().to_string(),
+                    snap.before.as_ref().map(|b| Value::String(String::from_utf8_lossy(b).into_owned())),
+                    Value::String(s.wake_plugin.clone().unwrap()));
+            }
             if render::json_entries_file(s, &path)
             {
                 add(

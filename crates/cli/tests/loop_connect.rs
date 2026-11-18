@@ -935,7 +935,7 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     assert_eq!(before["loop"]["installed"], true);
     assert_eq!(before["loop"]["version"], "0.1.1");
     for a in before["agents"].as_array().unwrap() {
-        if a["agent"] == "cursor" || a["agent"] == "copilot" {
+        if a["agent"] == "cursor" || a["agent"] == "copilot" || a["agent"] == "opencode" {
             assert_eq!(
                 a["detected"], false,
                 "the fixture installs only Claude and Codex"
@@ -1801,4 +1801,80 @@ exit 0
     let out = b.run(&["loop", "disconnect"]);
     assert!(out.status.success(), "{}", text(&out));
     assert_eq!(fs::read_to_string(codex.join("trusted.list")).unwrap().trim(), "", "disconnect takes the trust back");
+}
+
+#[test]
+fn opencode_connect_journals_the_plugin_and_preserves_config_and_rule_fallback() {
+    for (name, version, existing_rule, jsonc, xdg) in [
+        ("opencode-quoted'\"", "0.2.0", false, false, false),
+        ("opencode-existing", "0.2.0", true, false, true),
+        ("opencode-jsonc", "0.2.0", false, true, true),
+        ("opencode-old", "0.1.4", true, false, false),
+        ("opencode-old-jsonc", "0.1.4", false, true, false),
+    ] {
+        let mut b = Box::new(name);
+        script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+        b.install_loop_version(version);
+        let config_home = if xdg { b.root.join("xdg") } else { b.home().join(".config") };
+        if xdg { b.env.insert("XDG_CONFIG_HOME".into(), config_home.display().to_string()); }
+        let root = config_home.join("opencode");
+        fs::create_dir_all(&root).unwrap();
+        let config = "{\"$schema\":\"https://opencode.ai/config.json\",\"mcp\":{\"other\":{\"type\":\"remote\",\"url\":\"https://other\"}},\"theme\":\"mine\"}\n";
+        let jsonc_contents = "// Deliberately not JSON; connect must leave it unread.\n{ /* mine */ }\n";
+        let config_file = root.join(if jsonc { "opencode.jsonc" } else { "opencode.json" });
+        let before = if jsonc { jsonc_contents } else { config };
+        fs::write(&config_file, before).unwrap();
+        let rule = root.join("AGENTS.md");
+        if existing_rule { fs::write(&rule, "My own rules.\n").unwrap(); }
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--taste", "--json"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        if jsonc {
+            assert!(report["agents"][0]["then"].as_array().unwrap().iter().any(|v| v.as_str().unwrap().contains("opencode.jsonc")));
+            assert!(!root.join("opencode.json").exists());
+            assert_eq!(fs::read_to_string(&config_file).unwrap(), before);
+        } else {
+            let config: serde_json::Value = serde_json::from_slice(&fs::read(&config_file).unwrap()).unwrap();
+            assert_eq!(config, serde_json::json!({"$schema":"https://opencode.ai/config.json","theme":"mine","mcp":{
+                "other":{"type":"remote","url":"https://other"},
+                "impeccable":{"type":"remote","url":URL,"enabled":true}
+            }}));
+        }
+        let plugin_file = root.join("plugin/impeccable-loop.ts");
+        if version == "0.2.0" {
+            let plugin = fs::read_to_string(&plugin_file).unwrap();
+            assert!(!plugin.contains("__HELPER__") && !plugin.contains("__ENV__") && !plugin.contains("__COMMAND__"));
+            let literal = plugin.lines().find_map(|l| l.strip_prefix("const COMMAND = ")).unwrap().strip_suffix(';').unwrap();
+            let command: String = serde_json::from_str(literal).unwrap();
+            let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+            let quoted = format!("'{}'", helper.display().to_string().replace('\'', "'\\''"));
+            assert_eq!(command, format!("/usr/bin/xattr -p com.apple.quarantine {quoted} 2>/dev/null | /usr/bin/grep -Eq '^[0-9a-fA-F]{{2}}[0-389abAB][0-9a-fA-F];' || exec {quoted} opencode"));
+            assert!(plugin.contains("spawn(\"/bin/sh\", [\"-c\", COMMAND + \" \" + kind]"));
+        } else { assert!(!root.join("plugin").exists()); }
+        let record: serde_json::Value = serde_json::from_slice(&fs::read(b.support().join("opencode-install.json")).unwrap()).unwrap();
+        assert_eq!(record, serde_json::json!({"enabled":true,"harness":"opencode","executable":b.root.join("bin/opencode").display().to_string()}));
+        if existing_rule {
+            let contents = fs::read_to_string(&rule).unwrap();
+            assert!(contents.starts_with("My own rules.\n"));
+            assert!(contents.contains(INSTRUCTION));
+        } else {
+            assert!(!rule.exists());
+            assert!(!b.home().join(".claude/CLAUDE.md").exists(), "fallback file stays untouched");
+        }
+        let status = b.run(&["loop", "status", "--json"]);
+        assert!(status.status.success(), "{}", text(&status));
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let row = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "opencode").unwrap();
+        assert_eq!(row["hooks"], version == "0.2.0");
+        assert_eq!(row["instructionRequired"], existing_rule);
+        if jsonc { assert!(text(&b.run(&["loop", "status"])).contains("opencode.jsonc")); }
+        let again = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(again.status.success(), "{}", text(&again));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert_eq!(fs::read_to_string(config_file).unwrap(), before);
+        assert!(!root.join("plugin").exists());
+        if existing_rule { assert_eq!(fs::read_to_string(rule).unwrap(), "My own rules.\n"); }
+        else { assert!(!rule.exists()); }
+    }
 }

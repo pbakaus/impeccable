@@ -10,14 +10,25 @@ pub(super) fn hooks_file(s: &Spec) -> PathBuf {
         "claude" => "settings.json",
         "codex" | "cursor" => "hooks.json",
         "copilot" => "hooks/impeccable-loop.json",
+        "opencode" => "plugin/impeccable-loop.ts",
         _ => unreachable!(),
     })
+}
+
+/// Dedicated wake resources use one journaled parent directory.
+pub(super) fn dedicated_wake_file(s: &Spec) -> Option<PathBuf> {
+    match s.harness.as_str() {
+        "copilot" if !s.hooks.is_empty() => Some(hooks_file(s)),
+        "opencode" if s.wake_plugin.is_some() => Some(hooks_file(s)),
+        _ => None,
+    }
 }
 
 pub(super) fn json_entries_file(s: &Spec, path: &Path) -> bool {
     match s.harness.as_str() {
         "cursor" => path.ends_with("mcp.json") || path.ends_with("cli-config.json"),
         "copilot" => path.ends_with("mcp-config.json"),
+        "opencode" => path.ends_with("opencode.json"),
         _ => false,
     }
 }
@@ -27,6 +38,9 @@ pub(super) fn render(
     path: &Path,
     before: Option<&[u8]>,
 ) -> Result<Vec<u8>, (&'static str, String, i32)> {
+    if s.harness == "opencode" && path.ends_with("plugin/impeccable-loop.ts") {
+        return Ok(s.wake_plugin.as_deref().unwrap_or_default().as_bytes().to_vec());
+    }
     if json_entries_file(s, path) {
         return render_json_entries(s, path, before, None, false);
     }
@@ -103,12 +117,15 @@ pub(super) fn remove_owned(
     current: &[u8],
     original: Option<&[u8]>,
 ) -> Result<Option<Vec<u8>>, (&'static str, String, i32)> {
+    if s.harness == "opencode" && path.ends_with("plugin/impeccable-loop.ts") {
+        return Ok((s.wake_plugin.as_deref().map(str::as_bytes) == Some(current)).then(|| original.unwrap_or_default().to_vec()));
+    }
     if (s.instruction.is_some() || path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md"))
         && String::from_utf8_lossy(current).contains(&format!("impeccable:{}", s.owner))
     {
         return remove_rule_block(s, current, original).map(Some);
     }
-    if ["cursor", "copilot"].contains(&s.harness.as_str()) {
+    if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
         if json_entries_file(s, path) {
             return render_json_entries(s, path, Some(current), original, true).map(Some);
         }
@@ -171,6 +188,7 @@ pub(super) fn rule_file(s: &Spec) -> PathBuf {
 /// exact hook entries in a JSON hook file. Shared settings such as Codex's
 /// `features.hooks` prove nothing and are not read.
 pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
+    if s.wake_plugin.as_ref().is_some_and(|p| fs::read(hooks_file(s)).is_ok_and(|b| b == p.as_bytes())) { return Some(hooks_file(s)); }
     let rules = rule_file(s);
     if fs::read_to_string(&rules).is_ok_and(|t| t.contains(&format!("<!-- impeccable:{} start -->", s.owner))) {
         return Some(rules);
@@ -864,8 +882,9 @@ pub(super) fn render_json_entries(
         .as_object_mut()
         .ok_or_else(|| invalid_toml("MCP config must be an object"))?;
     if !path.ends_with("cli-config.json") {
+        let section = if s.harness == "opencode" { "mcp" } else { "mcpServers" };
         let servers = root
-            .entry("mcpServers")
+            .entry(section)
             .or_insert(json!({}))
             .as_object_mut()
             .ok_or_else(|| invalid_toml("mcpServers must be an object"))?;
@@ -873,10 +892,11 @@ pub(super) fn render_json_entries(
             let wanted = match s.harness.as_str() {
                 "cursor" => json!({"url":url}),
                 "copilot" => json!({"type":"http", "url":url, "tools":["*"]}),
+                "opencode" => json!({"type":"remote", "url":url, "enabled":true}),
                 _ => unreachable!(),
             };
             if undo {
-                if prior.get("mcpServers").and_then(|v| v.get(name)).is_none()
+                if prior.get(section).and_then(|v| v.get(name)).is_none()
                     && servers.get(name) == Some(&wanted)
                 {
                     servers.remove(name);
@@ -888,8 +908,8 @@ pub(super) fn render_json_entries(
                 servers.insert(name.clone(), wanted);
             }
         }
-        if undo && servers.is_empty() && prior.get("mcpServers").is_none() {
-            root.remove("mcpServers");
+        if undo && servers.is_empty() && prior.get(section).is_none() {
+            root.remove(section);
         }
     } else {
         let permissions = root

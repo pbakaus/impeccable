@@ -34,6 +34,7 @@ fn spec(harness: &str, root: PathBuf) -> Spec {
         harness: harness.into(),
         root,
         hooks: vec![],
+        wake_plugin: None,
         mcp_servers: vec![],
         http_mcp_servers: Default::default(),
         mcp_approvals: vec![],
@@ -1630,4 +1631,42 @@ fn copilot_hooks_and_mcp_are_journaled_including_the_created_directory() {
             }
         }
     }
+}
+
+#[test]
+fn opencode_plugin_is_owned_as_a_file_and_its_directory_recovers() {
+    let root = temp();
+    let home = temp();
+    let mut s = spec("opencode", root.clone());
+    s.instruction = None;
+    s.wake_plugin = Some("export const ImpeccableLoop = async () => ({});\n".into());
+    s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+    validate(&s).unwrap();
+    let config = root.join("opencode.json");
+    let before = br#"{"$schema":"schema","mcp":{"other":{"url":"other"}}}"#;
+    fs::write(&config, before).unwrap();
+    let path = root.join("plugin/impeccable-loop.ts");
+    let journal_path = home.join("journal.json");
+    plan(&s, None, &home).unwrap();
+    assert!(!root.join("plugin").exists());
+    let j = apply(&s, None, &home, &journal_path, None).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), s.wake_plugin.as_deref().unwrap());
+    assert!(status(&s, Some(&j)).unwrap()["resources"].as_array().unwrap().iter().all(|v| v["state"] != "conflict"));
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"].as_array().unwrap().is_empty());
+    assert!(!root.join("plugin").exists());
+    assert_eq!(fs::read(&config).unwrap(), before);
+    for point in ["journal_intent", "after_rename", "mcp_synced"] {
+        TEST_FAILPOINT.with(|v| v.set(Some(point)));
+        let result = apply(&s, None, &home, &journal_path, None);
+        TEST_FAILPOINT.with(|v| v.set(None));
+        assert_eq!(result.unwrap_err().0, "injected_failure");
+        assert_eq!(recover(&home, &installation_id(&s)).unwrap()["state"], "rolled-back");
+        assert!(!root.join("plugin").exists());
+        assert_eq!(fs::read(&config).unwrap(), before);
+    }
+    let j = apply(&s, None, &home, &journal_path, None).unwrap();
+    fs::write(&path, "// My edited plugin\n").unwrap();
+    assert_eq!(apply(&s, Some(&j), &home, &journal_path, None).unwrap_err().0, "plugin_drift");
+    assert!(!undo(&s, Some(&j), &home).unwrap()["conflicts"].as_array().unwrap().is_empty());
+    assert_eq!(fs::read_to_string(path).unwrap(), "// My edited plugin\n");
 }

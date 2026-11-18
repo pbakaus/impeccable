@@ -1363,7 +1363,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
   - `IMPECCABLE_HOOK_DEPTH` (snapshotted from parent BEFORE the script sets it to `'1'` for children); `CLAUDE_HOOK_DEPTH` — re-entrancy guard: `depthIsSet(v)` = non-empty string that is TRUTHY or a positive integer → return silently (`audit.reentrant=true`).
   - `IMPECCABLE_HOOK_DISABLED` truthy → skip `'env-disabled'`.
   - `IMPECCABLE_HOOK_QUIET` truthy → quiet mode (no clean/pending acks; findings still emitted).
-  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|cursor|copilot|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
+  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|cursor|copilot|opencode|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
   - `IMPECCABLE_HOOK_LOG` = audit NDJSON path (overrides `hook.auditLog`).
   - `IMPECCABLE_HOOK_DEBUG` set → unexpected top-level exceptions written to stderr as `[impeccable-hook] <err>\n`.
   - `CURSOR_PROJECT_DIR` — project dir fallback for cursor/github events.
@@ -2491,7 +2491,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
-- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI) the
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
   (see **The Impeccable block** below), the loop switch's line: "When you
   need a person's decision or input, use needs_you.post (Impeccable) instead of
@@ -2543,6 +2543,25 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   as Cursor, without `configDir`. No tool approval setting can be written.
   Connect and status print: In each repo, answer "Yes, and don't ask again" for
   Impeccable's tools once; then Copilot wakes by itself.
+- opencode resolves `opencode` (override: `IMPECCABLE_OPENCODE_BIN`) and uses
+  `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`. Its journaled
+  `opencode.json` entry is `mcp.impeccable: {type: "remote", url: <mcp_url>,
+  enabled: true}`; `$schema`, other servers and unrelated settings stay intact.
+  When only `opencode.jsonc` exists, connect leaves it unread and unchanged,
+  prints a manual step to add the server there, and continues. Status reports
+  that MCP setup as `manual`; sign-in happens on first use.
+  From the same provisional `CLI_WAKE` gate, the engine owns
+  `plugin/impeccable-loop.ts` and journals its newly created parent directory.
+  The plugin uses the guarded helper command, maps session ids to UUIDs,
+  registers Needs you tool output, and continues idle sessions with
+  `client.session.promptAsync` when the helper returns a reason. Older Loop
+  bundles get no plugin. The plugin is restored or removed on disconnect;
+  edited plugins are preserved and reported as conflicts.
+  Connect writes Loop and optional taste lines to `AGENTS.md` only when it
+  already exists, preserving opencode's fallback to `~/.claude/CLAUDE.md`.
+  Status reports `instructionRequired: false` when that file is absent.
+  No tool approval is written. `opencode-install.json` uses the Global record
+  layout (`enabled`, `harness`, `executable`), without `configDir`.
 - After a successful `impeccable loop install`, the agents are connected only
   when asked: `--connect` runs `loop connect` at once; a person at a terminal
   (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
@@ -2655,14 +2674,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   only that macOS is blocking Loop and to run `impeccable loop update`.
   The JSON form is `{loop:{installed, version, blocked}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
-- `impeccable loop connect --agent claude|codex|cursor|copilot` connects only that agent. Its text
+- `impeccable loop connect --agent claude|codex|cursor|copilot|opencode` connects only that agent. Its text
   report keeps the sign-in and follow-up lines. An agent CLI's own output goes
   to stderr, so stdout carries the report or the one JSON object and nothing else.
   `--json` never prompts and prints one object on stdout,
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
-- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot] [--json]` gives each
+- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]` gives each
   detected agent (or the one named) the `impeccable` MCP server and nothing else:
   no hooks, no instruction or taste block, no Loop records, and no platform check,
   so it works on any OS without the Loop app. The server URL comes from the

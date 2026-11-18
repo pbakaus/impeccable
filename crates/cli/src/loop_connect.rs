@@ -1,14 +1,14 @@
 //! `impeccable loop connect` and `loop disconnect`: connect a person's coding agents to
 //! Needs you and Loop.
 //!
-//! For each agent found (Claude Code, Codex, Cursor, Copilot), connect:
+//! For each agent found (Claude Code, Codex, Cursor, Copilot, opencode), connect:
 //! 1. adds the Impeccable MCP server, only if the agent has no server of that name, through
 //!    its CLI or the engine journal, then checks the exact global entry it wrote;
 //! 2. adds Loop's hooks through the agents engine (journaled, undone exactly);
 //! 3. writes the record Loop's helper reads.
 //!
 //! Disconnect stops Loop waking, then removes journaled resources. Claude and Codex
-//! MCP servers stay; Cursor and Copilot entries created here are undone through the journal.
+//! MCP servers stay; journal-owned entries created here are undone with the wake resources.
 //! Agent tokens are never seen or stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
 use crate::agent_block;
@@ -122,7 +122,7 @@ type Result<T> = std::result::Result<T, String>;
 /// The first Loop whose helper holds a Codex turn open for an answer (REN-2057).
 const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 
-// TODO(REN-2057): the first Loop release with the Cursor and Copilot helpers (pristine #6967 and #6968)
+// TODO(REN-2057): the first Loop release with the Cursor, Copilot and opencode helpers (pristine #6967, #6968, and the opencode helper PR)
 const CLI_WAKE: semver::Version = semver::Version::new(0, 2, 0);
 
 /// All harness-specific policy lives here; orchestration below uses these descriptions.
@@ -133,12 +133,15 @@ struct AgentDescription {
     bin_env: &'static str,
     root: &'static str,
     root_env: Option<&'static str>,
+    root_env_suffix: Option<&'static str>,
     mcp_file: &'static str,
     mcp_in_home: bool,
+    mcp_manual_file: Option<&'static str>,
     mcp_format: McpFormat,
     registration: Registration,
     rule: &'static str,
     rule_override: Option<&'static str>,
+    rule_existing_only: bool,
     post_add: &'static [&'static str],
     sign_in: &'static str,
     status_sign_in: bool,
@@ -147,10 +150,11 @@ struct AgentDescription {
     approve_tools: bool,
     wake_gate: Option<semver::Version>,
     hooks: &'static [HookDescription],
+    plugin: Option<&'static str>,
 }
 
 #[derive(Clone, Copy)]
-enum McpFormat { Json { transport: Option<&'static str>, all_tools: bool }, Toml }
+enum McpFormat { Json { section: &'static str, transport: Option<&'static str>, all_tools: bool, enabled: bool }, Toml }
 #[derive(Clone, Copy)]
 enum Registration {
     // CLI-added servers stay on disconnect, with a manual removal command.
@@ -177,13 +181,13 @@ const fn hook(event: &'static str, matcher: Option<&'static str>, kind: &'static
 const AGENTS: &[AgentDescription] = &[
     AgentDescription {
         harness: "claude", label: "Claude Code", binary: "claude", bin_env: "IMPECCABLE_CLAUDE_BIN",
-        root: ".claude", root_env: Some("CLAUDE_CONFIG_DIR"), mcp_file: ".claude.json", mcp_in_home: true,
-        mcp_format: McpFormat::Json { transport: Some("http"), all_tools: false },
+        root: ".claude", root_env: Some("CLAUDE_CONFIG_DIR"), root_env_suffix: None, mcp_file: ".claude.json", mcp_in_home: true, mcp_manual_file: None,
+        mcp_format: McpFormat::Json { section: "mcpServers", transport: Some("http"), all_tools: false, enabled: false },
         registration: Registration::Cli { add: &["mcp", "add-json", "--scope", "user", "{name}", "{entry}"], remove: &["mcp", "remove", "--scope", "user", "{name}"], interactive: false },
-        rule: "CLAUDE.md", rule_override: None, post_add: &[],
+        rule: "CLAUDE.md", rule_override: None, rule_existing_only: false, post_add: &[],
         sign_in: "in Claude Code, run /mcp, choose impeccable, then Authenticate.", status_sign_in: false, follow_up: None,
         record: RecordLayout::Accounts, approve_tools: false, wake_gate: None,
-        hooks: &[
+        plugin: None, hooks: &[
             hook("SessionStart", None, "lifecycle", 86400, true, None),
             hook("Stop", None, "lifecycle", 86400, true, None),
             hook("StopFailure", None, "lifecycle", 86400, true, None),
@@ -194,13 +198,13 @@ const AGENTS: &[AgentDescription] = &[
     },
     AgentDescription {
         harness: "codex", label: "Codex", binary: "codex", bin_env: "IMPECCABLE_CODEX_BIN",
-        root: ".codex", root_env: Some("CODEX_HOME"), mcp_file: "config.toml", mcp_in_home: false,
+        root: ".codex", root_env: Some("CODEX_HOME"), root_env_suffix: None, mcp_file: "config.toml", mcp_in_home: false, mcp_manual_file: None,
         mcp_format: McpFormat::Toml,
         registration: Registration::Cli { add: &["mcp", "add", "{name}", "--url", "{url}"], remove: &["mcp", "remove", "{name}"], interactive: true },
-        rule: "AGENTS.md", rule_override: Some("AGENTS.override.md"), post_add: &[],
+        rule: "AGENTS.md", rule_override: Some("AGENTS.override.md"), rule_existing_only: false, post_add: &[],
         sign_in: "run codex mcp login impeccable (skip it if Codex just signed you in).", status_sign_in: false, follow_up: None,
         record: RecordLayout::ConfigDir, approve_tools: true, wake_gate: None,
-        hooks: &[
+        plugin: None, hooks: &[
             hook("SessionStart", None, "lifecycle", 10, false, None),
             hook("PostToolUse", None, "register", 10, false, None),
             hook("SessionStart", None, "context", 5, false, Some(semver::Version::new(0, 1, 1))),
@@ -209,12 +213,12 @@ const AGENTS: &[AgentDescription] = &[
     },
     AgentDescription {
         harness: "cursor", label: "Cursor", binary: "cursor-agent", bin_env: "IMPECCABLE_CURSOR_BIN",
-        root: ".cursor", root_env: None, mcp_file: "mcp.json", mcp_in_home: false,
-        mcp_format: McpFormat::Json { transport: None, all_tools: false }, registration: Registration::Journal,
-        rule: "rules/impeccable.mdc", rule_override: None, post_add: &["mcp", "enable", "impeccable"],
+        root: ".cursor", root_env: None, root_env_suffix: None, mcp_file: "mcp.json", mcp_in_home: false, mcp_manual_file: None,
+        mcp_format: McpFormat::Json { section: "mcpServers", transport: None, all_tools: false, enabled: false }, registration: Registration::Journal,
+        rule: "rules/impeccable.mdc", rule_override: None, rule_existing_only: false, post_add: &["mcp", "enable", "impeccable"],
         sign_in: "run cursor-agent mcp login impeccable.", status_sign_in: true, follow_up: None,
         record: RecordLayout::Global, approve_tools: true, wake_gate: Some(CLI_WAKE),
-        hooks: &[
+        plugin: None, hooks: &[
             hook("sessionStart", None, "lifecycle", 10, false, Some(CLI_WAKE)),
             hook("afterMCPExecution", None, "register", 10, false, Some(CLI_WAKE)),
             hook("stop", None, "lifecycle", 3600, false, Some(CLI_WAKE)),
@@ -222,17 +226,28 @@ const AGENTS: &[AgentDescription] = &[
     },
     AgentDescription {
         harness: "copilot", label: "GitHub Copilot CLI", binary: "copilot", bin_env: "IMPECCABLE_COPILOT_BIN",
-        root: ".copilot", root_env: Some("COPILOT_HOME"), mcp_file: "mcp-config.json", mcp_in_home: false,
-        mcp_format: McpFormat::Json { transport: Some("http"), all_tools: true }, registration: Registration::Journal,
-        rule: "copilot-instructions.md", rule_override: None, post_add: &[],
+        root: ".copilot", root_env: Some("COPILOT_HOME"), root_env_suffix: None, mcp_file: "mcp-config.json", mcp_in_home: false, mcp_manual_file: None,
+        mcp_format: McpFormat::Json { section: "mcpServers", transport: Some("http"), all_tools: true, enabled: false }, registration: Registration::Journal,
+        rule: "copilot-instructions.md", rule_override: None, rule_existing_only: false, post_add: &[],
         sign_in: "on first use.", status_sign_in: true,
         follow_up: Some("In each repo, answer \"Yes, and don't ask again\" for Impeccable's tools once; then Copilot wakes by itself."),
         record: RecordLayout::Global, approve_tools: false, wake_gate: Some(CLI_WAKE),
-        hooks: &[
+        plugin: None, hooks: &[
             hook("sessionStart", None, "lifecycle", 10, false, Some(CLI_WAKE)),
             hook("postToolUse", None, "register", 10, false, Some(CLI_WAKE)),
             hook("agentStop", None, "lifecycle", 3600, false, Some(CLI_WAKE)),
         ],
+    },
+    AgentDescription {
+        harness: "opencode", label: "opencode", binary: "opencode", bin_env: "IMPECCABLE_OPENCODE_BIN",
+        root: ".config/opencode", root_env: Some("XDG_CONFIG_HOME"), root_env_suffix: Some("opencode"),
+        mcp_file: "opencode.json", mcp_in_home: false, mcp_manual_file: Some("opencode.jsonc"),
+        mcp_format: McpFormat::Json { section: "mcp", transport: Some("remote"), all_tools: false, enabled: true },
+        registration: Registration::Journal,
+        rule: "AGENTS.md", rule_override: None, rule_existing_only: true, post_add: &[],
+        sign_in: "on first use.", status_sign_in: true, follow_up: None,
+        record: RecordLayout::Global, approve_tools: false, wake_gate: Some(CLI_WAKE),
+        hooks: &[], plugin: Some(include_str!("../assets/opencode-loop-plugin.ts")),
     },
 ];
 
@@ -250,15 +265,20 @@ impl AgentDescription {
             .unwrap_or_else(|| root.join(self.rule))
     }
 
+    fn writes_rule(&self, root: &Path) -> bool {
+        !self.rule_existing_only || self.rule_file(root).is_file()
+    }
+
     fn rule_files(&self, root: &Path) -> Vec<PathBuf> {
         self.rule_override.into_iter().chain(std::iter::once(self.rule)).map(|name| root.join(name)).collect()
     }
 
     fn mcp_entry(&self) -> Value {
         let mut entry = json!({"url": mcp_url()});
-        if let McpFormat::Json { transport, all_tools } = self.mcp_format {
+        if let McpFormat::Json { transport, all_tools, enabled, .. } = self.mcp_format {
             if let Some(transport) = transport { entry["type"] = json!(transport); }
             if all_tools { entry["tools"] = json!(["*"]); }
+            if enabled { entry["enabled"] = json!(true); }
         }
         entry
     }
@@ -297,7 +317,7 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     connect_only(io, None)
 }
 
-/// `loop connect [--agent claude|codex|cursor|copilot]`: the full text report, sign-in and follow-up
+/// `loop connect [--agent claude|codex|cursor|copilot|opencode]`: the full text report, sign-in and follow-up
 /// steps included, for every agent or just the one named.
 pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
     connect_text(io, only).0
@@ -335,7 +355,7 @@ fn connect_report(out: String, only: Option<&str>, connected: usize, failed: usi
     Ok(out)
 }
 
-/// `loop connect [--agent claude|codex|cursor|copilot] --json`, for Loop's own Settings and first-run
+/// `loop connect [--agent claude|codex|cursor|copilot|opencode] --json`, for Loop's own Settings and first-run
 /// panel: never asks anything, and always answers one JSON object on stdout. The bool
 /// is whether every agent asked for connected.
 pub(crate) fn connect_json(io: &Io, only: Option<&str>) -> (Value, bool) {
@@ -381,7 +401,7 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
             continue;
         };
         let file = rule_file(harness, &agent.root);
-        let noted = note_missing_rule_file(&support, &file);
+        let noted = d.writes_rule(&agent.root) && note_missing_rule_file(&support, &file);
         let result = connect_one(&agent, &helper, &support);
         if noted && result.is_err() && fs::symlink_metadata(&file).is_err() {
             forget_missing_rule_file(&support, &file);
@@ -438,11 +458,11 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
             agents.push(json!({ "agent": harness, "label": label, "detected": false }));
             continue;
         };
-        let mcp = match read_entry(&agent) {
+        let mcp = if manual_mcp(&agent).is_some() { "manual" } else { match read_entry(&agent) {
             Entry::Exact => "registered",
             Entry::Absent => "absent",
             Entry::Other(_) => "different",
-        };
+        }};
         // Hooks count only when the engine installed them for this very config folder and
         // every resource is still as written: a journal alone says nothing once a hook was
         // removed by hand. A folder with no installation is answered without touching the
@@ -471,11 +491,12 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
                         .is_some_and(|a| a.iter().any(|x| x.as_str() == Some(root.as_str()))))
         });
         let hooks_required = d.hooks_required(loop_version.as_ref());
-        let hooks = resources_ok && installed.iter().any(|s| s.harness == harness && s.root == agent.root && !s.hooks.is_empty());
+        let hooks = resources_ok && installed.iter().any(|s| s.harness == harness && s.root == agent.root && (!s.hooks.is_empty() || s.wake_plugin.is_some()));
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
             "signIn": d.sign_in, "hooksRequired": hooks_required,
-            "mcp": mcp, "hooks": hooks, "instruction": instruction,
+            "mcp": mcp, "hooks": hooks, "instruction": instruction, "instructionRequired": d.writes_rule(&agent.root),
+            "manualMcp": manual_mcp(&agent),
             "connected": connected && (hooks_required || resources_ok),
         }));
     }
@@ -490,7 +511,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
 pub(crate) fn agent_connected(a: &Value) -> bool {
     a["connected"] == true
         && (a["hooks"] == true || a["hooksRequired"] == false)
-        && a["instruction"] == true
+        && (a["instruction"] == true || a["instructionRequired"] == false)
         && a["mcp"] == "registered"
 }
 
@@ -521,6 +542,7 @@ pub(crate) fn status_text(v: &Value) -> String {
         if let Some(d) = a["agent"].as_str().and_then(description).filter(|d| d.status_sign_in && a["detected"] == true) {
             out.push_str(&format!("  Sign in: {}\n", d.sign_in));
         }
+        if let Some(step) = a["manualMcp"].as_str() { out.push_str(&format!("  {step}\n")); }
         if let Some(step) = a["agent"].as_str().and_then(description).filter(|_| a["detected"] == true).and_then(|d| d.follow_up) {
             out.push_str(&format!("  {step}\n"));
         }
@@ -530,7 +552,13 @@ pub(crate) fn status_text(v: &Value) -> String {
 
 /// The MCP server, added only when the agent has none of that name. True when this call
 /// added it; an entry of that name that differs is left alone and is an error.
+fn manual_mcp(agent: &Agent) -> Option<String> {
+    let file = agent.description.mcp_manual_file.map(|name| agent.root.join(name))?;
+    (!agent.mcp_file.exists() && file.exists()).then(|| format!("Add the impeccable MCP server ({}) to {}.", mcp_url(), file.display()))
+}
+
 fn ensure_mcp(agent: &Agent) -> Result<bool> {
+    if manual_mcp(agent).is_some() { return Ok(false); }
     if matches!(agent.description.registration, Registration::Journal) {
         let added = mcp_absent(agent)?;
         if added {
@@ -568,7 +596,7 @@ fn mcp_absent(agent: &Agent) -> Result<bool> {
     }
 }
 
-/// `loop connect --mcp-only [--agent claude|codex|cursor|copilot] [--json]`: the MCP server alone, for a
+/// `loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]`: the MCP server alone, for a
 /// person without the Loop app (any OS). No hooks, no taste block, no Loop records: each
 /// agent signs in to the server itself on first use.
 pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
@@ -595,9 +623,11 @@ pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value
             match ensure_mcp(&agent) {
                 Ok(added) => {
                     connected += 1;
-                    let what = if added { "MCP server added" } else { "MCP server already there" };
+                    let what = if manual_mcp(&agent).is_some() { "MCP setup needs a manual step" } else if added { "MCP server added" } else { "MCP server already there" };
                     out.push_str(&format!("{label}: {what}.\n  Sign in: {}\n", d.sign_in));
-                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": d.sign_in }));
+                    let manual = manual_mcp(&agent);
+                    if let Some(step) = &manual { out.push_str(&format!("  {step}\n")); }
+                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": d.sign_in, "manualMcp": manual }));
                 }
                 Err(e) => {
                     failed += 1;
@@ -637,7 +667,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     let added = match agent.description.registration {
         Registration::Cli { .. } => ensure_mcp(agent)?,
         Registration::Journal => {
-            mcp_absent(agent)?;
+            if manual_mcp(agent).is_none() { mcp_absent(agent)?; }
             fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
             false
         }
@@ -658,8 +688,10 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     // A rule file whose markers are broken would refuse the loop line after the engine had
     // already taken an older CLI's block out: refuse before anything changes instead.
     let block_file = rule_file(agent.harness, &agent.root);
-    if let Err(e) = agent_block::writable(&block_file) {
-        return Err(with_mcp(format!("couldn't add the Loop line to {}: {e}", block_file.display())));
+    if agent.description.writes_rule(&agent.root) {
+        if let Err(e) = agent_block::writable(&block_file) {
+            return Err(with_mcp(format!("couldn't add the Loop line to {}: {e}", block_file.display())));
+        }
     }
     // 2. Loop's hooks, through the engine.
     let spec = spec(agent, helper);
@@ -704,7 +736,6 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     };
     let resources = status["resources"].as_array().cloned().unwrap_or_default();
     if status["installed"] != true
-        || resources.is_empty()
         || resources.iter().any(|r| r["state"] == "conflict")
     {
         return Err(rollback(
@@ -721,9 +752,12 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
         })
         .unwrap_or_default();
     if let Some(step) = agent.description.follow_up { manual.push(step.into()); }
+    if let Some(step) = manual_mcp(agent) { manual.push(step); }
     // 4. The "ask through Loop" line, in the file the agent reads.
-    if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
-        return Err(rollback(format!("couldn't add the Loop line to its rule file: {e}")));
+    if agent.description.writes_rule(&agent.root) {
+        if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
+            return Err(rollback(format!("couldn't add the Loop line to its rule file: {e}")));
+        }
     }
     // 5. Codex runs the hooks only once they are trusted (REN-2057). Last, so nothing
     // after it can roll the hooks back. When Codex can't do it (an older Codex, or one
@@ -937,12 +971,13 @@ fn agent(io: &Io, home: &Path, harness: &'static str) -> Option<Agent> {
     };
     let d = description(harness)?;
     let custom = d.root_env.and_then(var);
-    let root = custom.clone().unwrap_or_else(|| home.join(d.root));
+    let root = custom.as_ref().map(|p| d.root_env_suffix.map_or_else(|| p.clone(), |suffix| p.join(suffix)))
+        .unwrap_or_else(|| home.join(d.root));
     let mcp_root = if d.mcp_in_home { custom.as_deref().unwrap_or(home) } else { &root };
     Some(Agent {
         description: d, harness: d.harness, executable,
         mcp_file: mcp_root.join(d.mcp_file),
-        env: d.root_env.map(|name| (name, root.clone())).filter(|_| !d.mcp_in_home || custom.is_some()),
+        env: d.root_env.map(|name| (name, d.root_env_suffix.map_or_else(|| root.clone(), |_| root.parent().unwrap().to_path_buf()))).filter(|_| !d.mcp_in_home || custom.is_some()),
         root,
     })
 }
@@ -1032,11 +1067,11 @@ fn read_entry(agent: &Agent) -> Entry {
         Err(e) => return Entry::Other(e.to_string()),
     };
     let text = String::from_utf8_lossy(&bytes);
-    if let McpFormat::Json { .. } = agent.description.mcp_format {
+    if let McpFormat::Json { section, .. } = agent.description.mcp_format {
         let Ok(v) = serde_json::from_str::<Value>(&text) else {
             return Entry::Other("its file isn't valid JSON".into());
         };
-        return match v.get("mcpServers").and_then(|s| s.get(MCP_NAME)) {
+        return match v.get(section).and_then(|s| s.get(MCP_NAME)) {
             None => Entry::Absent,
             Some(e) if *e == agent.description.mcp_entry() => Entry::Exact,
             Some(_) => Entry::Other(SETTINGS_DIFFER.into()),
@@ -1202,9 +1237,10 @@ fn quarantine(_: &Path) -> Option<String> {
 fn mcp_spec(agent: &Agent) -> Spec {
     Spec {
         version: 1, owner: OWNER.into(), harness: agent.harness.into(), root: agent.root.clone(),
-        hooks: vec![], mcp_servers: vec![], mcp_approvals: vec![], instruction: None,
+        hooks: vec![], wake_plugin: None, mcp_servers: vec![], mcp_approvals: vec![], instruction: None,
         http_mcp_servers: match agent.description.registration {
-            Registration::Journal => [(MCP_NAME.into(), mcp_url().into())].into(),
+            Registration::Journal if manual_mcp(agent).is_none() => [(MCP_NAME.into(), mcp_url().into())].into(),
+            Registration::Journal => Default::default(),
             Registration::Cli { .. } => Default::default(),
         },
     }
@@ -1216,16 +1252,17 @@ fn spec(agent: &Agent, helper: &Path) -> Spec {
     let version = bundle_version(helper).and_then(|v| semver::Version::parse(&v).ok());
     let guarded = version.as_ref().is_some_and(|v| *v >= GUARDED_SINCE);
     let helper_q = quote(helper);
+    let harness = agent.harness;
+    let command = if guarded {
+        format!("/usr/bin/xattr -p com.apple.quarantine {helper_q} 2>/dev/null | /usr/bin/grep -Eq '{UNAPPROVED}' || exec {helper_q} {harness}")
+    } else { format!("{helper_q} {harness}") };
+    if agent.description.hooks_required(version.as_ref()) {
+        spec.wake_plugin = agent.description.plugin.map(|template| template.replace("__COMMAND__", &serde_json::to_string(&command).unwrap()));
+    }
     spec.hooks = agent.description.hooks.iter()
         .filter(|h| h.since.as_ref().is_none_or(|gate| version.as_ref().is_some_and(|v| v >= gate)))
         .map(|h| {
-            let harness = agent.harness;
-            let kind = h.kind;
-            let command = if guarded {
-                format!("/usr/bin/xattr -p com.apple.quarantine {helper_q} 2>/dev/null | /usr/bin/grep -Eq '{UNAPPROVED}' || exec {helper_q} {harness} {kind}")
-            } else {
-                format!("{helper_q} {harness} {kind}")
-            };
+            let command = format!("{command} {}", h.kind);
             Hook {
                 event: h.event.into(), matcher: h.matcher.map(Into::into), command,
                 timeout: Some(h.timeout), run_async: h.background.then_some(true), async_rewake: h.background.then_some(true),
@@ -1544,6 +1581,7 @@ fn taste_targets(io: &Io, home: &Path, agents: &[String]) -> Vec<PathBuf> {
         .filter(|d| agents.iter().any(|a| a == d.harness))
         .filter_map(|d| agent(io, home, d.harness))
         .filter(|a| installed.iter().any(|s| s.harness == a.harness && s.root == a.root))
+        .filter(|a| a.description.writes_rule(&a.root))
         .map(|a| rule_file(a.harness, &a.root))
         .collect()
 }

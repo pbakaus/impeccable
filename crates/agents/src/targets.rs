@@ -12,6 +12,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
             _ => unreachable!(),
         }
     }
+    if s.wake_plugin.is_some() { out.push(render::hooks_file(s)); }
     if !s.mcp_approvals.is_empty() {
         let path = s.root.join(if s.harness == "cursor" {
             "cli-config.json"
@@ -23,7 +24,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
         }
     }
     if !s.http_mcp_servers.is_empty() {
-        out.push(s.root.join(if s.harness == "copilot" { "mcp-config.json" } else { "mcp.json" }));
+        out.push(s.root.join(match s.harness.as_str() { "copilot" => "mcp-config.json", "opencode" => "opencode.json", _ => "mcp.json" }));
     }
     if s.instruction.is_some() {
         out.push(render::rule_file(s));
@@ -32,10 +33,11 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
 }
 /// Planning a dedicated hooks file must not create its missing parent directory.
 pub(super) fn physical_target(s: &Spec, path: &Path) -> Result<PathBuf, (&'static str, String, i32)> {
-    if s.harness == "copilot" && path == render::hooks_file(s)
-        && matches!(fs::symlink_metadata(s.root.join("hooks")), Err(e) if e.kind() == io::ErrorKind::NotFound)
-    {
-        return Ok(canonical_target(&s.root.join("hooks"))?.join("impeccable-loop.json"));
+    if render::dedicated_wake_file(s).as_deref() == Some(path) {
+        let parent = path.parent().unwrap();
+        if matches!(fs::symlink_metadata(parent), Err(e) if e.kind() == io::ErrorKind::NotFound) {
+            return Ok(canonical_target(parent)?.join(path.file_name().unwrap()));
+        }
     }
     canonical_target(path)
 }

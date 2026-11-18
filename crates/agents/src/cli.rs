@@ -11,7 +11,7 @@ pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
         );
     };
     if verb == "capabilities" {
-        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex","cursor","copilot"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
+        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex","cursor","copilot","opencode"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
         return 0;
     }
     if verb == "list" {
@@ -78,8 +78,8 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
     {
         return Err("Invalid owner id".into());
     }
-    if !["claude", "codex", "cursor", "copilot"].contains(&s.harness.as_str()) {
-        return Err("Only Claude Code, Codex, Cursor and Copilot user installations are supported".into());
+    if !["claude", "codex", "cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
+        return Err("Only Claude Code, Codex, Cursor, Copilot and opencode user installations are supported".into());
     }
     if !s.root.is_absolute() {
         return Err("Account root must be an explicit absolute path".into());
@@ -89,6 +89,8 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Instruction body contains reserved marker syntax".into());
         }
     }
+    if s.wake_plugin.is_some() && s.harness != "opencode" { return Err("Wake plugins require opencode".into()); }
+    if s.harness == "opencode" && !s.hooks.is_empty() { return Err("opencode uses a wake plugin instead of hooks".into()); }
     for h in &s.hooks {
         if s.harness != "claude" && (h.run_async.is_some() || h.async_rewake.is_some()) {
             return Err("async and asyncRewake hooks are Claude Code only".into());
@@ -113,10 +115,10 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Unsupported MCP approval mode".into());
         }
     }
-    if !s.http_mcp_servers.is_empty() && !["cursor", "copilot"].contains(&s.harness.as_str()) {
-        return Err("HTTP MCP files require Cursor or Copilot".into());
+    if !s.http_mcp_servers.is_empty() && !["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
+        return Err("HTTP MCP files require Cursor, Copilot or opencode".into());
     }
-    if ["cursor", "copilot"].contains(&s.harness.as_str())
+    if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str())
         && (!s.mcp_servers.is_empty() || s.mcp_approvals.iter().any(|a| a.mode != "approve"))
     {
         return Err("Journal registration requires HTTP servers and approve permissions".into());

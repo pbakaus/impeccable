@@ -1,4 +1,4 @@
-//! User-scoped integration management for Claude Code, Codex, Cursor and Copilot.
+//! User-scoped integration management for Claude Code, Codex, Cursor, Copilot and opencode.
 //!
 //! The JSON protocol is deliberately resource-oriented. Each request acts on
 //! one (owner, harness, account root) installation.
@@ -45,6 +45,9 @@ pub struct Spec {
     pub root: PathBuf,
     #[serde(default)]
     pub hooks: Vec<Hook>,
+    /// A whole-file wake plugin, supported by opencode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wake_plugin: Option<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
     /// Journal-owned HTTP servers, rendered in the harness's MCP file.
