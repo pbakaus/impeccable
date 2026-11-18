@@ -3297,7 +3297,12 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   notifications get no reply.
 - **Start never opens a browser.** Signed out or unreachable, `initialize`
   answers locally with the client's protocol version.
-- **Sign-in again.** When a `tools/list` or `tools/call` meets a sign-in that
+- **A signed-out list waits on nothing.** A `tools/list` that meets no sign-in
+  answers at once: the local tools (the browser's, `artifact.asset`) and one
+  more, `impeccable_sign_in`. Calling it is the sign-in below; once it works,
+  the agent gets one `notifications/tools/list_changed` and lists Impeccable's
+  tools.
+- **Sign-in again.** When a `tools/call` meets a sign-in that
   is gone or lacks a scope (no sign-in, refresh refused, 401 or 403), the call
   is held: a `notifications/progress` with `Waiting for you to approve in the
   browser` (only when the request carried a `progressToken`), the CLI's
@@ -3305,8 +3310,9 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   per machine at a time (a lock file under the account's own directory); a
   second agent's call waits for it. Not approved
   within five minutes: a tool error result (`isError: true`) saying so.
-- **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, or Linux without
-  `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
+- **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, `IMPECCABLE_NO_BROWSER`
+  set to `1`, `true`, `yes` or `on` as `impeccable login` reads it, or Linux
+  without `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
   line ``Sign in again: run `impeccable login` ``.
 - **Each agent its own asker.** Every agent on the machine shares the CLI's
   one sign-in, so a `needs_you.*` call whose arguments carry no `from` is sent

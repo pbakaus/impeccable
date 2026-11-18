@@ -92,8 +92,21 @@ fn lists_without_signing_in() {
     let mut up = script(vec![Err(Failure::Auth)], Ok(()));
     let (frames, err) = talk(&[json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" })], &mut up);
     assert_eq!(up.signed, 0);
-    assert_eq!(frames[0]["result"]["tools"], json!([]));
+    assert_eq!(frames[0]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].clone()).collect::<Vec<_>>(), [json!(SIGN_IN_TOOL)]);
     assert!(!err.contains(WAITING));
+}
+
+// Catches a signed-out agent left without Impeccable's tools after it signs in: the sign-in tool signs in, then the
+// agent hears its tools changed.
+#[test]
+fn signs_in_from_its_tool_and_says_the_tools_changed() {
+    let mut up = script(vec![Err(Failure::Auth), Ok(json!({ "tools": [{ "name": TOOL }] }))], Ok(()));
+    let ask = json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": { "name": SIGN_IN_TOOL, "arguments": {} } });
+    let (frames, _) = talk(&[ask], &mut up);
+    assert_eq!(up.signed, 1);
+    assert_eq!(frames[0]["method"], "notifications/tools/list_changed");
+    assert_eq!(frames[1]["id"], 3);
+    assert_eq!(frames[1]["result"]["isError"], Value::Null);
 }
 
 // Catches a failure that is not about the sign-in opening the browser.
@@ -111,4 +124,9 @@ fn opens_no_browser_over_ssh() {
     assert!(!can_open_browser(&env("SSH_TTY")));
     // Nor where the person said so, as `impeccable login` reads it.
     assert!(!can_open_browser(&env("IMPECCABLE_NO_BROWSER")));
+    // Read as `impeccable login` reads it: false or 0 leaves the browser on.
+    for off in ["false", "0", "no"] {
+        let env: HashMap<String, String> = [("IMPECCABLE_NO_BROWSER".to_string(), off.to_string())].into_iter().collect();
+        assert_eq!(can_open_browser(&env), !cfg!(target_os = "linux"), "{off}");
+    }
 }

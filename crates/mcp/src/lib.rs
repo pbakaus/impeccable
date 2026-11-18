@@ -31,6 +31,13 @@ pub const WAITING: &str = "Waiting for you to approve in the browser";
 pub const NOT_APPROVED: &str = "Waiting for you to approve in the browser. Approve it there, then ask again.";
 /// The answer where no browser can open (SSH, no display).
 pub const NO_BROWSER: &str = "Sign in again: run `impeccable login`";
+/// The one tool a signed-out list carries: the way to Impeccable's own tools. Calling it signs in (the held path), and
+/// the agent is then told its tools changed.
+pub const SIGN_IN_TOOL: &str = "impeccable_sign_in";
+fn sign_in_tool() -> Value {
+    json!({ "name": SIGN_IN_TOOL, "description": "Sign in to Impeccable to use its tools (Needs you, taste, journeys, personas). Opens the person's browser once.",
+        "inputSchema": { "type": "object", "properties": {} } })
+}
 /// How long a held call waits for the person's approval.
 pub const SIGN_IN_WAIT: Duration = Duration::from_secs(5 * 60);
 const PROTOCOL: &str = "2025-06-18";
@@ -315,11 +322,22 @@ fn answer(request: &Value, out: &mut dyn Write, err: &mut dyn Write, upstream: &
         "tools/list" => Some(match upstream.call(request) {
             Ok(reply) => reply,
             Err(Failure::Auth) => {
-                let _ = writeln!(err, "impeccable mcp: not signed in; Impeccable's tools sign in on first use");
-                ok(json!({ "tools": [] }))
+                let _ = writeln!(err, "impeccable mcp: not signed in; Impeccable's tools appear once you sign in");
+                ok(json!({ "tools": [sign_in_tool()] }))
             }
             Err(f) => failed(&id, f),
         }),
+        // Signing in is the held path's own: a list to check it worked, which a sign-in makes possible.
+        "tools/call" if request.pointer("/params/name").and_then(Value::as_str) == Some(SIGN_IN_TOOL) => {
+            let probe = json!({ "jsonrpc": "2.0", "id": id, "method": "tools/list" });
+            let reply = held(&probe, out, err, upstream);
+            Some(if reply.get("result").is_some() {
+                frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
+                ok(json!({ "content": [{ "type": "text", "text": "Signed in. Impeccable's tools are listed now." }] }))
+            } else {
+                said(&id, request, reply.pointer("/error/message").and_then(Value::as_str).unwrap_or(NOT_APPROVED))
+            })
+        }
         "tools/call" => Some(held(request, out, err, upstream)),
         _ => Some(match upstream.call(request) {
             Ok(reply) => reply,
@@ -470,7 +488,9 @@ impl Upstream for Service {
 /// on Linux only with a display.
 pub fn can_open_browser(env: &HashMap<String, String>) -> bool {
     let set = |k: &str| env.get(k).is_some_and(|v| !v.is_empty());
-    if set("SSH_CONNECTION") || set("SSH_TTY") || env.get("IMPECCABLE_NO_BROWSER").is_some_and(|v| !v.is_empty() && v != "0") {
+    // Read as `impeccable login` reads it (`Io::env_truthy`): 1, true, yes or on, in any case.
+    let no_browser = env.get("IMPECCABLE_NO_BROWSER").is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"));
+    if set("SSH_CONNECTION") || set("SSH_TTY") || no_browser {
         return false;
     }
     !cfg!(target_os = "linux") || set("DISPLAY") || set("WAYLAND_DISPLAY")
