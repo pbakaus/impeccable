@@ -12,6 +12,7 @@
 //! stored here: each agent signs in to the MCP server itself.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
 use crate::agent_block;
+use crate::codex_trust;
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::fs;
@@ -536,7 +537,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
             "its hooks aren't in place after installing; run impeccable loop connect again".into(),
         ));
     }
-    let manual: Vec<String> = status["manualActions"]
+    let mut manual: Vec<String> = status["manualActions"]
         .as_array()
         .map(|a| {
             a.iter()
@@ -549,7 +550,19 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
         return Err(rollback(format!("couldn't add the Loop line to its rule file: {e}")));
     }
+    // 5. Codex runs the hooks only once they are trusted (REN-2057). Last, so nothing
+    // after it can roll the hooks back. When Codex can't do it (an older Codex, or one
+    // that won't start), the engine's own step stays: approve them in /hooks.
+    if agent.harness == "codex"
+        && codex_trust::trust(&agent.executable, &agent.root, &commands(&spec)).is_ok()
+    {
+        manual.retain(|m| m != "Approve hooks via /hooks");
+    }
     Ok(manual)
+}
+
+fn commands(spec: &Spec) -> Vec<String> {
+    spec.hooks.iter().map(|h| h.command.clone()).collect()
 }
 
 /// Codex reads `AGENTS.override.md` instead of `AGENTS.md` when both exist, so the
@@ -678,6 +691,13 @@ pub(crate) fn disconnect(io: &Io) -> Result<String> {
     }
     for spec in &specs {
         let label = label(&spec.harness);
+        // The trust connect gave the hooks goes while Codex can still list them. Best
+        // effort: an entry left behind names a hook that is gone, so it trusts nothing.
+        if spec.harness == "codex" {
+            if let Some(exe) = resolve(io, "codex") {
+                let _ = codex_trust::untrust(&exe, &spec.root, &commands(spec));
+            }
+        }
         match run_spec("undo", spec) {
             Ok(result) => match result["conflicts"].as_array().map_or(0, Vec::len) {
                 0 => out.push_str(&format!("{label}: disconnected.\n")),
