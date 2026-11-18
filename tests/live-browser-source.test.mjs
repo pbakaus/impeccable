@@ -1551,11 +1551,13 @@ describe('live-browser source contracts', () => {
         html('img', { src: 'data:image/png;base64,abc' }),
         html('button', { type: 'submit', onfocus: 'alert(4)' }),
       ]),
-      svg('svg', { viewBox: '0 0 10 10', onload: 'alert(5)' }, [
+      svg('svg', { viewBox: '0 0 10 10', width: '32', height: '18', id: 'icon', class: 'preview-icon', onload: 'alert(5)' }, [
         svg('path', { d: 'M0 0', fill: 'red' }),
         svg('path', { d: 'M0 0', fill: 'u\\72l(https://attacker.test/paint.svg#id)' }),
         svg('path', { d: 'M0 0', fill: 'url/**/(https://attacker.test/paint.svg#id)' }),
         svg('path', { d: 'M0 0', stroke: 'var(--page-controlled-paint)' }),
+        svg('defs', {}, [svg('linearGradient', { id: 'paint' }, [svg('stop', { offset: '0%', 'stop-color': 'red' })])]),
+        svg('rect', { width: '20', height: '10', id: 'square', class: 'chip', fill: 'url(#paint)', onclick: 'alert(6)' }),
         svg('foreignObject', {}, [html('img', { src: 'https://attacker.test/foreign' })]),
       ]),
     ]);
@@ -1582,12 +1584,23 @@ describe('live-browser source contracts', () => {
     assert.equal(preview.childNodes[4].copiedAttributes.type, 'button');
     assert.equal(icon.localName, 'svg');
     assert.equal(icon.copiedAttributes.viewBox, '0 0 10 10');
+    assert.equal(icon.copiedAttributes.width, '32');
+    assert.equal(icon.copiedAttributes.height, '18');
+    assert.equal(icon.copiedAttributes.id, 'icon');
+    assert.equal(icon.copiedAttributes.class, 'preview-icon');
     assert.equal('onload' in icon.copiedAttributes, false);
-    assert.deepEqual(icon.childNodes.map((child) => child.localName), ['path', 'path', 'path', 'path']);
+    assert.deepEqual(icon.childNodes.map((child) => child.localName), ['path', 'path', 'path', 'path', 'defs', 'rect']);
     assert.equal(icon.childNodes[0].copiedAttributes.fill, 'red');
     assert.equal('fill' in icon.childNodes[1].copiedAttributes, false);
     assert.equal('fill' in icon.childNodes[2].copiedAttributes, false);
     assert.equal('stroke' in icon.childNodes[3].copiedAttributes, false);
+    assert.equal(icon.childNodes[4].childNodes[0].copiedAttributes.id, 'paint');
+    assert.equal(icon.childNodes[5].copiedAttributes.width, '20');
+    assert.equal(icon.childNodes[5].copiedAttributes.height, '10');
+    assert.equal(icon.childNodes[5].copiedAttributes.id, 'square');
+    assert.equal(icon.childNodes[5].copiedAttributes.class, 'chip');
+    assert.equal(icon.childNodes[5].copiedAttributes.fill, 'url(#paint)');
+    assert.equal('onclick' in icon.childNodes[5].copiedAttributes, false);
   });
 
   it('removes external-resource and inherited-variable declarations from component CSS', () => {

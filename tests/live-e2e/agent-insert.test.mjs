@@ -64,6 +64,37 @@ describe('createFakeAgent — insert mode', () => {
 });
 
 describe('fixture path containment', () => {
+  it('builds and applies steer edits under a symlinked project root', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'impeccable-steer-root-'));
+    const project = path.join(workspace, 'project');
+    const linkedProject = path.join(workspace, 'linked-project');
+    const sourceFile = path.join(project, 'src', 'Hero.jsx');
+    try {
+      await fs.mkdir(path.dirname(sourceFile), { recursive: true });
+      await fs.writeFile(sourceFile, '<h1 className="hero-title">Original</h1>');
+      await fs.symlink(project, linkedProject, 'dir');
+
+      for (const configuredSource of ['src/Hero.jsx', undefined]) {
+        const context = buildSteerContext({
+          tmp: linkedProject,
+          event: { pageUrl: 'http://localhost/' },
+          wrapTarget: { tag: 'h1', classes: 'hero-title' },
+          sourceFile: configuredSource,
+        });
+        assert.equal(context.targetFile, path.join('src', 'Hero.jsx'));
+        assert.equal(context.targetFileAbs, await fs.realpath(sourceFile));
+        await applySteerEdits(linkedProject, {
+          file: context.targetFile,
+          edits: [{ find: 'Original', replace: 'Changed' }],
+        });
+        assert.match(await fs.readFile(sourceFile, 'utf8'), /Changed/);
+        await fs.writeFile(sourceFile, '<h1 className="hero-title">Original</h1>');
+      }
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it('rejects symlink escapes when reading or editing source files', async () => {
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'impeccable-path-test-'));
     const project = path.join(workspace, 'project');

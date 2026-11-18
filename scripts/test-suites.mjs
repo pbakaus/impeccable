@@ -147,7 +147,7 @@ export const SUITES = {
     commands: [
       {
         runner: 'node',
-        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs', 'tests/extension-report.test.mjs', 'tests/extension-popup.test.mjs', 'tests/extension-walks.test.mjs', 'tests/extension-account.test.mjs', 'tests/extension-agent.test.mjs'],
+        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs', 'tests/extension-report.test.mjs', 'tests/extension-popup.test.mjs', 'tests/extension-walks.test.mjs', 'tests/extension-account.test.mjs', 'tests/extension-agent.test.mjs', 'crates/wasm/tools/fixture-path.test.mjs', 'crates/wasm/tools/fixture-server.test.mjs'],
       },
     ],
   },

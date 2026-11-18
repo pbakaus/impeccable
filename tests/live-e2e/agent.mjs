@@ -2421,7 +2421,7 @@ export function buildSteerContext({ tmp, event, wrapTarget, sourceFile }) {
     tmp,
     sourceFile || findSteerTargetFile(tmp, target),
   );
-  const targetFile = path.relative(tmp, targetFileAbs);
+  const targetFile = path.relative(realpathSync(tmp), targetFileAbs);
   const source = readFileSync(targetFileAbs, 'utf-8');
   const tag = target.tag || 'h1';
   const classToken = (target.classes || 'hero-title').split(/\s+/)[0];

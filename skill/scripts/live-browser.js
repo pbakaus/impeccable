@@ -13594,10 +13594,11 @@ void main() {
       'polygon', 'polyline', 'radialgradient', 'rect', 'stop', 'svg',
     ]);
     const svgAttributes = new Set([
-      'cx', 'cy', 'd', 'fill', 'fill-opacity', 'fill-rule', 'gradienttransform', 'gradientunits',
-      'offset', 'opacity', 'points', 'preserveaspectratio', 'r', 'rx', 'ry', 'stop-color',
+      'class', 'cx', 'cy', 'd', 'fill', 'fill-opacity', 'fill-rule', 'gradienttransform',
+      'gradientunits', 'height', 'id', 'offset', 'opacity', 'points', 'preserveaspectratio',
+      'r', 'rx', 'ry', 'stop-color',
       'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap',
-      'stroke-linejoin', 'stroke-opacity', 'stroke-width', 'transform', 'viewbox', 'x', 'x1',
+      'stroke-linejoin', 'stroke-opacity', 'stroke-width', 'transform', 'viewbox', 'width', 'x', 'x1',
       'x2', 'y', 'y1', 'y2',
     ]);
     const htmlAttributes = new Set([

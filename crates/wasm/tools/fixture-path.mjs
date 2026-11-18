@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+export class FixturePathError extends Error {}
+
 export function resolveFixtureFile(root, requestPath) {
   const realRoot = fs.realpathSync(root);
   const decodedPath = decodeURIComponent(String(requestPath).split('?')[0]);
@@ -16,6 +18,6 @@ export function resolveFixtureFile(root, requestPath) {
 function assertContained(root, candidate) {
   const relative = path.relative(root, candidate);
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    throw new Error('Fixture request path escapes root');
+    throw new FixturePathError('Fixture request path escapes root');
   }
 }

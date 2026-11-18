@@ -20,7 +20,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { resolveFixtureFile } from './fixture-path.mjs';
+import { createFixtureHandler } from './fixture-server.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
@@ -54,14 +54,7 @@ const designSystem = {
 };
 
 const dir = path.join(publicRepo, 'tests/fixtures/antipatterns');
-const server = http.createServer((req, res) => {
-  const f = resolveFixtureFile(dir, req.url.split('?')[0]);
-  try {
-    const body = fs.readFileSync(f);
-    res.setHeader('Content-Type', f.endsWith('.css') ? 'text/css' : f.endsWith('.js') ? 'application/javascript' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'text/html; charset=utf-8');
-    res.end(body);
-  } catch { res.statusCode = 404; res.end(); }
-}).listen(0);
+const server = http.createServer(createFixtureHandler(dir)).listen(0);
 const port = server.address().port;
 
 const browser = await puppeteer.launch({
