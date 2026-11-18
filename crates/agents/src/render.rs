@@ -5,11 +5,31 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml_edit::{ImDocument, Item, Value as TomlValue};
 
+pub(super) fn hooks_file(s: &Spec) -> PathBuf {
+    s.root.join(match s.harness.as_str() {
+        "claude" => "settings.json",
+        "codex" | "cursor" => "hooks.json",
+        "copilot" => "hooks/impeccable-loop.json",
+        _ => unreachable!(),
+    })
+}
+
+pub(super) fn json_entries_file(s: &Spec, path: &Path) -> bool {
+    match s.harness.as_str() {
+        "cursor" => path.ends_with("mcp.json") || path.ends_with("cli-config.json"),
+        "copilot" => path.ends_with("mcp-config.json"),
+        _ => false,
+    }
+}
+
 pub(super) fn render(
     s: &Spec,
     path: &Path,
     before: Option<&[u8]>,
 ) -> Result<Vec<u8>, (&'static str, String, i32)> {
+    if json_entries_file(s, path) {
+        return render_json_entries(s, path, before, None, false);
+    }
     if s.harness == "codex" && path.ends_with("config.toml") {
         return render_codex_config(s, before);
     }
@@ -32,10 +52,13 @@ pub(super) fn render(
         return Err(("invalid_settings", "Expected JSON object".into(), 4));
     }
     let mut changed = false;
-    let hook_file = (s.harness == "claude" && path.ends_with("settings.json"))
-        || (s.harness == "codex" && path.ends_with("hooks.json"));
+    let hook_file = path == hooks_file(s);
     if hook_file && !s.hooks.is_empty() {
         let obj = value.as_object_mut().unwrap();
+        if ["cursor", "copilot"].contains(&s.harness.as_str()) && !obj.contains_key("version") {
+            obj.insert("version".into(), json!(1));
+            changed = true;
+        }
         if !obj.contains_key("hooks") {
             changed = true;
         }
@@ -55,7 +78,7 @@ pub(super) fn render(
             if !ev.is_array() {
                 return Err(("invalid_settings", "hook event must be an array".into(), 4));
             }
-            let entry = h.entry();
+            let entry = h.entry(&s.harness);
             let arr = ev.as_array_mut().unwrap();
             if !arr.contains(&entry) {
                 arr.push(entry);
@@ -84,6 +107,12 @@ pub(super) fn remove_owned(
         && String::from_utf8_lossy(current).contains(&format!("impeccable:{}", s.owner))
     {
         return remove_rule_block(s, current, original).map(Some);
+    }
+    if ["cursor", "copilot"].contains(&s.harness.as_str()) {
+        if json_entries_file(s, path) {
+            return render_json_entries(s, path, Some(current), original, true).map(Some);
+        }
+        return remove_json_hooks(s, current, original);
     }
     if s.harness == "claude" && !s.hooks.is_empty() {
         return remove_json_hooks(s, current, original);
@@ -146,7 +175,7 @@ pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
     if fs::read_to_string(&rules).is_ok_and(|t| t.contains(&format!("<!-- impeccable:{} start -->", s.owner))) {
         return Some(rules);
     }
-    let hooks = s.root.join(if s.harness == "claude" { "settings.json" } else { "hooks.json" });
+    let hooks = hooks_file(s);
     let value = fs::read(&hooks).ok().and_then(|b| parse_unique_json(&b).ok())?;
     s.hooks
         .iter()
@@ -155,7 +184,7 @@ pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
                 .get("hooks")
                 .and_then(|v| v.get(&h.event))
                 .and_then(Value::as_array)
-                .is_some_and(|a| a.contains(&h.entry()))
+                .is_some_and(|a| a.contains(&h.entry(&s.harness)))
         })
         .then_some(hooks)
 }
@@ -163,18 +192,24 @@ pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
 /// The spec's hooks still in `settings` (JSON) in a form the engine didn't
 /// write: same command, other fields changed. Undo leaves them, and says so.
 pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) -> Vec<String> {
-    let Ok(value) = parse_unique_json(settings) else { return vec![] };
+    let Ok(value) = parse_unique_json(settings) else {
+        return vec![];
+    };
     let original = original.and_then(|b| parse_unique_json(b).ok());
     let mut out = Vec::new();
     for h in &s.hooks {
         let Some(entries) = value.get("hooks").and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
             continue;
         };
-        let ours = h.entry();
+        let ours = h.entry(&s.harness);
         let same_command = |e: &Value| {
-            e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
-                hs.iter().any(|c| c.get("command").and_then(Value::as_str) == Some(h.command.as_str()))
-            })
+            (["cursor", "copilot"].contains(&s.harness.as_str())
+                && e.get(if s.harness == "copilot" { "bash" } else { "command" }).and_then(Value::as_str) == Some(h.command.as_str()))
+                || e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
+                    hs.iter().any(|c| {
+                        c.get("command").and_then(Value::as_str) == Some(h.command.as_str())
+                    })
+                })
         };
         // An entry that was there before the install is the person's own.
         let preexisting = |e: &Value| {
@@ -287,6 +322,12 @@ fn remove_json_hooks(
     let changed = remove_hook_entries(s, container, orig.as_ref());
     if container.is_empty() {
         root.remove("hooks");
+        if ["cursor", "copilot"].contains(&s.harness.as_str())
+            && orig.as_ref().and_then(|v| v.get("version")).is_none()
+            && root.get("version") == Some(&json!(1))
+        {
+            root.remove("version");
+        }
     }
     if !changed {
         return Ok(None);
@@ -315,7 +356,7 @@ fn remove_hook_entries(
         let Some(entries) = container.get_mut(key).and_then(Value::as_array_mut) else {
             continue;
         };
-        let entry = h.entry();
+        let entry = h.entry(&s.harness);
         let existed = original
             .and_then(|v| v.get("hooks"))
             .and_then(|v| v.get(key))
@@ -799,4 +840,94 @@ pub(super) fn render_rule(
         text.push_str(nl)
     }
     Ok(text.into_bytes())
+}
+
+/// Journal-owned JSON resources. Undo removes only values absent in the baseline.
+pub(super) fn render_json_entries(
+    s: &Spec,
+    path: &Path,
+    before: Option<&[u8]>,
+    original: Option<&[u8]>,
+    undo: bool,
+) -> Result<Vec<u8>, (&'static str, String, i32)> {
+    let mut doc = before
+        .map(parse_unique_json)
+        .transpose()
+        .map_err(|_| invalid_toml("Invalid MCP JSON"))?
+        .unwrap_or(json!({}));
+    let prior = original
+        .map(parse_unique_json)
+        .transpose()
+        .map_err(|_| invalid_toml("Invalid original MCP JSON"))?
+        .unwrap_or(json!({}));
+    let root = doc
+        .as_object_mut()
+        .ok_or_else(|| invalid_toml("MCP config must be an object"))?;
+    if !path.ends_with("cli-config.json") {
+        let servers = root
+            .entry("mcpServers")
+            .or_insert(json!({}))
+            .as_object_mut()
+            .ok_or_else(|| invalid_toml("mcpServers must be an object"))?;
+        for (name, url) in &s.http_mcp_servers {
+            let wanted = match s.harness.as_str() {
+                "cursor" => json!({"url":url}),
+                "copilot" => json!({"type":"http", "url":url, "tools":["*"]}),
+                _ => unreachable!(),
+            };
+            if undo {
+                if prior.get("mcpServers").and_then(|v| v.get(name)).is_none()
+                    && servers.get(name) == Some(&wanted)
+                {
+                    servers.remove(name);
+                }
+            } else {
+                if servers.get(name).is_some_and(|v| v != &wanted) {
+                    return Err(invalid_toml("MCP server settings differ"));
+                }
+                servers.insert(name.clone(), wanted);
+            }
+        }
+        if undo && servers.is_empty() && prior.get("mcpServers").is_none() {
+            root.remove("mcpServers");
+        }
+    } else {
+        let permissions = root
+            .entry("permissions")
+            .or_insert(json!({}))
+            .as_object_mut()
+            .ok_or_else(|| invalid_toml("permissions must be an object"))?;
+        let allow = permissions
+            .entry("allow")
+            .or_insert(json!([]))
+            .as_array_mut()
+            .ok_or_else(|| invalid_toml("permissions.allow must be an array"))?;
+        for approval in &s.mcp_approvals {
+            let entry = json!(format!("Mcp({}:*)", approval.server));
+            if undo {
+                if !prior
+                    .pointer("/permissions/allow")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| a.contains(&entry))
+                {
+                    allow.retain(|v| v != &entry);
+                }
+            } else if !allow.contains(&entry) {
+                allow.push(entry);
+            }
+        }
+        if undo && allow.is_empty() && prior.pointer("/permissions/allow").is_none() {
+            permissions.remove("allow");
+        }
+        if undo && permissions.is_empty() && prior.get("permissions").is_none() {
+            root.remove("permissions");
+        }
+    }
+    if before.and_then(|b| parse_unique_json(b).ok()).as_ref() == Some(&doc) {
+        return Ok(before.unwrap().to_vec());
+    }
+    let mut bytes = serde_json::to_vec_pretty(&doc)
+        .map_err(|_| invalid_toml("Could not serialize MCP JSON"))?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }

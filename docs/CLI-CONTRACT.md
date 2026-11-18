@@ -1363,7 +1363,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
   - `IMPECCABLE_HOOK_DEPTH` (snapshotted from parent BEFORE the script sets it to `'1'` for children); `CLAUDE_HOOK_DEPTH` — re-entrancy guard: `depthIsSet(v)` = non-empty string that is TRUTHY or a positive integer → return silently (`audit.reentrant=true`).
   - `IMPECCABLE_HOOK_DISABLED` truthy → skip `'env-disabled'`.
   - `IMPECCABLE_HOOK_QUIET` truthy → quiet mode (no clean/pending acks; findings still emitted).
-  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
+  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|cursor|copilot|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
   - `IMPECCABLE_HOOK_LOG` = audit NDJSON path (overrides `hook.auditLog`).
   - `IMPECCABLE_HOOK_DEBUG` set → unexpected top-level exceptions written to stderr as `[impeccable-hook] <err>\n`.
   - `CURSOR_PROJECT_DIR` — project dir fallback for cursor/github events.
@@ -2491,7 +2491,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
-- `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
   (see **The Impeccable block** below), the loop switch's line: "When you
   need a person's decision or input, use needs_you.post (Impeccable) instead of
@@ -2515,6 +2515,34 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   still counts as connect's own. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
   server in place, printing the command that removes it.
+- Cursor resolves `cursor-agent` (override: `IMPECCABLE_CURSOR_BIN`) and uses
+  `~/.cursor`, with no config-root override. The engine merges the HTTP server into
+  `mcp.json` and `Mcp(impeccable:*)` into `cli-config.json`'s `permissions.allow`.
+  Connect runs `cursor-agent mcp enable impeccable`; sign in manually with
+  `cursor-agent mcp login impeccable`. Disconnect restores the original files,
+  retaining a pre-existing server and unrelated edits. `cursor-install.json` holds
+  `enabled`, `harness: "cursor"` and the resolved executable, without `configDir`.
+  From the provisional `CLI_WAKE` gate (0.2.0), `hooks.json` gets flat
+  `sessionStart` and `afterMCPExecution` entries (10 seconds), and `stop`
+  (3600 seconds, explicit `loop_limit: null`). Older bundles get no Cursor hooks;
+  status reports `hooks: false`, `hooksRequired: false` and the manual sign-in step.
+  The Loop and optional taste lines use `rules/impeccable.mdc`, created with
+  `alwaysApply: true` front matter. A rule file and directory created by connect
+  disappear when empty again; pre-existing files and directories stay.
+- GitHub Copilot CLI resolves `copilot` (override: `IMPECCABLE_COPILOT_BIN`)
+  and uses `$COPILOT_HOME`, else `~/.copilot`. Its engine-journaled
+  `mcp-config.json` entry is `{type: "http", url: <mcp_url>, tools: ["*"]}`;
+  existing servers stay intact. Sign-in happens on first use, with no CLI command.
+  From the same provisional `CLI_WAKE` gate as Cursor (0.2.0), the dedicated
+  `hooks/impeccable-loop.json` contains version 1 with flat `sessionStart`,
+  `postToolUse` and `agentStop` command entries. They use `bash` and `timeoutSec`
+  (10, 10 and 3600 seconds). Older Loop bundles get no hooks. The engine journals
+  a newly created `hooks/` directory for undo and interrupted-install recovery;
+  existing or nonempty directories stay. The rule block lives in
+  `copilot-instructions.md`; `copilot-install.json` uses the same Global layout
+  as Cursor, without `configDir`. No tool approval setting can be written.
+  Connect and status print: In each repo, answer "Yes, and don't ask again" for
+  Impeccable's tools once; then Copilot wakes by itself.
 - After a successful `impeccable loop install`, the agents are connected only
   when asked: `--connect` runs `loop connect` at once; a person at a terminal
   (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
@@ -2627,14 +2655,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   only that macOS is blocking Loop and to run `impeccable loop update`.
   The JSON form is `{loop:{installed, version, blocked}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
-- `impeccable loop connect --agent claude|codex` connects only that agent. Its text
+- `impeccable loop connect --agent claude|codex|cursor|copilot` connects only that agent. Its text
   report keeps the sign-in and follow-up lines. An agent CLI's own output goes
   to stderr, so stdout carries the report or the one JSON object and nothing else.
   `--json` never prompts and prints one object on stdout,
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
-- `impeccable loop connect --mcp-only [--agent claude|codex] [--json]` gives each
+- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot] [--json]` gives each
   detected agent (or the one named) the `impeccable` MCP server and nothing else:
   no hooks, no instruction or taste block, no Loop records, and no platform check,
   so it works on any OS without the Loop app. The server URL comes from the

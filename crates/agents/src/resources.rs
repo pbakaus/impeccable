@@ -41,6 +41,21 @@ pub(super) fn apply(
             ));
         }
     }
+    if let Some(old) = old.filter(|o| ["cursor", "copilot"].contains(&o.spec.harness.as_str())) {
+        for path in targets(&old.spec)
+            .into_iter()
+            .filter(|p| render::json_entries_file(&old.spec, p))
+        {
+            let current = fs::read(&path).unwrap_or_default();
+            if render(&old.spec, &path, Some(&current))? != current {
+                return Err((
+                    "mcp_file_drift",
+                    "MCP configuration changed outside the engine".into(),
+                    4,
+                ));
+            }
+        }
+    }
     // A managed block the person edited is theirs: a reapply that would
     // replace it is refused before anything is written (pristine#4333).
     if s.instruction.is_some() {
@@ -69,7 +84,7 @@ pub(super) fn apply(
     let mut touched_physical = Vec::new();
     for path in touched {
         let before = fs::read(&path).ok();
-        let physical = canonical_target(&path)?;
+        let physical = targets::physical_target(s, &path)?;
         touched_physical.push(physical.clone());
         let mut base = before.clone();
         if let Some(old) = old {
@@ -133,7 +148,9 @@ pub(super) fn apply(
         if before != next {
             writes.push((path.clone(), next, managed));
         } else if managed {
-            if let Some(mut claim) = find_resource_claim(home, &physical) {
+            if let Some(mut claim) = old.and_then(|j| j.snapshots.iter().find(|x| x.path == physical)).cloned()
+                .or_else(|| find_resource_claim(home, &physical))
+            {
                 let id = installation_claim(s);
                 if !claim.claims.contains(&id) {
                     claim.claims.push(id)
@@ -156,12 +173,19 @@ pub(super) fn apply(
             }
         }
     }
+    let new_dirs = if s.harness == "copilot" && !s.hooks.is_empty()
+        && matches!(fs::symlink_metadata(s.root.join("hooks")), Err(e) if e.kind() == io::ErrorKind::NotFound)
+    {
+        vec![canonical_target(&s.root.join("hooks"))?]
+    } else { vec![] };
+    let mut created_dirs = old.map(|j| j.created_dirs.clone()).unwrap_or_default();
+    for dir in &new_dirs { if !created_dirs.contains(dir) { created_dirs.push(dir.clone()); } }
     let pending_path = home.join(format!("{}.pending.json", installation_id(s)));
     let pending_targets = writes
         .iter()
         .map(|(p, after, _)| {
             Ok(PendingTarget {
-                path: canonical_target(p)?,
+                path: targets::physical_target(s, p)?,
                 before: fs::read(p).ok(),
                 after: after.clone(),
             })
@@ -180,10 +204,12 @@ pub(super) fn apply(
                 desired_spec: s.clone(),
                 prior_spec: old.map(|j| j.spec.clone()),
                 targets: pending_targets,
+                created_dirs: new_dirs.clone(),
             },
         )?;
         failpoint("journal_intent")?;
     }
+    for dir in &new_dirs { fs::create_dir(dir).map_err(ioerr)?; }
     for (logical, next, managed) in writes {
         let before = fs::read(&logical).ok();
         let path = if let Some(next) = &next {
@@ -247,6 +273,7 @@ pub(super) fn apply(
         spec: s.clone(),
         snapshots: all,
         resources,
+        created_dirs,
     })
 }
 pub(super) fn build_resource_records(
@@ -321,12 +348,21 @@ pub(super) fn build_resource_records(
             };
             let before = snap.before.as_deref().unwrap_or_default();
             let after = snap.last_written_value.as_slice();
-            if (path.ends_with("settings.json") || path.ends_with("hooks.json"))
-                && !s.hooks.is_empty()
+            if render::json_entries_file(s, &path)
+            {
+                add(
+                    "json-entries",
+                    "entries",
+                    &physical.display().to_string(),
+                    render::parse_unique_json(before).ok(),
+                    render::parse_unique_json(after).unwrap_or(Value::Null),
+                );
+            }
+            if path == render::hooks_file(s) && !s.hooks.is_empty()
             {
                 let pre = render::parse_unique_json(before).ok();
                 for h in &s.hooks {
-                    let entry = h.entry();
+                    let entry = h.entry(&s.harness);
                     let present = pre
                         .as_ref()
                         .and_then(|v| v.get("hooks"))
@@ -683,6 +719,7 @@ pub(super) fn undo(
             .into_iter()
             .map(|name| json!(format!("mcp:{name}"))),
     );
+    for dir in j.created_dirs.iter().rev() { let _ = fs::remove_dir(dir); }
     let _ = s;
     Ok(json!({"removed":true,"resourcesRemoved":removed,"conflicts":conflicts}))
 }

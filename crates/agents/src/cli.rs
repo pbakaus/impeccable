@@ -11,7 +11,7 @@ pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
         );
     };
     if verb == "capabilities" {
-        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
+        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex","cursor","copilot"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
         return 0;
     }
     if verb == "list" {
@@ -78,8 +78,8 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
     {
         return Err("Invalid owner id".into());
     }
-    if !["claude", "codex"].contains(&s.harness.as_str()) {
-        return Err("Only Claude Code and Codex user installations are supported".into());
+    if !["claude", "codex", "cursor", "copilot"].contains(&s.harness.as_str()) {
+        return Err("Only Claude Code, Codex, Cursor and Copilot user installations are supported".into());
     }
     if !s.root.is_absolute() {
         return Err("Account root must be an explicit absolute path".into());
@@ -90,7 +90,7 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
         }
     }
     for h in &s.hooks {
-        if s.harness == "codex" && (h.run_async.is_some() || h.async_rewake.is_some()) {
+        if s.harness != "claude" && (h.run_async.is_some() || h.async_rewake.is_some()) {
             return Err("async and asyncRewake hooks are Claude Code only".into());
         }
         if h.timeout == Some(0) {
@@ -98,8 +98,8 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
         }
     }
     for a in &s.mcp_approvals {
-        if s.harness != "codex" {
-            return Err("MCP approvals are Codex only".into());
+        if !["codex", "cursor"].contains(&s.harness.as_str()) {
+            return Err("MCP approvals require Codex or Cursor".into());
         }
         if a.server.is_empty()
             || !a
@@ -112,6 +112,14 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
         if !["approve", "prompt", "auto", "writes"].contains(&a.mode.as_str()) {
             return Err("Unsupported MCP approval mode".into());
         }
+    }
+    if !s.http_mcp_servers.is_empty() && !["cursor", "copilot"].contains(&s.harness.as_str()) {
+        return Err("HTTP MCP files require Cursor or Copilot".into());
+    }
+    if ["cursor", "copilot"].contains(&s.harness.as_str())
+        && (!s.mcp_servers.is_empty() || s.mcp_approvals.iter().any(|a| a.mode != "approve"))
+    {
+        return Err("Journal registration requires HTTP servers and approve permissions".into());
     }
     for m in &s.mcp_servers {
         if m.name.is_empty() || m.name.contains(['/', '\\']) {

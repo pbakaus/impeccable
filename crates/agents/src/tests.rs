@@ -35,6 +35,7 @@ fn spec(harness: &str, root: PathBuf) -> Spec {
         root,
         hooks: vec![],
         mcp_servers: vec![],
+        http_mcp_servers: Default::default(),
         mcp_approvals: vec![],
         instruction: Some("managed text".into()),
     }
@@ -1529,4 +1530,104 @@ fn a_personal_hook_with_the_same_command_is_not_a_conflict_and_a_lone_edited_hoo
     fs::write(&settings, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
     let result = undo(&s, Some(&j), &home).unwrap();
     assert!(result["conflicts"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("#hook:Stop:loop stop")), "{result}");
+}
+
+#[test]
+fn cursor_json_resources_restore_exactly_and_preserve_later_edits() {
+    let home = temp();
+    let root = temp();
+    let mcp = root.join("mcp.json");
+    let config = root.join("cli-config.json");
+    let original_mcp = br#"{"mcpServers":{"other":{"url":"https://other"}}}"#;
+    let original_config = br#"{"permissions":{"allow":["Shell(ls)"]},"theme":"dark"}"#;
+    fs::write(&mcp, original_mcp).unwrap();
+    fs::write(&config, original_config).unwrap();
+    let mut s = spec("cursor", root.clone());
+    s.instruction = None;
+    s.http_mcp_servers
+        .insert("impeccable".into(), "https://example/mcp".into());
+    s.mcp_approvals.push(McpApproval {
+        server: "impeccable".into(),
+        mode: "approve".into(),
+    });
+    s.hooks = vec![hook("stop", "loop-hook cursor lifecycle")];
+    s.hooks[0].timeout = Some(3600);
+    validate(&s).unwrap();
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let hooks: Value = serde_json::from_slice(&fs::read(root.join("hooks.json")).unwrap()).unwrap();
+    assert_eq!(hooks["version"], 1);
+    assert_eq!(
+        hooks["hooks"]["stop"][0],
+        json!({"command":"loop-hook cursor lifecycle","timeout":3600,"loop_limit":null})
+    );
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(fs::read(&mcp).unwrap(), original_mcp);
+    assert_eq!(fs::read(&config).unwrap(), original_config);
+    assert!(!root.join("hooks.json").exists());
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    for path in [&mcp, &config] {
+        let mut v: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+        v["later"] = json!(true);
+        fs::write(path, serde_json::to_vec(&v).unwrap()).unwrap();
+    }
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    for (path, original) in [
+        (&mcp, original_mcp.as_slice()),
+        (&config, original_config.as_slice()),
+    ] {
+        let mut expected: Value = serde_json::from_slice(original).unwrap();
+        expected["later"] = json!(true);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&fs::read(path).unwrap()).unwrap(),
+            expected
+        );
+    }
+}
+
+#[test]
+fn copilot_hooks_and_mcp_are_journaled_including_the_created_directory() {
+    for existing_dir in [false, true] {
+        let home = temp();
+        let root = temp();
+        let mut s = spec("copilot", root.clone());
+        s.instruction = None;
+        s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+        s.hooks = vec![hook("agentStop", "loop-hook copilot lifecycle")];
+        s.hooks[0].timeout = Some(3600);
+        validate(&s).unwrap();
+        let mcp = root.join("mcp-config.json");
+        let original = br#"{"mcpServers":{"other":{"url":"https://other"}}}"#;
+        fs::write(&mcp, original).unwrap();
+        if existing_dir { fs::create_dir(root.join("hooks")).unwrap(); }
+        plan(&s, None, &home).unwrap();
+        assert_eq!(root.join("hooks").exists(), existing_dir, "plan is read-only");
+        let journal_path = home.join("journal.json");
+        let j = apply(&s, None, &home, &journal_path, None).unwrap();
+        let hooks: Value = serde_json::from_slice(&fs::read(root.join("hooks/impeccable-loop.json")).unwrap()).unwrap();
+        assert_eq!(hooks, json!({"version":1,"hooks":{"agentStop":[{"type":"command","bash":"loop-hook copilot lifecycle","timeoutSec":3600}]}}));
+        let config: Value = serde_json::from_slice(&fs::read(&mcp).unwrap()).unwrap();
+        assert_eq!(config["mcpServers"]["impeccable"], json!({"type":"http","url":"https://example/mcp","tools":["*"]}));
+        let j = apply(&s, Some(&j), &home, &journal_path, None).unwrap();
+        assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"].as_array().unwrap().is_empty());
+        assert_eq!(fs::read(&mcp).unwrap(), original);
+        assert!(!root.join("hooks/impeccable-loop.json").exists());
+        assert_eq!(root.join("hooks").exists(), existing_dir);
+        if !existing_dir {
+            for point in ["journal_intent", "after_rename", "mcp_synced"] {
+                TEST_FAILPOINT.with(|v| v.set(Some(point)));
+                let result = apply(&s, None, &home, &journal_path, None);
+                TEST_FAILPOINT.with(|v| v.set(None));
+                assert_eq!(result.unwrap_err().0, "injected_failure");
+                assert_eq!(recover(&home, &installation_id(&s)).unwrap()["state"], "rolled-back");
+                assert!(!root.join("hooks").exists(), "recovery removes the directory at {point}");
+                assert_eq!(fs::read(&mcp).unwrap(), original);
+            }
+        }
+    }
 }
