@@ -8,6 +8,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub(crate) const MDC_HEADER: &str = "---\nalwaysApply: true\n---\n";
+
 pub(crate) const START: &str = "<!-- impeccable start -->";
 pub(crate) const END: &str = "<!-- impeccable end -->";
 /// The taste block before REN-2056: read as the taste switch, removed on the next write.
@@ -311,6 +313,10 @@ pub(crate) fn writable(path: &Path) -> Result<()> {
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
+    // Removing a missing block must not create its parent directory just to lock it.
+    if !on && matches!(fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return Ok(false);
+    }
     locked(path, || set_unlocked(path, id, on))
 }
 
@@ -328,7 +334,12 @@ fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
     if on {
         ids.push(id);
     }
-    let after = with_switches(&before, &ids)?;
+    let base = if before.is_empty() && on && path.extension().is_some_and(|e| e == "mdc") {
+        MDC_HEADER
+    } else {
+        &before
+    };
+    let after = with_switches(base, &ids)?;
     if after == before {
         return Ok(false);
     }
@@ -347,7 +358,9 @@ fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
 ///   `~/.copilot`.
 /// - opencode: `~/.config/opencode/AGENTS.md` only when it already exists. Without it,
 ///   opencode reads `~/.claude/CLAUDE.md`, which creating it would turn off.
-/// Cursor keeps its user rules in its settings, not a file, so it has none here.
+///
+/// Cursor CLI rules are managed by Loop connect in ~/.cursor/rules/impeccable.mdc.
+/// Cursor editor user rules stay in its settings.
 pub(crate) fn user_rule_files(io: &impeccable_common::Io) -> Vec<(&'static str, PathBuf)> {
     let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
     let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
