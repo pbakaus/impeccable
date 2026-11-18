@@ -526,11 +526,12 @@ describe('walk worker', () => {
     assert.equal(heard[0].hello.helpers, hashed);
   });
 
-  it('points the toolbar icon at the walk panel while a walk is under way, and back at the popup after', async () => {
+  it('keeps the toolbar icon on the side panel through a walk and after it, never a popup', async () => {
     await loaded;
     // The server calls the walk off.
     sockets.at(-1).onclose({ reason: 'cancelled' });
-    assert.deepEqual(toolbar.slice(-4), [{ popup: '' }, { openPanelOnActionClick: true }, { popup: MANIFEST.action.default_popup }, { openPanelOnActionClick: false }]);
+    assert.deepEqual(toolbar, [{ openPanelOnActionClick: true }]);
+    assert.equal('default_popup' in MANIFEST.action, false);
   });
 
   it('ends a walk the server switched off as failed, said once in the panel and the toolbar', async () => {

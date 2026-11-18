@@ -83,10 +83,13 @@ describe('agent session', () => {
   globalThis.createImageBitmap = async () => ({ close() {} });
   globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
   const tabs = { created: 0, removed: [] };
+  const panel = { windows: [], opened: [], closed: [] };
   globalThis.chrome = {
     runtime: {
       id: 'ext', lastError: undefined, onMessage: event('message'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
       getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => MANIFEST,
+      // Whether the side panel is open: as each test says.
+      async getContexts({ contextTypes }) { return contextTypes.includes('SIDE_PANEL') ? panel.windows.map((windowId) => ({ contextType: 'SIDE_PANEL', windowId })) : []; },
       connectNative(name) {
         assert.equal(name, 'style.impeccable.browser');
         const port = {
@@ -106,13 +109,13 @@ describe('agent session', () => {
     },
     storage: { session: area(), local: area(), sync: { async get(defaults) { return defaults; } }, onChanged: event('storage-changed') },
     tabs: {
-      onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {}, async query() { return []; },
+      onRemoved: event('removed'), onReplaced: event('replaced'), onCreated: event('created'), onUpdated: event('updated'), async sendMessage() {}, async query({ active }) { return active ? [{ id: 3, windowId: 1 }] : []; },
       async create() { tabs.created += 1; return { id: 11, windowId: 1 }; }, async get() { return { id: 11, windowId: 1, width: 800, height: 600, active: true, title: 'Issues' }; },
       async group() { return 5; }, async remove(id) { tabs.removed.push(id); }, async update() {},
     },
     tabGroups: { async update() {}, async get() { return { title: 'Impeccable · Claude Code' }; } },
     windows: { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; } },
-    sidePanel: { async open() {}, async setPanelBehavior() {} },
+    sidePanel: { async open({ windowId }) { panel.opened.push(windowId); }, async close({ windowId }) { panel.closed.push(windowId); }, async setPanelBehavior() {}, async setOptions() {} },
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
     scripting: { async executeScript({ func }) { return ['coverSecrets', 'coverHolds', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
     declarativeNetRequest: { rules: [], async getSessionRules() { return this.rules; }, async updateSessionRules({ removeRuleIds = [], addRules = [] }) { this.rules = [...this.rules.filter((r) => !removeRuleIds.includes(r.id)), ...addRules]; } },
@@ -260,7 +263,7 @@ describe('agent session', () => {
     const { current, driver } = await loaded;
     assert.deepEqual(await press('stop'), { ok: true });
     await until(() => !driver.walk, 'the walk to end');
-    assert.equal(current().state, 'stopped');
+    assert.equal(current().agent, false, 'no stopped screen left behind');
     const refused = await call('browser_look', { kind: 'tree' });
     assert.equal(refused.isError, true);
     assert.match(said(refused), /stopped/);
@@ -296,6 +299,33 @@ describe('agent session', () => {
     await until(() => current().ask?.kind === 'site', 'the question after a Stop it left during');
     await press('no');
     await again;
+    toExtension({ type: 'agent-gone' });
+  });
+
+  // An agent's run leaves the side panel as it found it (the decider, 18 Nov): no done screen, nothing left behind.
+  it('leaves the side panel as it found it when the session ends: closed again, or back at its default view', async () => {
+    const { current } = await loaded;
+    const empty = (await import('../extension/walks/view.js')).emptyView(false);
+    /** One session on linear.app: allowed once if the person is asked. */
+    const session = async () => {
+      const opening = call('browser_open', { url: 'https://linear.app/acme' });
+      await until(() => current().ask?.kind === 'site' || current().state === 'walking', 'asked or open');
+      if (current().ask) await press('once');
+      assert.equal((await opening).isError, undefined);
+      assert.equal((await call('browser_end')).isError, undefined);
+    };
+    // Closed in the agent's window when the session began (open only in another): opened for the run there, and
+    // closed at its end.
+    panel.windows = [2];
+    let [opens, closes] = [panel.opened.length, panel.closed.length];
+    await session();
+    assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[1], [1], empty]);
+    // Open there when it began: neither opened nor closed, and back at its default view.
+    panel.windows = [1];
+    [opens, closes] = [panel.opened.length, panel.closed.length];
+    await session();
+    assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[], [], empty]);
+    panel.windows = [];
     toExtension({ type: 'agent-gone' });
   });
 

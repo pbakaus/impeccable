@@ -41,6 +41,12 @@ let session = null;
  * always allowed, whichever agent or connection asks. Cleared by the person's own Allow.
  */
 let askNext = false;
+/**
+ * Whether the side panel was open when the session began, and the window the agent works in: an agent run leaves the
+ * panel as it found it (the decider, 18 Nov). Open before, it goes back to its default view; opened for the run, it
+ * closes again.
+ */
+let panelBefore = null;
 /** Ends a session nobody has used for a while. */
 let idle = null;
 /** The refs of the last tree the agent read: its number for a control, to what that control is called. */
@@ -155,7 +161,10 @@ async function open(url) {
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (walk?.agent) return go(url);
   if (isLive(current())) return refused('A journey is using the browser right now. Try again when it has finished.');
-  if (!session.started) dispatch({ type: 'agent', name: session.name, site: origin });
+  if (!session.started) {
+    await notePanel();
+    dispatch({ type: 'agent', name: session.name, site: origin });
+  }
   try {
     if (!(await mayUse(origin))) { endWaiting(); return refused(`The person didn’t allow ${new URL(origin).host}.`); }
     session.opening = true;
@@ -175,6 +184,30 @@ async function open(url) {
 /** A wait for the person's Allow that ended without a tab: the panel goes back to how it was. */
 function endWaiting() {
   dispatch({ type: 'unwait' });
+  leavePanel();
+}
+
+/** At the session's start: was the side panel open? If not, it opens for the run (where Chrome lets it). */
+async function notePanel() {
+  if (panelBefore) return;
+  const open = await Promise.resolve(chrome.runtime.getContexts?.({ contextTypes: ['SIDE_PANEL'] })).catch(() => null);
+  const [front] = await chrome.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []);
+  const windowId = front?.windowId ?? null;
+  // The panel of the agent's own window: one open in another window is that window's.
+  panelBefore = { open: Array.isArray(open) && open.some((context) => context.windowId === windowId), windowId };
+  // Chrome may want a press of the person's for this: then the toolbar icon opens it, as for any question.
+  if (!panelBefore.open && panelBefore.windowId !== null) await Promise.resolve(chrome.sidePanel?.open?.({ windowId: panelBefore.windowId })).catch(() => undefined);
+}
+
+/** At the session's end: the panel as it was before, its default view or closed. */
+function leavePanel() {
+  dispatch({ type: 'agent-over' });
+  const was = panelBefore;
+  panelBefore = null;
+  if (!was || was.open || was.windowId === null) return;
+  if (typeof chrome.sidePanel?.close === 'function') void Promise.resolve(chrome.sidePanel.close({ windowId: was.windowId })).catch(() => undefined);
+  // A Chrome without `sidePanel.close`: that window's panel closes itself (panel.js), and no other.
+  else void Promise.resolve(chrome.runtime.sendMessage({ agentPanel: 'close', windowId: was.windowId })).catch(() => undefined);
 }
 
 async function go(url) {
@@ -292,8 +325,9 @@ async function end() {
   endWaiting();
   over();
 }
-/** What a session's end takes with it: its Allow once sites and its log; a Stop stays. */
+/** What a session's end takes with it: its Allow once sites and its log; a Stop stays. The panel goes as it was. */
 function over() {
+  leavePanel();
   if (!session) return;
   Object.assign(session, { allowed: [], n: 0, started: false, since: Date.now() });
 }

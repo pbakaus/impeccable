@@ -26,7 +26,6 @@ body {
   line-height: 1.35;
   -webkit-font-smoothing: antialiased;
 }
-body:has(> .pro) { height: 491px; }
 
 header { height: 28px; flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 32px; }
 .mark { width: 22px; height: 22px; flex: none; color: var(--ks-ink); }
@@ -79,13 +78,3 @@ button:focus-visible { outline: 2px solid var(--ks-patina-deep); outline-offset:
   color: var(--ks-vermilion);
 }
 
-.pro { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--ks-rule); }
-.btn-pro {
-  width: 100%; height: 44px; display: grid; grid-template-columns: 18px 1fr 15px; align-items: center; gap: 12px;
-  padding: 0 18px; border-radius: 10px;
-  background: oklch(20% 0.01 85); border: 1px solid oklch(74% 0.09 82 / 0.6); color: oklch(93% 0 0);
-  font-size: 14px; font-weight: 500; text-align: left;
-}
-.btn-pro svg { width: 18px; height: 18px; color: var(--ks-kinpaku); }
-.btn-pro .arrow { width: 15px; height: 8px; }
-.btn-pro:hover { background: oklch(25% 0.012 85); }

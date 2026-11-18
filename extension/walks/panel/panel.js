@@ -205,13 +205,20 @@ function closeMenu() {
   app.querySelector('[data-act="settings"]')?.focus();
 }
 
-/** Scan: the popup's own Scan screen (panel.html `#panel-scan`, driven by popup/popup.js), with the way back. */
-function scan() {
+/** The detector's Scan (panel.html `#panel-scan`, driven by popup/popup.js): what the popup was, in Chrome's panel. */
+function scanBox() {
   const box = document.getElementById('panel-scan');
   box.hidden = false;
+  return el('div', { class: 'scan-wrap' }, box);
+}
+/** The screens that show Scan: its own, and every one before Pro, where it leads as the popup's did. */
+const SCANS = new Set(['scan', 'signed-out', 'not-pro', 'terminal']);
+
+/** Scan, from the home's tools, with the way back. */
+function scan() {
   return [
     el('div', { class: 'top' }, button('back', COPY.top.back, 'sec sm', () => { pre.screen = pre.back ?? 'home'; render(); }), el('span', { class: 'grow' }), hostOf(hereUrl) ? el('span', { class: 'where' }, el('b', { text: hostOf(hereUrl) })) : null),
-    el('div', { class: 'scan-wrap' }, box),
+    scanBox(),
   ];
 }
 
@@ -1077,7 +1084,7 @@ const connected = () => [el('div', { class: 'mid connected', role: 'status' },
 function signedOut() {
   const pro = el('button', { class: 'pro', type: 'button', 'data-act': 'sign-in', disabled: pre.signingIn, onclick: () => { void signIn(pro); } }, mark('mark'), el('span', { text: COPY.signedOut.pro }), pre.signingIn ? dots() : el('span', { class: 'arrow', text: '→' }));
   // The cog where the home has it: the way to report a problem, for someone who can't sign in.
-  return [el('div', { class: 'top' }, el('span', { class: 'grow' }), cog()), el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.signedOut.line }), signInFailed && !pre.signingIn ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro,
+  return [el('div', { class: 'top' }, el('span', { class: 'grow' }), cog()), scanBox(), el('div', { class: 'foot' }, signInFailed && !pre.signingIn ? el('p', { class: 'err', role: 'alert', text: COPY.signedOut.failed }) : null, pro,
     pre.signingIn ? el('p', { class: 'task', role: 'status', text: COPY.signedOut.signingIn }) : null)];
 }
 
@@ -1092,14 +1099,10 @@ async function signOut() {
   render();
 }
 
-/**
- * Signed in without Impeccable Pro, by the server's word (Chrome then offers no side panel; this shows only in one
- * already open): one line, Get Pro, and another account.
- */
-const notPro = () => [el('div', { class: 'mid' }, mark('mark big'), el('h2', { class: 'hd', text: COPY.notPro.line }),
-  el('div', { class: 'stack' },
-    button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
-    button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); })))];
+/** Signed in without Impeccable Pro, by the server's word: Scan, then Get Pro and another account. */
+const notPro = () => [scanBox(), el('div', { class: 'foot' }, el('p', { class: 'task', text: COPY.notPro.line }),
+  button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
+  button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); }))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
 function terminal() {
@@ -1109,7 +1112,7 @@ function terminal() {
     copy.textContent = COPY.copy.done;
     setTimeout(() => { copy.textContent = COPY.copy.action; }, 1600);
   });
-  return [el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.idle.line }), el('p', { class: 'task', text: COPY.idle.how }), el('code', { class: 'command-line', text: COPY.command }), copy)];
+  return [scanBox(), el('div', { class: 'foot' }, el('p', { class: 'task', text: COPY.idle.how }), el('code', { class: 'command-line', text: COPY.command }), copy)];
 }
 
 /* ------------------------------ first run ------------------------------ */
@@ -1215,7 +1218,7 @@ function render() {
   body.dataset.reason = view.state === 'failed' ? view.failure?.reason ?? '' : '';
   app.className = `screen screen-${shown}`;
   // Scan's box lives in the page, not in a screen: put it back in the body before the screens are swapped, or it goes with them.
-  if (shown !== 'scan') { const box = document.getElementById('panel-scan'); if (box && box !== app) { box.hidden = true; if (box.parentElement !== document.body) document.body.append(box); } }
+  if (!SCANS.has(shown)) { const box = document.getElementById('panel-scan'); if (box && box !== app) { box.hidden = true; if (box.parentElement !== document.body) document.body.append(box); } }
   // A step list the person scrolled away from its top (the current step) stays where they put it as new steps come.
   const list = app.querySelector('.sofar');
   const kept = list && list.scrollTop > 4 ? { top: list.scrollTop, height: list.scrollHeight } : null;
@@ -1285,6 +1288,12 @@ async function start() {
     const next = () => { if (feed.length === 0 || !isLive(view)) return; view = reduce(view, { type: 'step', step: feed.shift() }); render(); setTimeout(next, 1500); };
     if (feed.length > 0) setTimeout(next, 1500);
   } else {
+    // An agent's run that opened this panel is over (agent.js `leavePanel`): it closes, as it was before. Only the
+    // extension's own worker says so.
+    chrome.runtime.onMessage?.addListener((message, sender) => {
+      if (message?.agentPanel !== 'close' || sender.id !== chrome.runtime.id || sender.tab) return;
+      void chrome.windows?.getCurrent?.().then((mine) => { if (mine?.id === message.windowId) globalThis.close?.(); }).catch(() => undefined);
+    });
     act = async (action) => {
       pre.refused = null;
       const answer = await chrome.runtime.sendMessage({ control: action }).catch(() => null);

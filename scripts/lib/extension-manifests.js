@@ -18,7 +18,7 @@ export const WALK_PERMISSIONS = ['debugger', 'tabs', 'tabGroups', 'sidePanel', '
 const under = (folder, file) => file === folder || file.startsWith(`${folder}/`);
 const isWalkFile = (file) => under('walks', file);
 /** What the store build and Firefox leave out: the account, its half of the popup and its options page. */
-const isAccountFile = (file) => under('account', file) || ['popup/account.js', 'popup/words.js', 'popup/settings.html', 'popup/settings.js'].includes(file);
+const isAccountFile = (file) => under('account', file) || ['popup/words.js', 'popup/settings.html', 'popup/settings.js'].includes(file);
 /** Files of a developer's checkout no build ships: the listing's text, Finder's litter, and a browser test's `outing.json` (walks/link.js). */
 const notListing = (rel) => !['STORE_LISTING.md', '.DS_Store'].includes(path.basename(rel)) && rel !== 'outing.json';
 const onlyStoreHosts = (entries) => entries
@@ -46,11 +46,8 @@ export const isStoreFile = (rel) => notListing(rel) && !isAccountFile(rel);
 /** Whether a path in extension/ goes into the Firefox build: the store's files without walks or the module worker that loads them. */
 const isFirefoxFile = (rel) => isStoreFile(rel) && !isWalkFile(rel) && !['background/chrome-worker.js', 'shared/build.js'].includes(rel);
 
-/** The lines of popup.html that are the account's half (the Impeccable Pro button and its scripts), which the store build drops with the account's files. */
-const POPUP_ACCOUNT = /  <footer class="pro">[^\n]*\n([\s\S]*?)  <script src="words\.js"><\/script>\n  <script src="account\.js"><\/script>\n/;
 /** The lines the store build changes so that what it switches off is never loaded. */
 const STORE_LINES = {
-  'popup/popup.html': [POPUP_ACCOUNT, '$1'],
   'shared/build.js': ['export const BUILD = { account: true, devHosts: true };', 'export const BUILD = { account: false, devHosts: false };'],
   'background/chrome-worker.js': ["import '../account/worker.js';\n", ''],
 };
@@ -98,9 +95,7 @@ export function moduleReferences(dir, entry) {
 
 /** Copies extension/ (`from`) to `to` as the Firefox build has it: the detector's files, with the Firefox manifest. */
 export function stageFirefox(from, to) {
-  const manifest = stage(from, to, isFirefoxFile, firefoxManifest(sourceManifest(from)));
-  rewrite(path.join(to, 'popup/popup.html'), [POPUP_ACCOUNT, '$1']);
-  return manifest;
+  return stage(from, to, isFirefoxFile, firefoxManifest(sourceManifest(from)));
 }
 
 /**
@@ -116,6 +111,8 @@ export function firefoxManifest(source) {
     // releases. The shared worker hosts the rule core in a background-page
     // iframe when Chrome's offscreen API is unavailable.
     background: { scripts: [DETECTOR_WORKER] },
+    // Firefox has no side panel, which is the whole extension in Chrome: the detector keeps its popup here.
+    action: { ...rest.action, default_popup: 'popup/popup.html' },
     permissions: rest.permissions.filter((permission) => ![...WALK_PERMISSIONS, 'offscreen', ...ACCOUNT_PERMISSIONS, ...AGENT_PERMISSIONS].includes(permission)),
     // Required by AMO for signing/distribution. Ignored by Chrome.
     browser_specific_settings: {
