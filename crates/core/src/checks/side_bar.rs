@@ -89,11 +89,17 @@ pub fn inline_style_squares_box(style: Option<&str>) -> bool {
         .collect();
     // Normal declarations first, then `!important` ones, each in source order.
     for important in [false, true] {
-        for (prop, value) in decls.iter().filter(|(_, v)| v.to_ascii_lowercase().contains("!important") == important) {
+        for (prop, value) in decls.iter().filter(|(_, v)| is_important_value(v) == important) {
             corners.apply(prop, value, NOMINAL_INLINE_WIDTH_PX);
         }
     }
     corners.squares_all()
+}
+
+/// Whether a declaration value carries `!important`, with any white space
+/// after the `!`.
+fn is_important_value(value: &str) -> bool {
+    value.rsplit_once('!').is_some_and(|(_, rest)| js::trim(rest).eq_ignore_ascii_case("important"))
 }
 
 /// The width a percentage radius in a `style` attribute is read against.
@@ -625,6 +631,8 @@ mod tests {
         assert!(!inline_style_squares_box(None));
         assert!(inline_style_squares_box(Some("border-radius:0!important;border-radius:8px")));
         assert!(!inline_style_squares_box(Some("border-radius:0;border-radius:8px")));
+        assert!(inline_style_squares_box(Some("border-radius:8px!important;border-radius:0! important")));
+        assert!(!inline_style_squares_box(Some("border-radius:0 ! IMPORTANT;border-radius:8px !important")));
     }
 
     #[test]
