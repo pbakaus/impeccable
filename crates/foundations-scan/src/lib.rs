@@ -2301,9 +2301,29 @@ fn evidence_text(file: &str, text: &str) -> String {
         ext(file),
         "yml" | "yaml" | "sh" | "py" | "rb" | "toml" | "php" | "ex" | "exs"
     );
+    // Indented templates comment a line and everything indented under it:
+    // Pug `//`, Haml `-#` and `/`, Slim `/`.
+    let indented = |l: &str| match ext(file) {
+        "pug" => l.starts_with("//"),
+        "haml" => l.starts_with("-#") || l.starts_with('/'),
+        "slim" => l.starts_with('/'),
+        _ => false,
+    };
+    let mut under: Option<usize> = None;
     text.lines()
-        .filter(|l| {
-            let l = l.trim_start();
+        .filter(|line| {
+            let l = line.trim_start();
+            let depth = line.len() - l.len();
+            if let Some(d) = under {
+                if l.is_empty() || depth > d {
+                    return false;
+                }
+                under = None;
+            }
+            if indented(l) {
+                under = Some(depth);
+                return false;
+            }
             !(slash && l.starts_with("//") || hash && l.starts_with('#'))
         })
         .collect::<Vec<_>>()
