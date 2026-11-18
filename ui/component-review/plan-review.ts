@@ -10,11 +10,12 @@ import {
 } from './plan-model';
 import type { Box } from './model';
 import { planStyles } from './plan-styles';
+import { assertDisplaySafePacket, displayDimension } from './display-safety';
 import { ksArrow } from './kit';
 import { initInstrumentStrips } from './instrument-strip';
 
-const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-const pct = (n: number) => `${n * 100}%`;
+const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+const pct = (n: number) => `${(Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0) * 100}%`;
 // Only trusted adapter URLs may enter images. Never accept javascript: or executable data URLs.
 const url = (s: string) => {
   const parsed = new URL(s, location.href);
@@ -22,6 +23,7 @@ const url = (s: string) => {
   return esc(parsed.href);
 };
 const boxStyle = (b: Box) => `left:${pct(b.x)};top:${pct(b.y)};width:${pct(b.w)};height:${pct(b.h)}`;
+const displayRound = (value: unknown) => esc(value);
 const svg = (d: string) => `<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">${d}</svg>`;
 const ICON = {
   check: svg('<path d="m3 8.5 3 3 7-7"/>'),
@@ -50,6 +52,12 @@ type MountOptions = {
 };
 
 export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: MountOptions) {
+  assertDisplaySafePacket(packet);
+  const compWidth = displayDimension(packet.comp.width);
+  const compHeight = displayDimension(packet.comp.height);
+  if (options.history) {
+    assertDisplaySafePacket(options.history.packet);
+  }
   const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   let draft: PlanDraft = { ...newPlanDraft(packet), ...structuredClone(options.initialDraft ?? {}) } as PlanDraft;
   draft.reclassify ??= [];
@@ -85,7 +93,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   const item = (id?: string) => packet.components.find(c => c.id === id);
   const region = (id?: string) => regions.find(r => r.id === id);
   const locked = () => submitted || sending || !!options.status;
-  const boxRatio = (b: Box) => (b.w * packet.comp.width) / (b.h * packet.comp.height);
+  const boxRatio = (b: Box) => (b.w * compWidth) / (b.h * compHeight);
 
   // Comp pixels, once, for the backdrop colour under transparent assets.
   const compImage = new Image();
@@ -252,7 +260,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const lights = progressLights(packet, draft, view === 'stage' ? current : undefined);
     const doneCount = lights.filter(l => l.state !== 'pending').length;
     return `<header class="bar">
-      <div class="bar-title"><span class="bar-name">${esc(packet.title)}</span><span class="bar-round">Round ${packet.round}</span></div>
+      <div class="bar-title"><span class="bar-name">${esc(packet.title)}</span><span class="bar-round">Round ${displayRound(packet.round)}</span></div>
       ${queue.length ? `<nav class="lights ${lights.length > 20 ? 'dense' : ''}" aria-label="Progress, ${doneCount} of ${lights.length} decided">${lights.map((l, i) => `<button type="button" class="light ${l.state === 'pending' ? '' : 'decided'} ${l.current ? 'current' : ''}" data-go="${esc(l.id)}" aria-label="${esc(`${i + 1}. ${l.name}: ${stateWord(item(l.id)!)}`)}" ${l.current ? 'aria-current="step"' : ''}><span class="tip">${esc(l.name)}${l.state === 'pending' ? '' : `<span class="tip-state"> · ${esc(stateWord(item(l.id)!))}</span>`}</span></button>`).join('')}<button type="button" class="lights-summary ${view === 'summary' ? 'current' : ''}" id="to-summary">Summary</button></nav>` : ''}
       ${view === 'stage' ? `<button type="button" class="bar-locator" id="open-map-bar" aria-label="Open the comp">${compLayer({ x: 0, y: 0, w: 1, h: 1 })}</button>` : ''}
     </header>`;
@@ -267,7 +275,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     const round2 = !!history && packet.round > 1;
     return `<div class="intro ${enter ? `enter-${enter}` : ''}">
       <div class="intro-copy">
-        <p class="eyebrow">${round2 ? `Round ${packet.round}` : 'Before any page code'}</p>
+        <p class="eyebrow">${round2 ? `Round ${displayRound(packet.round)}` : 'Before any page code'}</p>
         <h1>${round2 ? 'Check what changed.' : 'Review the plan and assets.'}</h1>
         <p class="lead">${esc(introLine(packet, draft, history))}</p>
         <dl class="kinds-explained">
@@ -276,14 +284,14 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
         </dl>
         <button type="button" class="ks-button ks-button-primary" id="start">Start${kbd('↵')}${ksArrow}</button>
       </div>
-      <figure class="intro-comp"><div class="map" style="aspect-ratio:${packet.comp.width}/${packet.comp.height}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: false, interactive: false })}</div></figure>
+      <figure class="intro-comp"><div class="map" style="aspect-ratio:${compWidth}/${compHeight}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: false, interactive: false })}</div></figure>
     </div>`;
   }
 
   function stageFigures(c: PlanItem) {
     const prior = priorRound(c.id, history);
     const ratio = boxRatio(c.box);
-    const natural = `${c.box.w * packet.comp.width}x${c.box.h * packet.comp.height}`;
+    const natural = `${c.box.w * compWidth}x${c.box.h * compHeight}`;
     if (c.role === 'asset' && c.preview.url) {
       const src = c.preview.url;
       const clear = isTransparent(c, src);
@@ -292,7 +300,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       const gen = `<figure class="fig" data-role="generated"><figcaption><span class="eyebrow">${flipped ? 'In the comp' : prior?.beforeUrl ? 'After' : 'Generated'}</span>${switchMarkup}</figcaption><div class="frame ${flipped ? 'flipped' : ''}">${genLayer(c, src)}${compLayer(c.box, 'flip')}</div></figure>`;
       const comp = `<figure class="fig"><figcaption><span class="eyebrow">In the comp</span></figcaption><div class="frame">${compLayer(c.box)}</div></figure>`;
       if (prior?.beforeUrl) {
-        const before = `<figure class="fig"><figcaption><span class="eyebrow">Before · round ${prior.round}</span></figcaption><div class="frame">${genLayer(c, prior.beforeUrl, 'gen before')}</div></figure>`;
+        const before = `<figure class="fig"><figcaption><span class="eyebrow">Before · round ${displayRound(prior.round)}</span></figcaption><div class="frame">${genLayer(c, prior.beforeUrl, 'gen before')}</div></figure>`;
         return `<div class="figures" data-ratios="${ratio},${ratio},${ratio}" data-natural="${natural}">${before}${gen}${comp}</div>`;
       }
       return `<div class="figures" data-ratios="${ratio},${ratio}" data-natural="${natural}">${comp}${gen}</div>`;
@@ -340,8 +348,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       <div class="stage-head">
         <p class="eyebrow">${c.role === 'asset' ? `Generated ${esc(KIND_WORD[c.kind] ?? c.kind)}` : `Drawn in code · ${esc(c.kind)}`} · ${index} of ${queue.length}</p>
         <h1>${esc(c.name)}</h1>
-        ${prior?.splitFrom ? `<blockquote class="asked"><span class="eyebrow">A layer of ${esc(prior.splitFrom)} · you asked to split it in round ${prior.round}</span>${prior.words ? `<p>“${esc(prior.words)}”</p>` : ''}</blockquote>`
-          : prior?.words ? `<blockquote class="asked"><span class="eyebrow">You asked in round ${prior.round}</span><p>“${esc(prior.words)}”</p></blockquote>` : ''}
+        ${prior?.splitFrom ? `<blockquote class="asked"><span class="eyebrow">A layer of ${esc(prior.splitFrom)} · you asked to split it in round ${displayRound(prior.round)}</span>${prior.words ? `<p>“${esc(prior.words)}”</p>` : ''}</blockquote>`
+          : prior?.words ? `<blockquote class="asked"><span class="eyebrow">You asked in round ${displayRound(prior.round)}</span><p>“${esc(prior.words)}”</p></blockquote>` : ''}
       </div>
       ${stageFigures(c)}
       <div class="stage-foot">
@@ -349,7 +357,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
         ${flags.map(f => `<p class="flag">${esc(f)}</p>`).join('')}
         ${toast ? undoLine() : c.role === 'asset' && !hintSeen && !submitted ? `<p class="hint">Hold ${kbd('Space')} to flip to the comp. Hover to magnify both.</p>` : ''}
       </div>
-      <button type="button" class="locator" id="open-map" aria-label="Open the comp"><span class="locator-map" style="aspect-ratio:${packet.comp.width}/${packet.comp.height}"><img src="${url(packet.comp.url)}" alt="" draggable="false"><span class="locator-box" style="${boxStyle(c.box)}"></span></span><span class="locator-label">Comp ${kbd('C')}</span></button>
+      <button type="button" class="locator" id="open-map" aria-label="Open the comp"><span class="locator-map" style="aspect-ratio:${compWidth}/${compHeight}"><img src="${url(packet.comp.url)}" alt="" draggable="false"><span class="locator-box" style="${boxStyle(c.box)}"></span></span><span class="locator-label">Comp ${kbd('C')}</span></button>
     </div>
     ${decisionBar(c)}`;
   }
@@ -393,7 +401,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
         pic = `<span class="card-pic" style="aspect-ratio:${r};width:min(100%, ${Math.round(118 * r)}px)">${genLayer(c, c.preview.url)}</span>`;
       } else {
         // A plan item's thumb is the same tight crop as its stage, sized to the card.
-        const fit = planView(c.box, packet.comp.width, packet.comp.height, 220, 118);
+        const fit = planView(c.box, compWidth, compHeight, 220, 118);
         const v = fit.view;
         pic = `<span class="card-pic" style="width:${Math.floor(fit.width)}px;height:${Math.floor(fit.height)}px"><span class="pic crop"><img src="${url(packet.comp.url)}" alt="" draggable="false" style="width:${100 / v.w}%;left:${-100 * v.x / v.w}%;top:${-100 * v.y / v.h}%"></span><span class="focus-box" style="${boxStyle({ x: (c.box.x - v.x) / v.w, y: (c.box.y - v.y) / v.h, w: c.box.w / v.w, h: c.box.h / v.h })}"></span></span>`;
       }
@@ -401,7 +409,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
     };
     return `<div class="summary ${enter ? `enter-${enter}` : ''}">
       <div class="summary-head">
-        <p class="eyebrow">${submitted ? `Round ${packet.round} · sent` : 'Summary'}</p>
+        <p class="eyebrow">${submitted ? `Round ${displayRound(packet.round)} · sent` : 'Summary'}</p>
         <h1>${submitted ? (s.hasChanges ? 'Notes sent.' : 'Plan and assets approved.') : s.pending ? 'Almost there.' : 'Your decisions.'}</h1>
         ${submitted ? `<p class="lead">${s.hasChanges ? 'The agent applies them and opens a new round for anything that changed.' : 'The agent continues to the first viewport.'}${justSent ? '' : ' This round is read-only.'}</p>` : ''}
       </div>
@@ -409,7 +417,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       <section class="coverage" aria-label="Coverage">
         <h2>Anything on the comp we didn't cover?</h2>
         <div class="coverage-grid">
-          <div class="map-space"><div class="map ${marking ? 'marking' : ''} ${panel ? 'has-selection' : ''}" id="summary-map" style="aspect-ratio:${packet.comp.width}/${packet.comp.height}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: true, interactive: true })}<div class="draw-box" hidden></div></div></div>
+          <div class="map-space"><div class="map ${marking ? 'marking' : ''} ${panel ? 'has-selection' : ''}" id="summary-map" style="aspect-ratio:${compWidth}/${compHeight}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: true, interactive: true })}<div class="draw-box" hidden></div></div></div>
           ${sidePanel()}
         </div>
       </section>
@@ -420,7 +428,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
   function mapOverlay() {
     if (!mapOpen) return '';
     return `<div class="overlay" role="dialog" aria-modal="true" aria-label="The comp"><div class="overlay-head"><span class="eyebrow">The comp · click a region to go to it</span><button type="button" class="ks-button ks-button-ghost" id="close-map">Close${kbd('Esc')}</button></div>
-      <div class="overlay-body"><div class="map has-selection" id="overlay-map" style="aspect-ratio:${packet.comp.width}/${packet.comp.height}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: true, interactive: true })}</div></div></div>`;
+      <div class="overlay-body"><div class="map has-selection" id="overlay-map" style="aspect-ratio:${compWidth}/${compHeight}"><img class="comp" src="${url(packet.comp.url)}" alt="The approved comp" draggable="false">${regionsOverlay({ code: true, interactive: true })}</div></div></div>`;
   }
 
   function render() {
@@ -461,7 +469,7 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       const box = JSON.parse(single.dataset.box!) as Box;
       const stageEl = single.closest<HTMLElement>('.stage')!;
       const spare = stageEl.clientHeight - 36 - 28 - (stageEl.querySelector<HTMLElement>('.stage-head')?.offsetHeight ?? 0) - (stageEl.querySelector<HTMLElement>('.stage-foot')?.offsetHeight ?? 0) - 30 - 80;
-      const fit = planView(box, packet.comp.width, packet.comp.height, Math.min(single.clientWidth, 1120), narrow ? 320 : Math.max(80, spare));
+      const fit = planView(box, compWidth, compHeight, Math.min(single.clientWidth, 1120), narrow ? 320 : Math.max(80, spare));
       const frame = single.querySelector<HTMLElement>('.frame')!, img = frame.querySelector<HTMLElement>('img')!, focus = frame.querySelector<HTMLElement>('.focus-box')!;
       const v = fit.view;
       frame.style.width = `${Math.floor(fit.width)}px`; frame.style.height = `${Math.floor(fit.height)}px`;
@@ -474,8 +482,8 @@ export function mountPlanReview(host: HTMLElement, packet: PlanPacket, options: 
       const cs = getComputedStyle(space);
       const w = space.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), h = space.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
       if (!w || !h) continue;
-      const scale = Math.min(w / packet.comp.width, h / packet.comp.height);
-      map.style.width = `${packet.comp.width * scale}px`; map.style.height = `${packet.comp.height * scale}px`;
+      const scale = Math.min(w / compWidth, h / compHeight);
+      map.style.width = `${compWidth * scale}px`; map.style.height = `${compHeight * scale}px`;
     }
   }
 

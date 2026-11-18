@@ -5,10 +5,16 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
+  applySteerEdits,
+  buildSteerContext,
   insertTargetFromEvent,
   createFakeAgent,
+  loadManualEditEventBatch,
 } from './agent.mjs';
 
 describe('insertTargetFromEvent', () => {
@@ -54,5 +60,58 @@ describe('createFakeAgent — insert mode', () => {
     assert.doesNotMatch(output.variants[0].innerHtml, /<h1\b/);
     assert.match(output.scopedCss, /@scope \(\[data-impeccable-variant="1"\]\)/);
     assert.match(output.scopedCss, /\.inserted-copy/);
+  });
+});
+
+describe('fixture path containment', () => {
+  it('rejects symlink escapes when reading or editing source files', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'impeccable-path-test-'));
+    const project = path.join(workspace, 'project');
+    const outsideFile = path.join(workspace, 'outside.jsx');
+    const linkedFile = path.join(project, 'src', 'linked.jsx');
+    const outsideContent = '<h1 className="hero-title">Outside</h1>';
+
+    try {
+      await fs.mkdir(path.dirname(linkedFile), { recursive: true });
+      await fs.writeFile(outsideFile, outsideContent);
+      await fs.symlink(outsideFile, linkedFile);
+
+      assert.throws(
+        () => buildSteerContext({
+          tmp: project,
+          event: { pageUrl: 'http://localhost/' },
+          wrapTarget: { tag: 'h1', classes: 'hero-title' },
+          sourceFile: 'src/linked.jsx',
+        }),
+        /outside fixture project/,
+      );
+      await assert.rejects(
+        applySteerEdits(project, {
+          file: 'src/linked.jsx',
+          edits: [{ find: 'Outside', replace: 'Changed' }],
+        }),
+        /outside fixture project/,
+      );
+      assert.equal(await fs.readFile(outsideFile, 'utf-8'), outsideContent);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects manual-edit evidence that resolves outside the fixture project', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'impeccable-evidence-path-test-'));
+    const project = path.join(workspace, 'project');
+    const outsideFile = path.join(workspace, 'evidence.json');
+    try {
+      await fs.mkdir(project, { recursive: true });
+      await fs.writeFile(outsideFile, JSON.stringify({ entries: [] }));
+      await fs.symlink(outsideFile, path.join(project, 'evidence.json'));
+      await assert.rejects(
+        loadManualEditEventBatch({ evidencePath: 'evidence.json' }, { tmp: project }),
+        /outside fixture project/,
+      );
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
   });
 });

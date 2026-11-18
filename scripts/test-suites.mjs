@@ -47,6 +47,7 @@ export const SUITES = {
         files: [
           'tests/build.test.js',
           'tests/component-review-bundle.test.js',
+          'ui/component-review/display-safety.test.ts',
           'ui/component-review/model.test.ts',
           'ui/component-review/plan-model.test.ts',
           'ui/component-review/viewport.test.ts',

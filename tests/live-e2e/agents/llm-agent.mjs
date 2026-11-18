@@ -29,7 +29,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Anthropic from '@anthropic-ai/sdk';
-import { applyManualEditBatchToSource, loadManualEditEventBatch } from '../agent.mjs';
+import { applyManualEditBatchToSource, loadManualEditEventBatch, safeProjectPath } from '../agent.mjs';
 import { applySteerEdits } from '../agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -309,7 +309,9 @@ export async function createLlmAgent(opts = {}) {
   if (!config.apiKey) return null;
 
   const { apiKey, baseURL, model, provider } = config;
-  const log = opts.log || (() => {});
+  const writeLog = opts.log || (() => {});
+  const log = (message) => writeLog(String(message).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (char) =>
+    `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`));
 
   const liveMd = opts.includeLiveSpec === false ? null : await fs.readFile(LIVE_MD_PATH, 'utf-8');
   const client = provider === 'openai'
@@ -694,7 +696,7 @@ async function loadManualEditSourceContext(batch, { tmp } = {}) {
     if (seen.has(key)) continue;
     seen.add(key);
     try {
-      const body = await fs.readFile(path.join(tmp, target.file), 'utf-8');
+      const body = await fs.readFile(safeProjectPath(tmp, target.file), 'utf-8');
       const text = body.split('\n')[target.line - 1] || '';
       out.push({ ...target, text });
     } catch {

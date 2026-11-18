@@ -63,7 +63,9 @@ export function currentDecision(item: PlanItem, draft: PlanDraft): PlanDecision 
 
 export function itemState(item: PlanItem, draft: PlanDraft): ItemState {
   const d = currentDecision(item, draft);
-  return d ? d.action === 'approve' ? 'approved' : d.action : 'pending';
+  if (!d) return 'pending';
+  if (d.action === 'approve') return 'approved';
+  return d.action === 'revise' || d.action === 'reclassify' ? d.action : 'pending';
 }
 
 export function regionReclassify(draft: PlanDraft, id: string) {

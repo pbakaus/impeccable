@@ -64,6 +64,11 @@ describe('plan and asset review model', () => {
     expect(() => decide(draft, figure, 'reclassify')).toThrow();
     expect(itemState(figure, decide(draft, figure, 'revise', { feedback: 'Warmer' }))).toBe('revise');
   });
+  test('unexpected persisted decision actions cannot become markup classes', () => {
+    const draft = decide(newPlanDraft(packet), figure, 'revise', { feedback: 'Warmer' });
+    Object.assign(draft.decisions.figure!, { action: '<img src=x onerror=alert(1)>' });
+    expect(itemState(figure, draft)).toBe('pending');
+  });
   test('missing marks need a name and a valid box; stale drafts cannot submit', () => {
     const draft = newPlanDraft(packet);
     draft.missing.push({ id: 'm1', name: 'Boat', box: { x: .1, y: .1, w: .1, h: .1 }, feedback: '' });
