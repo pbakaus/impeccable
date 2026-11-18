@@ -93,8 +93,8 @@ const OWN_PATHS = ['/app/oauth/authorize'];
  * walk and never production, the API or the admin host. Its pages that sign in, consent, mint or revoke a credential,
  * hold the account and its billing, or answer Needs you stay refused there, for the top document and for every write.
  */
-const STAGING_APP = 'app.staging.impeccable.style';
-const STAGING_REFUSED = [
+export const STAGING_APP = 'app.staging.impeccable.style';
+export const STAGING_REFUSED = [
   // The host's own sign-in, billing, admin and machine doors.
   /^\/(login|log-in|sign-in|sign-up|join|billing|pro|admin|ops|oauth|cli|mcp|api|extension|mac|webhooks|\.well-known)(\/|$)/,
   // Signing in and out, consent, the CLI's authorize and token, GitHub's setup return, Discord links.
@@ -115,7 +115,7 @@ const STAGING_REFUSED = [
  * a repository's preview credentials and test accounts, take a repository out or back in, or speak for the person
  * (notifications, support, Home's own actions).
  */
-const STAGING_READ_ONLY = [
+export const STAGING_READ_ONLY = [
   /^\/app\/[^/]+\/(apps|repos)(\/|$)/,
   /^\/app\/-\/(notifications|support|me)(\/|$)/,
   /^\/app\/[^/]+\/api\/repos\/[^/]+\/(preview-overrides|key-check)(\/|$)/,

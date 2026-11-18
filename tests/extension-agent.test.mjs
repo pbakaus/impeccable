@@ -400,7 +400,18 @@ describe('agent session', () => {
     assert.deepEqual([answered.account, answered.runs, answered.lock], ['Fetch.failRequest', 'Fetch.continueRequest', 'Fetch.failRequest']);
     const refused = await call('browser_act', { op: 'goto', url: 'https://app.staging.impeccable.style/app/-/account' });
     assert.equal(refused.isError, true);
+    // What the Fetch hold doesn't see (a frame in its own process, a worker, a popup) meets Chrome's own rules for the
+    // same pages while the session lasts: the refused ones for every method, the look-only ones for writes.
+    const staging = () => chrome.declarativeNetRequest.rules.filter((r) => r.id >= 20550);
+    await until(() => staging().length > 0, 'the staging rules');
+    // A host written with its trailing dot is the same host: the rules hold it too.
+    assert.ok(staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test('https://app.staging.impeccable.style./app/-/account')));
+    const caught = (url, method) => staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test(url) && (!r.condition.requestMethods || r.condition.requestMethods.includes(method)));
+    assert.deepEqual([caught('https://app.staging.impeccable.style/app/acme/api/setup-token', 'get'), caught('https://app.staging.impeccable.style/app/acme/runs', 'post'),
+      caught('https://app.staging.impeccable.style/app/acme/apps/web?/lock', 'post'), caught('https://app.staging.impeccable.style/app/acme/apps/web', 'get'),
+      staging().some((r) => r.condition.tabIds && r.condition.resourceTypes.includes('main_frame'))], [true, false, true, false, false]);
     await call('browser_end');
+    await until(() => staging().length === 0, 'the staging rules to go');
     toExtension({ type: 'agent-gone' });
   });
 
