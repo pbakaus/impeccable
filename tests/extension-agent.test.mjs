@@ -83,6 +83,8 @@ describe('agent session', () => {
   globalThis.createImageBitmap = async () => ({ close() {} });
   globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
   const tabs = { created: 0, removed: [] };
+  /** What Chrome shows outside the panel: the toolbar badge and the notices. */
+  const shown = { badge: '', notices: new Map() };
   const panel = { windows: [], opened: [], closed: [] };
   globalThis.chrome = {
     runtime: {
@@ -102,7 +104,8 @@ describe('agent session', () => {
       },
     },
     alarms: { create() {}, onAlarm: event('alarm') },
-    action: { async setPopup() {}, async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    action: { async setPopup() {}, async setBadgeText({ text }) { shown.badge = text; }, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    notifications: { async create(id, options) { shown.notices.set(id, options); }, async clear(id) { shown.notices.delete(id); }, onClicked: event('notice-clicked') },
     debugger: {
       onEvent: event('debugger-event'), onDetach: event('detach'), async attach() {}, async detach() {},
       async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(params); },
@@ -159,10 +162,13 @@ describe('agent session', () => {
     const asked = call('browser_open', { url: 'https://linear.app/acme' });
     await until(() => current().ask?.kind === 'site', 'the question');
     assert.deepEqual([current().state, current().ask.what, current().who.name, tabs.created], ['waiting', 'linear.app', 'Claude Code', 0]);
+    // Seen while the person is elsewhere: a notice, and a mark on the icon, until it's answered.
+    assert.deepEqual([[...shown.notices.values()].map((n) => n.title), shown.badge], [['Let Claude Code use linear.app?'], '?']);
     // A Yes isn't one of a site question's answers: nothing opens on it.
     assert.deepEqual(await press('yes'), { ok: false });
     assert.deepEqual(await press('no'), { ok: true });
     const result = await asked;
+    assert.deepEqual([shown.notices.size, shown.badge], [0, '']);
     assert.equal(result.isError, true);
     assert.match(said(result), /didn’t allow linear\.app/);
     assert.equal(tabs.created, 0);
