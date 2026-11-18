@@ -364,10 +364,13 @@ if (component === 'skill' && !dryRun) {
   try {
     const res = await fetch('https://impeccable.style/api/version');
     const served = (await res.json()).skills;
+    const displayedServed = typeof served === 'string'
+      ? served.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '?')
+      : 'unknown';
     if (served === version) {
       console.log(`✓ impeccable.style serves ${served}`);
     } else {
-      console.log(`\n⚠ impeccable.style still serves ${served}, not ${version}.`);
+      console.log(`\n⚠ impeccable.style still serves ${displayedServed}, not ${version}.`);
       console.log('  npx impeccable install/update serve the OLD version until the site\'s signed pointer moves.');
       console.log(`  In impeccable-site, on a branch from main: bun run skill:publish-pointer ${version}`);
       console.log('  Commit published-skill.json and merge it to main; the main deploy then serves the new version.');

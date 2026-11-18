@@ -4393,8 +4393,13 @@
       const data = await res.json();
       updatePendingCounter(data.count || 0);
     } catch (err) {
-      console.warn('[impeccable] failed to fetch pending count:', err);
+      console.warn('[impeccable] failed to fetch pending count:', safeConsoleText(err));
     }
+  }
+
+  function safeConsoleText(value) {
+    const text = value instanceof Error ? value.message : String(value);
+    return text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ');
   }
 
   async function onPendingPillClick() {
@@ -4422,19 +4427,19 @@
       const remaining = remainingManualEditCount(result);
       updatePendingCounter(remaining);
       if (result.failed && result.failed.length > 0) {
-        console.warn('[impeccable] some copy edits failed:', result.failed);
+        console.warn('[impeccable] some copy edits failed:', result.failed.length);
         showToast('Applied ' + (result.applied?.length || 0) + ', ' + result.failed.length + ' failed - see console', 5000);
       } else {
         const n = Array.isArray(result.applied) ? result.applied.length : (result.cleared || 0);
         if (n > 0) {
           showToast('Applied ' + n + ' edit' + (n === 1 ? '' : 's'), 2500);
         } else {
-          console.warn('[impeccable] apply returned no verified edits:', result);
+          console.warn('[impeccable] apply returned no verified edits');
           showToast('No edits applied - see console', 4000);
         }
       }
     } catch (err) {
-      console.error('[impeccable] commit failed:', err);
+      console.error('[impeccable] commit failed:', safeConsoleText(err));
       showToast('Apply failed - see console', 4000);
     } finally {
       if (waitForSseCompletion) return;
@@ -13376,7 +13381,11 @@ void main() {
       if (ramp.length) {
         const r = document.createElement('div');
         r.className = 'c-ramp';
-        r.innerHTML = ramp.map((v) => `<span style="background:${cssSafe(v)}"></span>`).join('');
+        for (const value of ramp) {
+          const step = document.createElement('span');
+          step.style.backgroundColor = cssSafe(value);
+          r.appendChild(step);
+        }
         tile.appendChild(r);
       }
 
@@ -13540,10 +13549,12 @@ void main() {
         const host = document.createElement('div');
         const sub = host.attachShadow({ mode: 'open' });
         const style = document.createElement('style');
-        style.textContent = c.css || '';
+        style.textContent = sanitizeComponentCss(c.css || '');
         sub.appendChild(style);
         const container = document.createElement('div');
-        container.innerHTML = c.html || '';
+        const template = document.createElement('template');
+        template.innerHTML = String(c.html || '');
+        appendSanitizedComponentNodes(template.content, container);
         sub.appendChild(container);
         stage.appendChild(host);
 
@@ -13569,6 +13580,147 @@ void main() {
       }
       body.appendChild(tile);
     }
+  }
+
+  function appendSanitizedComponentNodes(source, target) {
+    const htmlTags = new Set([
+      'a', 'abbr', 'b', 'blockquote', 'br', 'button', 'code', 'dd', 'div', 'dl', 'dt', 'em',
+      'fieldset', 'figcaption', 'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i',
+      'img', 'input', 'label', 'legend', 'li', 'ol', 'option', 'p', 'pre', 's', 'select',
+      'small', 'span', 'strong', 'sub', 'sup', 'textarea', 'u', 'ul',
+    ]);
+    const svgTags = new Set([
+      'circle', 'clippath', 'defs', 'ellipse', 'g', 'line', 'lineargradient', 'mask', 'path',
+      'polygon', 'polyline', 'radialgradient', 'rect', 'stop', 'svg',
+    ]);
+    const svgAttributes = new Set([
+      'cx', 'cy', 'd', 'fill', 'fill-opacity', 'fill-rule', 'gradienttransform', 'gradientunits',
+      'offset', 'opacity', 'points', 'preserveaspectratio', 'r', 'rx', 'ry', 'stop-color',
+      'stop-opacity', 'stroke', 'stroke-dasharray', 'stroke-dashoffset', 'stroke-linecap',
+      'stroke-linejoin', 'stroke-opacity', 'stroke-width', 'transform', 'viewbox', 'x', 'x1',
+      'x2', 'y', 'y1', 'y2',
+    ]);
+    const htmlAttributes = new Set([
+      'alt', 'checked', 'class', 'cols', 'disabled', 'for', 'height', 'id', 'max', 'maxlength',
+      'min', 'placeholder', 'readonly', 'role', 'rows', 'selected', 'step', 'tabindex',
+      'title', 'value', 'width',
+    ]);
+    const removedWithContents = new Set([
+      'audio', 'embed', 'foreignobject', 'iframe', 'object', 'script', 'style', 'template', 'video',
+    ]);
+    const svgAttributeNames = {
+      gradienttransform: 'gradientTransform',
+      gradientunits: 'gradientUnits',
+      preserveaspectratio: 'preserveAspectRatio',
+      viewbox: 'viewBox',
+    };
+    const svgTagNames = {
+      clippath: 'clipPath',
+      lineargradient: 'linearGradient',
+      radialgradient: 'radialGradient',
+    };
+    const safeImageSource = /^data:image\/(?:gif|jpe?g|png|webp);base64,[a-z0-9+/]+=*$/i;
+
+    const copyChildren = (parent, destination) => {
+      for (const node of Array.from(parent.childNodes || [])) {
+        if (node.nodeType === 3) {
+          destination.appendChild(document.createTextNode(node.nodeValue || ''));
+          continue;
+        }
+        if (node.nodeType !== 1) continue;
+
+        const tag = node.localName.toLowerCase();
+        if (removedWithContents.has(tag)) continue;
+        const inSvg = node.namespaceURI === 'http://www.w3.org/2000/svg' || tag === 'svg';
+        if (!(inSvg ? svgTags : htmlTags).has(tag)) {
+          copyChildren(node, destination);
+          continue;
+        }
+
+        const element = inSvg
+          ? document.createElementNS('http://www.w3.org/2000/svg', svgTagNames[tag] || tag)
+          : document.createElement(tag);
+        for (const attr of Array.from(node.attributes || [])) {
+          const name = attr.name.toLowerCase();
+          const value = String(attr.value);
+          if (name.startsWith('on') || name === 'style') continue;
+          if (/^aria-[a-z-]+$/.test(name)) {
+            element.setAttribute(name, value);
+            continue;
+          }
+          if (inSvg) {
+            if (name === 'href') {
+              if (/^#[\w:.-]+$/.test(value)) element.setAttribute('href', value);
+              continue;
+            }
+            if (!svgAttributes.has(name)) continue;
+            if (value.includes('\\') || value.includes('/*')) continue;
+            if ((name === 'fill' || name === 'stroke') && /var\s*\(/i.test(value)) continue;
+            if (/url\s*\(/i.test(value) && !/^url\(\s*#[\w:.-]+\s*\)$/i.test(value)) continue;
+            element.setAttribute(svgAttributeNames[name] || name, value);
+            continue;
+          }
+          if (tag === 'button' && name === 'type') {
+            element.setAttribute('type', 'button');
+            continue;
+          }
+          if (tag === 'input' && name === 'type') {
+            element.setAttribute('type', /^(?:text|search|email|number|tel|url|checkbox|radio)$/.test(value.toLowerCase()) ? value.toLowerCase() : 'text');
+            continue;
+          }
+          if (tag === 'img' && name === 'src' && safeImageSource.test(value)) {
+            element.setAttribute('src', value);
+            continue;
+          }
+          if (htmlAttributes.has(name)) element.setAttribute(name, value);
+        }
+        if (tag === 'button') element.setAttribute('type', 'button');
+        destination.appendChild(element);
+        copyChildren(node, element);
+      }
+    };
+    copyChildren(source, target);
+  }
+
+  function sanitizeComponentCss(css) {
+    if (typeof CSSStyleSheet !== 'function') {
+      console.warn('[impeccable] Component CSS was omitted because safe CSS parsing is unavailable.');
+      return '';
+    }
+    let rules;
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(String(css || ''));
+      rules = Array.from(sheet.cssRules);
+    } catch {
+      console.warn('[impeccable] Component CSS could not be safely parsed and was omitted.');
+      return '';
+    }
+
+    const safeRules = [];
+    for (const rule of rules) {
+      if (rule.type !== 1 || !rule.style) continue;
+      const declarations = [];
+      for (let i = 0; i < rule.style.length; i++) {
+        const property = rule.style[i];
+        const value = rule.style.getPropertyValue(property).trim();
+        const resourceProperty = [
+          'background', 'background-image', 'border-image', 'content', 'cursor', 'filter', 'clip-path',
+          'list-style', 'list-style-image', 'offset-path', 'shape-outside', 'src',
+        ].includes(property)
+          || /^(?:-webkit-)?border-image(?:-|$)/i.test(property)
+          || /^(?:-webkit-)?mask(?:-|$)/i.test(property);
+        if (!value
+          || /(?:url|image-set|cross-fade|element|image)\s*\(/i.test(value)
+          || (resourceProperty && /var\s*\(/i.test(value))
+          || /(?:https?:|data:|\/\/)/i.test(value)
+          || value.includes('\\')) continue;
+        const priority = rule.style.getPropertyPriority(property);
+        declarations.push(`${property}: ${value}${priority ? ' !important' : ''}`);
+      }
+      if (declarations.length) safeRules.push(`${rule.selectorText} { ${declarations.join('; ')} }`);
+    }
+    return safeRules.join('\n');
   }
 
   function groupByKind(components) {
@@ -13687,9 +13839,9 @@ void main() {
   }
 
   function cssSafe(v) {
-    // Strip anything outside valid CSS value chars to prevent injection via
-    // .impeccable/design.json values rendered into inline style strings.
-    return String(v).replace(/[<>"'`\n]/g, '');
+    const style = document.createElement('span').style;
+    style.backgroundColor = String(v);
+    return style.backgroundColor;
   }
 
   function normalizeCssColor(v) {

@@ -36,8 +36,11 @@ test('Loop release recording and checking fail closed without real network', asy
     assert.equal(fs.readFileSync(file, 'utf8'), before);
     await assert.rejects(recordLoopChecksum('../bad', options), /semver/);
     await assert.rejects(checkLoopRelease({ ...options, base: 'http://example.com' }), /HTTPS/);
+    await assert.rejects(checkLoopRelease({ ...options, base: 'https://attacker.test/releases' }), /GitHub Releases/);
     globalThis.fetch = async () => new Response(null, { status: 302, headers: { location: 'http://evil.test/zip' } });
     await assert.rejects(checkLoopRelease(options), /HTTPS/);
+    globalThis.fetch = async () => new Response(null, { status: 302, headers: { location: 'https://attacker.test/zip' } });
+    await assert.rejects(checkLoopRelease(options), /GitHub Releases/);
     // GitHub's release assets redirect to a signed URL with a query; that is followed, and its bytes are checked.
     const signed = [];
     globalThis.fetch = async (url) => {

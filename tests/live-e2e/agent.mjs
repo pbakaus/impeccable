@@ -22,7 +22,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { readFileSync, readdirSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -443,7 +443,7 @@ async function readSvelteComponentManifest(context = {}) {
   const { tmp, wrapInfo } = context;
   if (!tmp || !wrapInfo?.file) return null;
   try {
-    return JSON.parse(await fs.readFile(path.join(tmp, wrapInfo.file), 'utf-8'));
+    return JSON.parse(await fs.readFile(safeProjectPath(tmp, wrapInfo.file), 'utf-8'));
   } catch {
     return null;
   }
@@ -476,13 +476,12 @@ export function restyleSvelteComponentSource(source, css) {
  * @param {(variantNum: number, shape: object) => string} opts.css
  */
 export async function republishSvelteComponentVariants({ tmp, manifestFile, live, css }) {
-  const manifestPath = path.join(tmp, manifestFile);
+  const manifestPath = safeProjectPath(tmp, manifestFile);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
-  const componentDir = path.join(tmp, manifest.componentDir);
   const shape = svelteSelectionShape(manifest.originalMarkup || '');
   const count = Number(manifest.arrivedVariants) || Number(manifest.count) || 1;
   for (let variantNum = 1; variantNum <= count; variantNum++) {
-    const file = path.join(componentDir, `v${variantNum}.svelte`);
+    const file = safeProjectPath(tmp, path.join(manifest.componentDir, `v${variantNum}.svelte`));
     let source;
     try { source = await fs.readFile(file, 'utf-8'); } catch { continue; }
     await fs.writeFile(file, restyleSvelteComponentSource(source, css(variantNum, shape)), 'utf-8');
@@ -604,7 +603,7 @@ async function readOriginalMarkupFromWrap(wrapInfo, tmp) {
   let text = wrapInfo.wrapperBlock;
   if (!text && tmp && wrapInfo.file) {
     try {
-      text = await fs.readFile(path.join(tmp, wrapInfo.file), 'utf-8');
+      text = await fs.readFile(safeProjectPath(tmp, wrapInfo.file), 'utf-8');
     } catch {
       return null;
     }
@@ -863,7 +862,10 @@ async function writeWatchedSourceFile(fullPath, body, { moduleUrl = null } = {})
   // the dev server can read mid-Apply and answer with a full reload. The temp
   // file sits beside the target so the rename stays on one filesystem, and
   // its `.tmp` extension is no source module any framework resolves.
-  const temporaryPath = `${fullPath}.impeccable-manual-apply-${process.pid}.tmp`;
+  const temporaryPath = safeProjectPathFromAny(
+    path.dirname(fullPath),
+    `${path.basename(fullPath)}.impeccable-manual-apply-${process.pid}.tmp`,
+  );
   try {
     await fs.writeFile(temporaryPath, body, 'utf-8');
     await fs.rename(temporaryPath, fullPath);
@@ -1043,25 +1045,58 @@ async function resolveManualEditEvidencePath(evidencePath, root) {
   const base = root ? path.resolve(root) : process.cwd();
   const full = path.isAbsolute(evidencePath) ? evidencePath : path.resolve(base, evidencePath);
   const [realBase, realFull] = await Promise.all([
-    fs.realpath(base).catch(() => base),
-    fs.realpath(full).catch(() => full),
+    fs.realpath(base),
+    fs.realpath(full),
   ]);
   const rel = path.relative(realBase, realFull);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('manual edit evidence path outside fixture project');
   }
-  return full;
+  return realFull;
 }
 
-function safeProjectPath(root, relativeFile) {
+export function safeProjectPath(root, relativeFile) {
   const normalized = normalizeRelativeSourceFile(relativeFile);
   if (!normalized) throw new Error('invalid source file path');
-  const full = path.resolve(root, normalized);
-  const rel = path.relative(path.resolve(root), full);
+  const base = path.resolve(root);
+  const full = path.resolve(base, normalized);
+  const rel = path.relative(base, full);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error('source file outside fixture project');
   }
-  return full;
+  const realBase = realpathSync(base);
+  let existing = full;
+  const suffix = [];
+  while (true) {
+    try {
+      lstatSync(existing);
+      break;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      const parent = path.dirname(existing);
+      if (parent === existing) throw new Error('source file outside fixture project');
+      suffix.unshift(path.basename(existing));
+      existing = parent;
+    }
+  }
+  const realExisting = realpathSync(existing);
+  const resolved = path.join(realExisting, ...suffix);
+  const realRel = path.relative(realBase, resolved);
+  if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
+    throw new Error('source file outside fixture project');
+  }
+  return resolved;
+}
+
+function safeProjectPathFromAny(root, file) {
+  if (!file || typeof file !== 'string') throw new Error('invalid source file path');
+  const base = path.resolve(root);
+  const absolute = path.isAbsolute(file) ? path.resolve(file) : path.resolve(base, file);
+  const relative = path.relative(base, absolute);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('source file outside fixture project');
+  }
+  return safeProjectPath(root, relative);
 }
 
 function normalizeRelativeSourceFile(file) {
@@ -1697,7 +1732,7 @@ function spliceVariantsIntoLines(lines, { sessionId, output, commentSyntax, file
  * present in source (agent's own wrap fallback, no preflight).
  */
 async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
-  const filePath = path.join(tmp, wrapInfo.file);
+  const filePath = safeProjectPath(tmp, wrapInfo.file);
   const src = await fs.readFile(filePath, 'utf-8');
   const lines = src.split('\n');
   const next = spliceVariantsIntoLines(lines, {
@@ -1718,7 +1753,7 @@ async function spliceVariantsIntoWrapper({ tmp, wrapInfo, sessionId, output }) {
  * expresses a pure insertion (insert mode).
  */
 async function writeDeferredWrapperWithVariants({ tmp, wrapInfo, sessionId, output }) {
-  const filePath = path.join(tmp, wrapInfo.file);
+  const filePath = safeProjectPath(tmp, wrapInfo.file);
   const src = await fs.readFile(filePath, 'utf-8');
   const lines = src.split('\n');
   const wrapperLines = String(wrapInfo.wrapperBlock).split('\n');
@@ -1740,9 +1775,8 @@ async function writeDeferredWrapperWithVariants({ tmp, wrapInfo, sessionId, outp
 }
 
 async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writeParams = true }) {
-  const manifestPath = path.join(tmp, wrapInfo.file);
+  const manifestPath = safeProjectPath(tmp, wrapInfo.file);
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'));
-  const componentDir = path.join(tmp, manifest.componentDir);
   const isInsert = manifest.mode === 'insert';
   const contract = Array.isArray(manifest.propContract) ? manifest.propContract : [];
   const propNames = contract.map((entry) => entry.prop);
@@ -1756,7 +1790,7 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writ
     // Contract-v2 path: keep the scaffolded stub (control flow + prop
     // references) and swap only its <style> block.
     if (variant.svelteComponent && !isInsert) {
-      const variantPath = path.join(componentDir, `v${variantId}.svelte`);
+      const variantPath = safeProjectPath(tmp, path.join(manifest.componentDir, `v${variantId}.svelte`));
       const stub = await fs.readFile(variantPath, 'utf-8');
       await fs.writeFile(variantPath, restyleSvelteComponentSource(stub, variant.svelteComponent.css), 'utf-8');
       paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
@@ -1784,12 +1818,12 @@ async function writeSvelteComponentVariants({ tmp, wrapInfo, event, output, writ
       '</style>',
       '',
     ].join('\n');
-    await fs.writeFile(path.join(componentDir, `v${variantId}.svelte`), component, 'utf-8');
+    await fs.writeFile(safeProjectPath(tmp, path.join(manifest.componentDir, `v${variantId}.svelte`)), component, 'utf-8');
     paramsByVariant[String(variantId)] = Array.isArray(variant.params) ? variant.params : [];
   }
 
   if (writeParams) {
-    await fs.writeFile(path.join(componentDir, 'params.json'), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
+    await fs.writeFile(safeProjectPath(tmp, path.join(manifest.componentDir, 'params.json')), JSON.stringify(paramsByVariant, null, 2) + '\n', 'utf-8');
   }
   manifest.arrivedVariants = output.variants.length;
   await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
@@ -2082,7 +2116,7 @@ export async function runAgentLoop({
         }
         trace('agent.write.end', { id: event.id, file: wrapInfo.file });
         if (process.env.IMPECCABLE_E2E_DEBUG) {
-          const post = await fs.readFile(path.join(tmp, wrapInfo.file), 'utf-8');
+          const post = await fs.readFile(safeProjectPath(tmp, wrapInfo.file), 'utf-8');
           log(`--- post-splice (variants written) ---\n${post}`);
         }
 
@@ -2246,7 +2280,7 @@ export async function runAgentLoop({
         // a deterministic test.
         if (acceptResult.handled === true && acceptResult.carbonize === true && acceptResult.file) {
           if (process.env.IMPECCABLE_E2E_DEBUG) {
-            const post = await fs.readFile(path.join(tmp, acceptResult.file), 'utf-8');
+            const post = await fs.readFile(safeProjectPath(tmp, acceptResult.file), 'utf-8');
             log(`--- post-accept (pre-carbonize) ---\n${post}`);
           }
           // live-accept writes the intermediate carbonize tree, then a real
@@ -2383,9 +2417,10 @@ export function findSteerTargetFile(tmp, target = { classes: 'hero-title', tag: 
  */
 export function buildSteerContext({ tmp, event, wrapTarget, sourceFile }) {
   const target = wrapTarget || { classes: 'hero-title', tag: 'h1' };
-  const targetFileAbs = sourceFile
-    ? path.join(tmp, sourceFile)
-    : findSteerTargetFile(tmp, target);
+  const targetFileAbs = safeProjectPathFromAny(
+    tmp,
+    sourceFile || findSteerTargetFile(tmp, target),
+  );
   const targetFile = path.relative(tmp, targetFileAbs);
   const source = readFileSync(targetFileAbs, 'utf-8');
   const tag = target.tag || 'h1';
@@ -2413,11 +2448,7 @@ export function buildSteerContext({ tmp, event, wrapTarget, sourceFile }) {
 export async function applySteerEdits(tmp, { file, edits }) {
   if (!file || typeof file !== 'string') throw new Error('steer edits: file required');
   if (!Array.isArray(edits) || edits.length === 0) throw new Error('steer edits: edits array required');
-  const abs = path.isAbsolute(file) ? file : path.join(tmp, file);
-  const root = path.resolve(tmp);
-  if (!path.resolve(abs).startsWith(root + path.sep) && path.resolve(abs) !== root) {
-    throw new Error('steer edits: path escapes fixture root');
-  }
+  const abs = safeProjectPathFromAny(tmp, file);
   let body = await fs.readFile(abs, 'utf-8');
   for (const [i, edit] of edits.entries()) {
     if (!edit || typeof edit.find !== 'string' || typeof edit.replace !== 'string') {
@@ -2525,7 +2556,7 @@ async function runInsert({ tmp, engineBin, id, count, position, classes, tag, el
  *      that holds the accepted content. The accepted inner element survives.
  */
 async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
-  const filePath = path.join(tmp, file);
+  const filePath = safeProjectPath(tmp, file);
   let body = await fs.readFile(filePath, 'utf-8');
 
   // 1. Strip the carbonize block. We match either comment style so this
@@ -2558,7 +2589,7 @@ async function runCarbonizeCleanup({ tmp, file, sessionId /* , variant */ }) {
   // Publish the clean source atomically. A direct write briefly exposes a
   // zero-byte file, which can make the harness (and Vite) observe cleanup as
   // complete before the accepted source has actually landed.
-  const temporaryPath = `${filePath}.impeccable-carbonize-${sessionId}.tmp`;
+  const temporaryPath = safeProjectPath(tmp, `${file}.impeccable-carbonize-${sessionId}.tmp`);
   await fs.writeFile(temporaryPath, body, 'utf-8');
   await fs.rename(temporaryPath, filePath);
 }

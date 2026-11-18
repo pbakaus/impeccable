@@ -1522,6 +1522,119 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('copies only inert, allowlisted markup from DESIGN.md component previews', () => {
+    const sanitizer = SOURCE.match(/function appendSanitizedComponentNodes\(source, target\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(sanitizer);
+    assert.match(SOURCE, /template\.innerHTML = String\(c\.html \|\| ''\);[\s\S]*?appendSanitizedComponentNodes\(template\.content, container\)/);
+    assert.doesNotMatch(SOURCE, /container\.innerHTML = c\.html/);
+
+    const makeNode = (nodeType, localName, attrs = {}, children = [], namespaceURI = null, nodeValue = '') => ({
+      nodeType,
+      localName,
+      namespaceURI,
+      nodeValue,
+      attributes: Object.entries(attrs).map(([name, value]) => ({ name, value })),
+      childNodes: children,
+      copiedAttributes: {},
+      appendChild(child) { this.childNodes.push(child); return child; },
+      setAttribute(name, value) { this.copiedAttributes[name] = value; },
+    });
+    const text = (value) => makeNode(3, '', {}, [], null, value);
+    const html = (name, attrs = {}, children = []) => makeNode(1, name, attrs, children, 'http://www.w3.org/1999/xhtml');
+    const svg = (name, attrs = {}, children = []) => makeNode(1, name, attrs, children, 'http://www.w3.org/2000/svg');
+    const parsed = makeNode(11, '', {}, [
+      html('div', { class: 'sample', onclick: 'alert(1)', style: 'background:url(https://attacker.test)' }, [
+        html('script', {}, [text('alert(2)')]),
+        html('custom-widget', {}, [text('safe text')]),
+        html('a', { href: 'javascript:alert(3)' }, [text('not a link')]),
+        html('img', { src: 'https://attacker.test/pixel' }),
+        html('img', { src: 'data:image/png;base64,abc' }),
+        html('button', { type: 'submit', onfocus: 'alert(4)' }),
+      ]),
+      svg('svg', { viewBox: '0 0 10 10', onload: 'alert(5)' }, [
+        svg('path', { d: 'M0 0', fill: 'red' }),
+        svg('path', { d: 'M0 0', fill: 'u\\72l(https://attacker.test/paint.svg#id)' }),
+        svg('path', { d: 'M0 0', fill: 'url/**/(https://attacker.test/paint.svg#id)' }),
+        svg('path', { d: 'M0 0', stroke: 'var(--page-controlled-paint)' }),
+        svg('foreignObject', {}, [html('img', { src: 'https://attacker.test/foreign' })]),
+      ]),
+    ]);
+    const document = {
+      createElement: (name) => html(name),
+      createElementNS: (namespaceURI, name) => makeNode(1, name, {}, [], namespaceURI),
+      createTextNode: (value) => text(value),
+    };
+    const target = html('div');
+    const copy = runInNewContext(`${sanitizer}; appendSanitizedComponentNodes`, { document });
+    copy(parsed, target);
+
+    const [preview, icon] = target.childNodes;
+    assert.equal(preview.localName, 'div');
+    assert.equal(preview.copiedAttributes.class, 'sample');
+    assert.equal('onclick' in preview.copiedAttributes, false);
+    assert.equal('style' in preview.copiedAttributes, false);
+    assert.deepEqual(preview.childNodes.map((child) => child.localName || child.nodeValue), [
+      'safe text', 'a', 'img', 'img', 'button',
+    ]);
+    assert.equal('href' in preview.childNodes[1].copiedAttributes, false);
+    assert.equal('src' in preview.childNodes[2].copiedAttributes, false);
+    assert.equal(preview.childNodes[3].copiedAttributes.src, 'data:image/png;base64,abc');
+    assert.equal(preview.childNodes[4].copiedAttributes.type, 'button');
+    assert.equal(icon.localName, 'svg');
+    assert.equal(icon.copiedAttributes.viewBox, '0 0 10 10');
+    assert.equal('onload' in icon.copiedAttributes, false);
+    assert.deepEqual(icon.childNodes.map((child) => child.localName), ['path', 'path', 'path', 'path']);
+    assert.equal(icon.childNodes[0].copiedAttributes.fill, 'red');
+    assert.equal('fill' in icon.childNodes[1].copiedAttributes, false);
+    assert.equal('fill' in icon.childNodes[2].copiedAttributes, false);
+    assert.equal('stroke' in icon.childNodes[3].copiedAttributes, false);
+  });
+
+  it('removes external-resource and inherited-variable declarations from component CSS', () => {
+    const sanitizer = SOURCE.match(/function sanitizeComponentCss\(css\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(sanitizer);
+    const values = {
+      color: 'red',
+      background: 'url(https://attacker.test/pixel)',
+      'background-color': 'var(--brand-color)',
+      'background-image': 'var(--page-controlled-image)',
+      'border-image': 'var(--page-controlled-border)',
+      'border-image-source': '',
+      border: '1px solid currentColor',
+      '--asset': 'url(https://attacker.test/variable)',
+    };
+    const properties = Object.keys(values);
+    const style = {
+      length: properties.length,
+      getPropertyValue: (property) => values[property],
+      getPropertyPriority: () => '',
+    };
+    properties.forEach((property, index) => { style[index] = property; });
+    class FakeStyleSheet {
+      replaceSync() {
+        this.cssRules = [
+          { type: 1, selectorText: '.component', style },
+          { type: 3, cssText: '@import url(https://attacker.test/style.css)' },
+        ];
+      }
+    }
+    const sanitize = runInNewContext(`${sanitizer}; sanitizeComponentCss`, {
+      CSSStyleSheet: FakeStyleSheet,
+      console: { warn() {} },
+    });
+    const css = sanitize('.component { color: red }');
+    assert.match(css, /color: red/);
+    assert.match(css, /border: 1px solid currentColor/);
+    assert.match(css, /background-color: var\(--brand-color\)/);
+    assert.doesNotMatch(css, /background-image|border-image|url|page-controlled-(?:image|border)|attacker/);
+  });
+
+  it('validates design token colors before applying them to preview styles', () => {
+    assert.match(SOURCE, /function cssSafe\(v\) \{[\s\S]*?style\.backgroundColor = String\(v\);[\s\S]*?return style\.backgroundColor;/);
+    assert.match(SOURCE, /step\.style\.backgroundColor = cssSafe\(value\);/);
+    assert.doesNotMatch(SOURCE, /r\.innerHTML = ramp\.map/);
+  });
+
   it('removes the helper token from window on every run, including a double-init', () => {
     for (const alreadyInit of [false, true]) {
       const window = { __IMPECCABLE_TOKEN__: 'secret', __IMPECCABLE_LIVE_INIT__: alreadyInit };

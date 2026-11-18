@@ -18,6 +18,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { resolveFixtureFile } from './fixture-path.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : null; };
@@ -34,7 +35,7 @@ const BUNDLE = fs.readFileSync(path.join(engineRoot, 'dist/detect-antipatterns-b
 
 const dir = path.join(publicRepo, 'tests/fixtures/antipatterns');
 const server = http.createServer((req, res) => {
-  const f = path.join(dir, decodeURIComponent(req.url.split('?')[0]));
+  const f = resolveFixtureFile(dir, req.url.split('?')[0]);
   try {
     const body = fs.readFileSync(f);
     res.setHeader('Content-Type', f.endsWith('.css') ? 'text/css' : f.endsWith('.js') ? 'application/javascript' : f.endsWith('.svg') ? 'image/svg+xml' : f.endsWith('.png') ? 'image/png' : 'text/html; charset=utf-8');
