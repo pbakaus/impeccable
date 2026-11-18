@@ -83,6 +83,8 @@ describe('agent session', () => {
   globalThis.createImageBitmap = async () => ({ close() {} });
   globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
   const tabs = { created: 0, removed: [] };
+  /** What Chrome shows outside the panel: the toolbar badge and the notices. */
+  const shown = { badge: '', notices: new Map() };
   const panel = { windows: [], opened: [], closed: [] };
   globalThis.chrome = {
     runtime: {
@@ -102,7 +104,8 @@ describe('agent session', () => {
       },
     },
     alarms: { create() {}, onAlarm: event('alarm') },
-    action: { async setPopup() {}, async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    action: { async setPopup() {}, async setBadgeText({ text }) { shown.badge = text; }, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    notifications: { async create(id, options) { shown.notices.set(id, options); }, async clear(id) { shown.notices.delete(id); }, onClicked: event('notice-clicked') },
     debugger: {
       onEvent: event('debugger-event'), onDetach: event('detach'), async attach() {}, async detach() {},
       async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(params); },
@@ -114,7 +117,7 @@ describe('agent session', () => {
       async group() { return 5; }, async remove(id) { tabs.removed.push(id); }, async update() {},
     },
     tabGroups: { async update() {}, async get() { return { title: 'Impeccable · Claude Code' }; } },
-    windows: { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; } },
+    windows: { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; }, async getLastFocused() { return { id: 7 }; } },
     sidePanel: { async open({ windowId }) { panel.opened.push(windowId); }, async close({ windowId }) { panel.closed.push(windowId); }, async setPanelBehavior() {}, async setOptions() {} },
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
     scripting: { async executeScript({ func }) { return ['coverSecrets', 'coverHolds', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
@@ -159,10 +162,22 @@ describe('agent session', () => {
     const asked = call('browser_open', { url: 'https://linear.app/acme' });
     await until(() => current().ask?.kind === 'site', 'the question');
     assert.deepEqual([current().state, current().ask.what, current().who.name, tabs.created], ['waiting', 'linear.app', 'Claude Code', 0]);
+    // Seen while the person is elsewhere: a notice, and a mark on the icon, until it's answered.
+    assert.deepEqual([[...shown.notices.values()].map((n) => n.title), shown.badge], [['Let Claude Code use linear.app?'], '?']);
+    // A click on the notice is the person's press: the panel opens in the agent's window, the notice goes, and nothing
+    // is answered. Another notice's click does nothing here.
+    const opens = panel.opened.length;
+    for (const listener of listeners['notice-clicked']) listener('someone-else');
+    await turn();
+    assert.equal(panel.opened.length, opens);
+    for (const listener of listeners['notice-clicked']) listener('impeccable-agent-site');
+    await until(() => panel.opened.length > opens, 'the panel to open');
+    assert.deepEqual([panel.opened.at(-1), shown.notices.size, current().ask?.kind], [1, 0, 'site']);
     // A Yes isn't one of a site question's answers: nothing opens on it.
     assert.deepEqual(await press('yes'), { ok: false });
     assert.deepEqual(await press('no'), { ok: true });
     const result = await asked;
+    assert.deepEqual([shown.notices.size, shown.badge], [0, '']);
     assert.equal(result.isError, true);
     assert.match(said(result), /didn’t allow linear\.app/);
     assert.equal(tabs.created, 0);

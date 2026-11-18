@@ -189,6 +189,9 @@ export const COPY = {
   yourAgent: {
     line: (name) => `${name || 'Your agent'} is using your browser`,
     wants: (name) => `${name || 'Your agent'} wants to use your browser`,
+    /** Chrome's notice while a site question waits: the panel is where it's answered. */
+    notice: (name, host) => `Let ${name || 'your agent'} use ${host}?`,
+    noticeHow: 'Open the Impeccable side panel to answer.',
     first: (name) => `${name || 'Your agent'} is looking at the page.`,
     opened: (where) => `Opened ${where}`,
     back: 'Went back',
