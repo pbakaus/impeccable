@@ -31,7 +31,7 @@ import { STAGING_APP, STAGING_READ_ONLY, STAGING_REFUSED } from './guard.js';
  * process of its own, a worker, a popup's first moments) meets the same pages refused. By the path as written, not
  * decoded: the second layer, where the guard's own check is the first.
  */
-const stagingFilter = (pattern) => `^https://${STAGING_APP.replace(/\./g, '\\.')}(:443)?${pattern.source.replace(/^\^/, '').replaceAll('(\\/|$)', '([/?#]|$)')}`;
+const stagingFilter = (pattern) => `^https://${STAGING_APP.replace(/\./g, '\\.')}\\.?(:443)?${pattern.source.replace(/^\^/, '').replaceAll('(\\/|$)', '([/?#]|$)')}`;
 
 const FRAMES = 20541;
 const ELSEWHERE = 20542;
@@ -54,7 +54,7 @@ let theirs = [];
 
 /** The walk's sites by name, as a rule takes them: no scheme, no port, no brackets. */
 const hostsOf = (origins) => [...new Set(origins.map((origin) => {
-  try { return new URL(origin).hostname.replace(/^\[|\]$/g, '').toLowerCase(); } catch { return ''; }
+  try { return new URL(origin).hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase(); } catch { return ''; }
 }).filter(Boolean))];
 
 /** The rules the walk needs right now: the write hold's while it drives with writes closed, the staging app's while an agent may use it. */
@@ -110,8 +110,11 @@ async function apply() {
   if (!up && recheck) { clearInterval(recheck); recheck = null; }
 }
 
-/** Brings the rules in line with the walk, in order: resolves once Chrome has them. */
-function sync() {
+/**
+ * Brings the rules in line with the walk, in order: resolves once Chrome has them. The agent waits on it after the
+ * person allows another site, before the tab goes there (agent.js), so no page of it runs ahead of its rules.
+ */
+export function sync() {
   chain = chain.then(apply, apply);
   return chain;
 }

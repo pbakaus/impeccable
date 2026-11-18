@@ -404,6 +404,8 @@ describe('agent session', () => {
     // same pages while the session lasts: the refused ones for every method, the look-only ones for writes.
     const staging = () => chrome.declarativeNetRequest.rules.filter((r) => r.id >= 20550);
     await until(() => staging().length > 0, 'the staging rules');
+    // A host written with its trailing dot is the same host: the rules hold it too.
+    assert.ok(staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test('https://app.staging.impeccable.style./app/-/account')));
     const caught = (url, method) => staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test(url) && (!r.condition.requestMethods || r.condition.requestMethods.includes(method)));
     assert.deepEqual([caught('https://app.staging.impeccable.style/app/acme/api/setup-token', 'get'), caught('https://app.staging.impeccable.style/app/acme/runs', 'post'),
       caught('https://app.staging.impeccable.style/app/acme/apps/web?/lock', 'post'), caught('https://app.staging.impeccable.style/app/acme/apps/web', 'get'),

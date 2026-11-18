@@ -14,6 +14,7 @@
 // closing, `browser_end`, the agent going away, the host going away, ten minutes idle, or an hour in all.
 import { AGENT, DEVICES, ops, stopOpening, walk, hooks } from './driver.js';
 import { askSite } from './control.js';
+import { sync as rulesNow } from './net-hold.js';
 import { isConsentPage, isOwnPage, webOrigin } from './guard.js';
 import { current, dispatch, onView } from './store.js';
 import { isLive } from './view.js';
@@ -236,6 +237,8 @@ async function go(url) {
   if (isOwnPage(url, true)) return refused('Impeccable’s own pages don’t open for agents.');
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (!(await mayUse(origin))) return refused(`The person didn’t allow ${new URL(origin).host}.`);
+  // Chrome's own rules for the newly allowed site are up before the tab goes there (net-hold.js).
+  await rulesNow();
   await ops.goto({ url, waitUntil: 'load', timeout: LOAD_MS });
   logged(COPY.yourAgent.opened(hostPath(url)));
   return page();
