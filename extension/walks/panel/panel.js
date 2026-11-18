@@ -1288,6 +1288,11 @@ async function start() {
     const next = () => { if (feed.length === 0 || !isLive(view)) return; view = reduce(view, { type: 'step', step: feed.shift() }); render(); setTimeout(next, 1500); };
     if (feed.length > 0) setTimeout(next, 1500);
   } else {
+    // An agent's run that opened this panel is over (agent.js `leavePanel`): it closes, as it was before. Only the
+    // extension's own worker says so.
+    chrome.runtime.onMessage?.addListener((message, sender) => {
+      if (message?.agentPanel === 'close' && sender.id === chrome.runtime.id && !sender.tab) globalThis.close?.();
+    });
     act = async (action) => {
       pre.refused = null;
       const answer = await chrome.runtime.sendMessage({ control: action }).catch(() => null);

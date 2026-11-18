@@ -78,6 +78,9 @@ function step(view, action) {
     // The agent's wait ended with no tab (Not now, or it could not open): back to before it.
     case 'unwait':
       return view.state === 'waiting' && view.agent ? emptyView(view.linked) : view;
+    // The agent's session is over, however it ended: no done screen, nothing left behind (the decider, 18 Nov).
+    case 'agent-over':
+      return view.agent && !ON_TAB.includes(view.state) ? emptyView(view.linked) : view;
     // The tab is open and the debugger is on it. Once the walk is over, the panel shows its end on that tab alone.
     case 'opened':
       if (onTab) return view;
