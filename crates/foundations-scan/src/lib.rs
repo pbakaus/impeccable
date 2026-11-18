@@ -16,7 +16,7 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 mod listing;
-pub use listing::{scan_listing, Outcome};
+pub use listing::{scan_listing, ListingOptions, Outcome};
 
 /// Paths the walk lists before it stops.
 pub const MAX_FILES: usize = 20_000;
@@ -105,6 +105,8 @@ pub enum Tracked {
     NotRepo,
     /// Git failed or ran past its deadline: nothing is proven.
     Failed,
+    /// The host skips the secrets scan: no item, nothing read for it.
+    Unscanned,
     /// Relative, `/`-separated paths. `complete` is false when the list
     /// itself was capped: a found key still fails, a pass isn't claimed.
     Files { files: Vec<String>, complete: bool },
@@ -1763,7 +1765,7 @@ impl<'a> Project<'a> {
                     .collect()
             }
             // A git that failed or timed out: nothing is proven.
-            Tracked::Failed => return (Vec::new(), None, false),
+            Tracked::Failed | Tracked::Unscanned => return (Vec::new(), None, false),
             Tracked::NotRepo => self.files.clone(),
         };
         let mut hits = Vec::new();

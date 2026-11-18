@@ -217,7 +217,11 @@ mod tests {
             .collect();
         let mut contents = BTreeMap::new();
         for pass in 1.. {
-            let out = impeccable_foundations_scan::scan_listing(&files, &contents, false);
+            let out = impeccable_foundations_scan::scan_listing(
+                &files,
+                &contents,
+                impeccable_foundations_scan::ListingOptions::default(),
+            );
             if out.wanted.is_empty() {
                 let items = out
                     .items

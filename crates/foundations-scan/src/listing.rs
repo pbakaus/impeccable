@@ -5,6 +5,27 @@ use crate::{walk, Kind, Source, State, Tracked, MAX_BYTES, MAX_FILE};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// How [`scan_listing`] reads the tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ListingOptions {
+    /// The listing itself is incomplete (a truncated tree). Then, as after
+    /// a capped walk, only items a found file proves stand: nothing fails
+    /// for something missing, and no secrets pass is claimed.
+    pub capped: bool,
+    /// Run the secrets scan, which reads every tracked text file whole. Off,
+    /// nothing is wanted for it and `secrets-out-of-repo` is left out.
+    pub secrets: bool,
+}
+
+impl Default for ListingOptions {
+    fn default() -> Self {
+        ListingOptions {
+            capped: false,
+            secrets: true,
+        }
+    }
+}
+
 /// One pass of [`scan_listing`].
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
 pub struct Outcome {
@@ -25,9 +46,7 @@ pub struct Outcome {
 ///   walk's own ignore rules and caps to it.
 /// - `contents`: the files fetched so far, by path. `Some(text)` is the
 ///   whole file; `None` means fetched but binary or unreadable.
-/// - `capped`: the listing itself is incomplete (a truncated tree). Then,
-///   as after a capped walk, only items a found file proves stand: nothing
-///   fails for something missing, and no secrets pass is claimed.
+/// - `options`: see [`ListingOptions`].
 ///
 /// The host loops: call with what it has (at first, nothing), fetch every
 /// path in [`Outcome::wanted`], add them to `contents`, and call again
@@ -36,13 +55,14 @@ pub struct Outcome {
 /// not yet in `contents`, so the loop ends. Files over 2 MB are never
 /// wanted by the content checks (only the secrets scan reads them), and a
 /// pass wants whole files for the secrets scan only up to the scan's
-/// 256 MB budget, plus the one file that would end it.
+/// 256 MB budget, plus the one file that would end it. With
+/// `options.secrets` off, no whole file is ever wanted.
 pub fn scan_listing(
     files: &[(String, u64)],
     contents: &BTreeMap<String, Option<String>>,
-    capped: bool,
+    options: ListingOptions,
 ) -> Outcome {
-    let listing = Listing::new(files, contents, capped);
+    let listing = Listing::new(files, contents, options);
     let report = crate::scan(&listing);
     Outcome {
         items: report
@@ -61,7 +81,7 @@ const VIRTUAL_ROOT: &str = "/repo";
 struct Listing<'a> {
     sizes: BTreeMap<&'a str, u64>,
     contents: &'a BTreeMap<String, Option<String>>,
-    capped: bool,
+    options: ListingOptions,
     wanted: RefCell<BTreeSet<String>>,
     /// Bytes of the whole reads wanted this pass, which the scan counts as
     /// none until they're fetched.
@@ -75,12 +95,12 @@ impl<'a> Listing<'a> {
     fn new(
         files: &'a [(String, u64)],
         contents: &'a BTreeMap<String, Option<String>>,
-        capped: bool,
+        options: ListingOptions,
     ) -> Self {
         Listing {
             sizes: files.iter().map(|(p, s)| (p.as_str(), *s)).collect(),
             contents,
-            capped,
+            options,
             wanted: RefCell::default(),
             pending: Cell::default(),
             over: Cell::default(),
@@ -130,7 +150,7 @@ impl Source for Listing<'_> {
                     .collect()
             })
         });
-        (files, truncated || self.capped)
+        (files, truncated || self.options.capped)
     }
 
     fn read(&self, path: &str) -> Option<Vec<u8>> {
@@ -164,9 +184,12 @@ impl Source for Listing<'_> {
     }
 
     fn tracked(&self) -> Tracked {
+        if !self.options.secrets {
+            return Tracked::Unscanned;
+        }
         Tracked::Files {
             files: self.sizes.keys().map(|p| p.to_string()).collect(),
-            complete: !self.capped,
+            complete: !self.options.capped,
         }
     }
 
