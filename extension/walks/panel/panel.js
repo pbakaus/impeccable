@@ -1291,7 +1291,8 @@ async function start() {
     // An agent's run that opened this panel is over (agent.js `leavePanel`): it closes, as it was before. Only the
     // extension's own worker says so.
     chrome.runtime.onMessage?.addListener((message, sender) => {
-      if (message?.agentPanel === 'close' && sender.id === chrome.runtime.id && !sender.tab) globalThis.close?.();
+      if (message?.agentPanel !== 'close' || sender.id !== chrome.runtime.id || sender.tab) return;
+      void chrome.windows?.getCurrent?.().then((mine) => { if (mine?.id === message.windowId) globalThis.close?.(); }).catch(() => undefined);
     });
     act = async (action) => {
       pre.refused = null;

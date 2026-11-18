@@ -83,13 +83,13 @@ describe('agent session', () => {
   globalThis.createImageBitmap = async () => ({ close() {} });
   globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
   const tabs = { created: 0, removed: [] };
-  const panel = { open: false, opened: [], closed: [] };
+  const panel = { windows: [], opened: [], closed: [] };
   globalThis.chrome = {
     runtime: {
       id: 'ext', lastError: undefined, onMessage: event('message'), onConnect: event('connect'), onInstalled: event('installed'), onStartup: event('startup'),
       getURL: (file) => `chrome-extension://ext/${file}`, async sendMessage() {}, getManifest: () => MANIFEST,
       // Whether the side panel is open: as each test says.
-      async getContexts({ contextTypes }) { return contextTypes.includes('SIDE_PANEL') && panel.open ? [{ contextType: 'SIDE_PANEL' }] : []; },
+      async getContexts({ contextTypes }) { return contextTypes.includes('SIDE_PANEL') ? panel.windows.map((windowId) => ({ contextType: 'SIDE_PANEL', windowId })) : []; },
       connectNative(name) {
         assert.equal(name, 'style.impeccable.browser');
         const port = {
@@ -314,16 +314,18 @@ describe('agent session', () => {
       assert.equal((await opening).isError, undefined);
       assert.equal((await call('browser_end')).isError, undefined);
     };
-    // Closed when the session began: opened for the run, in the agent's window, and closed at its end.
+    // Closed in the agent's window when the session began (open only in another): opened for the run there, and
+    // closed at its end.
+    panel.windows = [2];
     let [opens, closes] = [panel.opened.length, panel.closed.length];
     await session();
     assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[1], [1], empty]);
-    // Open when it began: neither opened nor closed, and back at its default view.
-    panel.open = true;
+    // Open there when it began: neither opened nor closed, and back at its default view.
+    panel.windows = [1];
     [opens, closes] = [panel.opened.length, panel.closed.length];
     await session();
     assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[], [], empty]);
-    panel.open = false;
+    panel.windows = [];
     toExtension({ type: 'agent-gone' });
   });
 

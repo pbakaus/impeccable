@@ -192,7 +192,9 @@ async function notePanel() {
   if (panelBefore) return;
   const open = await Promise.resolve(chrome.runtime.getContexts?.({ contextTypes: ['SIDE_PANEL'] })).catch(() => null);
   const [front] = await chrome.tabs.query({ active: true, lastFocusedWindow: true }).catch(() => []);
-  panelBefore = { open: Array.isArray(open) && open.length > 0, windowId: front?.windowId ?? null };
+  const windowId = front?.windowId ?? null;
+  // The panel of the agent's own window: one open in another window is that window's.
+  panelBefore = { open: Array.isArray(open) && open.some((context) => context.windowId === windowId), windowId };
   // Chrome may want a press of the person's for this: then the toolbar icon opens it, as for any question.
   if (!panelBefore.open && panelBefore.windowId !== null) await Promise.resolve(chrome.sidePanel?.open?.({ windowId: panelBefore.windowId })).catch(() => undefined);
 }
@@ -203,9 +205,9 @@ function leavePanel() {
   const was = panelBefore;
   panelBefore = null;
   if (!was || was.open || was.windowId === null) return;
-  void Promise.resolve(chrome.sidePanel?.close?.({ windowId: was.windowId })).catch(() => undefined);
-  // A Chrome without `sidePanel.close`: the panel closes itself (panel.js).
-  void Promise.resolve(chrome.runtime.sendMessage({ agentPanel: 'close' })).catch(() => undefined);
+  if (typeof chrome.sidePanel?.close === 'function') void Promise.resolve(chrome.sidePanel.close({ windowId: was.windowId })).catch(() => undefined);
+  // A Chrome without `sidePanel.close`: that window's panel closes itself (panel.js), and no other.
+  else void Promise.resolve(chrome.runtime.sendMessage({ agentPanel: 'close', windowId: was.windowId })).catch(() => undefined);
 }
 
 async function go(url) {
