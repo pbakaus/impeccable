@@ -12,11 +12,14 @@ use std::time::{Duration, Instant};
 
 const WAIT: Duration = Duration::from_secs(15);
 
-/// Trusts each hook in `home/hooks.json` whose command is one of `commands`, then checks
+/// A hook connect wrote, as the engine wrote it: its command and timeout.
+pub(crate) type Written = (String, Option<u64>);
+
+/// Trusts each hook in `home/hooks.json` that connect wrote (`written`), then checks
 /// that Codex reads every one of them as trusted.
-pub(crate) fn trust(exe: &Path, home: &Path, commands: &[String]) -> Result<(), String> {
+pub(crate) fn trust(exe: &Path, home: &Path, written: &[Written]) -> Result<(), String> {
     let mut server = Server::start(exe, home)?;
-    let hooks = server.ours(home, commands)?;
+    let hooks = server.ours(home, written)?;
     if hooks.is_empty() {
         return Err("Codex doesn't list Impeccable's hooks".into());
     }
@@ -38,7 +41,7 @@ pub(crate) fn trust(exe: &Path, home: &Path, commands: &[String]) -> Result<(), 
         )?;
     }
     if server
-        .ours(home, commands)?
+        .ours(home, written)?
         .iter()
         .any(|h| h["trustStatus"] != "trusted")
     {
@@ -48,10 +51,10 @@ pub(crate) fn trust(exe: &Path, home: &Path, commands: &[String]) -> Result<(), 
 }
 
 /// Takes back the trust `trust` wrote, while the hooks are still in `hooks.json`.
-pub(crate) fn untrust(exe: &Path, home: &Path, commands: &[String]) -> Result<(), String> {
+pub(crate) fn untrust(exe: &Path, home: &Path, written: &[Written]) -> Result<(), String> {
     let mut server = Server::start(exe, home)?;
     let edits: Vec<Value> = server
-        .ours(home, commands)?
+        .ours(home, written)?
         .iter()
         .filter(|h| h["trustStatus"] != "untrusted")
         .filter_map(|h| {
@@ -71,8 +74,8 @@ fn key_path(key: &str) -> Option<String> {
 }
 
 /// The key suffixes (`:<event>:<group>:<hook>`) of the entries in `hooks.json` whose
-/// command is one of `commands`: the positions Codex names its hooks by.
-fn suffixes(hooks_json: &Path, commands: &[String]) -> Vec<String> {
+/// command and timeout are one of `written`: the positions Codex names its hooks by.
+fn suffixes(hooks_json: &Path, written: &[Written]) -> Vec<String> {
     let Some(doc) = std::fs::read(hooks_json)
         .ok()
         .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
@@ -83,10 +86,8 @@ fn suffixes(hooks_json: &Path, commands: &[String]) -> Vec<String> {
     for (event, groups) in doc["hooks"].as_object().into_iter().flatten() {
         for (g, group) in groups.as_array().into_iter().flatten().enumerate() {
             for (h, hook) in group["hooks"].as_array().into_iter().flatten().enumerate() {
-                if hook["command"]
-                    .as_str()
-                    .is_some_and(|c| commands.iter().any(|o| o == c))
-                {
+                let entry = (hook["command"].as_str(), hook["timeout"].as_u64());
+                if written.iter().any(|(c, t)| entry == (Some(c.as_str()), *t)) {
                     out.push(format!(":{}:{g}:{h}", snake(event)));
                 }
             }
@@ -186,9 +187,9 @@ impl Server {
     }
 
     /// Codex's own listing of the hooks connect wrote, matched by file and position.
-    fn ours(&mut self, home: &Path, commands: &[String]) -> Result<Vec<Value>, String> {
+    fn ours(&mut self, home: &Path, written: &[Written]) -> Result<Vec<Value>, String> {
         let file = home.join("hooks.json");
-        let suffixes = suffixes(&file, commands);
+        let suffixes = suffixes(&file, written);
         let file = file.canonicalize().unwrap_or(file);
         let listed = self.call("hooks/list", json!({ "cwds": [home] }))?;
         Ok(listed["data"][0]["hooks"]
@@ -223,17 +224,23 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("codex-trust-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("hooks.json");
-        let cmd = |c: &str| json!({ "type": "command", "command": c });
+        let cmd = |c: &str| json!({ "type": "command", "command": c, "timeout": 10 });
         std::fs::write(
             &file,
             json!({ "hooks": {
-                "SessionStart": [{ "hooks": [cmd("mine"), cmd("loop start")] }],
+                "SessionStart": [{ "hooks": [cmd("mine"), cmd("loop start")] }, { "hooks": [{ "type": "command", "command": "loop start", "timeout": 30 }] }],
                 "PostToolUse": [{ "matcher": "Bash", "hooks": [cmd("mine")] }, { "hooks": [cmd("loop register")] }],
             } })
             .to_string(),
         )
         .unwrap();
-        let mut got = suffixes(&file, &["loop start".into(), "loop register".into()]);
+        let mut got = suffixes(
+            &file,
+            &[
+                ("loop start".into(), Some(10)),
+                ("loop register".into(), Some(10)),
+            ],
+        );
         got.sort();
         assert_eq!(got, [":post_tool_use:1:0", ":session_start:0:1"]);
         assert_eq!(

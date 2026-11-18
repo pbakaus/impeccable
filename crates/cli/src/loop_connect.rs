@@ -561,8 +561,9 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     Ok(manual)
 }
 
-fn commands(spec: &Spec) -> Vec<String> {
-    spec.hooks.iter().map(|h| h.command.clone()).collect()
+/// The hooks connect writes, as Codex's listing is matched against them.
+fn commands(spec: &Spec) -> Vec<codex_trust::Written> {
+    spec.hooks.iter().map(|h| (h.command.clone(), h.timeout)).collect()
 }
 
 /// Codex reads `AGENTS.override.md` instead of `AGENTS.md` when both exist, so the
