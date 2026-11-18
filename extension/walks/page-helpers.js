@@ -480,7 +480,9 @@ function confirmingControl(at, enter = false, wide = false) {
     const raw = [el.getAttribute("aria-label") ?? "", `${el.innerText || el.textContent || ""}`, el.getAttribute("title") ?? "", tag === "input" && /^(?:submit|button)$/.test(type) ? el.value ?? "" : ""], own = norm(raw[1]);
     const said = [norm(raw[0]), own.length <= 40 ? own : "", norm(raw[2]), norm(raw[3])].filter((s) => s.length > 0), told = whole(raw, said);
     const link = tag === "a" && el.getAttribute("href") !== null && !el.getAttribute("role");
-    if (said.some((s) => changes.test(s) || wide && !link && /\b(?:add|buy|order|check ?out|book|post|like|follow|subscribe|subscription|purchase|upgrade|donate|erase|trash|deactivate|close (?:my |your |the )?account)\b/.test(s)))
+    const deed = said.some((s) => changes.test(s) || wide && !link && /\b(?:add|buy|order|checkout|book|post|like|follow|subscribe|subscription|purchase|upgrade|donate|erase|trash|deactivate|close (?:my |your |the )?account)\b/.test(s));
+    const field = wide && enter && tag !== "button" && !(tag === "input" && /^(?:submit|button|image)$/.test(type));
+    if (deed && !field)
       return wide ? told.join(`
 `) : said[0];
     if (el.getAttribute("role") === "switch" || wide && el.getAttribute("aria-pressed") !== null)
@@ -501,6 +503,9 @@ function confirmingControl(at, enter = false, wide = false) {
 `) : enter && tag !== "button" ? `the form
 <form>` : "" : all[0] ?? "the form’s submit button";
     }
+    if (deed)
+      return told.join(`
+`);
     if (el.closest && el.closest(control) === el) {
       if (wide && said.length === 0 && (tag === "button" || el.getAttribute("role") === "button" || tag === "input" && /^(?:submit|button|image)$/.test(type)))
         return "";
@@ -1873,4 +1878,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '84eaac7049b3767c';
+export const HASH = 'f6f33e19039ec284';
