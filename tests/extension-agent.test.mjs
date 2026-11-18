@@ -380,6 +380,30 @@ describe('agent session', () => {
     toExtension({ type: 'agent-gone' });
   });
 
+  // Through the driver, not the guard alone: an agent's session opens our staging app, and the guard holds its
+  // refused pages there, as a held request and as a move the agent asks for.
+  it('drives our staging app through the driver, and holds its refused pages there', async () => {
+    const { current } = await loaded;
+    const opening = call('browser_open', { url: 'https://app.staging.impeccable.style/app/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question');
+    assert.equal(current().ask.what, 'app.staging.impeccable.style');
+    await press('once');
+    const opened = await opening;
+    assert.equal(opened.isError, undefined, said(opened));
+    const at = sent.length;
+    const ask = (requestId, path, method = 'GET') => fire('Fetch.requestPaused', { requestId, resourceType: 'Document', frameId: 'main', request: { url: `https://app.staging.impeccable.style${path}`, method } });
+    ask('account', '/app/-/account');
+    ask('runs', '/app/acme/runs');
+    ask('lock', '/app/acme/apps/web?/lock', 'POST');
+    await until(() => sent.slice(at).filter((m) => m.startsWith('Fetch.')).length >= 3, 'all three answered');
+    const answered = Object.fromEntries(args.slice(at).map((p, i) => [p?.requestId, sent[at + i]]).filter(([id]) => id));
+    assert.deepEqual([answered.account, answered.runs, answered.lock], ['Fetch.failRequest', 'Fetch.continueRequest', 'Fetch.failRequest']);
+    const refused = await call('browser_act', { op: 'goto', url: 'https://app.staging.impeccable.style/app/-/account' });
+    assert.equal(refused.isError, true);
+    await call('browser_end');
+    toExtension({ type: 'agent-gone' });
+  });
+
   // A server's walk names its ops in JSON: none can make itself the agent's, and be asked nothing before a submit.
   it('never takes an agent walk from a socket message', async () => {
     const { driver } = await loaded;
