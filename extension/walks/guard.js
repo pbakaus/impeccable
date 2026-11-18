@@ -100,7 +100,9 @@ const STAGING_REFUSED = [
   // Signing in and out, consent, the CLI's authorize and token, GitHub's setup return, Discord links.
   /^\/app\/(login|logout|callback|setup|sign-in-as|oauth|cli|discord)(\/|$)/,
   // A person's or team's account, plan, members and invites, seats, terms, setup and Needs you.
-  /^\/app\/[^/]+\/(account|setup|onboard|needs-you|billing|pro|settings|team|teams|invites|join|connect|terms|me)(\/|$)/,
+  /^\/app\/[^/]+\/(account|setup|onboard|needs-you|billing|pro|settings|team|teams|invites|join|connect|terms)(\/|$)/,
+  // Home itself is the app's front door; its agent poll and trial start are not.
+  /^\/app\/-\/me\/(agent|trial)(\/|$)/,
   // Their writes and reads under the APIs: credentials minted or revoked, Needs-you answers, account settings, terms,
   // a repository's preview credentials, and the account's own RPC.
   /^\/app\/[^/]+\/api\/(setup-token|needs-you|capture-login|walk-sign-ins|account|terms)(\/|$)/,
@@ -108,9 +110,26 @@ const STAGING_REFUSED = [
   /^\/app\/[^/]+\/-\/rpc\/(account|admit)(\/|$)/,
   /^\/app\/-\/api(\/|$)/,
 ];
+/**
+ * Pages the agent may look at but never write to: their form actions (`?/lock`, `?/accountEdit`, `?/remove`) carry
+ * a repository's preview credentials and test accounts, take a repository out or back in, or speak for the person
+ * (notifications, support, Home's own actions).
+ */
+const STAGING_READ_ONLY = [
+  /^\/app\/[^/]+\/(apps|repos)(\/|$)/,
+  /^\/app\/-\/(notifications|support|me)(\/|$)/,
+  /^\/app\/[^/]+\/api\/repos\/[^/]+\/(preview-overrides|key-check)(\/|$)/,
+];
 /** Whether an address is on our staging app's host, where the agent's exception applies. */
 function onStagingApp(url) {
   try { return new URL(url).hostname.toLowerCase().replace(/\.$/, '') === STAGING_APP; } catch { return false; }
+}
+
+/** Whether the agent may only look at this staging page (STAGING_READ_ONLY), as the server routes its path. */
+function readOnly(url) {
+  let route;
+  try { route = routed(new URL(url).pathname); } catch { return true; }
+  return route === null || STAGING_READ_ONLY.some((page) => page.test(route));
 }
 
 /** A path as the server routes it: decoded once, in lower case, with repeated slashes as one; null for one that won't decode. */
@@ -258,7 +277,7 @@ export function verdict(paused, mainFrame, allowed, writable = allowed, agent = 
   const url = paused.request?.url;
   // The person's own agent on our staging app: a refused page is refused whatever asks for it and however, a read, a
   // frame or a script's GET as much as a write (some of its GETs act: sign out, open a billing portal).
-  if (agent && onStagingApp(url) && isOwnPage(url, true)) return paused.resourceType === 'Document' && paused.frameId === mainFrame ? 'block' : 'refuse';
+  if (agent && onStagingApp(url) && (isOwnPage(url, true) || (!reads(paused) && readOnly(url)))) return paused.resourceType === 'Document' && paused.frameId === mainFrame ? 'block' : 'refuse';
   const writes = !reads(paused) && !(writable.includes(webOrigin(url)) && !isOwnPage(url, agent));
   // A form sent from the top of the page is a write too.
   if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed, agent) && !writes ? 'continue' : 'block';
