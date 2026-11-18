@@ -246,5 +246,9 @@ fn logical_pairs_hover_borders_and_mixed_branches() {
     let hover_rounded = ".it{width:400px;height:40px}.it:hover{border-radius:6px;border-left:3px solid red}";
     assert_eq!(page(hover_rounded, "<button class=\"it\">x</button>"), vec![".it:hover — border-left 3px stripe (left)"]);
     assert!(page(hover_rounded, "<button class=\"it\" style=\"border-radius:0\">x</button>").is_empty());
+    // A token or one squared corner leaves the hover radius in play.
+    for style in ["--radius:8px", "border-top-left-radius:0"] {
+        assert_eq!(page(hover_rounded, &format!("<button class=\"it\" style=\"{style}\">x</button>")).len(), 1, "{style}");
+    }
     assert!(page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>").is_empty());
 }

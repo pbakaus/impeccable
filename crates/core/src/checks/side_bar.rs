@@ -73,11 +73,37 @@ pub fn is_state_side_bar(finding: &PatternFinding) -> bool {
     finding.selector.as_deref().is_some_and(|s| without_state_pseudos(s) != s)
 }
 
-/// Whether an element's `style` attribute sets a radius, which wins over a
-/// state rule's: such an element is read by its own corners only.
-pub fn inline_style_sets_radius(style: Option<&str>) -> bool {
-    style.is_some_and(|s| s.to_ascii_lowercase().contains("radius"))
+/// Whether an element's `style` attribute squares every corner a state
+/// rule might round: its radius declarations, by property name, win over
+/// the rule's, and a corner they leave alone or cannot resolve may still
+/// round on hover.
+pub fn inline_style_squares_box(style: Option<&str>) -> bool {
+    let mut corners = crate::checks::rules::DeclaredCorners::default();
+    corners.set_all(Some(Corners { top_left: 1.0, top_right: 1.0, bottom_right: 1.0, bottom_left: 1.0 }));
+    let decls: Vec<(String, &str)> = style
+        .unwrap_or("")
+        .split(';')
+        .filter_map(|d| d.split_once(':'))
+        .map(|(p, v)| (js::trim(p).to_ascii_lowercase(), js::trim(v)))
+        .filter(|(p, _)| crate::checks::rules::is_radius_property(p))
+        .collect();
+    // Normal declarations first, then `!important` ones, each in source order.
+    for important in [false, true] {
+        for (prop, value) in decls.iter().filter(|(_, v)| is_important_value(v) == important) {
+            corners.apply(prop, value, NOMINAL_INLINE_WIDTH_PX);
+        }
+    }
+    corners.squares_all()
 }
+
+/// Whether a declaration value carries `!important`, with any white space
+/// after the `!`.
+fn is_important_value(value: &str) -> bool {
+    value.rsplit_once('!').is_some_and(|(_, rest)| js::trim(rest).eq_ignore_ascii_case("important"))
+}
+
+/// The width a percentage radius in a `style` attribute is read against.
+const NOMINAL_INLINE_WIDTH_PX: f64 = 400.0;
 
 /// Whether a side `px` wide is a bar beside other sides at most `other` px:
 /// drawn alone, or 2px or more beside hairlines or sides at most half its
@@ -593,6 +619,20 @@ mod tests {
         let found = scan_css_text_for_side_bars_with(".it:hover { border-left: 2px solid #ddd; border-right: 4px solid #ddd; }", true);
         let snippets: Vec<&str> = found.iter().map(|f| f.snippet.as_str()).collect();
         assert_eq!(snippets, vec![".it:hover — border-right 4px stripe (right)"]);
+    }
+
+    #[test]
+    fn an_inline_style_squares_the_box_only_by_its_radius_declarations() {
+        assert!(inline_style_squares_box(Some("border-radius: 0")));
+        assert!(inline_style_squares_box(Some("color: red; BORDER-RADIUS:0px")));
+        assert!(!inline_style_squares_box(Some("--radius: 8px")));
+        assert!(!inline_style_squares_box(Some("border-top-left-radius: 0")));
+        assert!(!inline_style_squares_box(Some("border-radius: var(--r)")));
+        assert!(!inline_style_squares_box(None));
+        assert!(inline_style_squares_box(Some("border-radius:0!important;border-radius:8px")));
+        assert!(!inline_style_squares_box(Some("border-radius:0;border-radius:8px")));
+        assert!(inline_style_squares_box(Some("border-radius:8px!important;border-radius:0! important")));
+        assert!(!inline_style_squares_box(Some("border-radius:0 ! IMPORTANT;border-radius:8px !important")));
     }
 
     #[test]

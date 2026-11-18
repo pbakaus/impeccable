@@ -1246,7 +1246,7 @@ fn pattern_finding_stands<'s>(
             }) || (crate::checks::side_bar::is_state_side_bar(f)
                 && matches
                     .iter()
-                    .any(|&el| !crate::checks::side_bar::inline_style_sets_radius(dom.attr(el, "style").as_deref()))
+                    .any(|&el| !crate::checks::side_bar::inline_style_squares_box(dom.attr(el, "style").as_deref()))
                 && crate::checks::side_bar::side_bar_stands(
                     thickness,
                     index.get_or_init(|| crate::checks::css_scan::CssHostIndex::new(style_text)).side_bar_on_rounded_host(f),

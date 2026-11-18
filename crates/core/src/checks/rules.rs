@@ -209,6 +209,11 @@ impl DeclaredCorners {
         self.corners.iter().any(|c| c.is_some_and(|v| v > 0.0))
     }
 
+    /// Whether every corner is known to be square.
+    pub fn squares_all(&self) -> bool {
+        self.corners.iter().all(|c| *c == Some(0.0))
+    }
+
     /// Whether any radius declaration was seen at all.
     pub fn declared(&self) -> bool {
         self.declared
