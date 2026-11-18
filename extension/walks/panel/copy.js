@@ -13,7 +13,7 @@ export const COPY = {
   command: 'npx @impeccable/reviews walk',
 
   /** No account to start from here (the store build): the terminal. */
-  idle: { line: 'No journey running.', how: 'Start one from your terminal:' },
+  idle: { how: 'Start a journey from your terminal:' },
   copy: { action: 'Copy command', done: 'Copied' },
 
   /** Signed in, and the server says the account has no Impeccable Pro. */
