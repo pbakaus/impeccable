@@ -459,7 +459,7 @@ pub fn detect_html_source(
                             side_bar_stands(thickness, corners_round(corners(el).as_ref()))
                         }) || (impeccable_core::checks::side_bar::is_state_side_bar(&f)
                             && hosts.iter().any(|el| {
-                                !impeccable_core::checks::side_bar::inline_style_sets_radius(el.get_attribute("style"))
+                                !impeccable_core::checks::side_bar::inline_style_squares_box(el.get_attribute("style"))
                             })
                             && side_bar_stands(thickness, index().side_bar_on_rounded_host(&f)))
                     }

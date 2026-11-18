@@ -73,11 +73,26 @@ pub fn is_state_side_bar(finding: &PatternFinding) -> bool {
     finding.selector.as_deref().is_some_and(|s| without_state_pseudos(s) != s)
 }
 
-/// Whether an element's `style` attribute sets a radius, which wins over a
-/// state rule's: such an element is read by its own corners only.
-pub fn inline_style_sets_radius(style: Option<&str>) -> bool {
-    style.is_some_and(|s| s.to_ascii_lowercase().contains("radius"))
+/// Whether an element's `style` attribute squares every corner a state
+/// rule might round: its radius declarations, by property name, win over
+/// the rule's, and a corner they leave alone or cannot resolve may still
+/// round on hover.
+pub fn inline_style_squares_box(style: Option<&str>) -> bool {
+    let mut corners = crate::checks::rules::DeclaredCorners::default();
+    corners.set_all(Some(Corners { top_left: 1.0, top_right: 1.0, bottom_right: 1.0, bottom_left: 1.0 }));
+    for decl in style.unwrap_or("").split(';') {
+        if let Some((prop, value)) = decl.split_once(':') {
+            let prop = js::trim(prop).to_ascii_lowercase();
+            if crate::checks::rules::is_radius_property(&prop) {
+                corners.apply(&prop, js::trim(value), NOMINAL_INLINE_WIDTH_PX);
+            }
+        }
+    }
+    corners.squares_all()
 }
+
+/// The width a percentage radius in a `style` attribute is read against.
+const NOMINAL_INLINE_WIDTH_PX: f64 = 400.0;
 
 /// Whether a side `px` wide is a bar beside other sides at most `other` px:
 /// drawn alone, or 2px or more beside hairlines or sides at most half its
@@ -593,6 +608,16 @@ mod tests {
         let found = scan_css_text_for_side_bars_with(".it:hover { border-left: 2px solid #ddd; border-right: 4px solid #ddd; }", true);
         let snippets: Vec<&str> = found.iter().map(|f| f.snippet.as_str()).collect();
         assert_eq!(snippets, vec![".it:hover — border-right 4px stripe (right)"]);
+    }
+
+    #[test]
+    fn an_inline_style_squares_the_box_only_by_its_radius_declarations() {
+        assert!(inline_style_squares_box(Some("border-radius: 0")));
+        assert!(inline_style_squares_box(Some("color: red; BORDER-RADIUS:0px")));
+        assert!(!inline_style_squares_box(Some("--radius: 8px")));
+        assert!(!inline_style_squares_box(Some("border-top-left-radius: 0")));
+        assert!(!inline_style_squares_box(Some("border-radius: var(--r)")));
+        assert!(!inline_style_squares_box(None));
     }
 
     #[test]
