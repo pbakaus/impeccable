@@ -679,21 +679,24 @@ for (const [label, status, offers] of [
   ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, ['get-pro', 'another-account']],
 ]) {
   test(`with no walk running, the side panel offers ${offers.join(' and ')}: ${label}`, async (t) => {
-    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
     assert.deepEqual(h.acts(), offers);
     assert.equal(h.app.querySelector('section[id="panel-scan"]')?.hidden, false, 'Scan is on the screen');
     if (offers[0] === 'get-pro') {
       assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
       const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
+      const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
       const shown = asked(h);
       await h.switchTo(2);
       await h.navigate('https://impeccable.reviews/app/-/account?tab=plan');
-      assert.equal(asked(h), shown + 2, 'back from another tab, or the tab gone elsewhere: asked again');
+      assert.equal(asked(h), shown + 1, 'back from another tab, or the tab gone elsewhere: asked again, once in 2 s');
+      await wait(2000);
+      await h.navigate('https://impeccable.reviews/app/-/account');
+      assert.equal(asked(h), shown + 2);
       await h.press('get-pro');
       await h.press('another-account');
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
-      const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
       const out = asked(h);
       await wait(60_000);
       assert.equal(asked(h), out, 'signed out, the account is not asked again');
@@ -705,10 +708,18 @@ for (const [label, status, offers] of [
       const first = asked(p);
       await wait(5000);
       assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'not-pro'], 'asked again once, however often pressed');
-      // The server out of reach for a moment (no word on Pro): still no Pro, still asking.
-      delete paying.pro;
+      // A Scan walk meanwhile: no asking while it runs, and again once it is over.
+      await p.show(STUBS.walking);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'walking']);
+      await p.show(undefined);
       await wait(5000);
       assert.deepEqual([asked(p) - first, p.body.dataset.screen], [2, 'not-pro']);
+      // The server out of reach for a moment (no word on Pro), asked on a timer or another tab: still no Pro, still asking.
+      delete paying.pro;
+      await wait(5000);
+      await p.switchTo(3);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [4, 'not-pro']);
       paying.pro = true;
       await wait(5000);
       assert.deepEqual([p.body.dataset.screen, p.sent.some((m) => m.account === 'personas'), p.acts().includes('send')], ['home', true, true]);
