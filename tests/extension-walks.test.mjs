@@ -459,17 +459,21 @@ describe('walk page helpers', () => {
     const day = make('select', {}, [make('option', {}, ['Saturday secret'])]);
     const labels = [[name, nameLabel], [password, make('label', {}, ['Password ', password])], [note, make('label', {}, ['Note ', note])], [day, make('label', {}, ['Day ', day])]];
     for (const [field, label] of labels) field.labels = [label];
+    // A button posing as a list shows its choice; an editor's text, even a part another control names itself by, is typed.
+    const inside = make('span', { id: 'inside' }, ['Typed inside'], { isContentEditable: true });
     const body = make('body', {}, [
       make('h2', {}, [make('a', { href: '/x' }, ['Book a viewing'])]), make('p', {}, ['Call Dana on 0400 111 222']), nameLabel, name,
-      ...labels.slice(1).map(([, label]) => label), make('div', { contenteditable: 'true', role: 'article' }, ['Typed private text']), make('span', { pointer: '' }, ['10:00']),
+      ...labels.slice(1).map(([, label]) => label), make('div', { contenteditable: 'true', role: 'article' }, ['Typed private text'], { isContentEditable: true }),
+      make('button', { role: 'combobox' }, ['Peru chosen']), make('div', { contenteditable: 'plaintext-only' }, ['Plain private words'], { isContentEditable: true }),
+      make('button', { 'aria-labelledby': 'inside' }, ['Go']), make('div', { contenteditable: 'true' }, [inside], { isContentEditable: true }), make('span', { pointer: '' }, ['10:00']),
     ]);
     const walk = (el) => { for (const c of el.childNodes) if (c.nodeType === 1) { all.push(c); walk(c); } };
     walk(body);
     body.querySelectorAll = () => all;
     const style = (el) => ({ visibility: 'visible', opacity: '1', cursor: el.attrs && 'pointer' in el.attrs ? 'pointer' : 'auto', borderTopLeftRadius: '0px' });
-    const seen = JSON.parse(JSON.stringify(vm.runInNewContext(`(${helpers.agentSight})()`, { innerWidth: 1280, innerHeight: 900, document: { body, getElementById: () => null }, getComputedStyle: style })));
-    assert.doesNotMatch(JSON.stringify(seen), /Dana|0400|hunter2|prefilled|secret|private/);
-    assert.deepEqual(seen.items.filter((i) => i.name).map((i) => [i.role, i.name]), [['heading', 'Book a viewing'], ['link', 'Book a viewing'], ['textbox', 'Full name'], ['textbox', 'Password'], ['textbox', 'Note'], ['combobox', 'Day'], ['generic', '10:00']]);
+    const seen = JSON.parse(JSON.stringify(vm.runInNewContext(`(${helpers.agentSight})()`, { innerWidth: 1280, innerHeight: 900, document: { body, getElementById: (id) => (id === 'inside' ? inside : null) }, getComputedStyle: style })));
+    assert.doesNotMatch(JSON.stringify(seen), /Dana|0400|hunter2|prefilled|secret|private|Peru|Typed/);
+    assert.deepEqual(seen.items.filter((i) => i.name).map((i) => [i.role, i.name]), [['heading', 'Book a viewing'], ['link', 'Book a viewing'], ['textbox', 'Full name'], ['textbox', 'Password'], ['textbox', 'Note'], ['combobox', 'Day'], ['button', 'Go'], ['generic', '10:00']]);
   });
 });
 

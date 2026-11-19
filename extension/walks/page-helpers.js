@@ -1626,15 +1626,15 @@ function viewSize() {
 function agentSight() {
   const w = globalThis;
   const { innerWidth: W, innerHeight: H } = w, MAX = 150;
-  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=treeitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true]';
-  const FIELD = 'input, textarea, select, option, [contenteditable=""], [contenteditable=true], script, style';
+  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=treeitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only]';
+  const FIELD = 'input, textarea, select, option, [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only], script, style';
   const clean = (s) => s.replace(/\s+/g, " ").trim().slice(0, 80);
   const words = (n) => {
     if (!n)
       return "";
     if (n.nodeType === 3)
       return n.textContent ?? "";
-    if (n.nodeType !== 1 || n.matches?.(FIELD))
+    if (n.nodeType !== 1 || n.matches?.(FIELD) || n.isContentEditable)
       return "";
     let out = "";
     for (const c of Array.from(n.childNodes)) {
@@ -1677,7 +1677,7 @@ function agentSight() {
       return clean(el.value ?? "");
     if (tag === "input" && el.type === "image")
       return clean(el.getAttribute("alt") ?? "");
-    if (el.matches(FIELD) || el.isContentEditable)
+    if (el.matches(FIELD) || el.isContentEditable || /^(?:textbox|searchbox|combobox|spinbutton|slider|listbox)$/.test(role))
       return clean(Array.from(el.labels ?? []).map((l) => words(l)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder") || "");
     return clean(words(el)) || clean(el.querySelector("img[alt]")?.getAttribute("alt") ?? "") || clean(el.getAttribute("title") ?? "");
   };
@@ -1987,4 +1987,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'e8a3f07f3ecdff76';
+export const HASH = '00d6e32fabe6ac7c';
