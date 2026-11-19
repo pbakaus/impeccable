@@ -12,7 +12,6 @@ import { emptyView, isLive, reduce } from '../view.js';
 import { BUILD } from '../../shared/build.js';
 import { BARS, listen, meter, speechCtor } from './voice.js';
 import { isLoopback } from '../guard.js';
-import { RollText } from './roll.js';
 
 const params = new URLSearchParams(location.search);
 const app = document.getElementById('app');
@@ -495,33 +494,18 @@ const LEAD = 2000;
 /** When the intro's line and face `i` come in. */
 const due = (i) => i && LEAD + i * BEAT;
 /**
- * Before one is made, Create a persona's intro plays where its face will be: her faces cross-fade and the line rolls
- * from one to the next (roll.js), then it stays on the last. Timed from when the screen first drew it, so a redraw
- * carries on where it was; with reduced motion only the last face and line show. The box's own label asks the same, so
- * it is hidden from readers.
+ * Before one is made, Create a persona's intro plays where its face will be: her faces cross-fade and each line
+ * settles in letter by letter as the one before fades, then it stays on the last. Every line is drawn at once, stacked,
+ * and CSS plays each at its own delay, timed from when the screen first drew it, so a redraw carries on where it was;
+ * with reduced motion only the last face and line show. The box's own label asks the same, so it is hidden from readers.
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
-  const rolls = document.fonts && !matchMedia('(prefers-reduced-motion: reduce)').matches && at < due(COPY.intro.length);
-  // Until the fonts are in and it rolls, the line due now; still, the last.
-  const line = el('span', { class: 'intro-line', text: rolls ? COPY.intro[Math.min(Math.max(0, Math.floor((at - LEAD) / BEAT)), COPY.intro.length - 1)] : COPY.intro.at(-1) });
-  if (rolls) void document.fonts.ready.then(() => rollIntro(line));
+  const lines = COPY.intro.map((text, i) => el('span', { style: `animation-delay:${due(i + 1) - at}ms` },
+    [...text].map((ch, k) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + k * 16 - at}ms` : undefined }))));
   return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` }))),
-    el('span', { class: 'intro-lines' }, line));
-}
-/** Each frame from the screen's own clock, until the last line has landed or the line is drawn again. */
-function rollIntro(line) {
-  line.replaceChildren();
-  const roll = new RollText(line, { duration: 0.5 });
-  roll.steps = COPY.intro.map((text, i) => ({ at: due(i) / 1000, text }));
-  const frame = () => {
-    if (!line.isConnected) return;
-    const at = Date.now() - pre.shown;
-    roll.renderAt(at / 1000);
-    if (at < due(COPY.intro.length)) requestAnimationFrame(frame);
-  };
-  frame();
+    el('span', { class: 'intro-line' }, lines));
 }
 
 /** Above the box, every choice in sight: the persona's device, and one disability (picked again, it goes back to none). */
