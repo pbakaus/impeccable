@@ -60,8 +60,6 @@ export const COPY = {
   intro: ['Imagine you’re the persona.', 'How do you use the web each day?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now write it all down.'],
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
-    name: 'Your persona',
-    about: 'Who they are, in a line.',
     describe: 'Who are you, and what do you love or hate in apps?',
     action: 'Create',
     /** The persona's own device (`home.widths` names each), and one disability: the list's question, then each choice and its line. */

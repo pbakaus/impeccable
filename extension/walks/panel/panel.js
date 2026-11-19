@@ -467,7 +467,7 @@ function maker() {
   const create = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } });
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }), traits())
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
-      : el('div', { class: 'hero' }, blank(), el('span', { class: 'name ph', text: COPY.make.name }), el('p', { class: 'about ph', text: COPY.make.about }));
+      : introHero();
   const parts = [
     el('div', { class: 'top' }, made || pre.making ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
       el('span', { class: 'grow' }),
@@ -487,6 +487,21 @@ function maker() {
   if (!pre.modal) return parts;
   for (const part of parts) part.setAttribute('inert', '');
   return [...parts, appModal()];
+}
+
+/** How long each of the intro's lines shows. */
+const BEAT = 2600;
+/**
+ * Before one is made, Create a persona's intro plays where its face will be: her faces cross-fade and the lines follow
+ * one another, then it stays on the last. Timed from when the screen first drew it, so a redraw carries on where it was;
+ * with reduced motion only the last face and line show. The box's own label asks the same, so it is hidden from readers.
+ */
+function introHero() {
+  const at = Date.now() - (pre.shown ??= Date.now());
+  const timed = (i) => `animation-delay:${i * BEAT - at}ms`;
+  return el('div', { class: 'hero intro', 'aria-hidden': true, style: `--beat:${BEAT}ms` },
+    el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: timed(i) }))),
+    el('div', { class: 'intro-lines' }, COPY.intro.map((line, i) => el('p', { class: 'hd intro-line', style: timed(i), text: line }))));
 }
 
 /** The persona's device on the left, as Home's Screen; on the right, one tab that opens the Disability list. */
@@ -545,7 +560,7 @@ function cast() {
     // At the limit of their own with no app's personas to pick, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => {
-        Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
+        Object.assign(pre, { screen: 'make', shown: undefined, made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
         if (BUILD.account && !stubbed) void loadApps();
         render();
         app.querySelector('textarea')?.focus();
