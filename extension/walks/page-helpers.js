@@ -1659,8 +1659,10 @@ function agentSight() {
       return clean(el.getAttribute("alt") ?? el.querySelector("title")?.textContent);
     if (tag === "input" && /^(?:submit|button|reset)$/.test(String(el.type)))
       return clean(el.value);
-    if (tag === "input" || tag === "select" || tag === "textarea")
-      return clean([...Array.from(el.labels ?? [])].map((l) => clean(l.textContent)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder"));
+    if (tag === "input" && el.type === "image")
+      return clean(el.getAttribute("alt"));
+    if (tag === "input" || tag === "select" || tag === "textarea" || /^(?:textbox|searchbox|combobox|spinbutton|slider|listbox)$/.test(role))
+      return clean(Array.from(el.labels ?? []).map((l) => clean(l.textContent)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder"));
     return clean(el.textContent) || clean(el.querySelector("img[alt]")?.getAttribute("alt")) || clean(el.getAttribute("title"));
   };
   const items = [];
@@ -1670,14 +1672,14 @@ function agentSight() {
     if (items.length >= 150)
       break;
     const tag = el.tagName.toLowerCase();
-    if (/^(?:script|style|noscript|template|svg|path|g|option|br|iframe)$/.test(tag) || taken.some((t) => t.contains(el)))
+    const picture = tag === "img" || el.getAttribute("role") === "img";
+    if (!picture && /^(?:script|style|noscript|template|svg|path|g|option|br|iframe)$/.test(tag))
       continue;
     const b = el.getBoundingClientRect();
-    if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H)
+    if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H || taken.some((t) => t.contains(el)))
       continue;
     const control = el.matches(CONTROL);
     const heading = /^h[1-6]$/.test(tag) || el.getAttribute("role") === "heading";
-    const picture = tag === "img" || el.getAttribute("role") === "img";
     const text = Array.from(el.childNodes).some((n) => n.nodeType === 3 && /\S/.test(n.textContent ?? ""));
     const cs = w.getComputedStyle(el);
     let looks = false;
@@ -1690,7 +1692,7 @@ function agentSight() {
     if (picture && el.getAttribute("alt") === "" && !el.getAttribute("aria-label") || cs.visibility === "hidden" || Number(cs.opacity) === 0 || el.closest('[aria-hidden="true"]'))
       continue;
     const role = looks ? "generic" : roleOf(el, tag);
-    const name = nameOf(el, tag, role);
+    const name = text && !control && !heading && !picture && !looks ? "" : nameOf(el, tag, role);
     const v = cs.borderTopLeftRadius, n = parseFloat(v) || 0;
     const r = Math.round(v.endsWith("%") ? Math.min(b.width, b.height) * n / 100 : n);
     items.push({
@@ -1698,7 +1700,7 @@ function agentSight() {
       role,
       ...name ? { name } : {},
       r,
-      ...looks || el.disabled === true ? { cantPress: true } : {}
+      ...looks ? { cantPress: true } : {}
     });
     if (control || heading || picture || looks)
       taken.push(el);
@@ -1961,4 +1963,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'c78d120f4aa291c8';
+export const HASH = 'e46c4f62af98ae1e';
