@@ -489,8 +489,11 @@ function maker() {
   return [...parts, appModal()];
 }
 
-/** How long each of the intro's lines shows. */
-const BEAT = 2600;
+/** How long each of the intro's lines shows, and how much longer the first stays still before the first change. */
+const BEAT = 3800;
+const LEAD = 2000;
+/** When the intro's line and face `i` come in. */
+const due = (i) => i && LEAD + i * BEAT;
 /**
  * Before one is made, Create a persona's intro plays where its face will be: her faces cross-fade and the line rolls
  * from one to the next (roll.js), then it stays on the last. Timed from when the screen first drew it, so a redraw
@@ -499,24 +502,24 @@ const BEAT = 2600;
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
-  const rolls = document.fonts && !matchMedia('(prefers-reduced-motion: reduce)').matches && at < COPY.intro.length * BEAT;
+  const rolls = document.fonts && !matchMedia('(prefers-reduced-motion: reduce)').matches && at < due(COPY.intro.length);
   // Until the fonts are in and it rolls, the line due now; still, the last.
-  const line = el('span', { class: 'intro-line', text: rolls ? COPY.intro[Math.min(Math.floor(at / BEAT), COPY.intro.length - 1)] : COPY.intro.at(-1) });
+  const line = el('span', { class: 'intro-line', text: rolls ? COPY.intro[Math.min(Math.max(0, Math.floor((at - LEAD) / BEAT)), COPY.intro.length - 1)] : COPY.intro.at(-1) });
   if (rolls) void document.fonts.ready.then(() => rollIntro(line));
-  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms` },
-    el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${i * BEAT - at}ms` }))),
+  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms` },
+    el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` }))),
     el('span', { class: 'intro-lines' }, line));
 }
 /** Each frame from the screen's own clock, until the last line has landed or the line is drawn again. */
 function rollIntro(line) {
   line.replaceChildren();
   const roll = new RollText(line, { duration: 0.5 });
-  roll.steps = COPY.intro.map((text, i) => ({ at: (i * BEAT) / 1000, text }));
+  roll.steps = COPY.intro.map((text, i) => ({ at: due(i) / 1000, text }));
   const frame = () => {
     if (!line.isConnected) return;
     const at = Date.now() - pre.shown;
     roll.renderAt(at / 1000);
-    if (at < COPY.intro.length * BEAT) requestAnimationFrame(frame);
+    if (at < due(COPY.intro.length)) requestAnimationFrame(frame);
   };
   frame();
 }
