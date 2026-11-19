@@ -291,7 +291,7 @@ test('the popup is the detector alone, with no account', async () => {
 const where = (h) => h.app.querySelector('span.where')?.children[0]?.textContent ?? '';
 const { STUBS } = await import('../extension/walks/panel/stub.js');
 let panels = 0;
-async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, personaIntroSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, remove = { ok: true }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
+async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = true, root = SOURCE, tab = 1, personas = [], apps = { ok: false }, cast = [], plan = { ok: false }, walk = { ok: true }, create = { ok: false }, remove = { ok: true }, journeys = { ok: false }, control = {}, mic = null, appForSite, hold = {}, connected, search = '', url = 'https://tidy.example/' } = {}) {
   const make = (tag) => ({
     tagName: tag.toUpperCase(), children: [], attributes: {}, dataset: {}, listeners: {}, textContent: '', className: '', hidden: false, disabled: false,
     setAttribute(name, value) { this.attributes[name] = String(value); },
@@ -319,7 +319,7 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   const document = { body, activeElement: null, getElementById: (id) => id === 'panel-scan' ? [...body.nodes()].find((n) => n.attributes.id === 'panel-scan') ?? null : app, createElement: make, createElementNS: (_, tag) => make(tag) };
   const sent = [];
   const opened = [];
-  const local = { firstRunSeen, personaIntroSeen, appForSite };
+  const local = { firstRunSeen, appForSite };
   const session = { view, connected };
   const changed = [];
   const activated = [];
@@ -823,23 +823,6 @@ for (const [label, move] of [
     assert.equal(where(h), 'tidy.example');
     await move(h);
     assert.deepEqual([h.body.dataset.screen, where(h)], ['scan', 'other.example']);
-  });
-}
-
-// Catches the intro showing again after it was seen or skipped, or the box opening without it the first time.
-for (const [label, through] of [['seen to the end', ['intro-next', 'intro-next', 'intro-next', 'intro-next']], ['skipped', ['intro-next', 'skip-intro']]]) {
-  test(`Create a persona’s intro shows the first time only: ${label}`, async () => {
-    const personas = [{ name: 'Mira', role: '', slug: 'mira' }];
-    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: false, personas });
-    await h.press('make-persona');
-    // Each step's button is described by the headline shown above it, so a screen reader hears both.
-    const step = () => { const next = h.app.querySelector('[data-act="intro-next"]'); return next && [h.app.querySelector('.fr-mid').attributes['data-step'], next.attributes['aria-describedby'] === h.app.querySelectorAll('.intro-line').find((line) => line.className.split(' ').includes('on')).attributes.id]; };
-    const steps = [step()];
-    for (const act of through) { await h.press(act); steps.push(step()); }
-    assert.deepEqual([steps.slice(0, -1), h.body.dataset.screen, h.local.personaIntroSeen], [['0', '1', '2', '3'].slice(0, through.length).map((on) => [on, true]), 'make', true]);
-    const next = await sidePanel({ view: STUBS.idle, status: signedIn, personaIntroSeen: h.local.personaIntroSeen, personas });
-    await next.press('make-persona');
-    assert.equal(next.body.dataset.screen, 'make');
   });
 }
 

@@ -56,16 +56,8 @@ export const COPY = {
     sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
     sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
   },
-  /** The first time Create a persona opens: four screens, each a headline and its button, then the box. */
-  intro: {
-    skip: 'Skip',
-    screens: [
-      ['Imagine you’re the persona.', 'I’m imagining it'],
-      ['How do you use the web each day?', 'Next'],
-      ['What drives you mad in apps?', 'Next'],
-      ['And what makes you smile?', 'Tell us'],
-    ],
-  },
+  /** Create a persona's intro: these lines play above the box, one after another, and it stays on the last. */
+  intro: ['Imagine you’re the persona.', 'How do you use the web each day?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now write it all down.'],
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
     name: 'Your persona',

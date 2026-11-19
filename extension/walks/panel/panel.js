@@ -41,12 +41,10 @@ const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null
  * address (`localSite`) always has the six: an app chosen there is for that pick only, never kept.
  */
 Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
-/** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities), whether that list is open, and the intro's screen. */
-Object.assign(pre, { device: 'desktop', disability: 'none', needs: false, intro: 0 });
+/** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities), and whether that list is open. */
+Object.assign(pre, { device: 'desktop', disability: 'none', needs: false });
 /** Each disability's icon. */
 const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette', motor: 'hand', hearing: 'ear', cognitive: 'mind' };
-/** Whether the person has seen Create a persona's intro, or skipped it (chrome.storage.local `personaIntroSeen`). */
-let introSeen = true;
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
@@ -547,10 +545,10 @@ function cast() {
     // At the limit of their own with no app's personas to pick, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => {
-        Object.assign(pre, { screen: introSeen ? 'make' : 'intro', intro: 0, made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
+        Object.assign(pre, { screen: 'make', made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
         if (BUILD.account && !stubbed) void loadApps();
         render();
-        app.querySelector('[data-act="intro-next"]')?.focus();
+        app.querySelector('textarea')?.focus();
       } },
         el('span', { class: 'face' }, icon('plus'))),
   ], { role: 'group', 'aria-label': COPY.home.who }, people);
@@ -1118,8 +1116,8 @@ function terminal() {
 /* ------------------------------ first run ------------------------------ */
 
 /** The first time the panel is signed in, before the home: two screens, then never again (chrome.storage.local `firstRunSeen`). */
-const foot = (on, action, text, onclick, n = 2) => el('div', { class: 'fr-foot' },
-  el('div', { class: 'fr-dots', 'aria-hidden': true }, Array.from({ length: n }, (_, i) => el('i', { class: i === on ? 'on' : '' }))),
+const foot = (on, action, text, onclick) => el('div', { class: 'fr-foot' },
+  el('div', { class: 'fr-dots', 'aria-hidden': true }, Array.from({ length: 2 }, (_, i) => el('i', { class: i === on ? 'on' : '' }))),
   button(action, text, 'gold full tall', onclick));
 
 function beforeYouStart() {
@@ -1142,46 +1140,6 @@ function tabGroup() {
       el('h2', { class: 'hd', text: words.title }), el('p', { class: 'fr-p', text: words.line })),
     foot(1, 'start-walking', words.next, () => { pre.screen = 'home'; void chrome.storage.local.set({ firstRunSeen: true }).catch(() => undefined); render(); }),
   ];
-}
-
-/**
- * Create a persona's intro, the first time it opens: four screens, her face in the ring and a headline, then the box.
- * Every picture and headline is drawn at once, one shown: the tallest headline keeps its room, so nothing moves, and a
- * step swaps them in place (`stepIntro`) and they fade. Skip, or the last button, and it never shows again.
- */
-function intro() {
-  const screens = COPY.intro.screens;
-  const on = pre.intro;
-  return [
-    el('div', { class: 'top' }, el('span', { class: 'grow' }), button('skip-intro', COPY.intro.skip, 'sec sm', endIntro)),
-    el('div', { class: 'fr-mid', 'data-step': String(on) },
-      el('span', { class: 'intro-pics', 'aria-hidden': true }, screens.map((_, i) => el('img', { class: `intro-pic${i === on ? ' on' : ''}`, src: `intro/intro-${i + 1}.webp`, alt: '' }))),
-      el('div', { class: 'intro-lines', 'aria-live': 'polite' }, screens.map(([line], i) => el('h2', { class: `hd intro-line${i === on ? ' on' : ''}`, id: `intro-line-${i}`, text: line })))),
-    describeIntro(foot(on, 'intro-next', screens[on][1], stepIntro, screens.length)),
-  ];
-}
-/** The button is heard with the headline shown above it: focus lands on it, and the headline alone would go unread. */
-function describeIntro(root = app) {
-  root.querySelector('[data-act="intro-next"]')?.setAttribute('aria-describedby', `intro-line-${pre.intro}`);
-  return root;
-}
-function stepIntro() {
-  const screens = COPY.intro.screens;
-  if (pre.intro >= screens.length - 1) { endIntro(); return; }
-  const on = (pre.intro += 1);
-  app.querySelector('.fr-mid')?.setAttribute('data-step', String(on));
-  app.querySelectorAll('.intro-pic').forEach((pic, i) => { pic.className = `intro-pic${i === on ? ' on' : ''}`; });
-  app.querySelectorAll('.intro-line').forEach((line, i) => { line.className = `hd intro-line${i === on ? ' on' : ''}`; });
-  [...(app.querySelector('.fr-dots')?.children ?? [])].forEach((dot, i) => { dot.className = i === on ? 'on' : ''; });
-  app.querySelector('[data-act="intro-next"]').textContent = screens[on][1];
-  describeIntro();
-}
-function endIntro() {
-  introSeen = true;
-  void Promise.resolve(chrome.storage.local.set({ personaIntroSeen: true })).catch(() => undefined);
-  pre.screen = 'make';
-  render();
-  app.querySelector('textarea')?.focus();
 }
 
 /* ------------------------------ drawing ------------------------------ */
@@ -1237,7 +1195,7 @@ function render() {
   if (focused) app.querySelector(`[data-act="${focused}"]`)?.focus();
 }
 // The first run's two screens, beside the literal above so that it merges with changes to it.
-Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history, personas: yours, intro });
+Object.assign(SCREENS, { before: beforeYouStart, 'tab-group': tabGroup, history, personas: yours });
 
 /** Which tab this panel's window shows: asked when the panel opens, each time another tab comes to the front, and as it loads. */
 async function look() {
@@ -1268,7 +1226,6 @@ async function start() {
   const stub = BUILD.devHosts ? params.get('stub') : null;
   const { walkWidth } = await Promise.resolve(chrome.storage?.local?.get('walkWidth')).catch(() => null) ?? {};
   if (WIDTHS.includes(walkWidth)) pre.width = ownWidth = walkWidth;
-  introSeen = (await Promise.resolve(chrome.storage?.local?.get('personaIntroSeen')).catch(() => null))?.personaIntroSeen === true;
   if (stub !== null) {
     const { STUBS, PRE, HISTORY, FEED } = await import('./stub.js');
     stubbed = true;
