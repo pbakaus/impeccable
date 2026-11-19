@@ -499,8 +499,10 @@ const BEAT = 2600;
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
-  const line = el('span', { class: 'intro-line', text: COPY.intro.at(-1) });
-  if (document.fonts && !matchMedia('(prefers-reduced-motion: reduce)').matches && at < COPY.intro.length * BEAT) void document.fonts.ready.then(() => rollIntro(line));
+  const rolls = document.fonts && !matchMedia('(prefers-reduced-motion: reduce)').matches && at < COPY.intro.length * BEAT;
+  // Until the fonts are in and it rolls, the line due now; still, the last.
+  const line = el('span', { class: 'intro-line', text: rolls ? COPY.intro[Math.min(Math.floor(at / BEAT), COPY.intro.length - 1)] : COPY.intro.at(-1) });
+  if (rolls) void document.fonts.ready.then(() => rollIntro(line));
   return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${i * BEAT - at}ms` }))),
     el('span', { class: 'intro-lines' }, line));
@@ -529,9 +531,10 @@ function devices() {
 function needs() {
   const chosen = pre.disability;
   return el('div', { class: 'chips', role: 'group', 'aria-labelledby': 'needs-h' }, Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', {
-    type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false', title: line || undefined, disabled: pre.making,
+    type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false', title: line || undefined, 'aria-describedby': line ? `need-${key}-line` : undefined, disabled: pre.making,
     onclick: () => { pre.disability = key === chosen ? 'none' : key; render(); },
-  }, icon(NEEDS[key]), name)));
+    // What it means, read out after the name: hidden, so the chip's own name stays the word on it.
+  }, icon(NEEDS[key]), name, line ? el('span', { id: `need-${key}-line`, hidden: true, text: line }) : null)));
 }
 /** Under the persona made: its device and disability, small. */
 const traits = () => el('p', { class: 'traits', 'data-device': pre.device, 'data-disability': pre.disability },

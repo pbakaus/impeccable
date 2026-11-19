@@ -27,11 +27,11 @@ function sharedLetters(a, b) {
 }
 
 export class RollText {
-  constructor(el, { duration = 0.45, stagger = 0.014, rise = 0.9 } = {}) {
+  constructor(el, { duration = 0.45 } = {}) {
     this.el = el;
     this.duration = duration;   // seconds each letter takes to roll or slide
-    this.stagger = stagger;     // seconds between neighbouring letters starting
-    this.rise = rise;           // how far a letter rolls, in line heights
+    this.stagger = 0.014;       // seconds between neighbouring letters starting
+    this.rise = 0.9;            // how far a letter rolls, in line heights
     this.steps = [];
     this.cache = new Map();
     this.ctx = document.createElement('canvas').getContext('2d');
@@ -61,9 +61,8 @@ export class RollText {
     const cur = this.measure(this.steps[k].text);
     const prev = k > 0 && t >= this.steps[0].at ? this.measure(this.steps[k - 1].text) : null;
     const local = t - this.steps[k].at;
-    const lh = parseFloat(getComputedStyle(this.el).lineHeight);
+    const lh = (this.lh ??= parseFloat(getComputedStyle(this.el).lineHeight));
     this.el.style.height = `${lh}px`;
-    this.el.setAttribute('aria-label', this.steps[k].text);
     const glyphs = [];
     const glyph = (c, x, y = 0, o = 1, blur = 0) => glyphs.push({ c, x, y, o, blur });
 
