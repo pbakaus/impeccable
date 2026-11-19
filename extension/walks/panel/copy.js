@@ -57,7 +57,7 @@ export const COPY = {
     sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
   },
   /** Create a persona's intro: these lines play above the box, one after another, and it stays on the last. */
-  intro: ['Imagine you’re the persona.', 'How do you use the web each day?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now write it all down.'],
+  intro: ['Imagine you’re the persona.', 'How do you use the web?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now tell us who you are.'],
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
     describe: 'Who are you, and what do you love or hate in apps?',
