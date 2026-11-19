@@ -1625,10 +1625,26 @@ function viewSize() {
 
 function agentSight() {
   const w = globalThis;
-  const { innerWidth: W, innerHeight: H } = w;
-  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true]';
-  const clean = (s) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
-  const byIds = (el) => clean((el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => id ? w.document.getElementById(id)?.textContent : "").join(" "));
+  const { innerWidth: W, innerHeight: H } = w, MAX = 150;
+  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=treeitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true]';
+  const FIELD = 'input, textarea, select, option, [contenteditable=""], [contenteditable=true], script, style';
+  const clean = (s) => s.replace(/\s+/g, " ").trim().slice(0, 80);
+  const words = (n) => {
+    if (!n)
+      return "";
+    if (n.nodeType === 3)
+      return n.textContent ?? "";
+    if (n.nodeType !== 1 || n.matches?.(FIELD))
+      return "";
+    let out = "";
+    for (const c of Array.from(n.childNodes)) {
+      out += ` ${words(c)}`;
+      if (out.length > 200)
+        break;
+    }
+    return out;
+  };
+  const byIds = (el) => clean((el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => id ? words(w.document.getElementById(id)) : "").join(" "));
   const roleOf = (el, tag) => {
     const own = el.getAttribute("role");
     if (own)
@@ -1641,7 +1657,7 @@ function agentSight() {
       return "combobox";
     if (tag === "textarea")
       return "textbox";
-    if (tag === "img")
+    if (tag === "img" || tag === "svg")
       return "img";
     if (/^h[1-6]$/.test(tag))
       return "heading";
@@ -1652,60 +1668,68 @@ function agentSight() {
     return el.isContentEditable ? "textbox" : "StaticText";
   };
   const nameOf = (el, tag, role) => {
-    const named = byIds(el) || clean(el.getAttribute("aria-label"));
+    const named = byIds(el) || clean(el.getAttribute("aria-label") ?? "");
     if (named)
       return named;
     if (role === "img")
-      return clean(el.getAttribute("alt") ?? el.querySelector("title")?.textContent);
+      return clean(el.getAttribute("alt") ?? words(el.querySelector("title")));
     if (tag === "input" && /^(?:submit|button|reset)$/.test(String(el.type)))
-      return clean(el.value);
+      return clean(el.value ?? "");
     if (tag === "input" && el.type === "image")
-      return clean(el.getAttribute("alt"));
-    if (tag === "input" || tag === "select" || tag === "textarea" || /^(?:textbox|searchbox|combobox|spinbutton|slider|listbox)$/.test(role))
-      return clean(Array.from(el.labels ?? []).map((l) => clean(l.textContent)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder"));
-    return clean(el.textContent) || clean(el.querySelector("img[alt]")?.getAttribute("alt")) || clean(el.getAttribute("title"));
+      return clean(el.getAttribute("alt") ?? "");
+    if (el.matches(FIELD) || el.isContentEditable)
+      return clean(Array.from(el.labels ?? []).map((l) => words(l)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder") || "");
+    return clean(words(el)) || clean(el.querySelector("img[alt]")?.getAttribute("alt") ?? "") || clean(el.getAttribute("title") ?? "");
   };
-  const items = [];
+  const faded = new Map;
+  const gone = (el) => {
+    if (!el)
+      return false;
+    let v = faded.get(el);
+    if (v === undefined) {
+      v = Number(w.getComputedStyle(el).opacity) === 0 || gone(el.parentElement);
+      faded.set(el, v);
+    }
+    return v;
+  };
+  const hidden = (el, native) => w.getComputedStyle(el).visibility === "hidden" || (native ? gone(el.parentElement) : gone(el));
+  const first = [], text = [];
   const taken = [];
   const all = w.document.body ? Array.from(w.document.body.querySelectorAll("*")) : [];
-  for (const el of all) {
-    if (items.length >= 150)
+  for (const [at, el] of all.entries()) {
+    if (first.length >= MAX)
       break;
     const tag = el.tagName.toLowerCase();
     const picture = tag === "img" || el.getAttribute("role") === "img";
-    if (!picture && /^(?:script|style|noscript|template|svg|path|g|option|br|iframe)$/.test(tag))
+    if (/^(?:script|style|noscript|template|option|br|iframe)$/.test(tag) || tag === "svg" && !picture || tag !== "svg" && el.closest("svg"))
       continue;
     const b = el.getBoundingClientRect();
     if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H || taken.some((t) => t.contains(el)))
       continue;
     const control = el.matches(CONTROL);
     const heading = /^h[1-6]$/.test(tag) || el.getAttribute("role") === "heading";
-    const text = Array.from(el.childNodes).some((n) => n.nodeType === 3 && /\S/.test(n.textContent ?? ""));
+    const own = Array.from(el.childNodes).some((n) => n.nodeType === 3 && /\S/.test(n.textContent ?? ""));
     const cs = w.getComputedStyle(el);
     let looks = false;
     if (!control && !heading && !picture) {
-      const own = cs.cursor === "pointer" && (!el.parentElement || w.getComputedStyle(el.parentElement).cursor !== "pointer");
-      looks = (own || el.hasAttribute("onclick")) && !el.closest("a, button, label, summary, [role=button], [role=link]");
-      if (!looks && !text)
+      const pointer = cs.cursor === "pointer" && (!el.parentElement || w.getComputedStyle(el.parentElement).cursor !== "pointer");
+      looks = (pointer || el.hasAttribute("onclick")) && !el.closest(`${CONTROL}, label, [tabindex]`);
+      if (!looks && !own)
         continue;
     }
-    if (picture && el.getAttribute("alt") === "" && !el.getAttribute("aria-label") || cs.visibility === "hidden" || Number(cs.opacity) === 0 || el.closest('[aria-hidden="true"]'))
+    if (picture && el.getAttribute("alt") === "" && !el.getAttribute("aria-label") || el.closest('[aria-hidden="true"]') || hidden(el, /^(?:input|select|textarea)$/.test(tag)))
       continue;
     const role = looks ? "generic" : roleOf(el, tag);
-    const name = text && !control && !heading && !picture && !looks ? "" : nameOf(el, tag, role);
+    const name = control || heading || picture || looks ? nameOf(el, tag, role) : "";
     const v = cs.borderTopLeftRadius, n = parseFloat(v) || 0;
     const r = Math.round(v.endsWith("%") ? Math.min(b.width, b.height) * n / 100 : n);
-    items.push({
-      box: { x: Math.round(b.left), y: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height) },
-      role,
-      ...name ? { name } : {},
-      r,
-      ...looks ? { cantPress: true } : {}
-    });
-    if (control || heading || picture || looks)
+    const item = { box: { x: Math.round(b.left), y: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height) }, role, ...name ? { name } : {}, r, ...looks ? { cantPress: true } : {} };
+    (control || heading || picture || looks ? first : text).push([at, item]);
+    if (control || picture)
       taken.push(el);
   }
-  return { items, view: { width: Math.round(W), height: Math.round(H) } };
+  const kept = [...first, ...text.slice(0, Math.max(0, MAX - first.length))].sort((a, b) => a[0] - b[0]);
+  return { items: kept.map(([, item]) => item), view: { width: Math.round(W), height: Math.round(H) } };
 }
 
 function coverSecrets(on, forMs) {
@@ -1963,4 +1987,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'e46c4f62af98ae1e';
+export const HASH = 'e8a3f07f3ecdff76';
