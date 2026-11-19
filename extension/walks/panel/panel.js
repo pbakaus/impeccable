@@ -44,7 +44,7 @@ Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, 
 /** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities). */
 Object.assign(pre, { device: 'desktop', disability: 'none' });
 /** Each disability's icon. */
-const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette', motor: 'hand', cognitive: 'mind' };
+const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette' };
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
@@ -102,8 +102,6 @@ const ICONS = {
   glasses: ['M3 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M14 14a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0', 'M10 14c.6-.8 1.3-1.2 2-1.2s1.4.4 2 1.2', 'M3.2 12.8L5.5 6.5h1.5M20.8 12.8L18.5 6.5H17'],
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
   blind: ['M3 3l18 18', 'M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5', 'M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5-1.5', 'M9.9 9.9a3 3 0 0 0 4.2 4.2'],
-  hand: ['M8 13V6.5a1.5 1.5 0 0 1 3 0V11', 'M11 11V4.5a1.5 1.5 0 0 1 3 0V11', 'M14 11V6a1.5 1.5 0 0 1 3 0v6', 'M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.3a6 6 0 0 1-4.5-2l-3.4-3.8a1.6 1.6 0 0 1 2.3-2.2L8 14.5'],
-  mind: ['M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8 4 4 0 0 0 .6 6.6A4 4 0 1 0 12 18z', 'M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8 4 4 0 0 1-.6 6.6A4 4 0 1 1 12 18z', 'M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4'],
   person: ['M12 5.5a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z', 'M5 8l7 1.5L19 8', 'M12 9.5V14l-3 7M12 14l3 7'],
   plus: ['M12 5v14M5 12h14'],
   back: ['M19 12H5M11 6l-6 6 6 6'],
@@ -490,12 +488,13 @@ function maker() {
 
 /** How long each of the intro's lines shows, and how much longer the first stays still before the first change. */
 const BEAT = 6000;
-const LEAD = 2000;
+const LEAD = 1200;
 /** When the intro's line and face `i` come in. */
 const due = (i) => i && LEAD + i * BEAT;
 /**
  * Before one is made, Create a persona's intro plays where its face will be: her faces cross-fade and each line
- * settles in letter by letter as the one before fades, then it stays on the last. Every line is drawn at once, stacked,
+ * settles in letter by letter as the one before fades, then it stays on the last. The ring around the face fills
+ * while each line holds, so it shows how long until the next. Every line is drawn at once, stacked,
  * and CSS plays each at its own delay, timed from when the screen first drew it, so a redraw carries on where it was;
  * with reduced motion only the last face and line show. The box's own label asks the same, so it is hidden from readers.
  */
@@ -507,7 +506,7 @@ function introHero() {
     const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + (w + k++) * 16 - at}ms` : undefined })))]);
     return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
   });
-  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms` },
+  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` }))),
     el('span', { class: 'intro-line' }, lines));
 }

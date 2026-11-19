@@ -70,8 +70,6 @@ export const COPY = {
       'low-vision': ['Low vision', 'blurry, low contrast'],
       blind: ['Blind', 'uses a screen reader'],
       'colour-blind': ['Colour-blind', 'red and green look alike'],
-      motor: ['Unsteady hands', 'slow with a mouse'],
-      cognitive: ['Focus and memory', 'needs things simple'],
     },
     /** On the + once the person has as many of their own as the server allows. */
     full: (max) => `You can make up to ${max || 3} personas for now`,
