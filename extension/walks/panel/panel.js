@@ -1099,9 +1099,22 @@ async function signOut() {
   render();
 }
 
+/**
+ * After Get Pro, the account is asked again every few seconds for ten minutes, until it has Pro or this screen goes:
+ * the checkout runs in a tab beside the panel, which need not lose or regain focus, and Pro lands a moment after paying.
+ */
+const PRO_EVERY = 4000;
+let proUntil = 0;
+let proTimer = null;
+function awaitPro() {
+  proUntil = Date.now() + 10 * 60 * 1000;
+  const again = () => { proTimer = setTimeout(() => { if (screen() === 'not-pro' && Date.now() < proUntil) void knowAccount().finally(again); else proTimer = null; }, PRO_EVERY); };
+  if (!proTimer) again();
+}
+
 /** Signed in without Impeccable Pro, by the server's word: Scan, then Get Pro and another account. */
 const notPro = () => [scanBox(), el('div', { class: 'foot' }, el('p', { class: 'task', text: COPY.notPro.line }),
-  button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
+  button('get-pro', COPY.notPro.getPro, 'gold full', () => { awaitPro(); void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
   button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); }))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
@@ -1248,7 +1261,8 @@ async function look() {
 
 async function knowAccount() {
   const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
-  const was = account?.signedIn === true;
+  // Pro come just now (Get Pro paid for) counts as just signed in: no personas were asked for without it.
+  const was = account?.signedIn === true && account.pro !== false;
   const before = screen();
   account = answer?.ok === true && answer.available === true ? answer : null;
   if (account?.signedIn === true && account.pro !== false && (!was || pre.personas === null)) void loadPersonas();
@@ -1324,7 +1338,8 @@ async function start() {
       clearTimeout(settling);
       settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
     };
-    chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
+    // Without Pro, back from another tab (paid there, maybe): asked again.
+    chrome.tabs.onActivated.addListener(() => { if (screen() === 'not-pro') void knowAccount(); void look().then(() => { moved(); render(); }); });
     // Scan names the tab's site: drawn again only when the site changes, as a redraw moves its box.
     chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
     const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
