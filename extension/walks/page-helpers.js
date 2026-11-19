@@ -1687,7 +1687,7 @@ function agentSight() {
       return { left: 0, top: 0, right: W, bottom: H };
     let c = clips.get(el);
     if (!c) {
-      const up = clipOf(el.parentElement), cs = w.getComputedStyle(el);
+      const cs = w.getComputedStyle(el), up = cs.position === "fixed" ? clipOf(null) : clipOf(el.parentElement);
       const r = cs.overflowX !== "visible" || cs.overflowY !== "visible" ? el.getBoundingClientRect() : null;
       c = r ? { left: Math.max(up.left, r.left), top: Math.max(up.top, r.top), right: Math.min(up.right, r.right), bottom: Math.min(up.bottom, r.bottom) } : up;
       clips.set(el, c);
@@ -1719,8 +1719,8 @@ function agentSight() {
     const b = el.getBoundingClientRect();
     if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H || taken.some((t) => t.contains(el)))
       continue;
-    const c = w.getComputedStyle(el).position === "fixed" ? null : clipOf(el.parentElement);
-    if (c && (Math.min(b.right, c.right) - Math.max(b.left, c.left) < 2 || Math.min(b.bottom, c.bottom) - Math.max(b.top, c.top) < 2))
+    const c = clipOf(el);
+    if (Math.min(b.right, c.right) - Math.max(b.left, c.left) < 2 || Math.min(b.bottom, c.bottom) - Math.max(b.top, c.top) < 2)
       continue;
     const control = el.matches(CONTROL);
     const heading = /^h[1-6]$/.test(tag) || el.getAttribute("role") === "heading";
@@ -1741,7 +1741,7 @@ function agentSight() {
     const r = Math.round(v.endsWith("%") ? Math.min(b.width, b.height) * n / 100 : n);
     const item = { box: { x: Math.round(b.left), y: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height) }, role, ...name ? { name } : {}, r, ...looks ? { cantPress: true } : {} };
     (control || heading || picture || looks ? first : text).push([at, item]);
-    if (control || picture)
+    if (control && !/^(?:listbox|tree|treeitem|menu)$/.test(role) || picture)
       taken.push(el);
   }
   const kept = [...first, ...text.slice(0, Math.max(0, MAX - first.length))].sort((a, b) => a[0] - b[0]);
@@ -2003,4 +2003,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'cf5efdf419c6be98';
+export const HASH = '32983ad09ef23660';

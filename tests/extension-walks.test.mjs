@@ -464,21 +464,23 @@ describe('walk page helpers', () => {
     // A field by its role holds a choice too, even when another control names itself by it; a slide outside its
     // carousel's overflow is out of sight.
     const choice = make('div', { id: 'choice', role: 'combobox' }, ['Private selection']);
-    const carousel = make('div', { overflow: '' }, [make('button', {}, ['Hidden slide'], { box: { left: 900, top: 900, width: 80, height: 30 } })], { box: { left: 0, top: 900, width: 200, height: 40 } });
+    // A fixed overlay inside it shows against the window, its buttons too; a list's choices are its own.
+    const overlay = make('div', { fixed: '' }, [make('button', {}, ['Close'], { box: { left: 1000, top: 1000, width: 80, height: 30 } })], { box: { left: 1000, top: 1000, width: 100, height: 40 } });
+    const carousel = make('div', { overflow: '' }, [make('button', {}, ['Hidden slide'], { box: { left: 900, top: 900, width: 80, height: 30 } }), overlay], { box: { left: 0, top: 900, width: 200, height: 40 } });
     const body = make('body', {}, [
       make('h2', {}, [make('a', { href: '/x' }, ['Book a viewing'])]), make('p', {}, ['Call Dana on 0400 111 222']), nameLabel, name,
       ...labels.slice(1).map(([, label]) => label), make('div', { contenteditable: 'true', role: 'article' }, ['Typed private text'], { isContentEditable: true }),
       make('button', { role: 'combobox' }, ['Peru chosen']), make('div', { contenteditable: 'plaintext-only' }, ['Plain private words'], { isContentEditable: true }),
-      make('button', { 'aria-labelledby': 'choice' }, ['Pick']), choice, make('div', { role: 'listbox', 'aria-label': 'Sizes' }, [make('span', {}, ['Small'])]), carousel,
+      make('button', { 'aria-labelledby': 'choice' }, ['Pick']), choice, make('div', { role: 'listbox', 'aria-label': 'Sizes' }, [make('span', { role: 'option' }, ['Small'])]), carousel,
       make('button', { 'aria-labelledby': 'inside' }, ['Go']), make('div', { contenteditable: 'true' }, [inside], { isContentEditable: true }), make('span', { pointer: '' }, ['10:00']),
     ]);
     const walk = (el) => { for (const c of el.childNodes) if (c.nodeType === 1) { all.push(c); walk(c); } };
     walk(body);
     body.querySelectorAll = () => all;
-    const style = (el) => ({ visibility: 'visible', opacity: '1', cursor: el.attrs && 'pointer' in el.attrs ? 'pointer' : 'auto', borderTopLeftRadius: '0px', overflowX: el.attrs && 'overflow' in el.attrs ? 'hidden' : 'visible', overflowY: 'visible', position: 'static' });
+    const style = (el) => ({ visibility: 'visible', opacity: '1', cursor: el.attrs && 'pointer' in el.attrs ? 'pointer' : 'auto', borderTopLeftRadius: '0px', overflowX: el.attrs && 'overflow' in el.attrs ? 'hidden' : 'visible', overflowY: 'visible', position: el.attrs && 'fixed' in el.attrs ? 'fixed' : 'static' });
     const seen = JSON.parse(JSON.stringify(vm.runInNewContext(`(${helpers.agentSight})()`, { innerWidth: 1280, innerHeight: 4000, document: { body, getElementById: (id) => ({ inside, choice })[id] ?? null }, getComputedStyle: style })));
     assert.doesNotMatch(JSON.stringify(seen), /Dana|0400|hunter2|prefilled|secret|private|Peru|Typed|Private|Hidden slide/);
-    assert.deepEqual(seen.items.filter((i) => i.name).map((i) => [i.role, i.name]), [['heading', 'Book a viewing'], ['link', 'Book a viewing'], ['textbox', 'Full name'], ['textbox', 'Password'], ['textbox', 'Note'], ['combobox', 'Day'], ['button', 'Pick'], ['listbox', 'Sizes'], ['button', 'Go'], ['generic', '10:00']]);
+    assert.deepEqual(seen.items.filter((i) => i.name).map((i) => [i.role, i.name]), [['heading', 'Book a viewing'], ['link', 'Book a viewing'], ['textbox', 'Full name'], ['textbox', 'Password'], ['textbox', 'Note'], ['combobox', 'Day'], ['button', 'Pick'], ['listbox', 'Sizes'], ['option', 'Small'], ['button', 'Close'], ['button', 'Go'], ['generic', '10:00']]);
   });
 });
 
