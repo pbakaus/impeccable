@@ -386,7 +386,11 @@ function clickByText(wanted, opts) {
   let covered;
   const hit = doc.elementFromPoint && !reached ? doc.elementFromPoint(point.x, point.y) : null;
   const around = !!hit?.contains?.(best.el);
-  if (hit && !around && hit !== best.el && !best.el.contains?.(hit) && !labelsOf(best.el).some((owner) => inside(owner, hit))) {
+  const stood = best.el.tagName.toLowerCase() === "label" ? best.el.control : best.el;
+  const over = hit?.closest?.(clickable);
+  const [sb, hb, look] = [stood?.getBoundingClientRect(), over?.getBoundingClientRect(), over ? w.getComputedStyle?.(over) : undefined];
+  const standIn = !!stood?.disabled && /^(?:input|textarea)$/i.test(stood.tagName) && !!sb && !!hb && hb.width <= sb.width * 2.5 && hb.height <= sb.height * 3 && look?.visibility !== "hidden" && Number(look?.opacity ?? 1) > 0 && Math.abs(hb.left + hb.width / 2 - (sb.left + sb.width / 2)) <= hb.width / 2 && Math.abs(hb.top + hb.height / 2 - (sb.top + sb.height / 2)) <= hb.height / 2;
+  if (hit && !around && !standIn && hit !== best.el && !best.el.contains?.(hit) && !labelsOf(best.el).some((owner) => inside(owner, hit))) {
     const cls = typeof hit.className === "string" ? hit.className.trim().split(/\s+/)[0] : "";
     covered = `${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : cls ? `.${cls}` : ""}`;
   }
@@ -755,8 +759,13 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const doc = w.document;
   const norm = (s) => s.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
   const words = norm(wanted).split(" ").filter((x) => x.length > 1);
-  const fields = Array.prototype.slice.call(doc.querySelectorAll('input:not([type=hidden]):not([type=submit]), textarea, [contenteditable="true"]'));
+  const fields = Array.prototype.slice.call(doc.querySelectorAll('input:not([type=hidden]):not([type=submit]), textarea, [contenteditable="true"]')).filter((el) => {
+    const b = el.getBoundingClientRect();
+    return b.width > 0 && b.height > 0 && !el.disabled && !el.readOnly && !el.closest?.("[inert]");
+  });
+  const focused = doc.activeElement;
   let best = null;
+  let own = -1;
   for (const el of fields) {
     const label = Array.prototype.map.call(el.labels ?? [], (l) => l.textContent ?? "").join(" ");
     const t = norm(`${el.getAttribute("placeholder") ?? ""} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("name") ?? ""} ${label}`);
@@ -764,14 +773,15 @@ function typeInto(wanted, text, keys, noSecrets = false) {
     for (const x of words)
       if (t.indexOf(x) !== -1)
         score += 1;
+    if (el === focused)
+      own = score;
     if (!best || score > best.score)
       best = { el, score };
   }
   if (!best)
     return null;
-  const focused = doc.activeElement;
-  if (best.score === 0 && focused && fields.includes(focused))
-    best = { el: focused, score: 0 };
+  if (focused && own === best.score)
+    best = { el: focused, score: own };
   if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-impeccable-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
     return null;
   const was = best.el.getBoundingClientRect();
@@ -2003,4 +2013,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '32983ad09ef23660';
+export const HASH = 'b2612149a7b0ef92';
