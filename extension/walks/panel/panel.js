@@ -487,8 +487,8 @@ function maker() {
 }
 
 /** How long each of the intro's lines shows, and how much longer the first stays still before the first change. */
-const BEAT = 6000;
-const LEAD = 1200;
+const BEAT = 4000;
+const LEAD = 2000;
 /** When the intro's line and face `i` come in. */
 const due = (i) => i && LEAD + i * BEAT;
 /**
