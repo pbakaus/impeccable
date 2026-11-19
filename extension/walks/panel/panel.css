@@ -360,8 +360,8 @@ b { font-weight: 500; }
 .intro-pic { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; animation: intro-beat calc(var(--beat) * 1.15) var(--ease) both; }
 .intro-pic:last-child { opacity: 1; animation-name: intro-in; }
 .intro-lines { display: flex; justify-content: center; width: 100%; }
-/* As big as the longest line allows on one line in the narrowest panel. */
-.intro-line { font-family: var(--wordmark); font-weight: 200; font-size: min(2.5rem, calc((100vw - 40px) / 8.9)); line-height: 1.1; color: var(--ink); white-space: nowrap; }
+/* A status line, as long as the longest line allows on one line in the narrowest panel. */
+.intro-line { font-size: min(19px, calc((100vw - 40px) / 16.3)); font-weight: 500; line-height: 28px; color: var(--ink); white-space: nowrap; }
 @keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes intro-in { 0% { opacity: 0; } 15% { opacity: 1; } }
 
