@@ -1623,6 +1623,89 @@ function viewSize() {
   return { width: Math.round(w.innerWidth), height: Math.round(w.innerHeight) };
 }
 
+function agentSight() {
+  const w = globalThis;
+  const { innerWidth: W, innerHeight: H } = w;
+  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true]';
+  const clean = (s) => (s ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const byIds = (el) => clean((el.getAttribute("aria-labelledby") ?? "").split(/\s+/).map((id) => id ? w.document.getElementById(id)?.textContent : "").join(" "));
+  const roleOf = (el, tag) => {
+    const own = el.getAttribute("role");
+    if (own)
+      return own.split(/\s+/)[0];
+    if (tag === "a")
+      return "link";
+    if (tag === "button" || tag === "summary")
+      return "button";
+    if (tag === "select")
+      return "combobox";
+    if (tag === "textarea")
+      return "textbox";
+    if (tag === "img")
+      return "img";
+    if (/^h[1-6]$/.test(tag))
+      return "heading";
+    if (tag === "input") {
+      const t = String(el.type);
+      return t === "checkbox" || t === "radio" ? t : t === "range" ? "slider" : t === "number" ? "spinbutton" : t === "search" ? "searchbox" : /^(?:submit|button|reset|image)$/.test(t) ? "button" : "textbox";
+    }
+    return el.isContentEditable ? "textbox" : "StaticText";
+  };
+  const nameOf = (el, tag, role) => {
+    const named = byIds(el) || clean(el.getAttribute("aria-label"));
+    if (named)
+      return named;
+    if (role === "img")
+      return clean(el.getAttribute("alt") ?? el.querySelector("title")?.textContent);
+    if (tag === "input" && /^(?:submit|button|reset)$/.test(String(el.type)))
+      return clean(el.value);
+    if (tag === "input" || tag === "select" || tag === "textarea")
+      return clean([...Array.from(el.labels ?? [])].map((l) => clean(l.textContent)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder"));
+    return clean(el.textContent) || clean(el.querySelector("img[alt]")?.getAttribute("alt")) || clean(el.getAttribute("title"));
+  };
+  const items = [];
+  const taken = [];
+  const all = w.document.body ? Array.from(w.document.body.querySelectorAll("*")) : [];
+  for (const el of all) {
+    if (items.length >= 150)
+      break;
+    const tag = el.tagName.toLowerCase();
+    if (/^(?:script|style|noscript|template|svg|path|g|option|br|iframe)$/.test(tag) || taken.some((t) => t.contains(el)))
+      continue;
+    const b = el.getBoundingClientRect();
+    if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H)
+      continue;
+    const control = el.matches(CONTROL);
+    const heading = /^h[1-6]$/.test(tag) || el.getAttribute("role") === "heading";
+    const picture = tag === "img" || el.getAttribute("role") === "img";
+    const text = Array.from(el.childNodes).some((n) => n.nodeType === 3 && /\S/.test(n.textContent ?? ""));
+    const cs = w.getComputedStyle(el);
+    let looks = false;
+    if (!control && !heading && !picture) {
+      const own = cs.cursor === "pointer" && (!el.parentElement || w.getComputedStyle(el.parentElement).cursor !== "pointer");
+      looks = (own || el.hasAttribute("onclick")) && !el.closest("a, button, label, summary, [role=button], [role=link]");
+      if (!looks && !text)
+        continue;
+    }
+    if (picture && el.getAttribute("alt") === "" && !el.getAttribute("aria-label") || cs.visibility === "hidden" || Number(cs.opacity) === 0 || el.closest('[aria-hidden="true"]'))
+      continue;
+    const role = looks ? "generic" : roleOf(el, tag);
+    const name = nameOf(el, tag, role);
+    const v = cs.borderTopLeftRadius, n = parseFloat(v) || 0;
+    const r = Math.round(v.endsWith("%") ? Math.min(b.width, b.height) * n / 100 : n);
+    items.push({
+      box: { x: Math.round(b.left), y: Math.round(b.top), width: Math.round(b.width), height: Math.round(b.height) },
+      role,
+      ...name ? { name } : {},
+      r,
+      ...looks || el.disabled === true ? { cantPress: true } : {}
+    });
+    if (control || heading || picture || looks)
+      taken.push(el);
+  }
+  return { items, view: { width: Math.round(W), height: Math.round(H) } };
+}
+
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
   const seen = "data-impeccable-secret-field";
@@ -1863,7 +1946,7 @@ function coverHolds() {
   return bare;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, coverSecrets, coverHolds });
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, agentSight, coverSecrets, coverHolds });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -1878,4 +1961,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '80ed7cbfeb56e6c2';
+export const HASH = 'c78d120f4aa291c8';
