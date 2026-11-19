@@ -62,18 +62,15 @@ export const COPY = {
   make: {
     describe: 'Who are you, and what do you love or hate in apps?',
     action: 'Create',
-    /** The persona's own device (`home.widths` names each), and one disability: the list's question, then each choice and its line. */
-    device: 'Device',
+    /** The persona's own device (`home.widths` names each), and one disability: each choice and its line. */
+    device: 'Preferred device',
     disability: 'Disability',
-    none: 'None',
-    needs: 'Anything that changes how you use apps?',
     disabilities: {
-      none: ['No disability', ''],
+      none: ['None', ''],
       'low-vision': ['Low vision', 'blurry, low contrast'],
       blind: ['Blind', 'uses a screen reader'],
       'colour-blind': ['Colour-blind', 'red and green look alike'],
       motor: ['Unsteady hands', 'slow with a mouse'],
-      hearing: ['Hard of hearing', 'needs captions'],
       cognitive: ['Focus and memory', 'needs things simple'],
     },
     /** On the + once the person has as many of their own as the server allows. */

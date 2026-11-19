@@ -474,10 +474,10 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], create });
     await h.press('make-persona');
     assert.equal(h.body.dataset.screen, 'make');
-    // A phone, and one disability from the list: the one chosen, picked again, goes back to none.
-    const pick = async (key) => { await h.press('needs'); await h.press(`need-${key}`); };
+    // A phone, and one disability, each pressed straight away: the one chosen, picked again, goes back to none.
     await h.press('device-phone');
-    for (const key of ['low-vision', 'low-vision', 'blind', 'low-vision']) await pick(key);
+    for (const key of ['low-vision', 'low-vision', 'blind', 'low-vision']) await h.press(`need-${key}`);
+    assert.deepEqual(['device-phone', 'need-low-vision', 'need-blind'].map((act) => h.app.querySelector(`[data-act="${act}"]`).attributes['aria-pressed']), ['true', 'true', 'false']);
     h.app.querySelector('textarea').value = '  A night-shift nurse who books shifts on her phone.  ';
     await h.press('make');
     assert.deepEqual(h.sent.filter((m) => m.account === 'create'), [{ account: 'create', description: 'A night-shift nurse who books shifts on her phone.', device: 'phone', disability: 'low-vision' }]);

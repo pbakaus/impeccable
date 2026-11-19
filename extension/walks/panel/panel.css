@@ -138,7 +138,7 @@ b { font-weight: 500; }
 .widths { flex: none; display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--gray); }
 .widths button { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--muted); }
 .widths button:hover { color: var(--ink); }
-.widths button[aria-pressed="true"], .needs-btn[aria-expanded="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
 /* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
 /*
@@ -364,21 +364,18 @@ b { font-weight: 500; }
 @keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes intro-in { 0% { opacity: 0; } 15% { opacity: 1; } }
 
-/* ---------- Make a persona: the Disability tab and its list, opening upward over the face ---------- */
-.tabs .widths button.needs-btn { width: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 8px; font-size: 13px; }
-.needs-btn .ic:last-child { width: 14px; height: 14px; }
-.needs-word { margin-right: 2px; }
-.tabs:has(.needs-menu) { position: relative; }
-.tabs .need-row::after { content: none; }
-.needs-menu { top: auto; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 40px); max-height: calc(100vh - 260px); overflow-y: auto; gap: 0; padding: 6px; }
-.needs-h { padding: 6px 8px 8px; font-size: 13px; color: var(--muted); }
-.need-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px; border-radius: 8px; color: var(--ink); text-align: left; }
-.need-row:hover { background: var(--paper-deep); }
-.need-row[aria-pressed="true"] { background: var(--gold-wash); }
-.need-row > .ic:last-child:not(:first-child) { color: var(--gold-deep); }
-.need-t { flex: 1; display: flex; flex-direction: column; }
-.need-t b { font-size: 14px; font-weight: 600; }
-.need-t small { font-size: 12px; color: var(--muted); }
+/* ---------- Make a persona: its device and disability above the box, every choice in sight ---------- */
+.traits-pick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.pick-h { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pick-h:not(:first-child) { margin-top: 10px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 12px; background: var(--paper-deep); }
+.seg button { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; color: var(--muted); }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 16px; background: var(--paper-deep); font-size: 13px; color: var(--text); }
+.chips button:hover { background: var(--gray); }
+.chips button[aria-pressed="true"] { background: var(--gold-wash); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--gold-rich); }
 /* Under the persona made: its device and disability, small. */
 .traits { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .traits span { display: inline-flex; align-items: center; gap: 5px; }

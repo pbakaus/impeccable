@@ -41,10 +41,10 @@ const pre = { personas: undefined, pick: 0, task: '', screen: 'home', plan: null
  * address (`localSite`) always has the six: an app chosen there is for that pick only, never kept.
  */
 Object.assign(pre, { apps: undefined, modal: false, app: null, appsOpen: false, appPersonas: undefined });
-/** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities), and whether that list is open. */
-Object.assign(pre, { device: 'desktop', disability: 'none', needs: false });
+/** Make a persona's own device and disability (`none`, or one of COPY.make.disabilities). */
+Object.assign(pre, { device: 'desktop', disability: 'none' });
 /** Each disability's icon. */
-const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette', motor: 'hand', hearing: 'ear', cognitive: 'mind' };
+const NEEDS = { none: 'person', 'low-vision': 'glasses', blind: 'blind', 'colour-blind': 'palette', motor: 'hand', cognitive: 'mind' };
 /** The widths a journey may run at (driver.js `DEVICES`, desktop the tab as it is); the last one picked is kept (`walkWidth`). */
 const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
@@ -103,7 +103,6 @@ const ICONS = {
   palette: ['M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z', 'M7.5 11.5v.1M10 7.5v.1M14.5 7.5v.1M17 11v.1'],
   blind: ['M3 3l18 18', 'M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5', 'M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.9 0 3.6-.6 5-1.5', 'M9.9 9.9a3 3 0 0 0 4.2 4.2'],
   hand: ['M8 13V6.5a1.5 1.5 0 0 1 3 0V11', 'M11 11V4.5a1.5 1.5 0 0 1 3 0V11', 'M14 11V6a1.5 1.5 0 0 1 3 0v6', 'M17 9.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1.3a6 6 0 0 1-4.5-2l-3.4-3.8a1.6 1.6 0 0 1 2.3-2.2L8 14.5'],
-  ear: ['M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0', 'M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4'],
   mind: ['M12 5a3 3 0 1 0-6 .1 4 4 0 0 0-2.5 5.8 4 4 0 0 0 .6 6.6A4 4 0 1 0 12 18z', 'M12 5a3 3 0 1 1 6 .1 4 4 0 0 1 2.5 5.8 4 4 0 0 1-.6 6.6A4 4 0 1 1 12 18z', 'M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4'],
   person: ['M12 5.5a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z', 'M5 8l7 1.5L19 8', 'M12 9.5V14l-3 7M12 14l3 7'],
   plus: ['M12 5v14M5 12h14'],
@@ -414,7 +413,7 @@ function useApp() {
 /** Closes the modal; focus goes back to the button that opened it. */
 const shut = () => { Object.assign(pre, { modal: false, appsOpen: false }); render(); app.querySelector('[data-act="from-app"]')?.focus(); };
 // Escape closes the modal wherever the focus is, and the account popover; on Your personas it answers No.
-document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.needs && screen() === 'make') closeNeeds(); else if (event.key === 'Escape' && pre.menu) closeMenu(); else if (event.key === 'Escape' && pre.sure && screen() === 'personas') keep(pre.sure); });
+document.addEventListener?.('keydown', (event) => { if (event.key === 'Escape' && pre.modal && screen() === 'make') shut(); else if (event.key === 'Escape' && pre.menu) closeMenu(); else if (event.key === 'Escape' && pre.sure && screen() === 'personas') keep(pre.sure); });
 
 /** "Use a persona from your app": a dropdown of the apps, the one picked's personas, and Use these personas. */
 function appModal() {
@@ -476,7 +475,7 @@ function maker() {
     made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
-        el('div', { class: 'tabs' }, devices(), ...needs()),
+        el('div', { class: 'traits-pick' }, el('p', { class: 'pick-h', id: 'device-h', text: COPY.make.device }), devices(), el('p', { class: 'pick-h', id: 'needs-h', text: COPY.make.disability }), needs()),
         el('div', { class: 'field' }, box, voice ? listening(create) : el('div', { class: 'row' },
           Speech && !pre.making ? micButton() : null,
           el('span', { class: 'grow' }),
@@ -499,35 +498,25 @@ const BEAT = 2600;
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
   const timed = (i) => `animation-delay:${i * BEAT - at}ms`;
-  return el('div', { class: 'hero intro', 'aria-hidden': true, style: `--beat:${BEAT}ms` },
+  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: timed(i) }))),
     el('div', { class: 'intro-lines' }, COPY.intro.map((line, i) => el('p', { class: 'hd intro-line', style: timed(i), text: line }))));
 }
 
-/** The persona's device on the left, as Home's Screen; on the right, one tab that opens the Disability list. */
+/** Above the box, every choice in sight: the persona's device, and one disability (picked again, it goes back to none). */
 function devices() {
-  return el('div', { class: 'widths', role: 'group', 'aria-label': COPY.make.device }, WIDTHS.map((device) => el('button', {
-    type: 'button', 'data-act': `device-${device}`, 'aria-pressed': pre.device === device ? 'true' : 'false', 'data-tip': COPY.home.widths[device], 'aria-label': COPY.home.widths[device], disabled: pre.making,
+  return el('div', { class: 'seg', role: 'group', 'aria-labelledby': 'device-h' }, WIDTHS.map((device) => el('button', {
+    type: 'button', 'data-act': `device-${device}`, 'aria-pressed': pre.device === device ? 'true' : 'false', disabled: pre.making,
     onclick: () => { pre.device = device; render(); },
-  }, icon(device))));
+  }, icon(device), COPY.home.widths[device])));
 }
 function needs() {
   const chosen = pre.disability;
-  const label = `${COPY.make.disability}: ${COPY.make.disabilities[chosen][0]}`;
-  return [el('div', { class: 'widths sights' },
-    el('button', { class: 'needs-btn', type: 'button', 'data-act': 'needs', 'aria-haspopup': 'dialog', 'aria-expanded': pre.needs ? 'true' : 'false', 'aria-pressed': chosen !== 'none' ? 'true' : 'false', 'aria-label': label, 'data-tip': label, disabled: pre.making,
-      onclick: () => { if (pre.needs) closeNeeds(); else { pre.needs = true; render(); app.querySelector(`[data-act="need-${chosen}"]`)?.focus(); } } },
-    icon(NEEDS[chosen]), chosen === 'none' ? el('span', { class: 'needs-word', text: COPY.make.none }) : null, icon('down'))),
-    ...(pre.needs ? [el('div', { class: 'acct-scrim', 'aria-hidden': true, onclick: () => closeNeeds() }),
-      el('div', { class: 'acct needs-menu', role: 'dialog', 'aria-label': COPY.make.disability },
-        el('p', { class: 'needs-h', text: COPY.make.needs }),
-        Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', { class: 'need-row', type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false',
-          // The one chosen, picked again, goes back to none.
-          onclick: () => { pre.disability = key === chosen ? 'none' : key; closeNeeds(); } },
-        icon(NEEDS[key]), el('span', { class: 'need-t' }, el('b', { text: name }), line ? el('small', { text: line }) : null), key === chosen ? icon('check') : null)))] : [])];
+  return el('div', { class: 'chips', role: 'group', 'aria-labelledby': 'needs-h' }, Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', {
+    type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false', title: line || undefined, disabled: pre.making,
+    onclick: () => { pre.disability = key === chosen ? 'none' : key; render(); },
+  }, icon(NEEDS[key]), name)));
 }
-/** Closes the Disability list; focus goes back to its tab. */
-function closeNeeds() { pre.needs = false; render(); app.querySelector('[data-act="needs"]')?.focus(); }
 /** Under the persona made: its device and disability, small. */
 const traits = () => el('p', { class: 'traits', 'data-device': pre.device, 'data-disability': pre.disability },
   el('span', {}, icon(pre.device), COPY.home.widths[pre.device]),
@@ -560,7 +549,7 @@ function cast() {
     // At the limit of their own with no app's personas to pick, the + stays (focusable, saying why) and does nothing.
     full ? el('button', { type: 'button', class: 'add', 'aria-disabled': 'true', 'aria-label': COPY.make.full(ownMax), 'data-tip': COPY.make.full(ownMax), 'data-act': 'make-persona', onclick: () => undefined }, el('span', { class: 'face' }, icon('plus')))
       : el('button', { type: 'button', class: 'add', 'aria-label': COPY.home.make, 'data-tip': COPY.home.make, 'data-act': 'make-persona', onclick: () => {
-        Object.assign(pre, { screen: 'make', shown: undefined, made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none', needs: false });
+        Object.assign(pre, { screen: 'make', shown: undefined, made: null, note: '', modal: false, app: null, appPersonas: undefined, device: 'desktop', disability: 'none' });
         if (BUILD.account && !stubbed) void loadApps();
         render();
         app.querySelector('textarea')?.focus();
