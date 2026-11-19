@@ -497,6 +497,22 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
+// Catches the intro starting over on a redraw (a device pressed), or carrying on from last time when the screen opens again.
+test('the persona intro carries on through a redraw and starts over when Create a persona opens again', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+  // How long until the last face comes in.
+  const lastFace = () => parseInt(h.app.querySelectorAll('img.intro-pic').at(-1).attributes.style.split(':')[1], 10);
+  await h.press('make-persona');
+  const start = lastFace();
+  t.mock.timers.tick(3000);
+  await h.press('device-phone');
+  assert.equal(lastFace(), start - 3000);
+  await h.press('back');
+  await h.press('make-persona');
+  assert.equal(lastFace(), start);
+});
+
 // Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
 test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
