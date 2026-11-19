@@ -360,14 +360,14 @@ b { font-weight: 500; }
 .intro-pic { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; animation: intro-beat calc(var(--beat) * 1.15) var(--ease) both; }
 .intro-pic:first-child { animation-duration: calc((var(--beat) + var(--lead)) * 1.15); }
 .intro-pic:last-child { opacity: 1; animation-name: intro-in; }
-/* As long as the longest line allows on one line in the narrowest panel. 16.3 is tuned to the longest intro line
-   ("How do you use the web each day?"): a longer line needs a bigger number. */
-.intro-line { display: grid; justify-items: center; width: 100%; font-size: min(19px, calc((100vw - 40px) / 16.3)); font-weight: 500; line-height: 28px; color: var(--ink); white-space: pre; }
+/* All lines share one cell, as tall as the tallest, so a line that wraps in a narrow panel moves nothing below it. */
+.intro-line { display: grid; place-items: center; width: 100%; font-size: 21px; font-weight: 500; line-height: 29px; color: var(--ink); text-wrap: balance; }
 /* A line holds until the next comes in, then fades as the next one's letters rise a little and settle. */
 .intro-line > span { grid-area: 1 / 1; opacity: 0; animation: intro-out 280ms ease-in both; }
 .intro-line > span:last-child { opacity: 1; animation: none; }
-.intro-line > span > span { display: inline-block; animation: intro-settle 700ms cubic-bezier(.25, 1, .5, 1) both; }
-.intro-line > span:first-child > span { animation: none; }
+.intro-line > span > span { white-space: nowrap; }
+.intro-line > span > span > span { display: inline-block; animation: intro-settle 700ms cubic-bezier(.25, 1, .5, 1) both; }
+.intro-line > span:first-child span { animation: none; }
 @keyframes intro-out { from { opacity: 1; } }
 @keyframes intro-settle { from { opacity: 0; transform: translateY(.2em); } }
 @keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }

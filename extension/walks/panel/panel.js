@@ -489,7 +489,7 @@ function maker() {
 }
 
 /** How long each of the intro's lines shows, and how much longer the first stays still before the first change. */
-const BEAT = 3800;
+const BEAT = 6000;
 const LEAD = 2000;
 /** When the intro's line and face `i` come in. */
 const due = (i) => i && LEAD + i * BEAT;
@@ -501,8 +501,12 @@ const due = (i) => i && LEAD + i * BEAT;
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
-  const lines = COPY.intro.map((text, i) => el('span', { style: `animation-delay:${due(i + 1) - at}ms` },
-    [...text].map((ch, k) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + k * 16 - at}ms` : undefined }))));
+  // Letters in words, so a narrow panel wraps a line between words.
+  const lines = COPY.intro.map((text, i) => {
+    let k = 0;
+    const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + (w + k++) * 16 - at}ms` : undefined })))]);
+    return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
+  });
   return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` }))),
     el('span', { class: 'intro-line' }, lines));
