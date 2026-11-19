@@ -714,6 +714,24 @@ describe('account worker', () => {
     }
     assert.deepEqual(panels.slice(before), [{ windowId: 3 }]);
   });
+
+  it('opens the Pro welcome page once when an account signed in without Pro gets it', async () => {
+    await loaded;
+    delete local.welcomeSeen;
+    let pro = false;
+    globalThis.fetch = async (url, init = {}) => {
+      if (url === `${ISSUER}/.well-known/oauth-authorization-server`) return json(200, META);
+      if (url === META.token_endpoint) return json(200, { token_type: 'Bearer', access_token: 'access-pro', refresh_token: 'refresh-walk', expires_in: 900 });
+      if (url.startsWith(`${ISSUER}/extension/v1/me`)) return json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', pro });
+      return json(404, {});
+    };
+    const tabs = opened.length;
+    assert.equal((await ask({ account: 'status' }, fromPanel)).pro, false);
+    pro = true;
+    for (let n = 0; n < 2; n += 1) assert.equal((await ask({ account: 'status' }, fromPanel)).pro, true);
+    await settle();
+    assert.deepEqual(opened.slice(tabs).map((tab) => tab.url), ['https://impeccable.reviews/pro/welcome']);
+  });
 });
 
 // The welcome page's script (manifest.json), on a stub page: the mark the page reads, and its button.
