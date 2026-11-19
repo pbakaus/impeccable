@@ -688,7 +688,8 @@ for (const [label, status, offers] of [
       const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
       const shown = asked(h);
       await h.switchTo(2);
-      assert.equal(asked(h), shown + 1, 'back from another tab, asked again');
+      await h.navigate('https://impeccable.reviews/app/-/account?tab=plan');
+      assert.equal(asked(h), shown + 2, 'back from another tab, or the tab gone elsewhere: asked again');
       await h.press('get-pro');
       await h.press('another-account');
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
@@ -702,10 +703,14 @@ for (const [label, status, offers] of [
       await p.press('get-pro');
       await p.press('get-pro');
       const first = asked(p);
-      await wait(4000);
+      await wait(5000);
       assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'not-pro'], 'asked again once, however often pressed');
+      // The server out of reach for a moment (no word on Pro): still no Pro, still asking.
+      delete paying.pro;
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [2, 'not-pro']);
       paying.pro = true;
-      await wait(4000);
+      await wait(5000);
       assert.deepEqual([p.body.dataset.screen, p.sent.some((m) => m.account === 'personas'), p.acts().includes('send')], ['home', true, true]);
       const done = asked(p);
       await wait(60_000);
