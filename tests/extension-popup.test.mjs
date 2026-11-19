@@ -473,7 +473,7 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
     assert.deepEqual([full.body.dataset.screen, full.app.querySelector('[data-act="make-persona"]').attributes['aria-disabled']], ['home', 'true']);
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], create });
     await h.press('make-persona');
-    assert.equal(h.body.dataset.screen, 'make');
+    assert.deepEqual([h.body.dataset.screen, Boolean(h.app.querySelector('.intro'))], ['make', true]);
     // A phone, and one disability, each pressed straight away: the one chosen, picked again, goes back to none.
     await h.press('device-phone');
     for (const key of ['low-vision', 'low-vision', 'blind', 'low-vision']) await h.press(`need-${key}`);

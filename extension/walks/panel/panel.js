@@ -453,8 +453,8 @@ function silhouette() {
 const blank = (cls = '') => el('span', { class: `face blank ${cls}`.trim(), 'aria-hidden': true, style: 'width:112px;height:112px;' }, silhouette());
 
 /**
- * Make a persona, laid out as the home: the face, name and line are placeholders until it's made, shimmer while it's
- * made, then show who was made, with Confirm. Top right, a button to use an app's personas instead.
+ * Make a persona, laid out as the home: the intro plays where the face will be until it's made, a shimmer shows while
+ * it's made, then who was made, with Confirm. Top right, a button to use an app's personas instead.
  */
 function maker() {
   const made = pre.made;
@@ -506,6 +506,7 @@ function introHero() {
     const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + (w + k++) * 16 - at}ms` : undefined })))]);
     return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
   });
+  // Four faces for COPY.intro's five lines: the fourth stays for the last two. panel.css's ring counts the same lines.
   return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` })), ring()),
     el('span', { class: 'intro-line' }, lines));
@@ -536,8 +537,9 @@ function needs() {
   return el('div', { class: 'chips', role: 'group', 'aria-labelledby': 'needs-h' }, Object.entries(COPY.make.disabilities).map(([key, [name, line]]) => el('button', {
     type: 'button', 'data-act': `need-${key}`, 'aria-pressed': key === chosen ? 'true' : 'false', title: line || undefined, 'aria-describedby': line ? `need-${key}-line` : undefined, disabled: pre.making,
     onclick: () => { pre.disability = key === chosen ? 'none' : key; render(); },
-    // What it means, read out after the name: hidden, so the chip's own name stays the word on it.
-  }, icon(NEEDS[key]), name, line ? el('span', { id: `need-${key}-line`, hidden: true, text: line }) : null)));
+    // What it means, read out after the name, and shown under the chips while it has keyboard focus: hidden from the
+    // chip's own name, so that stays the word on it.
+  }, icon(NEEDS[key]), name, line ? el('span', { id: `need-${key}-line`, class: 'need-line', 'aria-hidden': 'true', text: line }) : null)));
 }
 /** Under the persona made: its device and disability, small. */
 const traits = () => el('p', { class: 'traits', 'data-device': pre.device, 'data-disability': pre.disability },
