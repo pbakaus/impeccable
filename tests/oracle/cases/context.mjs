@@ -561,6 +561,16 @@ const cases = [
       { id: 'design-compact-write-archive-link', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); fs.mkdirSync(`${ws}/.impeccable`, { recursive: true }); fs.symlinkSync(`${ws}/elsewhere.md`, `${ws}/.impeccable/design-full.md`); }, args: ['--write'], env: env(), files: ['DESIGN.md', 'elsewhere.md'] },
       // A DESIGN.md design-compact wrote is carried as written, even past the map budget: never a map of a map.
       { id: 'context-compacted-design', verb: 'context', workspace: 'ctx-signals', setup: (ws) => write(ws, 'DESIGN.md', '---\nname: Oracle\ncolors:\n' + Array.from({ length: 60 }, (_, i) => `  tone-${i}: "oklch(${i}% 0.01 95)"\n`).join('') + '---\n\n# Oracle Design\n\n<!-- impeccable:design-map -->\nRules:\n- The One Accent Rule. Brand stays under 10% of any screen.\nMap: src/tokens.css\nFull: .impeccable/design-full.md (read a section when you need its detail)\n'), env: env() },
+      ...[false, true].flatMap((archived) => {
+        const setup = (ws) => {
+          write(ws, 'DESIGN.md', '---\nname: Oracle\ncolors:\n' + Array.from({ length: 60 }, (_, i) => `  tone-${i}: "oklch(${i}% 0.01 95)"\n`).join('') + '---\n\n# Oracle Design\n\n<!-- impeccable:design-map -->\nFull: .impeccable/design-full.md (read a section when you need its detail)\n');
+          if (archived) write(ws, '.impeccable/design-full.md', LONG);
+        };
+        return (archived ? [true] : [true, false]).map((json) => ({
+          id: `doctor-compacted-design-${archived ? 'archive' : 'missing'}-${json ? 'json' : 'text'}`,
+          verb: 'doctor', workspace: 'ctx-signals', setup, args: json ? ['--json'] : [], env: env(),
+        }));
+      }),
       { id: 'design-compact-write-archive-exists', verb: 'design-compact', workspace: 'ctx-signals', setup: (ws) => { long(ws); write(ws, '.impeccable/design-full.md', 'An earlier original.\n'); }, args: ['--write'], env: env(), files },
     ];
   })(),
