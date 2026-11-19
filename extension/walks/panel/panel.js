@@ -507,8 +507,21 @@ function introHero() {
     return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
   });
   return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
-    el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` }))),
+    el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` })), ring()),
     el('span', { class: 'intro-line' }, lines));
+}
+
+/** Round the intro's face: a faint track, and a gold arc on it that grows round from the top while each line holds. */
+function ring() {
+  const svg = document.createElementNS(SVG, 'svg');
+  svg.setAttribute('class', 'intro-ring');
+  svg.setAttribute('viewBox', '0 0 170 170');
+  for (const part of ['track', 'arc']) {
+    const circle = document.createElementNS(SVG, 'circle');
+    for (const [key, value] of [['class', part], ['cx', '85'], ['cy', '85'], ['r', '81'], ['pathLength', '100']]) circle.setAttribute(key, value);
+    svg.append(circle);
+  }
+  return svg;
 }
 
 /** Above the box, every choice in sight: the persona's device, and one disability (picked again, it goes back to none). */
