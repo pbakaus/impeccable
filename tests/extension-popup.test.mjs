@@ -612,8 +612,9 @@ for (const [what, apps, cast, open] of [
     assert.equal(h.app.querySelector('[data-act="make-persona"]').attributes['aria-disabled'], open ? undefined : 'true');
     await h.press('make-persona');
     for (let n = 0; n < 5; n += 1) await tick();
-    assert.deepEqual([h.body.dataset.screen, h.acts().includes('from-app'), h.acts().includes('make'), Boolean(h.app.querySelector('[data-state="full"]'))],
-      open ? ['make', true, false, true] : ['home', false, false, false]);
+    // At the limit there is no box to write in, so no intro asking for one.
+    assert.deepEqual([h.body.dataset.screen, h.acts().includes('from-app'), h.acts().includes('make'), Boolean(h.app.querySelector('[data-state="full"]')), Boolean(h.app.querySelector('.intro'))],
+      open ? ['make', true, false, true, false] : ['home', false, false, false, false]);
   });
 }
 
