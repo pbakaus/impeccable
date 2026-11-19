@@ -375,6 +375,7 @@ b { font-weight: 500; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips button { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 16px; background: var(--paper-deep); font-size: 13px; color: var(--text); }
 .chips button:hover { background: var(--gray); }
+.traits-pick:has(:disabled) { opacity: .7; }
 .chips button[aria-pressed="true"] { background: var(--gold-wash); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--gold-rich); }
 /* Under the persona made: its device and disability, small. */
 .traits { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
