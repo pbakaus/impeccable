@@ -761,7 +761,7 @@ function typeInto(wanted, text, keys, noSecrets = false) {
   const words = norm(wanted).split(" ").filter((x) => x.length > 1);
   const fields = Array.prototype.slice.call(doc.querySelectorAll('input:not([type=hidden]):not([type=submit]), textarea, [contenteditable="true"]')).filter((el) => {
     const b = el.getBoundingClientRect();
-    return b.width > 0 && b.height > 0 && !el.disabled && !el.readOnly && !el.closest?.("[inert]");
+    return b.width > 0 && b.height > 0 && !el.disabled && !el.matches?.(":disabled") && !el.readOnly && !el.closest?.("[inert]") && w.getComputedStyle?.(el)?.visibility !== "hidden";
   });
   const focused = doc.activeElement;
   let best = null;
@@ -2013,4 +2013,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'b2612149a7b0ef92';
+export const HASH = '5f68155114875bd8';
