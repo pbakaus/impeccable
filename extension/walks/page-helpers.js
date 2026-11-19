@@ -1626,8 +1626,8 @@ function viewSize() {
 function agentSight() {
   const w = globalThis;
   const { innerWidth: W, innerHeight: H } = w, MAX = 150;
-  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=treeitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only]';
-  const FIELD = 'input, textarea, select, option, [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only], script, style';
+  const CONTROL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=radio], [role=switch], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=treeitem], [role=option], [role=textbox], [role=combobox], [role=slider], [role=searchbox], [role=spinbutton], [role=listbox], [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only]';
+  const FIELD = 'input, textarea, select, option, [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only], [role=textbox], [role=searchbox], [role=combobox], [role=spinbutton], [role=slider], [role=listbox], script, style';
   const clean = (s) => s.replace(/\s+/g, " ").trim().slice(0, 80);
   const words = (n) => {
     if (!n)
@@ -1681,6 +1681,19 @@ function agentSight() {
       return clean(Array.from(el.labels ?? []).map((l) => words(l)).join(" ") || el.getAttribute("title") || el.getAttribute("placeholder") || "");
     return clean(words(el)) || clean(el.querySelector("img[alt]")?.getAttribute("alt") ?? "") || clean(el.getAttribute("title") ?? "");
   };
+  const clips = new Map;
+  const clipOf = (el) => {
+    if (!el)
+      return { left: 0, top: 0, right: W, bottom: H };
+    let c = clips.get(el);
+    if (!c) {
+      const up = clipOf(el.parentElement), cs = w.getComputedStyle(el);
+      const r = cs.overflowX !== "visible" || cs.overflowY !== "visible" ? el.getBoundingClientRect() : null;
+      c = r ? { left: Math.max(up.left, r.left), top: Math.max(up.top, r.top), right: Math.min(up.right, r.right), bottom: Math.min(up.bottom, r.bottom) } : up;
+      clips.set(el, c);
+    }
+    return c;
+  };
   const faded = new Map;
   const gone = (el) => {
     if (!el)
@@ -1705,6 +1718,9 @@ function agentSight() {
       continue;
     const b = el.getBoundingClientRect();
     if (b.width < 2 || b.height < 2 || b.right <= 0 || b.bottom <= 0 || b.left >= W || b.top >= H || taken.some((t) => t.contains(el)))
+      continue;
+    const c = w.getComputedStyle(el).position === "fixed" ? null : clipOf(el.parentElement);
+    if (c && (Math.min(b.right, c.right) - Math.max(b.left, c.left) < 2 || Math.min(b.bottom, c.bottom) - Math.max(b.top, c.top) < 2))
       continue;
     const control = el.matches(CONTROL);
     const heading = /^h[1-6]$/.test(tag) || el.getAttribute("role") === "heading";
@@ -1987,4 +2003,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '00d6e32fabe6ac7c';
+export const HASH = 'cf5efdf419c6be98';
