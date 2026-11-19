@@ -685,10 +685,13 @@ for (const [label, status, offers] of [
     assert.equal(h.app.querySelector('section[id="panel-scan"]')?.hidden, false, 'Scan is on the screen');
     if (offers[0] === 'get-pro') {
       assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
+      const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
+      const shown = asked(h);
+      await h.switchTo(2);
+      assert.equal(asked(h), shown + 1, 'back from another tab, asked again');
       await h.press('get-pro');
       await h.press('another-account');
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
-      const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
       const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
       const out = asked(h);
       await wait(60_000);
