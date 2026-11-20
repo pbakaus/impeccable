@@ -37,15 +37,16 @@
 
 use crate::select::{El, Selector, SelectorError};
 use ego_tree::{NodeId, NodeRef};
-use html5ever::tendril::TendrilSink;
-use html5ever::tree_builder::TreeBuilderOpts;
-use html5ever::ParseOpts;
+use html5ever::tendril::{StrTendril, TendrilSink};
+use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeBuilderOpts, TreeSink};
+use html5ever::{Attribute, ParseOpts, QualName};
 use impeccable_core::color::Rgba;
 use impeccable_core::js;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use scraper::{Html, HtmlTreeSink, Node};
-use std::cell::RefCell;
+use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use crate::cascade::StyleValues;
@@ -53,6 +54,9 @@ use crate::cascade::StyleValues;
 /// The parsed document plus everything the cascade attaches to its nodes.
 pub struct StaticDocument {
     pub html: Html,
+    /// 1-based source line of each element's start tag (empty for a tree
+    /// built by [`StaticDocument::new`]).
+    lines: HashMap<NodeId, u32>,
     styles: HashMap<NodeId, StyleValues>,
     hover_styles: HashMap<NodeId, StyleValues>,
     placeholder_styles: HashMap<NodeId, StyleValues>,
@@ -91,18 +95,178 @@ impl std::fmt::Debug for StaticDocument {
 /// to `<body>` as bare text, which the JS never sees; raw text inside the
 /// (non-rendered) `noscript` element is the closer match.
 pub fn parse_html(source: &str) -> Html {
-    let opts = ParseOpts {
+    let mut html = html5ever::parse_document(HtmlTreeSink::new(Html::new_document()), parse_opts()).one(source);
+    flatten_fragments(&mut html);
+    unwrap_synthesized_wrappers(&mut html, source);
+    html
+}
+
+/// [`parse_html`] plus the 1-based source line of every element's start tag.
+fn parse_html_with_lines(source: &str) -> (Html, HashMap<NodeId, u32>) {
+    let (mut html, lines) = html5ever::parse_document(LineSink::new(source), parse_opts()).one(source);
+    flatten_fragments(&mut html);
+    unwrap_synthesized_wrappers(&mut html, source);
+    (html, lines)
+}
+
+fn parse_opts() -> ParseOpts {
+    ParseOpts {
         tree_builder: TreeBuilderOpts {
             scripting_enabled: true,
             ..Default::default()
         },
         ..Default::default()
-    };
-    let sink = HtmlTreeSink::new(Html::new_document());
-    let mut html = html5ever::parse_document(sink, opts).one(source);
-    flatten_fragments(&mut html);
-    unwrap_synthesized_wrappers(&mut html, source);
-    html
+    }
+}
+
+/// Scraper's sink, recording the line each element's start tag begins on.
+/// html5ever reports the line a start tag ends on (its `>`), so the start is
+/// the first `<name` after the previous found tag whose `>` closes on that
+/// line (a `<name` in a comment or text before it closes earlier); an element
+/// the source never spelled out (an implied `<tbody>`) keeps the line of the
+/// tag that implied it.
+struct LineSink<'s> {
+    inner: HtmlTreeSink,
+    source: &'s str,
+    /// Byte offset of each line's first character.
+    line_starts: Vec<usize>,
+    line: Cell<u64>,
+    /// Byte offset just past the previous found `<name`.
+    cursor: Cell<usize>,
+    lines: RefCell<HashMap<NodeId, u32>>,
+}
+
+impl<'s> LineSink<'s> {
+    fn new(source: &'s str) -> Self {
+        let line_starts = std::iter::once(0)
+            .chain(source.match_indices('\n').map(|(i, _)| i + 1))
+            .collect();
+        LineSink {
+            inner: HtmlTreeSink::new(Html::new_document()),
+            source,
+            line_starts,
+            line: Cell::new(1),
+            cursor: Cell::new(0),
+            lines: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// The 1-based line holding byte `offset`.
+    fn line_of(&self, offset: usize) -> u64 {
+        self.line_starts.partition_point(|&start| start <= offset) as u64
+    }
+
+    fn start_line(&self, name: &str) -> u64 {
+        let end_line = self.line.get();
+        let from = self.cursor.get();
+        let to = self
+            .line_starts
+            .get(end_line as usize)
+            .copied()
+            .unwrap_or(self.source.len());
+        let bytes = self.source.as_bytes();
+        let window = self.source.get(from..to.max(from)).unwrap_or("");
+        let found = window.match_indices('<').map(|(i, _)| from + i).find(|&i| {
+            let after = i + 1 + name.len();
+            bytes
+                .get(i + 1..after)
+                .is_some_and(|t| t.eq_ignore_ascii_case(name.as_bytes()))
+                && bytes
+                    .get(after)
+                    .is_none_or(|b| b.is_ascii_whitespace() || *b == b'/' || *b == b'>')
+                && tag_close(bytes, after).is_none_or(|close| self.line_of(close) == end_line)
+        });
+        match found {
+            Some(i) => {
+                self.cursor.set(i + 1);
+                self.line_of(i)
+            }
+            None => end_line,
+        }
+    }
+}
+
+/// The offset of the `>` that closes a start tag whose name ends at `from`,
+/// skipping quoted attribute values (`title="a > b"`).
+fn tag_close(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut quote = None;
+    for (i, &b) in bytes.iter().enumerate().skip(from) {
+        match quote {
+            Some(q) if b == q => quote = None,
+            Some(_) => {}
+            None if b == b'"' || b == b'\'' => quote = Some(b),
+            None if b == b'>' => return Some(i),
+            None => {}
+        }
+    }
+    None
+}
+
+impl TreeSink for LineSink<'_> {
+    type Handle = NodeId;
+    type Output = (Html, HashMap<NodeId, u32>);
+    type ElemName<'a>
+        = <HtmlTreeSink as TreeSink>::ElemName<'a>
+    where
+        Self: 'a;
+
+    fn finish(self) -> Self::Output {
+        (self.inner.finish(), self.lines.into_inner())
+    }
+    fn set_current_line(&self, line_number: u64) {
+        self.line.set(line_number);
+    }
+    fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> NodeId {
+        let line = self.start_line(name.local.as_ref());
+        let id = self.inner.create_element(name, attrs, flags);
+        self.lines.borrow_mut().insert(id, line as u32);
+        id
+    }
+    fn parse_error(&self, msg: Cow<'static, str>) {
+        self.inner.parse_error(msg)
+    }
+    fn get_document(&self) -> NodeId {
+        self.inner.get_document()
+    }
+    fn elem_name<'a>(&'a self, target: &'a NodeId) -> Self::ElemName<'a> {
+        self.inner.elem_name(target)
+    }
+    fn create_comment(&self, text: StrTendril) -> NodeId {
+        self.inner.create_comment(text)
+    }
+    fn create_pi(&self, target: StrTendril, data: StrTendril) -> NodeId {
+        self.inner.create_pi(target, data)
+    }
+    fn append(&self, parent: &NodeId, child: NodeOrText<NodeId>) {
+        self.inner.append(parent, child)
+    }
+    fn append_based_on_parent_node(&self, element: &NodeId, prev: &NodeId, child: NodeOrText<NodeId>) {
+        self.inner.append_based_on_parent_node(element, prev, child)
+    }
+    fn append_doctype_to_document(&self, name: StrTendril, public_id: StrTendril, system_id: StrTendril) {
+        self.inner.append_doctype_to_document(name, public_id, system_id)
+    }
+    fn get_template_contents(&self, target: &NodeId) -> NodeId {
+        self.inner.get_template_contents(target)
+    }
+    fn same_node(&self, x: &NodeId, y: &NodeId) -> bool {
+        self.inner.same_node(x, y)
+    }
+    fn set_quirks_mode(&self, mode: QuirksMode) {
+        self.inner.set_quirks_mode(mode)
+    }
+    fn append_before_sibling(&self, sibling: &NodeId, new_node: NodeOrText<NodeId>) {
+        self.inner.append_before_sibling(sibling, new_node)
+    }
+    fn add_attrs_if_missing(&self, target: &NodeId, attrs: Vec<Attribute>) {
+        self.inner.add_attrs_if_missing(target, attrs)
+    }
+    fn remove_from_parent(&self, target: &NodeId) {
+        self.inner.remove_from_parent(target)
+    }
+    fn reparent_children(&self, node: &NodeId, new_parent: &NodeId) {
+        self.inner.reparent_children(node, new_parent)
+    }
 }
 
 static HTML_TAG_RE: Lazy<Regex> =
@@ -185,6 +349,7 @@ impl StaticDocument {
     pub fn new(html: Html) -> Self {
         StaticDocument {
             html,
+            lines: HashMap::new(),
             styles: HashMap::new(),
             hover_styles: HashMap::new(),
             placeholder_styles: HashMap::new(),
@@ -203,7 +368,8 @@ impl StaticDocument {
 
     /// Parse and wrap.
     pub fn parse(source: &str) -> Self {
-        Self::new(parse_html(source))
+        let (html, lines) = parse_html_with_lines(source);
+        StaticDocument { lines, ..Self::new(html) }
     }
 
     fn root(&self) -> NodeRef<'_, Node> {
@@ -485,6 +651,11 @@ fn node_is_plain_tag(n: &NodeRef<'_, Node>) -> bool {
 impl<'a> StaticElement<'a> {
     pub fn id(&self) -> NodeId {
         self.node.id()
+    }
+
+    /// The 1-based source line of this element's start tag, 0 when unknown.
+    pub fn source_line(&self) -> f64 {
+        self.doc.lines.get(&self.id()).copied().unwrap_or(0) as f64
     }
 
     fn elem(&self) -> &'a scraper::node::Element {

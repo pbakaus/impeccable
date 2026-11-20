@@ -7538,3 +7538,11 @@ other goldens listed.
 - `detect-fixture-*` (44 goldens): square-box `side-tab` findings dropped; `side-tab-every-variant.{html,css,svelte}` flag cases rounded and square pass cases added.
 - `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
 - `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
+
+## Recorded 2026-11-20: static HTML element findings carry their start tag's line (#1597)
+
+Every static-HTML finding reported `line: 0`, so a finding on a long single-file page had to be found by searching for its colour or class. Element-rule findings now carry the 1-based line their element's start tag opens on (`docs/CLI-CONTRACT.md`, **Finding object**); page-level static findings, design-system findings and browser findings are unchanged. The design hook folds a line-less page finding into the located copy it repeats (the page's glow, reported by both the element rule and the page pattern scan), so its occurrence keys and counts stay as they were. Each moved golden was re-recorded from the binary and compared with its old version after masking line numbers (`"line": N`, the text reporter's `line N: ` prefix, `--github`'s `,line=N`, the SARIF `region`, the hook's `- L<n>` prefix): 290 goldens are otherwise byte-identical, no finding with a non-zero line changed, and the reported lines were spot-checked against the fixture sources. What moved:
+
+- `detect-sarif`: the result gains `region.startLine: 1` (more than a line number).
+- `hbe-html-engine` (more than a line number): the denial names `L1`, and its denial counter key reads `low-contrast:1` instead of `low-contrast:0`.
+- Every other moved case (`detect-fixture-{json,text}-*-html`, `detect-config-*`, `detect-design-blue-*`, `detect-hard-offset-shadow-*`, `detect-ignore-globstar-directory-boundary-json`, `detect-github`, `hook-edit-html-fresh`, `hook-config-max-findings-1`): line numbers only.

@@ -1284,6 +1284,12 @@ fn cache_round_trip_and_gc() {
     let keys = finding_cache_keys(&both);
     assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
     assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
+    // a line-less page copy of a located finding is that finding (#1597)
+    let page_copy = f("gradient-text", 0.0, "G", "d", "s");
+    let keys = finding_cache_keys(&[g.clone(), page_copy.clone()]);
+    assert_eq!(keys[0], keys[1]);
+    let keys = finding_cache_keys(&[page_copy.clone(), g.clone(), f("gradient-text", 9.0, "G", "d", "s")]);
+    assert_eq!((keys[0] == keys[1], keys[1] == keys[2]), (true, false));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
