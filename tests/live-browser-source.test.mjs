@@ -17,6 +17,26 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('leaves the steer input empty on a steer timeout, never asks to resend it, and confirms its late steer_done (#1566)', () => {
+    const fns = ['scheduleSteerAwaitTimeout', 'steerTimeoutMessage', 'maybeCompleteSteer']
+      .map((name) => SOURCE.match(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0]);
+    assert.ok(fns.every(Boolean));
+    for (const [queued, polling] of [[true, true], [false, false]]) {
+      const ctx = {
+        clearSteerAwaitTimer() {}, setTimeout: (fn) => fn(), STEER_AWAIT_TIMEOUT_MS: 1,
+        steerLocked: true, steerRequestId: 's1', steerPendingMessage: 'make it bigger',
+        steerQueuedBehindGeneration: () => queued, agentPollingConnected: polling, steerTimedOutId: null,
+        unlockSteerChat(opts) { ctx.opts = opts; ctx.steerRequestId = null; },
+        showToast(text) { ctx.toast = text; },
+      };
+      runInNewContext(`${fns.join('\n')}; scheduleSteerAwaitTimeout('s1');`, ctx);
+      assert.equal(ctx.opts.restoreMessage, undefined);
+      assert.doesNotMatch(ctx.opts.error, /send it again/i);
+      assert.equal(runInNewContext(`maybeCompleteSteer({ type: 'steer_done', id: 's1', message: 'Hero enlarged' })`, ctx), true);
+      assert.equal(ctx.toast, 'Hero enlarged');
+    }
+  });
+
   it('picks the nearest pickable ancestor of a too-small hover but never leaves the live chrome (#1297)', () => {
     const body = SOURCE.match(/function handleMouseMove\(e\) \{[\s\S]*?\n  \}/)?.[0];
     assert.ok(body);
