@@ -7548,3 +7548,7 @@ them (no case id leads a line here): the only changes are below.
 
 - flush-against-border (`detect-fixture-json-flush-against-border-html`, `detect-fixture-text-flush-against-border-html`): `pass-segmented` no longer reports (its buttons centre their labels in the pill's 40px), 11 to 10.
 - stripe-child and overlay-positioning (`detect-fixture-json-stripe-child-html`, `detect-fixture-text-stripe-child-html`, `detect-fixture-json-overlay-positioning-html`, `detect-fixture-text-overlay-positioning-html`): `card-center` and `flex-center` centre one label in a 100px and a 120px box, so they report right/left instead of all sides.
+
+## Recorded 2026-11-20: the live-poll timeout instruction pauses after three in a row (Refs #1566)
+
+A harness that wakes the agent on every exit paid a full turn per 10-minute timeout for as long as a live session sat idle. The `timeout` `_instructions` now tell the agent to stop polling after the third timeout in a row, tell the user the page is still live, and end the turn; the next `live-poll` collects whatever they did meanwhile. `live-daemon-server-status-poll-complete`: that one timeout line is the only change.
