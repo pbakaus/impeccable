@@ -7,7 +7,7 @@ use crate::{
 use impeccable_browser::{cdp::Browser, discovery, html_snapshot::HtmlSnapshot as PageSnapshot};
 use impeccable_comp_verbs::asset_capture::capture_sha256;
 use impeccable_comp_verbs::entry_capture::{
-    CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest, EntryStage, FrameEvidence,
+    CaptureError, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest, EntryStage, FrameEvidence,
 };
 use serde_json::{Value, json};
 use std::{
@@ -47,7 +47,7 @@ impl CapturedEntry for FrozenEntry {
     }
 }
 impl EntryRenderer for CdpEntryRenderer {
-    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, CaptureError> {
         self.capture_forbidding(request, &[])
     }
 }
@@ -74,7 +74,7 @@ impl CdpEntryRenderer {
         &self,
         request: &EntryRequest,
         forbidden: &[&[u8]],
-    ) -> Result<Box<dyn CapturedEntry>, String> {
+    ) -> Result<Box<dyn CapturedEntry>, CaptureError> {
         self.capture_at(request, forbidden, CaptureClock::now())
     }
 
@@ -86,10 +86,11 @@ impl CdpEntryRenderer {
         request: &EntryRequest,
         forbidden: &[&[u8]],
         clock: CaptureClock,
-    ) -> Result<Box<dyn CapturedEntry>, String> {
+    ) -> Result<Box<dyn CapturedEntry>, CaptureError> {
         // The shared gate chooses the entry/spec/reference, never a caller URL.
         // Spec and comp are bound (hashed and re-verified) but never served: a
-        // page graded against the comp must not be able to show it.
+        // page graded against the comp must not be able to show it. A tree that
+        // cannot be inventoried or frozen leaves the capture unavailable here.
         let inventory = static_inventory(&request.root)?;
         let served: Vec<String> = inventory
             .iter()
@@ -150,10 +151,10 @@ impl CdpEntryRenderer {
             let id = region["id"].as_str().unwrap_or("raster");
             let plate = region["plate"].as_str().ok_or_else(|| format!("raster region {id} has no plate"))?;
             if plate == request.reference || plate == request.spec {
-                return Err(format!("raster region {id} names the approved comp ({plate}) as its plate. A plate is the region's own artwork, never the comp."));
+                return Err(format!("raster region {id} names the approved comp ({plate}) as its plate. A plate is the region's own artwork, never the comp.").into());
             }
             if let Some(reason) = snapshot.bytes(plate).and_then(|bytes| forbidden_content(plate, bytes, &forbidden)) {
-                return Err(format!("raster region {id}'s plate {plate} {reason}. A plate is the region's own artwork, never the comp."));
+                return Err(format!("raster region {id}'s plate {plate} {reason}. A plate is the region's own artwork, never the comp.").into());
             }
             plates.push(plate.to_string());
             boxes.push(region["px"].clone());
@@ -228,14 +229,14 @@ impl CdpEntryRenderer {
                     .join("; ");
                 return Err(format!(
                     "{name} native capture did not retain a stable bound document: {details}"
-                ));
+                ).into());
             }
             let coverage = regions
                 .first()
                 .map(|r| r.receipt["rasterCoverage"].clone())
                 .ok_or("raster coverage was not measured")?;
             if !coverage["share"].is_number() {
-                return Err(format!("{name} raster coverage was not measured: {}", coverage["unavailable"].as_str().unwrap_or("no measurement")));
+                return Err(format!("{name} raster coverage was not measured: {}", coverage["unavailable"].as_str().unwrap_or("no measurement")).into());
             }
             for region in &mut regions {
                 if let Some(receipt) = region.receipt.as_object_mut() {
@@ -244,7 +245,7 @@ impl CdpEntryRenderer {
             }
             let share = coverage["share"].as_f64().unwrap_or(1.);
             if share >= TEXT_ONLY_RASTER_SHARE_MAX {
-                return Err(format!("{name} raster capture refused: images outside the declared raster regions cover {}% of the viewport (limit {}%): {}. The spec declares every raster in the first viewport as a raster region: declare this image as one (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32, largest_images(&coverage)));
+                return Err(format!("{name} raster capture refused: images outside the declared raster regions cover {}% of the viewport (limit {}%): {}. The spec declares every raster in the first viewport as a raster region: declare this image as one (comp-spec --regions), or remove it and draw that area in code.", (share * 100.).round(), (TEXT_ONLY_RASTER_SHARE_MAX * 100.) as u32, largest_images(&coverage)).into());
             }
             evidence.report["frameProofs"][name] = json!({"rasterCoverage": coverage});
             let png = regions[0]
@@ -289,7 +290,7 @@ fn capture_text_only(
     frames: &[(&str, Option<[u32; 2]>)],
     forbidden: &[&[u8]],
     clock: CaptureClock,
-) -> Result<Box<dyn CapturedEntry>, String> {
+) -> Result<Box<dyn CapturedEntry>, CaptureError> {
     let spec: Value = serde_json::from_slice(raster.bytes(&request.spec).ok_or("missing bound spec")?)
         .map_err(|e| e.to_string())?;
     let size = |k: &str| {
@@ -310,7 +311,7 @@ fn capture_text_only(
             let mut names = vec![request.artifact.clone()];
             for dep in deps {
                 if !inventory.contains(dep) {
-                    return Err(format!("hero review dependency {dep} is not a static browser file in the project (hidden, package or source-only paths are never served)"));
+                    return Err(format!("hero review dependency {dep} is not a static browser file in the project (hidden, package or source-only paths are never served)").into());
                 }
                 names.push(dep.clone());
             }
@@ -331,8 +332,8 @@ fn capture_text_only(
     }
     let page = Arc::new(PageSnapshot::from_pinned(request.artifact.clone(), files)?);
     let env = impeccable_common::process_env();
-    let exe = discovery::find_browser(&env).map_err(|e| format!("browser unavailable: {e:?}"))?;
-    let mut browser = Browser::launch(&exe, &[], false).map_err(|e| e.message)?;
+    let exe = discovery::find_browser(&env).map_err(|e| CaptureError::Unavailable(format!("browser unavailable: {e:?}")))?;
+    let mut browser = Browser::launch(&exe, &[], false).map_err(|e| CaptureError::Unavailable(e.message))?;
     let result = (|| -> Result<EntryEvidence, String> {
         let browser_version = browser.version().map_err(|e| e.message)?;
         let mut evidence = EntryEvidence {
@@ -493,16 +494,18 @@ fn forbidden_content(name: &str, bytes: &[u8], forbidden: &[&[u8]]) -> Option<&'
 
 /// Enumerate only static browser files. Never serve hidden state, source-only
 /// extensions or package trees. A bound/required file omitted here is an error.
-pub fn static_inventory(root: &Path) -> Result<Vec<String>, String> {
+/// Over a budget or across a symlink the tree is `Unavailable`: the shape of the project,
+/// not a defect in the page.
+pub fn static_inventory(root: &Path) -> Result<Vec<String>, CaptureError> {
     fn walk(
         root: &Path,
         dir: &Path,
         depth: usize,
         visited: &mut usize,
         out: &mut Vec<String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), CaptureError> {
         if depth > 12 {
-            return Err("static input inventory exceeds directory-depth budget".into());
+            return Err(CaptureError::Unavailable("static input inventory exceeds directory-depth budget".into()));
         }
         let mut entries = fs::read_dir(dir)
             .map_err(|e| e.to_string())?
@@ -512,7 +515,7 @@ pub fn static_inventory(root: &Path) -> Result<Vec<String>, String> {
         for entry in entries {
             *visited += 1;
             if *visited > 8192 {
-                return Err("static input inventory exceeds entry budget".into());
+                return Err(CaptureError::Unavailable("static input inventory exceeds entry budget".into()));
             }
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with('.') || name == "node_modules" {
@@ -520,10 +523,10 @@ pub fn static_inventory(root: &Path) -> Result<Vec<String>, String> {
             }
             let kind = entry.file_type().map_err(|e| e.to_string())?;
             if kind.is_symlink() {
-                return Err(format!(
+                return Err(CaptureError::Unavailable(format!(
                     "symlink in static input tree: {}",
                     entry.path().display()
-                ));
+                )));
             }
             if kind.is_dir() {
                 walk(root, &entry.path(), depth + 1, visited, out)?;
@@ -561,7 +564,7 @@ pub fn static_inventory(root: &Path) -> Result<Vec<String>, String> {
                         .replace('\\', "/"),
                 );
                 if out.len() > 1024 {
-                    return Err("static input inventory exceeds file budget".into());
+                    return Err(CaptureError::Unavailable("static input inventory exceeds file budget".into()));
                 }
             }
         }

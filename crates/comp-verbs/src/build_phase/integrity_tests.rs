@@ -15,7 +15,7 @@ fn completion_is_scoped_and_detects_post_finish_edits() {
     assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("other"))["canContinue"], false);
     for phase in PHASES { state["phases"][phase]["status"] = json!("closed"); }
     state["phase"] = json!("review");
-    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path, "").ok());
     save_state(&io, &state);
     let finish = ["finish", "--disposition", "ship"].map(String::from);
     assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
@@ -501,7 +501,7 @@ fn responsive_rejects_a_contradicted_control_even_above_the_overall_bar() {
         let png = png_io::encode_png(image, &[]).unwrap();
         ws.write(".impeccable/review/desktop.png", &png);
         ws.write(".impeccable/review/mobile.png", &png);
-        let gate = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
+        let gate = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None, None);
         let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
         assert!(report["overall"].as_f64().unwrap() >= RESPONSIVE_MIN);
         if !accepted {
@@ -579,7 +579,7 @@ fn responsive_revalidates_legacy_or_changed_plate_receipts() {
         util::json_pretty(&json!({"comp":"comp.png","regions":[region]})).as_bytes(),
     );
     state["plates"] = json!({"art":{"status":"ok","score":0.9}});
-    let g = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
+    let g = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None, None);
     assert!(!g.ok, "a missing asset cannot inherit legacy approval");
     assert!(
         g.reasons.iter().any(|r| r.contains("plate missing")),
@@ -629,7 +629,7 @@ fn responsive_failures_replace_previous_success_evidence() {
         let image = std::fs::read(ws.path.join("comp.png")).unwrap();
         ws.write(".impeccable/review/desktop.png", &image);
         ws.write(".impeccable/review/mobile.png", &image);
-        let good = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
+        let good = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None, None);
         assert!(good.ok, "{:?}", good.reasons);
         let report: Value =
             serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap())
@@ -643,7 +643,7 @@ fn responsive_failures_replace_previous_success_evidence() {
             std::fs::remove_file(ws.path.join("diff/regions/button.png")).unwrap();
             std::fs::create_dir(ws.path.join("diff/regions/button.png")).unwrap();
         }
-        let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None);
+        let bad = gate_responsive(&ws.io(), &mut state, RESPONSIVE_MIN, "diff", None, None, None);
         assert!(!bad.ok);
         assert_no_current_measurements(&ws);
         let report: Value =
@@ -670,7 +670,7 @@ fn failed_preflight_clears_complete_evidence_for_both_gates() {
         ws.write(".impeccable/review/desktop.png", &image);
         ws.write(".impeccable/review/mobile.png", &image);
         let run = |state: &mut Value| if responsive {
-            gate_responsive(&ws.io(), state, RESPONSIVE_MIN, "diff", None, None)
+            gate_responsive(&ws.io(), state, RESPONSIVE_MIN, "diff", None, None, None)
         } else {
             gate_hero(&ws.io(), state, "comp.png", HERO_MIN, "diff", Some("index.html"), &no_organic_scan, None)
         };
@@ -994,7 +994,7 @@ impl CapturedEntry for ReviewedCapture {
 /// Stands in for the reviewed native renderer: `approved` is what the user accepted.
 struct ReviewedRenderer { hero: Vec<u8>, approved: Option<Vec<u8>>, report: Value }
 impl EntryRenderer for ReviewedRenderer {
-    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, crate::entry_capture::CaptureError> {
         let frame = crate::entry_capture::FrameEvidence { name: "hero".into(), png: self.hero.clone(), regions: vec![] };
         Ok(Box::new(ReviewedCapture(crate::entry_capture::EntryEvidence { report: self.report.clone(), frames: vec![frame] },
             self.approved.clone().map(|png| crate::entry_capture::ApprovedReference { png, proof: json!({"schema": "test-review"}) }))))
@@ -1148,7 +1148,7 @@ fn accepted_first_viewport_turns_the_overall_bar_into_an_advisory() {
 
 struct DesktopRenderer { desktop: Vec<u8>, approved: Option<Vec<u8>> }
 impl EntryRenderer for DesktopRenderer {
-    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, crate::entry_capture::CaptureError> {
         let frame = |name: &str| crate::entry_capture::FrameEvidence { name: name.into(), png: self.desktop.clone(), regions: vec![] };
         Ok(Box::new(ReviewedCapture(crate::entry_capture::EntryEvidence { report: json!({}), frames: vec![frame("desktop"), frame("mobile")] },
             self.approved.clone().map(|png| crate::entry_capture::ApprovedReference { png, proof: json!({"schema": "test-review"}) }))))
@@ -1167,7 +1167,7 @@ fn responsive_does_not_relitigate_an_accepted_first_viewport_score() {
     let current = reviewed_hero(true, false);
     let run = |approved: Option<&Image>| {
         let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","phases":{}});
-        gate_responsive(&ws.io(), &mut state, 0.999, "diff", None, Some(&DesktopRenderer { desktop: png(&current), approved: approved.map(png) }))
+        gate_responsive(&ws.io(), &mut state, 0.999, "diff", None, Some(&DesktopRenderer { desktop: png(&current), approved: approved.map(png) }), None)
     };
     let unreviewed = run(None);
     assert!(!unreviewed.ok && unreviewed.reasons.iter().any(|r| r.contains("scores")), "{:?}", unreviewed.reasons);
@@ -1286,7 +1286,7 @@ fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missi
     let mut state = json!({"comp":"comp.png","phases":{}});
     // A full-page desktop capture: the sign-off is there, 40px lower, past the frame.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     assert!(!gate.ok);
     let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
     assert!(reason.contains("is displaced, not missing") && reason.contains("about 40px lower") && reason.contains("400x360 first viewport"), "{reason}");
@@ -1301,12 +1301,12 @@ fn responsive_calls_a_region_pushed_below_the_first_viewport_displaced_not_missi
     assert_eq!(region["blocking"], true);
     // A native frame is the first viewport alone: the column above says where it went.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 360, true), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     let reason = gate.reasons.iter().find(|r| r.contains("sign-off")).unwrap();
     assert!(reason.contains("is displaced, not missing: the content above it in its column sits about"), "{reason}");
     // Gone is still missing.
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(0.0, 360, false), &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     assert!(gate.reasons.iter().any(|r| r == "at desktop width, region sign-off is missing"), "{:?}", gate.reasons);
     assert_eq!(gate.worst_crops[0]["verdict"], "missing");
 }
@@ -1329,7 +1329,7 @@ fn a_missing_control_does_not_borrow_its_identical_neighbour() {
         {"id":"first","kind":"control","medium":"semantic","note":"first icon control","box":{"x":0.19,"y":0.49,"w":0.16,"h":0.09},"px":{"x":38,"y":98,"w":32,"h":18}},
         {"id":"second","kind":"control","medium":"semantic","note":"second icon control","box":{"x":0.19,"y":0.61,"w":0.16,"h":0.09},"px":{"x":38,"y":122,"w":32,"h":18}}]})).as_bytes());
     let mut state = json!({"comp":"comp.png","phases":{}});
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     assert!(gate.reasons.iter().any(|r| r == "at desktop width, region second is missing"), "{:?} {:?}", gate.reasons, gate.advisories);
     // Two distinct controls that both moved down a row: the first lands in the
     // second's old box, which the second no longer occupies, so it is found.
@@ -1342,7 +1342,7 @@ fn a_missing_control_does_not_borrow_its_identical_neighbour() {
     bars(&mut desktop, 148.);
     ws.write("comp.png", &png(&comp));
     ws.write(".impeccable/review/desktop.png", &png(&desktop));
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     assert!(!gate.reasons.iter().any(|r| r.contains("region first is missing")), "{:?} {}", gate.reasons, report["regions"]);
     assert!(gate.advisories.iter().any(|a| a.contains("region first sits about 24px lower")), "{:?}", gate.advisories);
@@ -1357,7 +1357,7 @@ fn responsive_reads_a_region_shifted_inside_the_first_viewport_as_drift() {
         r::fill_rect(&mut moved, 230.0 + k as f64 * 22.0, 306.0, 14.0, 18.0, [20.0, 20.0, 20.0, 255.0]);
     }
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&moved, &[]).unwrap());
-    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, None, None);
     assert!(gate.ok, "{:?}", gate.reasons);
     assert!(gate.advisories.iter().any(|a| a.starts_with("(advisory, still inside the first viewport) at desktop width, region sign-off sits about 24px higher")), "{:?}", gate.advisories);
 }
@@ -1381,7 +1381,7 @@ fn a_present_plate_off_its_box_at_desktop_width_is_drift_not_missing() {
     r::blit(&mut desktop, &r::crop(&comp, 10., 10., 60., 60.), 26., 26.);
     ws.write(".impeccable/review/desktop.png", &png(&desktop));
     ws.write(".impeccable/review/mobile.png", &png(&desktop));
-    let gate = gate_responsive(&io, &mut state, 0.1, "diff", None, None);
+    let gate = gate_responsive(&io, &mut state, 0.1, "diff", None, None, None);
     assert!(!gate.reasons.iter().any(|r| r.contains("art is missing")), "{:?}", gate.reasons);
     let report: Value = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     assert_eq!(report["regions"][0]["verdict"], "drift", "{report}");
@@ -1404,7 +1404,7 @@ fn reviewed_desktop_workspace() -> Workspace {
 fn run_reviewed_desktop(ws: &Workspace, current: &Image, approved: Option<&Image>, min: f64) -> (Gate, Value) {
     let png = |i: &Image| png_io::encode_png(i, &[]).unwrap();
     let mut state = json!({"comp":"comp.png","capturePolicy":"native-html-v1","phases":{}});
-    let gate = gate_responsive(&ws.io(), &mut state, min, "diff", None, Some(&DesktopRenderer { desktop: png(current), approved: approved.map(png) }));
+    let gate = gate_responsive(&ws.io(), &mut state, min, "diff", None, Some(&DesktopRenderer { desktop: png(current), approved: approved.map(png) }), None);
     let report = serde_json::from_slice(&std::fs::read(ws.path.join("diff/report.json")).unwrap()).unwrap();
     (gate, report)
 }
@@ -1546,7 +1546,7 @@ impl CapturedEntry for ManifestCapture {
     }
 }
 impl EntryRenderer for ManifestRenderer {
-    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, crate::entry_capture::CaptureError> {
         let files: Vec<Value> = ["index.html", "fonts/face.ttf"].iter().map(|path| {
             let bytes = std::fs::read(request.root.join(path)).unwrap();
             json!({"path": path, "sha256": sha256_bytes(&bytes), "bytes": bytes.len(), "served": true})
@@ -1634,7 +1634,7 @@ fn native_ship_is_refused_when_an_input_changes_while_the_final_capture_runs() {
 /// Records the entry each capture asked for, then defers to `ManifestRenderer`.
 struct RecordingRenderer { inner: ManifestRenderer, asked: std::cell::RefCell<Vec<String>> }
 impl EntryRenderer for RecordingRenderer {
-    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, request: &EntryRequest) -> Result<Box<dyn CapturedEntry>, crate::entry_capture::CaptureError> {
         self.asked.borrow_mut().push(request.artifact.clone());
         self.inner.capture_entry(request)
     }
@@ -1671,7 +1671,7 @@ fn responsive_and_ship_capture_the_entry_artifact_names() {
 /// A native renderer whose capture leaves no input manifest.
 struct BareRenderer(Vec<u8>);
 impl EntryRenderer for BareRenderer {
-    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, crate::entry_capture::CaptureError> {
         let frame = |name: &str| crate::entry_capture::FrameEvidence { name: name.into(), png: self.0.clone(), regions: vec![] };
         Ok(Box::new(ManifestCapture(crate::entry_capture::EntryEvidence { report: json!({}), frames: vec![frame("desktop"), frame("mobile")] },
             crate::entry_capture::ApprovedReference { png: self.0.clone(), proof: json!({"schema": "test-review"}) }, None)))
@@ -1698,7 +1698,7 @@ fn screenshot_policy_finish_binds_no_capture_manifest() {
     let mut io = ws.io();
     let mut state = json!({"phase":"review", "artifact":"index.html", "phases":{}});
     for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
-    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path, "").ok());
     save_state(&io, &state);
     assert_eq!(run(&["finish", "--disposition", "ship"].map(String::from), &mut io, &no_organic_scan), 0);
     let state = load_state(&io).unwrap();
@@ -1706,6 +1706,132 @@ fn screenshot_policy_finish_binds_no_capture_manifest() {
     assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "complete");
     let next = next_instruction(&io, &state);
     assert!(next.contains("recapture desktop and mobile and advance responsive first"), "{next}");
+}
+
+/// A native renderer whose capture fails with `error`, counting the calls it gets.
+struct FailingRenderer { error: fn(String) -> CaptureError, calls: std::cell::Cell<usize> }
+impl EntryRenderer for FailingRenderer {
+    fn capture_entry(&self, _: &EntryRequest) -> Result<Box<dyn CapturedEntry>, CaptureError> {
+        self.calls.set(self.calls.get() + 1);
+        Err((self.error)("no browser here".into()))
+    }
+}
+fn failing(error: fn(String) -> CaptureError) -> FailingRenderer {
+    FailingRenderer { error, calls: Default::default() }
+}
+
+#[test]
+fn a_static_entry_is_captured_natively_on_responsive_by_default_but_not_on_hero() {
+    let ws = reviewed_desktop_workspace();
+    ws.write("fonts/face.ttf", b"font v1");
+    let desktop = png_io::encode_png(&reviewed_hero(false, false), &[]).unwrap();
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phases":{}});
+    gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, Some(&ManifestRenderer { desktop, changed_during: None }), None);
+    assert!(state["capturePolicy"] == "native-html-v1" && state["capturePolicySource"] == "default", "{state}");
+    assert!(ws.path.join(".impeccable/review/native/responsive/inputs.json").is_file());
+    let never = failing(CaptureError::Refused);
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phases":{"hero":{}}});
+    let mode = capture_mode(&ws.io(), &state, None, EntryStage::Hero);
+    assert!(mode == Capture::Screenshots);
+    assert!(matches!(prepare_native_capture(&ws.io(), &mut state, None, Some(&never), EntryStage::Hero, mode), Ok(None)));
+    assert_eq!(never.calls.get(), 0);
+}
+
+#[test]
+fn a_default_native_capture_falls_back_only_when_it_cannot_run_here() {
+    let ws = reviewed_desktop_workspace();
+    let io = |env: Option<&str>| Io::captured("", ws.path.clone(),
+        env.map(|v| [("IMPECCABLE_NATIVE_CAPTURE".to_string(), v.to_string())].into()).unwrap_or_default()).0;
+    // Ship upgrades the mode to `Required`; every other gate resolves it.
+    let prepare = |io: &Io, renderer: &FailingRenderer, state: &mut Value, ship: bool| {
+        let mode = if ship { Capture::Required } else { capture_mode(io, state, None, EntryStage::Responsive) };
+        match prepare_native_capture(io, state, None, Some(renderer), EntryStage::Responsive, mode) {
+            Ok(native) => Ok(native.is_some()),
+            Err(gate) => Err(gate.reasons.join(" ")),
+        }
+    };
+    let unavailable = failing(CaptureError::Unavailable);
+    let native = json!({"comp":"comp.png","artifact":"index.html","capturePolicy":"native-html-v1","capturePolicySource":"default","phases":{}});
+    // A default capture that falls back leaves a screenshot binding.
+    let mut state = native.clone();
+    assert_eq!(prepare(&io(None), &unavailable, &mut state, false), Ok(false));
+    assert!(state["capturePolicy"].is_null() && state["capturePolicySource"].is_null());
+    // A policy a requested run recorded stays required.
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","capturePolicy":"native-html-v1","phases":{}});
+    assert!(prepare(&io(None), &unavailable, &mut state, false).is_err());
+    assert_eq!(state["capturePolicy"], "native-html-v1");
+    // Ship never signs saved screenshots, and a requested capture never falls back.
+    let mut state = native.clone();
+    assert!(prepare(&io(None), &unavailable, &mut state, true).unwrap_err().contains("no browser here"));
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phases":{}});
+    assert!(prepare(&io(Some("1")), &unavailable, &mut state, false).is_err());
+    // A capture that ran and refused the page fails the gate.
+    assert!(prepare(&io(None), &failing(CaptureError::Refused), &mut state, false).is_err());
+    let never = failing(CaptureError::Refused);
+    assert_eq!(prepare(&io(Some("0")), &never, &mut state, false), Ok(false));
+    assert_eq!(never.calls.get(), 0);
+    // `=0` turns the default off, not a policy the build already recorded.
+    let mut state = native.clone();
+    assert_eq!(prepare(&io(Some("0")), &unavailable, &mut state, false), Ok(false));
+    assert_eq!(unavailable.calls.get(), 5);
+}
+
+#[test]
+fn an_unavailable_capture_reopens_a_native_ship_and_the_next_advance_uses_the_screenshots() {
+    let (ws, _) = finished_native_workspace();
+    let mut state = load_state(&ws.io()).unwrap();
+    state["capturePolicySource"] = json!("default");
+    save_state(&ws.io(), &state);
+    let unavailable = failing(CaptureError::Unavailable);
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&unavailable)), 2);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["phases"]["responsive"]["status"], "open");
+    assert_eq!(state["capturePolicy"], "native-html-v1");
+    let png = png_io::encode_png(&reviewed_hero(false, false), &[]).unwrap();
+    ws.write(".impeccable/review/desktop.png", &png);
+    ws.write(".impeccable/review/mobile.png", &png);
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run_with_renderer(&forced, &mut io, &no_organic_scan, Some(&unavailable)), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["capturePolicy"].is_null() && state["responsiveInputSha256"].is_string(), "{state}");
+    assert_eq!(state["responsiveInputScope"], "");
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&unavailable)), 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn the_screenshot_fingerprint_covers_the_entry_package_and_names_what_it_cannot_read() {
+    let ws = menu_workspace();
+    ws.write("site/index.html", b"<main>Menu</main>");
+    ws.write("site/package.json", b"{}");
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let mut state = json!({"comp":"comp.png","artifact":"site/index.html","phase":"responsive","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    // Outside the entry's package a symlink (or a gigabyte of images) is not an input.
+    std::fs::create_dir_all(ws.path.join("content")).unwrap();
+    std::os::unix::fs::symlink("../site/index.html", ws.path.join("content/link.html")).unwrap();
+    let (mut io, out) = captured(&ws);
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
+    assert_eq!(load_state(&io).unwrap()["responsiveInputScope"], "site");
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run(&ship, &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["finish"]["artifactInputsScope"], "site");
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "complete");
+    // Inside it, the refusal names what could not be read instead of calling it a change.
+    std::os::unix::fs::symlink("index.html", ws.path.join("site/link.html")).unwrap();
+    assert_eq!(run(&ship, &mut io, &no_organic_scan), 2);
+    let text = out_err(&out);
+    assert!(text.contains("could not be fingerprinted (symlink at site/link.html)") && !text.contains("changed since"), "{text}");
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("(symlink at site/link.html), so responsive cannot close"), "{}", out_err(&out));
 }
 
 #[test]
@@ -2073,4 +2199,77 @@ fn a_code_region_the_accepted_first_viewport_lacks_carries_to_desktop_width() {
     // Removed after the acceptance: it blocks again.
     let (removed, _) = run_reviewed_desktop(&ws, &without, Some(&current), 0.1);
     assert!(removed.reasons.iter().any(|r| r == "at desktop width, region headline is missing"), "{:?}", removed.reasons);
+}
+
+#[test]
+fn a_forced_default_native_responsive_ships_on_the_screenshot_binding_as_before() {
+    let (ws, _) = finished_native_workspace();
+    let mut state = load_state(&ws.io()).unwrap();
+    state.as_object_mut().unwrap().remove("capturePolicy");
+    state["phase"] = json!("responsive");
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    save_state(&ws.io(), &state);
+    let failing_page = DesktopRenderer { desktop: png_io::encode_png(&reviewed_hero(true, false), &[]).unwrap(), approved: None };
+    let mut io = ws.io();
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.999", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run_with_renderer(&forced, &mut io, &no_organic_scan, Some(&failing_page)), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["phases"]["responsive"]["forced"].is_object(), "{state}");
+    // The user overrode the native gate, so ship must not rerun it.
+    assert!(state["capturePolicy"].is_null() && state["responsiveInputSha256"].is_string(), "{state}");
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&failing_page)), 0);
+}
+
+#[test]
+fn a_forced_responsive_under_required_native_capture_keeps_the_native_binding() {
+    let (ws, _) = finished_native_workspace();
+    let mut state = load_state(&ws.io()).unwrap();
+    state["phase"] = json!("responsive");
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    save_state(&ws.io(), &state);
+    let failing_page = DesktopRenderer { desktop: png_io::encode_png(&reviewed_hero(true, false), &[]).unwrap(), approved: None };
+    let (mut io, _) = Io::captured("", ws.path.clone(), [("IMPECCABLE_NATIVE_CAPTURE".to_string(), "1".to_string())].into());
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.999", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run_with_renderer(&forced, &mut io, &no_organic_scan, Some(&failing_page)), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["phases"]["responsive"]["forced"].is_object(), "{state}");
+    assert!(state["capturePolicy"] == "native-html-v1" && state["responsiveInputSha256"].is_null(), "{state}");
+}
+
+#[test]
+fn a_ship_keeps_a_default_policy_default_so_a_later_advance_can_still_fall_back() {
+    let (ws, desktop) = finished_native_workspace();
+    let mut state = load_state(&ws.io()).unwrap();
+    state["capturePolicySource"] = json!("default");
+    save_state(&ws.io(), &state);
+    let mut io = ws.io();
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    // A ship that fails on score after a successful capture.
+    let failing_page = DesktopRenderer { desktop: png_io::encode_png(&reviewed_hero(true, false), &[]).unwrap(), approved: None };
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&failing_page)), 2);
+    assert_eq!(load_state(&io).unwrap()["capturePolicySource"], "default");
+    // A ship that passes.
+    let mut state = load_state(&io).unwrap();
+    for phase in PHASES { state["phases"][phase]["status"] = json!("closed"); }
+    state["phases"]["review"]["status"] = json!("open");
+    state["phase"] = json!("review");
+    save_state(&io, &state);
+    assert_eq!(run_with_renderer(&ship, &mut io, &no_organic_scan, Some(&ManifestRenderer { desktop, changed_during: None })), 0);
+    assert_eq!(load_state(&io).unwrap()["capturePolicySource"], "default");
+    // Responsive reopened later still falls back when the capture cannot run.
+    let mut state = load_state(&io).unwrap();
+    state["phase"] = json!("responsive");
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    save_state(&io, &state);
+    let png = png_io::encode_png(&reviewed_hero(false, false), &[]).unwrap();
+    ws.write(".impeccable/review/desktop.png", &png);
+    ws.write(".impeccable/review/mobile.png", &png);
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run_with_renderer(&forced, &mut io, &no_organic_scan, Some(&failing(CaptureError::Unavailable))), 0);
+    let state = load_state(&io).unwrap();
+    assert!(state["capturePolicy"].is_null() && state["responsiveInputSha256"].is_string(), "{state}");
 }

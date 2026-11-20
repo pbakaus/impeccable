@@ -9,6 +9,7 @@ use impeccable_comp::{png_io, raster::Image};
 use impeccable_comp_verbs::asset_capture::{
     AssetCapture, AssetCaptureRequest, AssetRenderer, CaptureImage, capture_sha256 as hash,
 };
+use impeccable_comp_verbs::entry_capture::CaptureError;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
@@ -42,7 +43,7 @@ impl CdpAssetRenderer {
     }
 }
 impl AssetRenderer for CdpAssetRenderer {
-    fn capture(&mut self, request: &AssetCaptureRequest) -> Result<AssetCapture, String> {
+    fn capture(&mut self, request: &AssetCaptureRequest) -> Result<AssetCapture, CaptureError> {
         self.capture_batch(std::slice::from_ref(request))?
             .into_iter()
             .next()
@@ -51,12 +52,12 @@ impl AssetRenderer for CdpAssetRenderer {
     fn capture_batch(
         &mut self,
         requests: &[AssetCaptureRequest],
-    ) -> Result<Vec<AssetCapture>, String> {
+    ) -> Result<Vec<AssetCapture>, CaptureError> {
         if requests.is_empty() || requests.len() > crate::capture_snapshot::MAX_CAPTURE_REGIONS {
             return Err(format!(
                 "capture batch must contain 1 to {} regions",
                 crate::capture_snapshot::MAX_CAPTURE_REGIONS
-            ));
+            ).into());
         }
         let request = &requests[0];
         for item in requests {
@@ -72,13 +73,13 @@ impl AssetRenderer for CdpAssetRenderer {
             }
         }
         let exe = discovery::find_browser(&self.env)
-            .map_err(|e| format!("browser unavailable: {e:?}"))?;
+            .map_err(|e| CaptureError::Unavailable(format!("browser unavailable: {e:?}")))?;
         // Image suppression must restore exact pixels. GPU tile rasterization can
         // round resampled pixels differently after an otherwise identical repaint.
         // Disable partial raster too: reusing invalidated tiles can change antialiasing
         // even with software rasterization. Never substitute a pixel tolerance.
         let mut browser = Browser::launch(&exe, &["--disable-gpu-rasterization".into(), "--disable-partial-raster".into()], false)
-            .map_err(|e| e.message)?;
+            .map_err(|e| CaptureError::Unavailable(e.message))?;
         let browser_version = browser.version().map_err(|e| e.message)?;
         let result = (|| {
             let mut page = browser.new_page().map_err(|e| e.message)?;
@@ -233,6 +234,7 @@ impl AssetRenderer for CdpAssetRenderer {
                 })
                 .collect()
         })
+        .map_err(CaptureError::from)
     }
 }
 fn coverage_on_baseline(

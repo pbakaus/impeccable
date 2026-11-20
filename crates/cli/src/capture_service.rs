@@ -3,8 +3,8 @@
 use crate::reviewed_entry::ReviewedEntryRenderer;
 use base64::Engine;
 use impeccable_comp_verbs::entry_capture::{
-    ApprovedReference, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest, EntryStage,
-    FrameEvidence,
+    ApprovedReference, CaptureError, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest,
+    EntryStage, FrameEvidence,
 };
 use serde_json::{Value, json};
 use std::{
@@ -159,7 +159,8 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         stream.set_nonblocking(false)?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         stream.set_write_timeout(Some(Duration::from_secs(10)))?;
-        let answer = (|| -> Result<Value, String> {
+        // Error kind crosses the wire: an `unavailable` capture could not run here.
+        let answer = (|| -> Result<Value, CaptureError> {
             let (route, body) = request(&stream, &key)?;
             let text = |k: &str| body[k].as_str().ok_or_else(|| format!("missing {k}"));
             match route.as_str() {
@@ -228,7 +229,8 @@ pub fn serve(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         })();
         let (status, body) = match answer {
             Ok(v) => (200, v),
-            Err(e) => (400, json!({"ok":false,"error":e})),
+            Err(CaptureError::Unavailable(e)) => (400, json!({"ok":false,"error":e,"unavailable":true})),
+            Err(CaptureError::Refused(e)) => (400, json!({"ok":false,"error":e})),
         };
         let bytes = serde_json::to_vec(&body)?;
         let header = format!(
@@ -392,7 +394,7 @@ impl RemoteEntryRenderer {
             _ => Err("incomplete native capture service configuration".into()),
         }
     }
-    fn call(&self, route: &str, body: Value) -> Result<Value, String> {
+    fn call(&self, route: &str, body: Value) -> Result<Value, CaptureError> {
         let body = serde_json::to_vec(&body).map_err(|e| e.to_string())?;
         let mut stream = TcpStream::connect_timeout(
             &std::net::SocketAddr::from(([127, 0, 0, 1], self.port)),
@@ -423,10 +425,8 @@ impl RemoteEntryRenderer {
         let response: Value =
             serde_json::from_slice(&bytes[split + 4..]).map_err(|e| e.to_string())?;
         if response["ok"] != true {
-            return Err(response["error"]
-                .as_str()
-                .unwrap_or("native service rejected capture")
-                .into());
+            let error = response["error"].as_str().unwrap_or("native service rejected capture").to_string();
+            return Err(if response["unavailable"] == true { CaptureError::Unavailable(error) } else { CaptureError::Refused(error) });
         }
         Ok(response)
     }
@@ -446,6 +446,7 @@ impl CapturedEntry for RemoteEntry {
         self.renderer
             .call("/verify", json!({"handle":self.id}))
             .map(|_| ())
+            .map_err(String::from)
     }
 }
 impl Drop for RemoteEntry {
@@ -454,7 +455,7 @@ impl Drop for RemoteEntry {
     }
 }
 impl EntryRenderer for RemoteEntryRenderer {
-    fn capture_entry(&self, r: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
+    fn capture_entry(&self, r: &EntryRequest) -> Result<Box<dyn CapturedEntry>, CaptureError> {
         let stage = match r.stage {
             EntryStage::Hero => "hero",
             EntryStage::Responsive => "responsive",
@@ -478,7 +479,7 @@ impl EntryRenderer for RemoteEntryRenderer {
         if parsed.is_err() {
             let _ = self.call("/release", json!({"handle":id}));
         }
-        parsed
+        Ok(parsed?)
     }
 }
 

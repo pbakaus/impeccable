@@ -3,7 +3,7 @@
 mod capture_service;
 use impeccable::entry_capture::{CdpEntryRenderer, static_inventory};
 use impeccable_comp::{png_io, raster};
-use impeccable_comp_verbs::entry_capture::{EntryRenderer, EntryRequest, EntryStage};
+use impeccable_comp_verbs::entry_capture::{CaptureError, EntryRenderer, EntryRequest, EntryStage};
 use std::{
     fs,
     path::PathBuf,
@@ -87,6 +87,9 @@ fn native_inventory_excludes_private_and_package_trees() {
     {
         std::os::unix::fs::symlink(".env", f.0.join("asset.png")).unwrap();
         assert!(static_inventory(&f.0).is_err());
+        // A tree that cannot be frozen leaves the capture unavailable, not refused.
+        let capture = CdpEntryRenderer.capture_entry(&f.request(EntryStage::Responsive));
+        assert!(matches!(capture, Err(CaptureError::Unavailable(_))));
     }
 }
 #[test]
@@ -135,7 +138,7 @@ fn refusal(renderer: &dyn EntryRenderer, f: &Fixture, stage: EntryStage) -> Stri
     match renderer.capture_entry(&f.request(stage)) {
         Ok(_) => panic!("capture should be refused"),
         // Normalize separators so a Windows path in a message still matches.
-        Err(e) => e.replace('\\', "/"),
+        Err(e) => e.to_string().replace('\\', "/"),
     }
 }
 
@@ -313,6 +316,13 @@ fn host_capture_service_refuses_a_raster_page_that_shows_the_comp() {
     f.page("<img src=\"assets/backdrop.png\" style=\"left:0;top:0;width:100vw;height:100vh;z-index:-1\">");
     let e = refusal(&remote, &f, EntryStage::Responsive);
     assert!(e.contains("assets/backdrop.png") && e.contains("copy of the approved reference"), "{e}");
+    assert!(matches!(remote.capture_entry(&f.request(EntryStage::Responsive)), Err(CaptureError::Refused(_))));
+    // A tree the service cannot freeze stays unavailable across the transport.
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("index.html", f.0.join("link.html")).unwrap();
+        assert!(matches!(remote.capture_entry(&f.request(EntryStage::Responsive)), Err(CaptureError::Unavailable(_))));
+    }
 }
 
 #[test]

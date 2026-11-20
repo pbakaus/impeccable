@@ -150,7 +150,7 @@ fn fresh_capture_ignores_saved_receipts_and_rejects_stale_or_wrong_documents() {
         calls: usize,
     }
     impl AssetRenderer for Fake {
-        fn capture(&mut self, r: &AssetCaptureRequest) -> Result<AssetCapture, String> {
+        fn capture(&mut self, r: &AssetCaptureRequest) -> Result<AssetCapture, impeccable_comp_verbs::entry_capture::CaptureError> {
             self.calls += 1;
             assert!(r.url.starts_with("http://127.0.0.1:"));
             assert!(r.url.ends_with("/index.html"));

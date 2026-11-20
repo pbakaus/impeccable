@@ -21,34 +21,60 @@ pub fn artifact_hash(root: &Path, state: &Value) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(bytes)))
 }
 
-/// Conservative local frontend input signature for the screenshot fallback.
+/// The entry's package root, project-relative ("" for the project root): the
+/// nearest directory holding a package.json from the entry's directory up, never
+/// above the project root. The screenshot fallback fingerprints only this tree.
+pub fn input_scope(root: &Path, state: &Value) -> String {
+    let (Ok(base), Some(entry)) = (root.canonicalize(), artifact_path(root, state)) else { return String::new() };
+    let mut dir = entry.parent();
+    while let Some(d) = dir.filter(|d| d.starts_with(&base)) {
+        if d.join("package.json").is_file() {
+            return d.strip_prefix(&base).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+        }
+        dir = d.parent();
+    }
+    String::new()
+}
+
+/// Conservative local frontend input signature for the screenshot fallback, over
+/// the files under `scope` (see [`input_scope`]). Paths are hashed relative to the
+/// project root, so scope "" is the whole-project signature older engines recorded.
 /// Tool receipts and dependency caches cannot invalidate their own signature.
-pub fn input_hash(root: &Path) -> Option<String> {
-    fn collect(root: &Path, dir: &Path, paths: &mut Vec<PathBuf>) -> Option<()> {
-        for entry in std::fs::read_dir(dir).ok()? {
-            let entry=entry.ok()?;let path=entry.path();let name=entry.file_name();
+pub fn input_hash(root: &Path, scope: &str) -> Result<String, String> {
+    fn collect(root: &Path, dir: &Path, under: &str, paths: &mut Vec<PathBuf>) -> Result<(), String> {
+        let unreadable=|path: &Path, e: std::io::Error| format!("cannot read {}: {e}", path.strip_prefix(root).unwrap_or(path).display());
+        for entry in std::fs::read_dir(dir).map_err(|e|unreadable(dir,e))? {
+            let entry=entry.map_err(|e|unreadable(dir,e))?;let path=entry.path();let name=entry.file_name();
             let name=name.to_string_lossy();
             if name.starts_with('.') || matches!(name.as_ref(), "node_modules"|"target") {continue;}
-            let kind=entry.file_type().ok()?;
-            if kind.is_symlink() { return None; }
-            if kind.is_dir() {collect(root,&path,paths)?;}
+            let kind=entry.file_type().map_err(|e|unreadable(&path,e))?;
+            if kind.is_symlink() { return Err(format!("symlink at {}", path.strip_prefix(root).unwrap_or(&path).display())); }
+            if kind.is_dir() {collect(root,&path,under,paths)?;}
             else if matches!(path.extension().and_then(|v|v.to_str()),
                 Some("html"|"htm"|"css"|"scss"|"sass"|"less"|"js"|"mjs"|"cjs"|"ts"|"tsx"|"jsx"|"vue"|"svelte"|"astro"|"json"|"svg"|"png"|"jpg"|"jpeg"|"webp"|"avif"|"gif"|"woff"|"woff2"|"ttf"|"otf"|"mp4"|"webm")) {
-                paths.push(path.strip_prefix(root).ok()?.to_path_buf());
-                if paths.len()>10000 {return None;}
+                paths.push(path.strip_prefix(root).unwrap_or(&path).to_path_buf());
+                if paths.len()>10000 {return Err(format!("more than 10000 frontend files under {under}"));}
             }
         }
-        Some(())
+        Ok(())
     }
-    let root=root.canonicalize().ok()?;let mut paths=Vec::new();collect(&root,&root,&mut paths)?;paths.sort();
+    let root=root.canonicalize().map_err(|e|format!("cannot read the project root: {e}"))?;
+    let under=if scope.is_empty() {"the project root".to_string()} else {scope.to_string()};
+    let start=root.join(scope);
+    if !Path::new(scope).components().all(|c|matches!(c,std::path::Component::Normal(_)))
+        || start.canonicalize().ok().as_deref()!=Some(start.as_path()) || !start.is_dir() {
+        return Err(format!("{under} is not a directory inside the project"));
+    }
+    let mut paths=Vec::new();collect(&root,&start,&under,&mut paths)?;paths.sort();
     let mut hasher=Sha256::new();let mut total=0u64;
     for path in paths {
-        let full=root.join(&path);total=total.checked_add(std::fs::metadata(&full).ok()?.len())?;
-        if total>256*1024*1024 {return None;}
+        let full=root.join(&path);let unreadable=|e: std::io::Error|format!("cannot read {}: {e}",path.display());
+        total=total.saturating_add(std::fs::metadata(&full).map_err(unreadable)?.len());
+        if total>256*1024*1024 {return Err(format!("frontend files under {under} total more than 256 MiB"));}
         hasher.update(path.to_string_lossy().as_bytes());hasher.update([0]);
-        hasher.update(Sha256::digest(std::fs::read(full).ok()?));
+        hasher.update(Sha256::digest(std::fs::read(&full).map_err(unreadable)?));
     }
-    Some(format!("{:x}",hasher.finalize()))
+    Ok(format!("{:x}",hasher.finalize()))
 }
 
 /// The files the final native capture bound (its `inputs.json` manifest), as
@@ -134,8 +160,9 @@ pub fn report(root: &Path, state: Option<&Value>, session_id: Option<&str>) -> V
         };
     }
     if let Some(recorded) = state.pointer("/finish/artifactInputsSha256").and_then(Value::as_str) {
-        unchanged = match (unchanged,input_hash(root)) {
-            (Some(entry),Some(inputs)) => Some(entry && recorded == inputs),
+        let scope = state.pointer("/finish/artifactInputsScope").and_then(Value::as_str).unwrap_or("");
+        unchanged = match (unchanged,input_hash(root, scope)) {
+            (Some(entry),Ok(inputs)) => Some(entry && recorded == inputs),
             _ => None,
         };
     }
@@ -170,6 +197,24 @@ mod tests {
     #[test]
     fn no_state_does_not_start_a_workflow() {
         assert_eq!(report(Path::new("."), None, Some("session"))["status"], "not-applicable");
+    }
+    #[test]
+    fn root_scope_hash_matches_the_signature_older_engines_recorded() {
+        let dir = std::env::temp_dir().join(format!("input-hash-compat-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("site")).unwrap();
+        std::fs::write(dir.join("index.html"), "<main>First</main>").unwrap();
+        std::fs::write(dir.join("styles.css"), "body{}").unwrap();
+        // Digest of the pre-scope algorithm over index.html and styles.css.
+        assert_eq!(input_hash(&dir, "").unwrap(), "69b1db45e244b97e5995c8dd8df7c77b7e6d9d55f26ba992ea1dcaca8a3cb795");
+        std::fs::write(dir.join("site/app.css"), "a{}").unwrap();
+        let mut scoped = Sha256::new();
+        scoped.update(Path::new("site").join("app.css").to_string_lossy().as_bytes());
+        scoped.update([0]);
+        scoped.update(Sha256::digest(b"a{}"));
+        assert_eq!(input_hash(&dir, "site").unwrap(), format!("{:x}", scoped.finalize()));
+        assert!(input_hash(&dir, "../elsewhere").is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
     fn absent_or_foreign_identity_cannot_continue() {
