@@ -113,10 +113,14 @@ fn holds_nested_element(opener: &str) -> bool {
         if matches!(e, Lexed::Open { .. }) { opens += 1; }
         opens > 1
     });
-    // The lexer opens no typed element (`<Icon<Props> />`), so refuse one.
+    // The lexer opens no typed element (`<Icon<Props> />`), so refuse one
+    // where JSX can start; `go<Array<T>>()` is a type argument.
     let typed = opener.match_indices('<').any(|(i, _)| {
         let name = opener[i + 1..].split(|c: char| !c.is_ascii_alphanumeric() && !"._:-".contains(c)).next().unwrap_or("");
+        let before = opener[..i].trim_end();
+        let word = before.rsplit(|c: char| !c.is_alphanumeric() && c != '_' && c != '$').next().unwrap_or("");
         name.starts_with(|c: char| c.is_ascii_alphabetic()) && opener[i + 1 + name.len()..].starts_with('<')
+            && expects_operand(before.chars().last(), word)
     });
     typed || opens != 1 || !clean
 }
@@ -341,7 +345,8 @@ mod tests {
         // Tag-like text in a quoted prop or a TS generic is not a nested element.
         for quoted in [r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#,
             r#"<nav><Link className="demo-exit" title="C:\">Leave demo</Link></nav>"#,
-            r#"<nav><Link onClick={(e: MouseEvent<HTMLAnchorElement>) => go(e)} className="demo-exit">Leave demo</Link></nav>"#] {
+            r#"<nav><Link onClick={(e: MouseEvent<HTMLAnchorElement>) => go(e)} className="demo-exit">Leave demo</Link></nav>"#,
+            r#"<nav><Link onClick={() => go<Array<string>>()} className="demo-exit">Leave demo</Link></nav>"#] {
             assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))), "{quoted}");
         }
         // A nested element after a comment holding an apostrophe is still one.
