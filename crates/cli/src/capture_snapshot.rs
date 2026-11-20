@@ -2,7 +2,6 @@
 //! The native caller owns the selection; private bound inputs are never HTTP routes.
 use impeccable_browser::html_snapshot::Connections;
 use impeccable_comp_verbs::asset_capture::capture_sha256 as hash;
-use impeccable_comp_verbs::entry_capture::CaptureError;
 use serde_json::{Value, json};
 /// Most raster regions one native capture measures in a frame. The browser
 /// adapter batches a frame's regions into one document and refuses a larger
@@ -56,7 +55,7 @@ struct RequestLog {
 }
 const MAX_LOGGED_REQUESTS: usize = 4096;
 impl HtmlSnapshot {
-    pub fn freeze(selection: SnapshotSelection) -> Result<Self, CaptureError> {
+    pub fn freeze(selection: SnapshotSelection) -> Result<Self, String> {
         let root = fs::canonicalize(&selection.root).map_err(|e| format!("snapshot root: {e}"))?;
         if !root.is_dir() {
             return Err("snapshot root is not a directory".into());
@@ -79,12 +78,12 @@ impl HtmlSnapshot {
         for name in &served {
             valid_relative(name)?;
             if name.split('/').any(|p| p.starts_with('.')) || mime(name).is_none() {
-                return Err(format!("not an allowed static dependency: {name}").into());
+                return Err(format!("not an allowed static dependency: {name}"));
             }
         }
         let names: BTreeSet<_> = served.iter().cloned().chain(selection.bound).collect();
         if names.len() > MAX_FILES {
-            return Err(CaptureError::Unavailable("snapshot exceeds file limit".into()));
+            return Err("snapshot exceeds file limit".into());
         }
         let mut files = BTreeMap::new();
         let mut total = 0;
@@ -92,7 +91,7 @@ impl HtmlSnapshot {
             let bytes = read_input(&root, &name)?;
             total += bytes.len();
             if total > MAX_TOTAL_BYTES {
-                return Err(CaptureError::Unavailable("snapshot exceeds total byte limit".into()));
+                return Err("snapshot exceeds total byte limit".into());
             }
             files.insert(name, bytes);
         }
@@ -133,7 +132,6 @@ impl HtmlSnapshot {
         reduced_motion: bool,
     ) -> Result<Vec<impeccable_comp_verbs::asset_capture::AssetCapture>, String> {
         self.capture_regions_at_viewport(renderer, spec_path, region_ids, reduced_motion, None)
-            .map_err(String::from)
     }
     /// Desktop/mobile captures retain the comp-owned region coordinates scaled
     /// to the requested width. Reflow fidelity remains a separate gate concern.
@@ -144,14 +142,14 @@ impl HtmlSnapshot {
         region_ids: &[&str],
         reduced_motion: bool,
         viewport: Option<[u32; 2]>,
-    ) -> Result<Vec<impeccable_comp_verbs::asset_capture::AssetCapture>, CaptureError> {
+    ) -> Result<Vec<impeccable_comp_verbs::asset_capture::AssetCapture>, String> {
         use impeccable_comp_verbs::asset_capture::AssetCaptureRequest;
         self.verify_current()?;
         if region_ids.is_empty()
             || region_ids.len() > MAX_CAPTURE_REGIONS
             || region_ids.iter().copied().collect::<BTreeSet<_>>().len() != region_ids.len()
         {
-            return Err(format!("capture requires 1 to {MAX_CAPTURE_REGIONS} distinct regions").into());
+            return Err(format!("capture requires 1 to {MAX_CAPTURE_REGIONS} distinct regions"));
         }
         let spec: Value = serde_json::from_slice(
             self.bytes(spec_path)
@@ -250,7 +248,7 @@ impl HtmlSnapshot {
                     return Err(format!(
                         "native capture does not match frozen inputs and document ({region_id}: {})",
                         mismatches.join(", ")
-                    ).into());
+                    ));
                 }
             }
             capture.receipt["regionId"] = json!(region_id);
@@ -367,9 +365,9 @@ fn valid_relative(name: &str) -> Result<(), String> {
     }
     Ok(())
 }
-fn read_input(root: &Path, name: &str) -> Result<Vec<u8>, CaptureError> {
+fn read_input(root: &Path, name: &str) -> Result<Vec<u8>, String> {
     valid_relative(name)?;
-    let inspect = || -> Result<fs::Metadata, CaptureError> {
+    let inspect = || -> Result<fs::Metadata, String> {
         if fs::symlink_metadata(root)
             .map_err(|e| e.to_string())?
             .file_type()
@@ -383,13 +381,12 @@ fn read_input(root: &Path, name: &str) -> Result<Vec<u8>, CaptureError> {
             let m =
                 fs::symlink_metadata(&path).map_err(|e| format!("snapshot input {name}: {e}"))?;
             if m.file_type().is_symlink() {
-                return Err(CaptureError::Unavailable(format!("symlink snapshot input: {name}")));
+                return Err(format!("symlink snapshot input: {name}"));
             }
         }
         let m = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
         if !m.is_file() || m.len() > MAX_FILE_BYTES {
-            let e = format!("unsupported or oversized input: {name}");
-            return Err(if m.is_file() { CaptureError::Unavailable(e) } else { e.into() });
+            return Err(format!("unsupported or oversized input: {name}"));
         }
         Ok(m)
     };
@@ -400,12 +397,11 @@ fn read_input(root: &Path, name: &str) -> Result<Vec<u8>, CaptureError> {
     {
         use std::os::unix::fs::MetadataExt;
         if before.dev() != opened.dev() || before.ino() != opened.ino() {
-            return Err(format!("input replaced while opening: {name}").into());
+            return Err(format!("input replaced while opening: {name}"));
         }
     }
     if !opened.is_file() || opened.len() > MAX_FILE_BYTES {
-        let e = format!("unsupported or oversized input: {name}");
-        return Err(if opened.is_file() { CaptureError::Unavailable(e) } else { e.into() });
+        return Err(format!("unsupported or oversized input: {name}"));
     }
     let mut bytes = Vec::new();
     (&mut file)
@@ -418,13 +414,13 @@ fn read_input(root: &Path, name: &str) -> Result<Vec<u8>, CaptureError> {
         || before.modified().ok() != after.modified().ok()
         || bytes.len() as u64 != after.len()
     {
-        return Err(format!("input changed while reading: {name}").into());
+        return Err(format!("input changed while reading: {name}"));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         if before.dev() != after.dev() || before.ino() != after.ino() {
-            return Err(format!("input replaced while reading: {name}").into());
+            return Err(format!("input replaced while reading: {name}"));
         }
     }
     Ok(bytes)

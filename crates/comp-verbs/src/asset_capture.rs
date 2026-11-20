@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use crate::entry_capture::CaptureError;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CaptureBox {
@@ -34,14 +33,13 @@ pub struct AssetCapture {
 
 pub trait AssetRenderer {
     /// Errors and unavailable receipts cannot satisfy a build obligation.
-    /// `CaptureError::Unavailable` means no browser could be found or started.
-    fn capture(&mut self, request: &AssetCaptureRequest) -> Result<AssetCapture, CaptureError>;
+    fn capture(&mut self, request: &AssetCaptureRequest) -> Result<AssetCapture, String>;
     /// One document/session for all regions. Adapters must opt in explicitly;
     /// looping single captures would destroy shared-document evidence.
     fn capture_batch(
         &mut self,
         _requests: &[AssetCaptureRequest],
-    ) -> Result<Vec<AssetCapture>, CaptureError> {
+    ) -> Result<Vec<AssetCapture>, String> {
         Err("renderer does not support shared-document batch capture".into())
     }
 }

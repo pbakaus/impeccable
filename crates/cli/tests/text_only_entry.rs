@@ -246,7 +246,7 @@ fn reviewed_renderer_binds_an_approved_text_only_viewport() {
 fn refusal(f: &Fixture) -> String {
     match CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)) {
         Ok(_) => panic!("capture should be refused"),
-        Err(e) => e.to_string(),
+        Err(e) => e,
     }
 }
 
@@ -290,7 +290,7 @@ fn text_only_page_cannot_show_the_approved_screenshot() {
     let renderer = ReviewedEntryRenderer::local(&f.project, Some(&f.home));
     let e = match renderer.capture_entry(&f.request(EntryStage::Hero)) {
         Ok(_) => panic!("a page showing the approved screenshot must be refused"),
-        Err(e) => e.to_string(),
+        Err(e) => e,
     };
     assert!(e.contains("assets/shot.png") && e.contains("approved reference"), "{e}");
 }
@@ -332,7 +332,7 @@ fn text_only_page_is_served_the_hero_review_dependencies() {
 
 fn capture_with(f: &Fixture, html: &str) -> Result<(), String> {
     fs::write(f.project.join("index.html"), html).unwrap();
-    CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).map(|_| ()).map_err(String::from)
+    CdpEntryRenderer.capture_entry(&f.request(EntryStage::Hero)).map(|_| ())
 }
 
 #[test]

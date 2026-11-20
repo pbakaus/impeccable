@@ -156,7 +156,7 @@ const cases = [
       fs.copyFileSync(path.join(ws, 'desktop-pushed.png'), path.join(ws, '.impeccable/review/desktop.png'));
       fs.copyFileSync(path.join(ws, 'mobile.png'), path.join(ws, '.impeccable/review/mobile.png'));
     },
-    env: env({ IMPECCABLE_NATIVE_CAPTURE: '0' }),
+    env: env(),
     steps: [{ args: ['advance', '--min', '0.1'] }, { args: ['advance', '--min', '0.1'] }, { args: ['advance', '--min', '0.1'] }],
   },
   {
@@ -169,7 +169,7 @@ const cases = [
       fs.copyFileSync(path.join(ws, 'desktop-gone.png'), path.join(ws, '.impeccable/review/desktop.png'));
       fs.copyFileSync(path.join(ws, 'mobile.png'), path.join(ws, '.impeccable/review/mobile.png'));
     },
-    args: ['advance', '--min', '0.1'], env: env({ IMPECCABLE_NATIVE_CAPTURE: '0' }),
+    args: ['advance', '--min', '0.1'], env: env(),
   },
 
   // build-phase after a native ship: the finish binds every file the final

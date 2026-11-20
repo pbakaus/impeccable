@@ -6,7 +6,7 @@
 use crate::entry_capture::{CaptureClock, CdpEntryRenderer};
 use impeccable_comp_verbs::asset_capture::capture_sha256;
 use impeccable_comp_verbs::entry_capture::{
-    ApprovedReference, CaptureError, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest,
+    ApprovedReference, CapturedEntry, EntryEvidence, EntryRenderer, EntryRequest,
 };
 use serde_json::{json, Value};
 use std::{
@@ -137,7 +137,7 @@ fn reference(session: &Path, r: &EntryRequest) -> Result<ApprovedReference, Stri
     Ok(ApprovedReference { png, proof })
 }
 impl EntryRenderer for ReviewedEntryRenderer {
-    fn capture_entry(&self, r: &EntryRequest) -> Result<Box<dyn CapturedEntry>, CaptureError> {
+    fn capture_entry(&self, r: &EntryRequest) -> Result<Box<dyn CapturedEntry>, String> {
         let candidate = self
             .session
             .as_ref()

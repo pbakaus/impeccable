@@ -21,25 +21,16 @@ pub fn artifact_hash(root: &Path, state: &Value) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(bytes)))
 }
 
-/// The entry's package root, project-relative ("" for the project root): the
-/// nearest directory holding a package.json from the entry's directory up, never
-/// above the project root. `None` when the entry belongs to no package.
-pub fn package_root(root: &Path, state: &Value) -> Option<String> {
-    let base = root.canonicalize().ok()?;
-    let mut dir = artifact_path(root, state)?.parent().map(Path::to_path_buf);
-    while let Some(d) = dir.filter(|d| d.starts_with(&base)) {
-        if d.join("package.json").is_file() {
-            return d.strip_prefix(&base).ok().map(|p| p.to_string_lossy().replace('\\', "/"));
-        }
-        dir = d.parent().map(Path::to_path_buf);
-    }
-    None
-}
-
-/// The tree the screenshot fallback fingerprints: the entry's package root, else
-/// the project root ("").
+/// The tree the screenshot fallback fingerprints, project-relative ("" for the
+/// project root): the nearest directory below the project root holding a
+/// package.json, from the entry's directory up, else the entry's own directory.
+/// A repo-root package.json does not widen it to the whole repository.
 pub fn input_scope(root: &Path, state: &Value) -> String {
-    package_root(root, state).unwrap_or_default()
+    let (Ok(base), Some(entry)) = (root.canonicalize(), artifact_path(root, state)) else { return String::new() };
+    let Some(home) = entry.parent() else { return String::new() };
+    let scope = home.ancestors().take_while(|d| *d != base && d.starts_with(&base))
+        .find(|d| d.join("package.json").is_file()).unwrap_or(home);
+    scope.strip_prefix(&base).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default()
 }
 
 /// Conservative local frontend input signature for the screenshot fallback, over
@@ -220,6 +211,20 @@ mod tests {
         scoped.update(Sha256::digest(b"a{}"));
         assert_eq!(input_hash(&dir, "site").unwrap(), format!("{:x}", scoped.finalize()));
         assert!(input_hash(&dir, "../elsewhere").is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn the_scope_is_the_entry_package_else_the_entry_directory() {
+        let dir = std::env::temp_dir().join(format!("input-scope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let write = |rel: &str| { let p = dir.join(rel); std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, b"x").unwrap(); };
+        for f in ["index.html", "site/index.html", "app/pages/index.html", "app/package.json", "package.json"] { write(f); }
+        let scope = |entry: &str| input_scope(&dir, &json!({"artifact": entry}));
+        assert_eq!(scope("index.html"), "");
+        // A repo-root package.json does not widen a site to the whole repository.
+        assert_eq!(scope("site/index.html"), "site");
+        assert_eq!(scope("app/pages/index.html"), "app");
+        assert_eq!(scope("missing.html"), "");
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
