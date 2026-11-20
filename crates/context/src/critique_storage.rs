@@ -434,12 +434,19 @@ fn slug_candidates(value: Option<&str>, cwd: &str, root: &str) -> Vec<String> {
     }
     let v = slug_input(v, cwd);
     let mut slugs = Vec::new();
-    if let Some(slug) = slug_from_target(Some(&v), root) {
-        slugs.push(slug);
-    }
-    if let Some(legacy) = legacy_slug_from_target(Some(&v), root) {
-        if !slugs.contains(&legacy) {
-            slugs.push(legacy);
+    // Every key after the first needs a matching recorded identity: the
+    // pre-hash slug, and the cwd-relative keys reports carried before #1598.
+    for slug in [
+        slug_from_target(Some(&v), root),
+        legacy_slug_from_target(Some(&v), root),
+        slug_from_target(Some(&v), cwd),
+        legacy_slug_from_target(Some(&v), cwd),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !slugs.contains(&slug) {
+            slugs.push(slug);
         }
     }
     slugs
@@ -451,8 +458,8 @@ fn read_newest_safe_snapshot_for_slugs(
     root: &str,
 ) -> Option<Snapshot> {
     let current = slugs.first().and_then(|slug| read_newest_snapshot(slug, root));
-    let legacy = target_identity.and_then(|identity| {
-        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
+    let legacy = target_identity.into_iter().flat_map(|identity| {
+        slugs.iter().skip(1).filter_map(move |slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
     });
     current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
 }
@@ -463,8 +470,8 @@ fn read_newest_snapshot_for_identity_slugs(
     root: &str,
 ) -> Option<Snapshot> {
     let current = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, target_identity, root));
-    let legacy = target_identity.and_then(|identity| {
-        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
+    let legacy = target_identity.into_iter().flat_map(|identity| {
+        slugs.iter().skip(1).filter_map(move |slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
     });
     current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
 }
@@ -816,7 +823,7 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             // JS #660: a slug + filename does not prove ownership; require the
             // resolved target to match a modern snapshot's recorded identity.
             let recorded_target_identity = snapshot_target_identity(&snapshot);
-            let legacy_match = slugs.get(1).is_some_and(|slug| snapshot_file.ends_with(&format!("__{}.md", slug)));
+            let legacy_match = slugs.iter().skip(1).any(|slug| snapshot_file.ends_with(&format!("__{}.md", slug)));
             if legacy_match && recorded_target_identity.is_none() {
                 return 2;
             }
@@ -854,7 +861,7 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
                 .into_iter()
                 .flat_map(|slug| list_snapshots(&format!("__{}.md", slug), &root))
                 .collect();
-            if let Some(legacy) = slugs.get(1) {
+            for legacy in slugs.iter().skip(1) {
                 all.extend(
                     list_snapshots(&format!("__{}.md", legacy), &root)
                         .into_iter()
@@ -1181,6 +1188,40 @@ mod tests_660 {
         assert_eq!(code, 0);
         assert!(out.trim_end().ends_with("__src-app-tsx.md"), "{out}");
         assert_eq!(run_capture(&proj_a, &["latest", "src/App.tsx"]).0, 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn cwd_relative_snapshots_from_before_1598_stay_visible() {
+        // A workspace subdir once saved `App.tsx` as `__app-tsx.md` in the
+        // workspace store; the root-relative key is now `src-app-tsx`.
+        let root = tmp();
+        let web = jsp::join(&[&root, "apps", "web"]);
+        let src = jsp::join(&[&web, "src"]);
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(jsp::join(&[&root, "package.json"]), r#"{"workspaces":["apps/*"]}"#).unwrap();
+        std::fs::write(jsp::join(&[&web, "package.json"]), r#"{"name":"web"}"#).unwrap();
+        std::fs::write(jsp::join(&[&src, "App.tsx"]), "x\n").unwrap();
+        let dir = jsp::join(&[&web, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&dir).unwrap();
+        let name = "2026-05-12T18-30-00Z__app-tsx.md";
+        let identity = resolve_target_identity("App.tsx", &src).unwrap();
+        let fingerprint = fingerprint_target("App.tsx", &src).unwrap();
+        let old = format!(
+            "---\ntarget_identity: {}\ntarget_fingerprint: {}\nslug: app-tsx\n---\n# Old\n",
+            serde_json::to_string(&identity).unwrap(),
+            serde_json::to_string(&fingerprint).unwrap()
+        );
+        std::fs::write(jsp::join(&[&dir, name]), old).unwrap();
+        let (code, out, _) = run_capture(&src, &["latest", "App.tsx"]);
+        assert_eq!(code, 0);
+        assert!(out.contains("# Old"), "{out}");
+        let rows: Value = serde_json::from_str(&run_capture(&src, &["trend", "App.tsx"]).1).unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), 1);
+        // Another file with the same key never claims it.
+        std::fs::write(jsp::join(&[&web, "App.tsx"]), "y\n").unwrap();
+        assert_eq!(run_capture(&web, &["latest", "App.tsx"]).0, 2);
+        assert_eq!(run_capture(&src, &["close", "App.tsx", name]).0, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
