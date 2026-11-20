@@ -1284,6 +1284,12 @@ fn cache_round_trip_and_gc() {
     let keys = finding_cache_keys(&both);
     assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
     assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
+    // a line-less page copy of a located finding is that finding (#1597)
+    let page_copy = f("gradient-text", 0.0, "G", "d", "s");
+    let keys = finding_cache_keys(&[g.clone(), page_copy.clone()]);
+    assert_eq!(keys[0], keys[1]);
+    let keys = finding_cache_keys(&[page_copy.clone(), g.clone(), f("gradient-text", 9.0, "G", "d", "s")]);
+    assert_eq!((keys[0] == keys[1], keys[1] == keys[2]), (true, false));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
@@ -2848,6 +2854,31 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(local["hooks"]["PostToolUse"][0]["hooks"][0]["command"], json!("echo other"));
     assert!(local["hooks"].get("Stop").is_none());
     assert_eq!(local["permissions"]["allow"], json!(["Bash(ls)"]));
+}
+
+/// A Grok manifest an earlier `hooks on` wrote carried Claude's description
+/// and no guard; a re-run leaves what a fresh install writes (#1307).
+#[test]
+fn admin_on_repairs_an_old_grok_manifest_to_the_installer_form() {
+    let t = Tmp::new();
+    let r = rt(&t.path());
+    std::fs::create_dir_all(t.0.join(".grok/skills/impeccable")).unwrap();
+    let bare = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".grok/hooks/impeccable.json", &json!({
+        "description": impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION,
+        "hooks": {
+            "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+        }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    let repaired = t.read(".grok/hooks/impeccable.json");
+    assert!(!repaired.contains("\"description\""), "{repaired}");
+    if !cfg!(windows) {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hook-manifests/grok-hooks.json");
+        assert_eq!(repaired.trim_end(), std::fs::read_to_string(fixture).unwrap().trim_end());
+    }
 }
 
 // ── Grok Build + Codex (#646, #603, upstream 35ae0733/bfe634e2/3c442af7/c9e7cd8a) ──

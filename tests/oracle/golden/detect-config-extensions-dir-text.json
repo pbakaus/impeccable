@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<WS>/app/views/first.html.erb\n  [broken-image] <img> with no src attribute\n    → <img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.\n\n<WS>/app/views/plain.html\n  [broken-image] <img> with no src attribute\n    → <img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.\n\n2 anti-patterns found.\n",
+  "stderr": "\n<WS>/app/views/first.html.erb\n  line 1: [broken-image] <img> with no src attribute\n    → <img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.\n\n<WS>/app/views/plain.html\n  line 1: [broken-image] <img> with no src attribute\n    → <img> tags with empty src, missing src, or placeholder values ship as broken-image boxes. Use real images, generated assets, or remove the tag.\n\n2 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

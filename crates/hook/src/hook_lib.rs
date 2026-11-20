@@ -1053,8 +1053,9 @@ fn finding_identity(f: &Finding) -> String {
 
 /// Cache keys, index-aligned with `findings`: identity plus the occurrence
 /// among identical findings, top to bottom (identical findings on one line
-/// are one occurrence). An edit above a finding leaves its key alone, and one
-/// more identical finding on a new line adds exactly one fresh key.
+/// are one occurrence, and so is a line-less page finding with the first
+/// located copy it repeats). An edit above a finding leaves its key alone, and
+/// one more identical finding on a new line adds exactly one fresh key.
 pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
     let line = |i: usize| if findings[i].line.is_nan() { 0.0 } else { findings[i].line };
     let mut order: Vec<usize> = (0..findings.len()).collect();
@@ -1064,10 +1065,10 @@ pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
     for i in order {
         let identity = finding_identity(&findings[i]);
         let (n, last) = seen.entry(identity.clone()).or_insert((0, None));
-        if *last != Some(line(i)) {
+        if last.is_none_or(|l| l != line(i) && l != 0.0) {
             *n += 1;
-            *last = Some(line(i));
         }
+        *last = Some(line(i));
         keys[i] = format!("{identity}#{n}");
     }
     keys

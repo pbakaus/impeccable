@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/visual-contrast.html\n  [low-contrast] 2.6:1 (need 4.5:1) — text #51545b on #0a0b10\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [cream-palette] cream/beige page background rgb(247, 243, 238)\n    → A warm cream or beige page background has become the default \"tasteful\" AI surface, reached for by reflex. Choose a background that comes from a deliberate palette, not the safe warm off-white.\n\n2 anti-patterns found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/visual-contrast.html\n  line 147: [low-contrast] 2.6:1 (need 4.5:1) — text #51545b on #0a0b10\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [cream-palette] cream/beige page background rgb(247, 243, 238)\n    → A warm cream or beige page background has become the default \"tasteful\" AI surface, reached for by reflex. Choose a background that comes from a deliberate palette, not the safe warm off-white.\n\n2 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}
