@@ -7538,3 +7538,9 @@ other goldens listed.
 - `detect-fixture-*` (44 goldens): square-box `side-tab` findings dropped; `side-tab-every-variant.{html,css,svelte}` flag cases rounded and square pass cases added.
 - `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
 - `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
+
+## Recorded 2026-11-20: `--wait` stops asking for reruns after 30 minutes on one hand (#1566)
+
+A harness that wakes the agent each time `--wait` exits paid a full turn per minute for as long as the decision page stayed open, overnight in the report. The detached server now records `startedAt` in its state file. When no answer has come and the later of the hand's and the state's `startedAt` is more than 30 minutes old, `--wait` prints `PENDING: ...` with the page URL and exits 5 in place of `WAITING` exit 3, telling the agent to tell the user and end its turn, then collect the answer with one `--wait` once the user says they picked. A re-roll (new hand) and a restarted server each restart the clock; a round with neither field (every existing case) is unchanged. New cases, recorded from the binary and reviewed by hand: `question-wait-pending-budget` (hand 31 minutes old, exit 5 `PENDING`), `question-wait-within-budget` (29 minutes, exit 3 `WAITING`), `question-wait-restarted-server-budget` (hand 31 minutes old, server started a minute ago, exit 3).
+
+The `live-poll` timeout `_instructions` gains a generate-lane stop: after the third timeout in a row, tell the user the variants are still live and end the turn, so the printed line agrees with generate.md's cap. `live-daemon-server-status-poll-complete`: that one timeout line is the only change.

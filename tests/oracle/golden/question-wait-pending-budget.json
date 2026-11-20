@@ -1,0 +1,7 @@
+{
+  "stdout": "PENDING: no answer after 30 minutes on this hand, and the page is still served at http://127.0.0.1:1/. Stop rerunning --wait: tell the user the choice is waiting on that page and to tell you once they pick, then end your turn; when they do, run --wait --key k1 once to collect it. Do not take a default or switch to the structured question tool while the page is open.\n",
+  "stderr": "",
+  "exit": 5,
+  "signal": null,
+  "files": {}
+}
