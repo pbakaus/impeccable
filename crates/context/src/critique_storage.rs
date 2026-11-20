@@ -9,8 +9,17 @@ use impeccable_common::Io;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-pub fn get_critique_dir(cwd: &str, env: &Env) -> String {
-    jsp::join(&[&resolve_project_root(cwd, &TargetOptions::default(), env), ".impeccable", "critique"])
+pub fn get_critique_dir(root: &str) -> String {
+    jsp::join(&[root, ".impeccable", "critique"])
+}
+
+/// The project root `impeccable context --target <target>` resolves, so a
+/// report lands where polish reads it (#1598). No local target: cwd's root.
+fn storage_root(target: &str, cwd: &str, env: &Env) -> String {
+    // As `context` resolves `--target`, a bare workspace name included.
+    let target_path = resolve_local_target_path(target, cwd).map(|_| crate::context::resolve_target_path(cwd, target, env));
+    let options = TargetOptions { target_path };
+    resolve_project_root(cwd, &options, env)
 }
 
 /// JS: nowFilenameStamp(date)
@@ -188,8 +197,8 @@ fn is_snapshot_name(f: &str) -> bool {
     rest.ends_with(".md") && rest.len() > 3 && !rest[..rest.len() - 3].is_empty() && !rest.contains('\n')
 }
 
-pub fn list_snapshots(suffix: &str, cwd: &str, env: &Env) -> Vec<String> {
-    let dir = get_critique_dir(cwd, env);
+pub fn list_snapshots(suffix: &str, root: &str) -> Vec<String> {
+    let dir = get_critique_dir(root);
     if !exists(&dir) {
         return vec![];
     }
@@ -288,15 +297,15 @@ fn meta_closed(s: &Snapshot) -> bool {
 }
 
 /// JS #660: readNewestSnapshot(slug).
-fn read_newest_snapshot(slug: &str, cwd: &str, env: &Env) -> Option<Snapshot> {
-    let fp = list_snapshots(&format!("__{}.md", slug), cwd, env).last()?.clone();
+fn read_newest_snapshot(slug: &str, root: &str) -> Option<Snapshot> {
+    let fp = list_snapshots(&format!("__{}.md", slug), root).last()?.clone();
     read_snapshot_at(&fp)
 }
 
 /// JS #660: readNewestSnapshotForIdentity(slug, targetIdentity).
-fn read_newest_snapshot_for_identity(slug: &str, target_identity: Option<&str>, cwd: &str, env: &Env) -> Option<Snapshot> {
+fn read_newest_snapshot_for_identity(slug: &str, target_identity: Option<&str>, root: &str) -> Option<Snapshot> {
     let want = target_identity.map(|s| s.to_string());
-    list_snapshots(&format!("__{}.md", slug), cwd, env)
+    list_snapshots(&format!("__{}.md", slug), root)
         .iter()
         .filter_map(|f| read_snapshot_at(f))
         .filter(|s| snapshot_target_identity(s) == want)
@@ -305,11 +314,11 @@ fn read_newest_snapshot_for_identity(slug: &str, target_identity: Option<&str>, 
 
 /// JS #660: closeSnapshot(snapshotFile, { cwd }). Ok(Some(path)) marks it
 /// closed, Ok(None) is a silent no-op, Err mirrors the JS `throw`.
-fn close_snapshot(snapshot_file: &str, cwd: &str, env: &Env) -> Result<Option<String>, String> {
+fn close_snapshot(snapshot_file: &str, cwd: &str, root: &str) -> Result<Option<String>, String> {
     if snapshot_file.is_empty() {
         return Ok(None);
     }
-    let dir = jsp::resolve(cwd, &[&get_critique_dir(cwd, env)]);
+    let dir = jsp::resolve(cwd, &[&get_critique_dir(root)]);
     let snapshot_path = if jsp::is_absolute(snapshot_file) {
         jsp::resolve(cwd, &[snapshot_file])
     } else {
@@ -354,8 +363,8 @@ fn is_ready_slug(value: &str) -> bool {
     !value.is_empty() && value.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-pub fn read_latest_snapshot(slug: &str, cwd: &str, env: &Env) -> Option<Snapshot> {
-    let latest = read_newest_snapshot(slug, cwd, env)?;
+pub fn read_latest_snapshot(slug: &str, root: &str) -> Option<Snapshot> {
+    let latest = read_newest_snapshot(slug, root)?;
     if meta_closed(&latest) {
         None
     } else {
@@ -365,7 +374,8 @@ pub fn read_latest_snapshot(slug: &str, cwd: &str, env: &Env) -> Option<Snapshot
 
 /// JS #660: readLatestSnapshotAcrossTargets({ cwd }).
 pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snapshot> {
-    let snapshots: Vec<Snapshot> = list_snapshots(".md", cwd, env).iter().filter_map(|f| read_snapshot_at(f)).collect();
+    let root = resolve_project_root(cwd, &TargetOptions::default(), env);
+    let snapshots: Vec<Snapshot> = list_snapshots(".md", &root).iter().filter_map(|f| read_snapshot_at(f)).collect();
     let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
     for s in &snapshots {
         if snapshot_target_identity(s).is_some() {
@@ -431,12 +441,11 @@ fn slug_candidates(value: Option<&str>, cwd: &str) -> Vec<String> {
 fn read_newest_safe_snapshot_for_slugs(
     slugs: &[String],
     target_identity: Option<&str>,
-    cwd: &str,
-    env: &Env,
+    root: &str,
 ) -> Option<Snapshot> {
-    let current = slugs.first().and_then(|slug| read_newest_snapshot(slug, cwd, env));
+    let current = slugs.first().and_then(|slug| read_newest_snapshot(slug, root));
     let legacy = target_identity.and_then(|identity| {
-        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), cwd, env))
+        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
     });
     current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
 }
@@ -444,12 +453,11 @@ fn read_newest_safe_snapshot_for_slugs(
 fn read_newest_snapshot_for_identity_slugs(
     slugs: &[String],
     target_identity: Option<&str>,
-    cwd: &str,
-    env: &Env,
+    root: &str,
 ) -> Option<Snapshot> {
-    let current = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, target_identity, cwd, env));
+    let current = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, target_identity, root));
     let legacy = target_identity.and_then(|identity| {
-        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), cwd, env))
+        slugs.get(1).and_then(|slug| read_newest_snapshot_for_identity(slug, Some(identity), root))
     });
     current.into_iter().chain(legacy).max_by(|a, b| a.path.cmp(&b.path))
 }
@@ -462,11 +470,10 @@ pub struct ReportSettings {
     pub commit: bool,
 }
 
-pub fn report_settings(cwd: &str, env: &Env) -> ReportSettings {
-    let root = resolve_project_root(cwd, &TargetOptions::default(), env);
+pub fn report_settings(root: &str) -> ReportSettings {
     let mut settings = ReportSettings { enabled: true, commit: false };
     for name in ["config.json", "config.local.json"] {
-        let Some(cfg) = crate::util::read_json(&jsp::join(&[&root, ".impeccable", name])) else { continue };
+        let Some(cfg) = crate::util::read_json(&jsp::join(&[root, ".impeccable", name])) else { continue };
         let Some(reports) = cfg.get("reports").and_then(Value::as_object) else { continue };
         if let Some(b) = reports.get("enabled").and_then(Value::as_bool) {
             settings.enabled = b;
@@ -479,12 +486,8 @@ pub fn report_settings(cwd: &str, env: &Env) -> ReportSettings {
 }
 
 /// `.impeccable/<kind>/` under the project root.
-fn store_dir(cwd: &str, env: &Env, kind: &str) -> String {
-    jsp::join(&[
-        &resolve_project_root(cwd, &TargetOptions::default(), env),
-        ".impeccable",
-        kind,
-    ])
+fn store_dir(root: &str, kind: &str) -> String {
+    jsp::join(&[root, ".impeccable", kind])
 }
 
 const MAX_REPORT_BYTES: u64 = 64 * 1024;
@@ -546,12 +549,13 @@ fn write_report(
     env: &Env,
     mut saved: Option<&mut dyn FnMut(SavedReport)>,
 ) -> i32 {
-    let settings = report_settings(cwd, env);
+    let slug_arg = rest.first().map(String::as_str).unwrap_or("");
+    let root = storage_root(slug_arg, cwd, env);
+    let settings = report_settings(&root);
     if !settings.enabled {
         io.out(&format!("REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the {kind} report was not saved. Carry on; nothing else changes.\n"));
         return 0;
     }
-    let slug_arg = rest.first().map(String::as_str).unwrap_or("");
     // An audit may cover the whole project (`.`), which has no slug of its
     // own; it is stored as `project`. Critique keeps skipping a root target.
     let slug = coerce_slug(rest.first().map(String::as_str), cwd)
@@ -594,7 +598,7 @@ fn write_report(
             meta.insert("target_path".into(), Value::String(lp));
         }
     }
-    let dir = store_dir(cwd, env, kind);
+    let dir = store_dir(&root, kind);
     let _ = std::fs::create_dir_all(&dir);
     // Reports are local runtime output unless the project commits them;
     // `ignore.md` is the one hand-edited, team-shared file here.
@@ -715,18 +719,19 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             let target_path = resolve_local_target_path(target, &cwd);
             let target_identity = resolve_target_identity(target, &cwd);
             let ready_slug = is_ready_slug(target);
+            let root = storage_root(target, &cwd, &env);
             let Some(newest_for_slug) =
-                read_newest_safe_snapshot_for_slugs(&slugs, target_identity.as_deref(), &cwd, &env)
+                read_newest_safe_snapshot_for_slugs(&slugs, target_identity.as_deref(), &root)
             else {
                 return 2;
             };
             let mut latest =
-                read_newest_snapshot_for_identity_slugs(&slugs, target_identity.as_deref(), &cwd, &env);
+                read_newest_snapshot_for_identity_slugs(&slugs, target_identity.as_deref(), &root);
             if latest.is_none() && !ready_slug {
                 // Identity-less snapshots are safe only under the new/current
                 // collision-resistant slug. A pre-hash slug suffix alone cannot
                 // prove which long target owned the historical snapshot.
-                latest = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, None, &cwd, &env));
+                latest = slugs.first().and_then(|slug| read_newest_snapshot_for_identity(slug, None, &root));
             }
             let latest = latest.unwrap_or(newest_for_slug);
             if meta_closed(&latest) {
@@ -752,7 +757,7 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
                 // undefined/null on either side always differ.
                 let differ = !matches!((&recorded_fp, &target_fingerprint), (Some(a), Some(b)) if a == b);
                 if differ {
-                    return match close_snapshot(&latest.path, &cwd, &env) {
+                    return match close_snapshot(&latest.path, &cwd, &root) {
                         Err(e) => {
                             io.err(&format!("{}\n", uncaught(&e)));
                             1
@@ -787,7 +792,8 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             {
                 return 2;
             }
-            let snapshot_path = jsp::join(&[&get_critique_dir(&cwd, &env), snapshot_file]);
+            let root = storage_root(slug_arg, &cwd, &env);
+            let snapshot_path = jsp::join(&[&get_critique_dir(&root), snapshot_file]);
             let md = match std::fs::symlink_metadata(&snapshot_path) {
                 Ok(m) => m,
                 Err(_) => return 2,
@@ -810,7 +816,7 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
                     return 2;
                 }
             }
-            match close_snapshot(snapshot_file, &cwd, &env) {
+            match close_snapshot(snapshot_file, &cwd, &root) {
                 Err(e) => {
                     io.err(&format!("{}\n", uncaught(&e)));
                     1
@@ -833,14 +839,15 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             };
             let target = rest.first().map(String::as_str).unwrap_or("");
             let target_identity = resolve_target_identity(target, &cwd);
+            let root = storage_root(target, &cwd, &env);
             let mut all: Vec<String> = slugs
                 .first()
                 .into_iter()
-                .flat_map(|slug| list_snapshots(&format!("__{}.md", slug), &cwd, &env))
+                .flat_map(|slug| list_snapshots(&format!("__{}.md", slug), &root))
                 .collect();
             if let Some(legacy) = slugs.get(1) {
                 all.extend(
-                    list_snapshots(&format!("__{}.md", legacy), &cwd, &env)
+                    list_snapshots(&format!("__{}.md", legacy), &root)
                         .into_iter()
                         .filter(|path| {
                             read_snapshot_at(path)
@@ -1131,6 +1138,30 @@ mod tests_660 {
         assert_eq!(run_capture(&cwd, &["close", target, &identified_name]).0, 0);
 
         let _ = std::fs::remove_dir_all(&cwd);
+    }
+
+    #[test]
+    fn snapshots_follow_the_target_project_not_cwd() {
+        // #1598: a critique run from projB about a file in projA lands in projA.
+        let root = tmp();
+        let site = jsp::join(&[&root, "projA", "site"]);
+        let proj_b = jsp::join(&[&root, "projB"]);
+        std::fs::create_dir_all(&site).unwrap();
+        std::fs::create_dir_all(&proj_b).unwrap();
+        std::fs::write(jsp::join(&[&site, "index.html"]), "<!doctype html><p>x</p>\n").unwrap();
+        let body = jsp::join(&[&proj_b, "b.md"]);
+        std::fs::write(&body, "# Critique\n").unwrap();
+        let target = "../projA/site/index.html";
+        let (code, out, _) = run_capture(&proj_b, &["write", target, &body]);
+        assert_eq!(code, 0);
+        assert!(out.trim_end().starts_with(&jsp::join(&[&site, ".impeccable", "critique"])), "{out}");
+        assert!(!exists(&jsp::join(&[&proj_b, ".impeccable"])));
+        assert_eq!(run_capture(&proj_b, &["latest", target, "--json"]).0, 0);
+        let name = jsp::basename(out.trim_end());
+        assert_eq!(run_capture(&proj_b, &["close", target, &name]).0, 0);
+        let rows: Value = serde_json::from_str(&run_capture(&proj_b, &["trend", target]).1).unwrap();
+        assert_eq!(rows.as_array().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 
