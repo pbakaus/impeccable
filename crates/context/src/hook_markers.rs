@@ -93,6 +93,13 @@ pub fn windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
     format!("cmd /c if exist {shim} {shim} {verb}")
 }
 
+/// The POSIX twin of `guardedLauncher` in `transformers/hooks.js` (#399), for
+/// an already-quoted launcher: `[ ! -f X ] || X verb`, not `|| true`, so a
+/// missing launcher exits 0 and a present one's exit code reaches the harness.
+pub fn guarded_launcher_hook_command(quoted: &str, verb: &str) -> String {
+    format!("[ ! -f {quoted} ] || {quoted} {verb}")
+}
+
 /// The launcher-era markers `context` and `doctor` treat as the design hook
 /// proper (the per-edit hook and Cursor's before-edit gate). Legacy siblings
 /// like `hook-probe` are admin-only and do not count as an installed hook.
