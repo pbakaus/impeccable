@@ -18,7 +18,7 @@
 //! writers and the three readers can never disagree on what counts as ours.
 
 use impeccable_context::hermes;
-use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, git_bash_launcher_hook_command, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
+use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, git_bash_launcher_hook_command, guarded_launcher_hook_command, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -262,7 +262,7 @@ pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String 
         (".agents", _) | (".github", _) | (_, false) => &quoted.posix,
         (_, true) => &quoted.win32,
     };
-    format!("[ ! -f {q} ] || {q} {verb}")
+    guarded_launcher_hook_command(q, verb)
 }
 
 /// Gemini CLI runs a hook through `bash -c` on POSIX and PowerShell on

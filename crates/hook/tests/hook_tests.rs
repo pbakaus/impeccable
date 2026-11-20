@@ -2532,14 +2532,14 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 
     let codex: Value = serde_json::from_str(&t.read(".codex/hooks.json")).unwrap();
     let entry = &codex["hooks"]["PostToolUse"][0]["hooks"][0];
-    assert_eq!(entry["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(entry["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(entry["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(
         entry.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
         vec!["type", "command", "commandWindows", "timeout", "statusMessage"]
     );
     let stop = &codex["hooks"]["Stop"][0]["hooks"][0];
-    assert_eq!(stop["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(stop["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(stop["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(stop["timeout"], json!(30));
 
@@ -2547,7 +2547,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     assert_eq!(
         cursor,
         json!({"version": 1, "hooks": {"postToolUse": [{
-            "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+            "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
             "matcher": "^Write$",
             "timeout": 5,
         }]}})
@@ -2555,7 +2555,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     let github: Value = serde_json::from_str(&t.read(".github/hooks/impeccable.json")).unwrap();
     assert_eq!(
         github["hooks"]["postToolUse"][0]["bash"],
-        json!("\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
+        json!("[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
     );
 
     // A second `on` is a no-op against the manifests it just wrote.
@@ -2766,7 +2766,7 @@ fn admin_on_moves_the_retired_cursor_gate_to_post_tool_use() {
             "preToolUse": [{"command": "./audit.sh", "matcher": "Shell"}],
             "stop": [{"command": "./notify.sh"}],
             "postToolUse": [{
-                "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+                "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
                 "matcher": "^Write$",
                 "timeout": 5,
             }],

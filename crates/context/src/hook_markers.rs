@@ -93,13 +93,20 @@ pub fn windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
     format!("cmd /c if exist {shim} {shim} {verb}")
 }
 
+/// The POSIX twin of `guardedLauncher` in `transformers/hooks.js` (#399), for
+/// an already-quoted launcher: `[ ! -f X ] || X verb`, not `|| true`, so a
+/// missing launcher exits 0 and a present one's exit code reaches the harness.
+pub fn guarded_launcher_hook_command(quoted: &str, verb: &str) -> String {
+    format!("[ ! -f {quoted} ] || {quoted} {verb}")
+}
+
 /// The guarded launcher hook string for Claude Code on Windows, which runs
 /// hooks through Git Bash: double quotes, `/` separators (#1462). A UNC
 /// `\\server\share` becomes `//server/share`, which Git Bash accepts. Built
 /// here so install and `hooks on` write one string.
 pub fn git_bash_launcher_hook_command(launcher: &str, verb: &str) -> String {
     let q = serde_json::to_string(&launcher.replace('\\', "/")).unwrap_or_default();
-    format!("[ ! -f {q} ] || {q} {verb}")
+    guarded_launcher_hook_command(&q, verb)
 }
 
 /// The launcher-era markers `context` and `doctor` treat as the design hook
