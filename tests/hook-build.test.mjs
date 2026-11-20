@@ -116,6 +116,8 @@ describe('hook manifest builders', () => {
       [buildCodexHooksManifest('.agents'), 'codex-hooks.json'],
       [buildCursorHooksManifest(), 'cursor-hooks.json'],
       [buildGitHubHooksManifest(), 'github-hooks.json'],
+      [buildGrokHooksManifest(), 'grok-hooks.json'],
+      [buildGeminiHooksManifest(), 'gemini-settings.json'],
     ]) {
       assert.deepEqual(manifest, readJson(`tests/fixtures/hook-manifests/${file}`), file);
     }
