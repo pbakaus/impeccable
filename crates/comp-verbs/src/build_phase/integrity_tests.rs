@@ -1729,6 +1729,10 @@ fn a_static_entry_is_captured_natively_on_responsive_by_default_but_not_on_hero(
     gate_responsive(&ws.io(), &mut state, 0.1, "diff", None, Some(&ManifestRenderer { desktop, changed_during: None }), None);
     assert!(state["capturePolicy"] == "native-html-v1" && state["capturePolicySource"] == "default", "{state}");
     assert!(ws.path.join(".impeccable/review/native/responsive/inputs.json").is_file());
+    // An HTML entry inside an npm package is a framework page: screenshots.
+    ws.write("package.json", b"{}");
+    assert!(capture_mode(&ws.io(), &json!({"artifact":"index.html"}), None, EntryStage::Responsive) == Capture::Screenshots);
+    std::fs::remove_file(ws.path.join("package.json")).unwrap();
     let never = failing(CaptureError::Refused);
     let mut state = json!({"comp":"comp.png","artifact":"index.html","phases":{"hero":{}}});
     let mode = capture_mode(&ws.io(), &state, None, EntryStage::Hero);

@@ -23,17 +23,23 @@ pub fn artifact_hash(root: &Path, state: &Value) -> Option<String> {
 
 /// The entry's package root, project-relative ("" for the project root): the
 /// nearest directory holding a package.json from the entry's directory up, never
-/// above the project root. The screenshot fallback fingerprints only this tree.
-pub fn input_scope(root: &Path, state: &Value) -> String {
-    let (Ok(base), Some(entry)) = (root.canonicalize(), artifact_path(root, state)) else { return String::new() };
-    let mut dir = entry.parent();
+/// above the project root. `None` when the entry belongs to no package.
+pub fn package_root(root: &Path, state: &Value) -> Option<String> {
+    let base = root.canonicalize().ok()?;
+    let mut dir = artifact_path(root, state)?.parent().map(Path::to_path_buf);
     while let Some(d) = dir.filter(|d| d.starts_with(&base)) {
         if d.join("package.json").is_file() {
-            return d.strip_prefix(&base).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            return d.strip_prefix(&base).ok().map(|p| p.to_string_lossy().replace('\\', "/"));
         }
-        dir = d.parent();
+        dir = d.parent().map(Path::to_path_buf);
     }
-    String::new()
+    None
+}
+
+/// The tree the screenshot fallback fingerprints: the entry's package root, else
+/// the project root ("").
+pub fn input_scope(root: &Path, state: &Value) -> String {
+    package_root(root, state).unwrap_or_default()
 }
 
 /// Conservative local frontend input signature for the screenshot fallback, over

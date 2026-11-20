@@ -1329,8 +1329,12 @@ fn capture_mode(io: &Io, state: &Value, artifact: Option<&str>, stage: EntryStag
         return if state["capturePolicySource"] == "default" { Capture::Preferred } else { Capture::Required };
     }
     let entry = artifact.or_else(|| state["artifact"].as_str()).unwrap_or("index.html");
+    // An HTML entry inside an npm package is a framework page (a Vite index.html
+    // loads /src/main.tsx through a dev server), so it keeps the screenshots.
+    let entry_state = json!({"artifact": entry});
     let static_entry = matches!(Path::new(entry).extension().and_then(|e| e.to_str()), Some("html" | "htm"))
-        && crate::completion::artifact_path(&io.cwd, &json!({"artifact": entry})).is_some_and(|p| p.is_file());
+        && crate::completion::artifact_path(&io.cwd, &entry_state).is_some_and(|p| p.is_file())
+        && crate::completion::package_root(&io.cwd, &entry_state).is_none();
     if matches!(stage, EntryStage::Responsive) && env != Some("0") && static_entry {
         Capture::Preferred
     } else {
