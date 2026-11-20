@@ -135,7 +135,6 @@ if (cfg.sibling) {
   ok(`${cfg.sibling} agrees`);
 }
 
-if (component === 'extension') checkWalkHelpers();
 
 // Engine source guard (#813). The binary every machine downloads is built from
 // the engine-v<ENGINE_VERSION> tag, so pinning it from a tree whose engine
@@ -269,6 +268,9 @@ const headerIdx = changelogHtml.indexOf(expectedHeader);
 if (headerIdx === -1) {
   fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/changelog.astro. Add one before releasing.`);
 }
+
+// After the local checks: it reads another repository's main.
+if (component === 'extension') checkWalkHelpers();
 // Notes are the entry's bullet list. Scoping to <ul class="cf-items">
 // skips the optional lead paragraph, before/after figure, and stat row
 // that the headline release (v3.5.0) carries, so release notes stay clean.
