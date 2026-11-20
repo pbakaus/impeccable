@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/partial-component.html\n  [side-tab] border-left: 4px + border-radius: 8px\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n\n1 anti-pattern found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/partial-component.html\n  line 6: [side-tab] border-left: 4px + border-radius: 8px\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n\n1 anti-pattern found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

@@ -7558,3 +7558,11 @@ The `live-poll` timeout `_instructions` gains a generate-lane stop: after the th
 ## Recorded 2026-11-20: the live-poll timeout instruction pauses after three in a row (Refs #1566)
 
 A harness that wakes the agent on every exit paid a full turn per 10-minute timeout for as long as a live session sat idle. The `timeout` `_instructions` now tell the agent to stop polling after the third timeout in a row, tell the user the page is still live, and end the turn; the next `live-poll` collects whatever they did meanwhile. `live-daemon-server-status-poll-complete`: that one timeout line is the only change.
+
+## Recorded 2026-11-20: static HTML element findings carry their start tag's line (#1597)
+
+Every static-HTML finding reported `line: 0`, so a finding on a long single-file page had to be found by searching for its colour or class. Element-rule findings now carry the 1-based line their element's start tag opens on (`docs/CLI-CONTRACT.md`, **Finding object**); page-level static findings, design-system findings and browser findings are unchanged. The design hook folds a line-less page finding into the located copy it repeats (the page's glow, reported by both the element rule and the page pattern scan), so its occurrence keys and counts stay as they were. Each moved golden was re-recorded from the binary and compared with its old version after masking line numbers (`"line": N`, the text reporter's `line N: ` prefix, `--github`'s `,line=N`, the SARIF `region`, the hook's `- L<n>` prefix): 290 goldens are otherwise byte-identical, no finding with a non-zero line changed, and the reported lines were spot-checked against the fixture sources. The goldens were re-recorded, so the replay still compares them (no case id leads a line here). What moved:
+
+- SARIF (`detect-sarif`): the result gains `region.startLine: 1` (more than a line number).
+- Cursor denial (`hbe-html-engine`, more than a line number): the denial names `L1`, and its denial counter key reads `low-contrast:1` instead of `low-contrast:0`.
+- Every other moved case (`detect-fixture-{json,text}-*-html`, `detect-config-*`, `detect-design-blue-*`, `detect-hard-offset-shadow-*`, `detect-ignore-globstar-directory-boundary-json`, `detect-github`, `hook-edit-html-fresh`, `hook-config-max-findings-1`): line numbers only.
