@@ -736,6 +736,9 @@ fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     }
     if let Some(d) = fresh_object.get("description") {
         merged.insert("description".into(), d.clone());
+    } else if merged.get("description").and_then(Value::as_str) == Some(impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION) {
+        // `hooks on` gave Grok manifests Claude's description before #1307.
+        merged.shift_remove("description");
     }
     let mut events: Vec<String> = existing_hooks.keys().cloned().collect();
     for k in fresh_hooks.keys() {

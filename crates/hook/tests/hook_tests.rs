@@ -2850,6 +2850,31 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(local["permissions"]["allow"], json!(["Bash(ls)"]));
 }
 
+/// A Grok manifest an earlier `hooks on` wrote carried Claude's description
+/// and no guard; a re-run leaves what a fresh install writes (#1307).
+#[test]
+fn admin_on_repairs_an_old_grok_manifest_to_the_installer_form() {
+    let t = Tmp::new();
+    let r = rt(&t.path());
+    std::fs::create_dir_all(t.0.join(".grok/skills/impeccable")).unwrap();
+    let bare = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".grok/hooks/impeccable.json", &json!({
+        "description": impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION,
+        "hooks": {
+            "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+        }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    let repaired = t.read(".grok/hooks/impeccable.json");
+    assert!(!repaired.contains("\"description\""), "{repaired}");
+    if !cfg!(windows) {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hook-manifests/grok-hooks.json");
+        assert_eq!(repaired.trim_end(), std::fs::read_to_string(fixture).unwrap().trim_end());
+    }
+}
+
 // ── Grok Build + Codex (#646, #603, upstream 35ae0733/bfe634e2/3c442af7/c9e7cd8a) ──
 
 const MIXED_CSS: &str = ".title { background: linear-gradient(90deg, #f472b6, #a78bfa); -webkit-background-clip: text; color: transparent; }\n.card { border-left: 4px solid #6366f1; border-radius: 8px; }\n";
