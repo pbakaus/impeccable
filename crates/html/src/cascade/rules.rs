@@ -334,6 +334,9 @@ fn extra_specified_expansions(prop: &str, value: &str) -> Vec<Expanded> {
         // its children's margins. Unset, both read as "".
         "transform" => vec![("transform".into(), v.to_string())],
         "float" => vec![("float".into(), v.to_string())],
+        // A box that centres its text inside a minimum height insets it
+        // without padding (#1596).
+        "min-height" => vec![("minHeight".into(), v.to_string())],
         // `var()` and CSS-wide keywords resolve later, per longhand; the
         // stripe adapter picks the keyword out of the resolved list.
         "flex-flow" | "place-items" | "place-self"
@@ -412,20 +415,26 @@ pub fn apply_static_declaration<K: Hash + Eq + Clone>(
     value: &str,
     meta: &DeclMeta,
 ) {
-    // A logical inline border is the physical side it lands on in a
-    // left-to-right page: `border-inline-start` is `border-left`.
+    // A logical inline border or padding is the physical side it lands on in
+    // a left-to-right page: `border-inline-start` is `border-left`. Each form
+    // says whether its two-side property takes a start/end pair:
+    // `border-inline-width: 0 4px` and `padding-inline: 0 4px` do, while the
+    // `border-inline` shorthand gives both sides one value.
+    const BORDER: &[(&str, bool)] = &[("", false), ("-width", true), ("-style", true), ("-color", true)];
+    const PADDING: &[(&str, bool)] = &[("", true)];
     let lower = js::to_lower_case(prop);
-    for (logical, physical) in [
-        ("border-inline-start", &["border-left"][..]),
-        ("border-inline-end", &["border-right"][..]),
-        ("border-inline", &["border-left", "border-right"][..]),
+    for (logical, physical, forms) in [
+        ("border-inline-start", &["border-left"][..], BORDER),
+        ("border-inline-end", &["border-right"][..], BORDER),
+        ("border-inline", &["border-left", "border-right"][..], BORDER),
+        ("padding-inline-start", &["padding-left"][..], PADDING),
+        ("padding-inline-end", &["padding-right"][..], PADDING),
+        ("padding-inline", &["padding-left", "padding-right"][..], PADDING),
     ] {
         if let Some(rest) = lower.strip_prefix(logical) {
-            if matches!(rest, "" | "-width" | "-style" | "-color") {
-                // `border-inline-width: 0 4px` gives start and end their own
-                // values; the shorthand gives both one.
+            if let Some(&(_, takes_pair)) = forms.iter().find(|(suffix, _)| *suffix == rest) {
                 let parts = split_css_tokens(value);
-                let pair = physical.len() == 2 && !rest.is_empty() && parts.len() == 2;
+                let pair = physical.len() == 2 && takes_pair && parts.len() == 2;
                 for (i, side) in physical.iter().enumerate() {
                     let v = if pair { parts[i].as_str() } else { value };
                     apply_static_declaration(specified, node.clone(), &format!("{side}{rest}"), v, meta);

@@ -7539,10 +7539,20 @@ other goldens listed.
 - `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
 - `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
 
+## Recorded 2026-11-20: the static flush check reads clamp(), logical padding and centred labels (#1596, #1604, #1605)
+
+The file scan's `cramped-padding` flush shape read a padding it could not evaluate (`clamp()`, `calc()`) as 0px,
+never mapped `padding-inline-*` to a side, and saw no air around a label a flex row centres in its height. Each
+golden was decoded and compared finding by finding, then re-recorded from the binary, so the replay still compares
+them (no case id leads a line here): the only changes are below.
+
+- flush-against-border (`detect-fixture-json-flush-against-border-html`, `detect-fixture-text-flush-against-border-html`): `pass-segmented` no longer reports (its buttons centre their labels in the pill's 40px), 11 to 10.
+- stripe-child and overlay-positioning (`detect-fixture-json-stripe-child-html`, `detect-fixture-text-stripe-child-html`, `detect-fixture-json-overlay-positioning-html`, `detect-fixture-text-overlay-positioning-html`): `card-center` and `flex-center` centre one label in a 100px and a 120px box, so they report right/left instead of all sides.
+
 ## Recorded 2026-11-20: static HTML element findings carry their start tag's line (#1597)
 
-Every static-HTML finding reported `line: 0`, so a finding on a long single-file page had to be found by searching for its colour or class. Element-rule findings now carry the 1-based line their element's start tag opens on (`docs/CLI-CONTRACT.md`, **Finding object**); page-level static findings, design-system findings and browser findings are unchanged. The design hook folds a line-less page finding into the located copy it repeats (the page's glow, reported by both the element rule and the page pattern scan), so its occurrence keys and counts stay as they were. Each moved golden was re-recorded from the binary and compared with its old version after masking line numbers (`"line": N`, the text reporter's `line N: ` prefix, `--github`'s `,line=N`, the SARIF `region`, the hook's `- L<n>` prefix): 290 goldens are otherwise byte-identical, no finding with a non-zero line changed, and the reported lines were spot-checked against the fixture sources. What moved:
+Every static-HTML finding reported `line: 0`, so a finding on a long single-file page had to be found by searching for its colour or class. Element-rule findings now carry the 1-based line their element's start tag opens on (`docs/CLI-CONTRACT.md`, **Finding object**); page-level static findings, design-system findings and browser findings are unchanged. The design hook folds a line-less page finding into the located copy it repeats (the page's glow, reported by both the element rule and the page pattern scan), so its occurrence keys and counts stay as they were. Each moved golden was re-recorded from the binary and compared with its old version after masking line numbers (`"line": N`, the text reporter's `line N: ` prefix, `--github`'s `,line=N`, the SARIF `region`, the hook's `- L<n>` prefix): 290 goldens are otherwise byte-identical, no finding with a non-zero line changed, and the reported lines were spot-checked against the fixture sources. The goldens were re-recorded, so the replay still compares them (no case id leads a line here). What moved:
 
-- `detect-sarif`: the result gains `region.startLine: 1` (more than a line number).
-- `hbe-html-engine` (more than a line number): the denial names `L1`, and its denial counter key reads `low-contrast:1` instead of `low-contrast:0`.
+- SARIF (`detect-sarif`): the result gains `region.startLine: 1` (more than a line number).
+- Cursor denial (`hbe-html-engine`, more than a line number): the denial names `L1`, and its denial counter key reads `low-contrast:1` instead of `low-contrast:0`.
 - Every other moved case (`detect-fixture-{json,text}-*-html`, `detect-config-*`, `detect-design-blue-*`, `detect-hard-offset-shadow-*`, `detect-ignore-globstar-directory-boundary-json`, `detect-github`, `hook-edit-html-fresh`, `hook-config-max-findings-1`): line numbers only.

@@ -420,7 +420,9 @@ fn has_unresolved_var(value: &str) -> bool {
 
 fn side_len(style: &StyleValues, key: &str, font_size: Option<f64>) -> Option<f64> {
     let value = sv_opt(style, key)?;
-    if has_unresolved_var(value) {
+    // An unresolved var(), or a math function this engine does not evaluate
+    // (`clamp()`, `calc()`, #1605), may be any length: unknown.
+    if value.contains('(') {
         return None;
     }
     let at = |fs: f64| resolve_length_px(Some(value), fs).unwrap_or(0.0);
@@ -429,6 +431,58 @@ fn side_len(style: &StyleValues, key: &str, font_size: Option<f64>) -> Option<f6
         // Unknown only when the side depends on the font size (em, %).
         None => (at(0.0) == at(1.0)).then(|| at(0.0)),
     }
+}
+
+/// Whether `el` keeps its content off its top and bottom edges by centring
+/// it in a height, with no padding (#1596): a 44px touch row (`display: flex;
+/// align-items: center; min-height: 44px`) sets a 14px label about 13px off
+/// each edge. With no layout the content is one row: the box's own line and
+/// each child's line or declared height (a 24px chip), whichever is taller.
+/// Only text of label length is read as one line, and only a flex row as one
+/// row: a paragraph may wrap, and a column may stack, past the height to the
+/// edges. A child placed off centre (`align-self: stretch`) or sized to the
+/// box (`height: 100%`) can reach them too, as can one an offset moves, one
+/// that breaks its text onto a second line (`<br>`), or one whose height
+/// this engine cannot evaluate (`calc()`). What it still cannot see is a
+/// label wrapping in a box too narrow for it, or a row set to wrap.
+fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
+    let lower = |s: &StyleValues, k: &str| js::to_lower_case(js::trim(sv(s, k)));
+    if !matches!(lower(style, "display").as_str(), "flex" | "inline-flex")
+        || lower(style, "flexDirection").starts_with("column")
+        || lower(style, "alignItems") != "center"
+        || el.text_content().chars().filter(|c| c.is_alphabetic()).count() > TRACKED_LABEL_MAX_CHARS
+        || el.query_selector("br").is_some()
+    {
+        return false;
+    }
+    // A box's line at its own font size, and its band: that line or its
+    // declared height, whichever is taller. A percentage height follows a
+    // box this engine cannot measure, and a math function is unknown.
+    let band = |e: &StaticElement<'_>| -> Option<(f64, f64)> {
+        let s = e.style();
+        let fs = resolve_font_size_px(e)?;
+        let line = resolve_length_px(sv_opt(s, "lineHeight"), fs).unwrap_or(fs * 1.2);
+        let tallest = ["minHeight", "height"].iter().try_fold(line, |tallest, k| {
+            match js::trim(sv(s, k)) {
+                "" | "auto" => Some(tallest),
+                v if v.ends_with('%') => None,
+                _ => side_len(s, k, Some(fs)).map(|h| tallest.max(h)),
+            }
+        })?;
+        Some((line, tallest))
+    };
+    let Some((line, height)) = band(el) else {
+        return false;
+    };
+    let content = el.children().iter().try_fold(line, |tallest, c| {
+        if !matches!(lower(c.style(), "alignSelf").as_str(), "" | "auto" | "center")
+            || is_offset_static(c.style())
+        {
+            return None;
+        }
+        Some(tallest.max(band(c)?.1))
+    });
+    content.is_some_and(|content| height - content >= 8.0)
 }
 
 const PAD_KEYS: [&str; 4] = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"];
@@ -589,7 +643,10 @@ fn insulates_side(
     let insulates = |key: &str| {
         side_len(style, key, font_size).is_none_or(|v| v >= CHILD_INSULATE_THRESHOLD)
     };
-    if insulates(PAD_KEYS[s]) || (margins_count && insulates(MARGIN_KEYS[s])) {
+    if insulates(PAD_KEYS[s])
+        || (margins_count && insulates(MARGIN_KEYS[s]))
+        || (s % 2 == 0 && !is_offset_static(style) && centres_clear_of_edges(el, style))
+    {
         return true;
     }
     if depth == 0 || el.has_direct_text_longer_than(4) || is_offset_static(style) {
@@ -849,6 +906,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     if side_bounded
                         && pad[s].is_some_and(|v| v <= PAD_THRESHOLD)
                         && !children_insulate[s]
+                        && !(s % 2 == 0 && centres_clear_of_edges(el, style))
                     {
                         flush_sides.push(side_names[s]);
                     }
