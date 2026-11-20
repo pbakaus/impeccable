@@ -113,7 +113,12 @@ fn holds_nested_element(opener: &str) -> bool {
         if matches!(e, Lexed::Open { .. }) { opens += 1; }
         opens > 1
     });
-    opens != 1 || !clean
+    // The lexer opens no typed element (`<Icon<Props> />`), so refuse one.
+    let typed = opener.match_indices('<').any(|(i, _)| {
+        let name = opener[i + 1..].split(|c: char| !c.is_ascii_alphanumeric() && !"._:-".contains(c)).next().unwrap_or("");
+        name.starts_with(|c: char| c.is_ascii_alphabetic()) && opener[i + 1 + name.len()..].starts_with('<')
+    });
+    typed || opens != 1 || !clean
 }
 
 struct Candidate {
@@ -348,6 +353,7 @@ mod tests {
             ("index.html", link, &queries[..]),
             ("app/page.tsx", r#"<nav><abbr>x</abbr><Link href="/">y</Link></nav>"#, &tag_only[..]),
             ("app/page.tsx", r#"<nav><Button icon={<Icon className="demo-exit" />}>X</Button></nav>"#, &queries[..]),
+            ("app/page.tsx", r#"<nav><Button icon={<Icon<Props> className="demo-exit" />}>X</Button></nav>"#, &queries[..]),
         ] {
             assert!(resolve(vec![file(path, text)], queries, Some("a"), None).is_err(), "{path}: {text}");
         }
