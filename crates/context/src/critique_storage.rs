@@ -379,7 +379,7 @@ pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snaps
     if let Some(sel) = crate::context::resolve_workspace_selection(cwd, &TargetOptions::default(), env) {
         roots.extend(sel.target_candidates.iter().map(|c| jsp::join(&[&sel.repo_root, &c.path])));
     }
-    let mut open: Vec<Snapshot> = Vec::new();
+    let mut streams: Vec<(String, Snapshot)> = Vec::new();
     for root in &roots {
         let snapshots: Vec<Snapshot> = list_snapshots(".md", root).iter().filter_map(|f| read_snapshot_at(f)).collect();
         let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -390,8 +390,6 @@ pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snaps
                 }
             }
         }
-        // Insertion-ordered stream map: later (newer) snapshot wins per key.
-        let mut latest_by_target: Vec<(String, Snapshot)> = Vec::new();
         for s in snapshots {
             let slug = match s.meta.get("slug") {
                 Some(Value::String(v)) if !v.is_empty() => v.clone(),
@@ -401,16 +399,22 @@ pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snaps
             if target_identity.is_none() && identified_slugs.contains(&slug) {
                 continue;
             }
-            let stream_key = target_identity.unwrap_or_else(|| format!("slug:{}", slug));
-            if let Some(slot) = latest_by_target.iter_mut().find(|(k, _)| *k == stream_key) {
-                slot.1 = s;
-            } else {
-                latest_by_target.push((stream_key, s));
-            }
+            // A target's identity spans stores; a bare slug is relative to its own store.
+            streams.push((target_identity.unwrap_or_else(|| format!("{}\nslug:{}", root, slug)), s));
         }
-        open.extend(latest_by_target.into_iter().map(|(_, s)| s).filter(|s| !meta_closed(s)));
     }
-    // Snapshot names start with the ISO stamp, so the newest name wins across stores.
+    // Snapshot names start with the ISO stamp, so this orders by age across stores.
+    streams.sort_by_key(|(_, s)| jsp::basename(&s.path));
+    // Insertion-ordered stream map: later (newer) snapshot wins per key.
+    let mut latest_by_target: Vec<(String, Snapshot)> = Vec::new();
+    for (stream_key, s) in streams {
+        if let Some(slot) = latest_by_target.iter_mut().find(|(k, _)| *k == stream_key) {
+            slot.1 = s;
+        } else {
+            latest_by_target.push((stream_key, s));
+        }
+    }
+    let mut open: Vec<Snapshot> = latest_by_target.into_iter().map(|(_, s)| s).filter(|s| !meta_closed(s)).collect();
     open.sort_by_key(|s| jsp::basename(&s.path));
     open.pop()
 }
@@ -1249,6 +1253,15 @@ mod tests_660 {
         let env = HashMap::new();
         assert_eq!(read_latest_snapshot_across_targets(&root, &env).unwrap().path, files[1].1);
         assert_eq!(read_latest_snapshot_across_targets(&files[0].0, &env).unwrap().path, files[0].1);
+        // A newer closed report of the same target in another store ends that stream.
+        let id = "target_identity: \"url:https://x.test/\"\n";
+        let admin = std::fs::read_to_string(&files[1].1).unwrap().replacen("---\n", &format!("---\n{id}"), 1);
+        std::fs::write(&files[1].1, admin).unwrap();
+        let root_dir = jsp::join(&[&root, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&root_dir).unwrap();
+        let closed = format!("---\n{id}slug: x\nclosed: true\n---\n");
+        std::fs::write(jsp::join(&[&root_dir, "2026-05-14T00-00-00Z__x.md"]), closed).unwrap();
+        assert_eq!(read_latest_snapshot_across_targets(&root, &env).unwrap().path, files[0].1);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
