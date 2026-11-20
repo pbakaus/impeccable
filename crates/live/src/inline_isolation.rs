@@ -103,7 +103,9 @@ fn raw_text_parent(ts: &[Token], token: &Token) -> Option<usize> {
 }
 
 /// Whether an opening tag holds another element (`icon={<Icon />}`), so a
-/// locator inside it may be that element's. Quoted text is not markup.
+/// locator inside it may be that element's. Quoted text is not markup;
+/// `opener` comes masked, so a comment's apostrophe opens no quote, and a
+/// quote that never closes fails closed.
 fn holds_nested_element(opener: &str) -> bool {
     let bytes = opener.as_bytes();
     let mut quote = None;
@@ -119,7 +121,7 @@ fn holds_nested_element(opener: &str) -> bool {
         }
         i += 1;
     }
-    false
+    quote.is_some()
 }
 
 struct Candidate {
@@ -152,8 +154,9 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         let components = dialect != Dialect::Html;
         // Tokens are read from the masked source, whose byte offsets match
         // `source`; when the lexer cannot finish, from `source` itself.
-        let ts = match mask_source(&file.lines, dialect) {
-            Some(masked) => tokens(&masked, !components, false),
+        let masked = mask_source(&file.lines, dialect);
+        let ts = match &masked {
+            Some(masked) => tokens(masked, !components, false),
             None => tokens(&source, !components, true),
         };
         // Pair each opener with its own closer before matching inner text.
@@ -178,7 +181,7 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         for components_pass in [false, true] {
             if components_pass && !component_fallback_allowed(queries, tag, dialect) { break; }
             let accepts = |n: &Token| tag.map_or(true, |tag| renders_tag(&n.name, tag, components_pass))
-                && !(components_pass && holds_nested_element(&source[n.start..n.end]));
+                && !(components_pass && holds_nested_element(&masked.as_deref().unwrap_or(&source)[n.start..n.end]));
             let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
                 && accepts(n)
                 && matches_query(&source[n.start..n.end], q, tag)));
@@ -341,6 +344,9 @@ mod tests {
         // Tag-like text in a quoted prop is not a nested element.
         let quoted = r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#;
         assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))));
+        // A nested element after a comment holding an apostrophe is still one.
+        let commented = r#"<nav><Button icon={/* user's icon */ <Icon className="demo-exit" />}>X</Button></nav>"#;
+        assert!(resolve(vec![file("app/page.tsx", commented)], &queries, Some("a"), None).is_err());
         // Not in HTML, not for a tag-only search, not through a nested element.
         let tag_only = [String::from("<a")];
         for (path, text, queries) in [
