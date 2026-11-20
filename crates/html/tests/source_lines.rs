@@ -62,3 +62,10 @@ fn a_quoted_angle_bracket_does_not_close_a_wrapped_tag() {
                 <p\n  class=\"k\"\n  title=\"a > b\"\n>Faint</p>\n</body></html>\n";
     assert_eq!(lines(html), [("low-contrast".to_string(), 4.0)]);
 }
+
+#[test]
+fn a_tag_name_inside_an_attribute_is_not_the_tag() {
+    let html = "<!doctype html>\n<html><head><style>.k{color:#777;background:#888}</style></head>\n<body>\n\
+                <div title=\"see <p\n> for details\"><p class=\"k\">Faint</p></div>\n</body></html>\n";
+    assert_eq!(lines(html), [("low-contrast".to_string(), 5.0)]);
+}

@@ -131,7 +131,7 @@ struct LineSink<'s> {
     /// Byte offset of each line's first character.
     line_starts: Vec<usize>,
     line: Cell<u64>,
-    /// Byte offset just past the previous found `<name`.
+    /// Byte offset just past the previous found start tag.
     cursor: Cell<usize>,
     lines: RefCell<HashMap<NodeId, u32>>,
 }
@@ -178,7 +178,10 @@ impl<'s> LineSink<'s> {
         });
         match found {
             Some(i) => {
-                self.cursor.set(i + 1);
+                // Past the tag's own attributes, so `<name` text inside one
+                // is never taken for a later tag.
+                let after = i + 1 + name.len();
+                self.cursor.set(tag_close(bytes, after).map_or(after, |close| close + 1));
                 self.line_of(i)
             }
             None => end_line,
