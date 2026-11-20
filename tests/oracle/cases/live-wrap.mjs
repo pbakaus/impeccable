@@ -139,6 +139,10 @@ export default [
     snap: ['src/Page.tsx'],
     setup: (ws) => write(ws, 'src/Page.tsx', 'import Link from "next/link";\n\nexport default function Page() {\n  return (\n    <nav>\n      <Link href="/journal" className="demo-exit">Leave demo</Link>\n    </nav>\n  );\n}\n'),
   }),
+  W('live-wrap-tsx-component-renders-other-tag-same-line', 'live-vite', ['--id', 'ab12cd34', '--count', '2', '--tag', 'a', '--classes', 'demo-exit', '--text', 'Leave demo', '--defer-source-write'], {
+    snap: ['src/Page.tsx'],
+    setup: (ws) => write(ws, 'src/Page.tsx', 'import Link from "next/link";\n\nexport default function Page() {\n  return (\n    <nav><Link href="/journal" className="demo-exit">Leave demo</Link></nav>\n  );\n}\n'),
+  }),
   W('live-wrap-astro', 'live-astro', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['src/**'] }),
   W('live-wrap-astro-deferred', 'live-astro', ['--id', 'ab12cd34', '--element-id', 'features', '--defer-source-write'], { snap: ['src/**'] }),
   W('live-wrap-vue', 'live-nuxt', ['--id', 'ab12cd34', '--classes', 'hero-title', '--tag', 'h1'], { snap: ['pages/**'] }),
