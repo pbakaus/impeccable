@@ -297,6 +297,8 @@ fn a_label_centred_in_a_min_height_is_inset() {
     assert_eq!(disc("align-items: center; min-height: 20px;", "Instagram"), flush);
     assert_eq!(disc("align-items: center; flex-direction: column;", "Instagram"), flush);
     assert_eq!(disc("align-items: center;", "Connect your Instagram account to share every post"), flush);
+    assert_eq!(disc("align-items: center; line-height: 22px;", "Account<br>settings"), flush);
+    assert_eq!(disc("align-items: center; transform: translateY(-14px);", "Instagram"), flush);
     let row = |style: &str| {
         scan(&page(
             &format!(
@@ -312,6 +314,7 @@ fn a_label_centred_in_a_min_height_is_inset() {
     assert_eq!(row("align-items: center; min-height: 40px; } .row .chip { height: 36px;"), flush);
     assert_eq!(row("align-items: center; } .row span + span { font-size: 36px; line-height: 40px;"), flush);
     assert_eq!(row("align-items: center; } .row .chip { align-self: stretch;"), flush);
+    assert_eq!(row("align-items: center; } .row .chip { height: calc(44px);"), flush);
 }
 
 /// `padding-inline-start` beside `border-inline-start` is the padding on the

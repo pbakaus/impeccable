@@ -441,7 +441,9 @@ fn side_len(style: &StyleValues, key: &str, font_size: Option<f64>) -> Option<f6
 /// Only text of label length is read as one line, and only a flex row as one
 /// row: a paragraph may wrap, and a column may stack, past the height to the
 /// edges. A child placed off centre (`align-self: stretch`) or sized to the
-/// box (`height: 100%`) can reach them too. What it still cannot see is a
+/// box (`height: 100%`) can reach them too, as can one an offset moves, one
+/// that breaks its text onto a second line (`<br>`), or one whose height
+/// this engine cannot evaluate (`calc()`). What it still cannot see is a
 /// label wrapping in a box too narrow for it, or a row set to wrap.
 fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
     let lower = |s: &StyleValues, k: &str| js::to_lower_case(js::trim(sv(s, k)));
@@ -449,21 +451,23 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
         || lower(style, "flexDirection").starts_with("column")
         || lower(style, "alignItems") != "center"
         || el.text_content().chars().filter(|c| c.is_alphabetic()).count() > TRACKED_LABEL_MAX_CHARS
+        || el.query_selector("br").is_some()
     {
         return false;
     }
     // A box's line at its own font size, and its band: that line or its
     // declared height, whichever is taller. A percentage height follows a
-    // box this engine cannot measure.
+    // box this engine cannot measure, and a math function is unknown.
     let band = |e: &StaticElement<'_>| -> Option<(f64, f64)> {
         let s = e.style();
         let fs = resolve_font_size_px(e)?;
         let line = resolve_length_px(sv_opt(s, "lineHeight"), fs).unwrap_or(fs * 1.2);
         let tallest = ["minHeight", "height"].iter().try_fold(line, |tallest, k| {
-            if sv(s, k).ends_with('%') {
-                return None;
+            match js::trim(sv(s, k)) {
+                "" | "auto" => Some(tallest),
+                v if v.ends_with('%') => None,
+                _ => side_len(s, k, Some(fs)).map(|h| tallest.max(h)),
             }
-            Some(side_len(s, k, Some(fs)).map_or(tallest, |h| tallest.max(h)))
         })?;
         Some((line, tallest))
     };
@@ -471,7 +475,9 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
         return false;
     };
     let content = el.children().iter().try_fold(line, |tallest, c| {
-        if !matches!(lower(c.style(), "alignSelf").as_str(), "" | "auto" | "center") {
+        if !matches!(lower(c.style(), "alignSelf").as_str(), "" | "auto" | "center")
+            || is_offset_static(c.style())
+        {
             return None;
         }
         Some(tallest.max(band(c)?.1))
@@ -639,7 +645,7 @@ fn insulates_side(
     };
     if insulates(PAD_KEYS[s])
         || (margins_count && insulates(MARGIN_KEYS[s]))
-        || (s % 2 == 0 && centres_clear_of_edges(el, style))
+        || (s % 2 == 0 && !is_offset_static(style) && centres_clear_of_edges(el, style))
     {
         return true;
     }
