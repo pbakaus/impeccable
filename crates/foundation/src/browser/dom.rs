@@ -351,10 +351,11 @@ pub trait Dom {
     /// slot a light-DOM child is assigned to, else its parent, else the host
     /// of the shadow tree whose top-level node it is. A fill drawn by a
     /// component's shadow tree sits between a slotted heading and the host,
-    /// and only this walk passes through it. The default is `parent`, which
-    /// is the light tree: a probe that cannot see shadow trees.
+    /// and only this walk passes through it. The default is `parent`, then
+    /// the host of a shadow tree's top-level node: a probe that does not
+    /// compose slots (the live page's `JsDom`) still climbs out to the host.
     fn flat_parent(&self, el: ElId) -> Option<ElId> {
-        self.parent(el)
+        self.parent(el).or_else(|| self.shadow_host(el))
     }
     /// The slot this element's direct text is assigned to, where the element
     /// is a shadow host whose own text is slotted into its shadow tree. That

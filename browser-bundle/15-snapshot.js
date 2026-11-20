@@ -1013,14 +1013,19 @@ const __impeccableSnapshot = {
   // Answer the core's pending questions from the live page.
   answer(needs, capture) {
     const facts = { hits: [] };
+    // A hit in a shadow tree the capture dropped (over the element budget)
+    // answers with the nearest captured host, as the document-level calls do.
+    const hitId = (el) => {
+      while (el && !capture.ids.get(el)) el = el.getRootNode().host || null;
+      return this.idOf(el, capture);
+    };
     for (const [x, y] of (needs && needs.hitTests) || []) {
-      const top = __snapDeepTop(x, y);
-      const stack = __snapDeepStack(x, y);
-      facts.hits.push({
-        x, y,
-        top: this.idOf(top, capture),
-        stack: [...stack].map(el => this.idOf(el, capture)).filter(Boolean),
-      });
+      const stack = [];
+      for (const el of __snapDeepStack(x, y)) {
+        const id = hitId(el);
+        if (id && !stack.includes(id)) stack.push(id);
+      }
+      facts.hits.push({ x, y, top: hitId(__snapDeepTop(x, y)), stack });
     }
     return facts;
   },
