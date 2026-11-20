@@ -1303,9 +1303,14 @@ impl<'a> Page<'a> {
 
     /// Explicit screenshot-environment preference; never injected as page CSS.
     pub fn set_reduced_motion(&mut self, reduce: bool) -> CdpResult<()> {
-        self.send("Emulation.setEmulatedMedia", json!({"features": [{
-            "name": "prefers-reduced-motion", "value": if reduce { "reduce" } else { "no-preference" }
-        }]}))?;
+        self.set_emulated_media(&[("prefers-reduced-motion", if reduce { "reduce" } else { "no-preference" })])
+    }
+
+    /// Emulate these media features (`(name, value)`). Each call replaces the
+    /// whole emulated set, so pass every feature the page needs in one call.
+    pub fn set_emulated_media(&mut self, features: &[(&str, &str)]) -> CdpResult<()> {
+        let features: Vec<Value> = features.iter().map(|(name, value)| json!({ "name": name, "value": value })).collect();
+        self.send("Emulation.setEmulatedMedia", json!({ "features": features }))?;
         Ok(())
     }
 
