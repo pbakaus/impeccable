@@ -120,18 +120,17 @@ fn parse_opts() -> ParseOpts {
 }
 
 /// Scraper's sink, recording the line each element's start tag begins on.
-/// html5ever reports the line a start tag ends on (its `>`), so the start is
-/// the first `<name` after the previous found tag whose `>` closes on that
-/// line (a `<name` in a comment or text before it closes earlier); an element
-/// the source never spelled out (an implied `<tbody>`) keeps the line of the
-/// tag that implied it.
+/// html5ever reports the line a start tag ends on (its `>`), so the sink walks
+/// the source tag by tag alongside the parse to find where it opens; an
+/// element the source never spelled out (an implied `<tbody>`) keeps the line
+/// of the tag that implied it.
 struct LineSink<'s> {
     inner: HtmlTreeSink,
     source: &'s str,
     /// Byte offset of each line's first character.
     line_starts: Vec<usize>,
     line: Cell<u64>,
-    /// Byte offset just past the previous found start tag.
+    /// Byte offset of the next source tag not yet matched to an element.
     cursor: Cell<usize>,
     lines: RefCell<HashMap<NodeId, u32>>,
 }
@@ -160,43 +159,49 @@ impl<'s> LineSink<'s> {
     /// content the tokenizer reads as text.
     fn start_line(&self, name: &str, raw_text: bool) -> u64 {
         let end_line = self.line.get();
-        let from = self.cursor.get();
-        let to = self
-            .line_starts
-            .get(end_line as usize)
-            .copied()
-            .unwrap_or(self.source.len());
         let bytes = self.source.as_bytes();
-        let is_tag = |i: usize| {
-            let after = i + 1 + name.len();
-            bytes
-                .get(i + 1..after)
-                .is_some_and(|t| t.eq_ignore_ascii_case(name.as_bytes()))
-                && bytes
-                    .get(after)
-                    .is_none_or(|b| b.is_ascii_whitespace() || *b == b'/' || *b == b'>')
-                && tag_close(bytes, after).is_none_or(|close| self.line_of(close) == end_line)
-        };
-        // Comments hold no tags; the cursor is never inside one.
-        let mut at = from;
-        let mut found = None;
-        while let Some(i) = self.source.get(at..to.max(at)).and_then(|w| w.find('<')).map(|i| at + i) {
+        // In markup, `<` and a letter always opens a tag, so the first one
+        // past the cursor (outside comments and `<!...>` / `<?...>`) is the
+        // tag html5ever is processing. A tag of another name means this
+        // element was implied by it; one that closed on an earlier line was
+        // a tag the tree builder dropped. Each step moves the cursor
+        // forward, so the scan stays linear on a one-line page.
+        let mut at = self.cursor.get();
+        let found = loop {
+            let Some(i) = self.source.get(at..).and_then(|w| w.find('<')).map(|i| at + i) else {
+                break None;
+            };
+            let next = bytes.get(i + 1).copied().unwrap_or(0);
             if bytes[i..].starts_with(b"<!--") {
                 at = self.source[i + 4..].find("-->").map_or(self.source.len(), |end| i + 4 + end + 3);
-            } else if is_tag(i) {
-                found = Some(i);
-                break;
+            } else if next == b'!' || next == b'?' {
+                at = self.source[i..].find('>').map_or(self.source.len(), |end| i + end + 1);
+            } else if next.is_ascii_alphabetic() {
+                let len = bytes[i + 1..]
+                    .iter()
+                    .position(|b| b.is_ascii_whitespace() || *b == b'/' || *b == b'>')
+                    .unwrap_or(bytes.len() - i - 1);
+                let tag = &bytes[i + 1..i + 1 + len];
+                let close = tag_close(bytes, i + 1 + len);
+                let close_line = close.map_or(end_line, |c| self.line_of(c));
+                let named = tag.eq_ignore_ascii_case(name.as_bytes())
+                    || (name == "img" && tag.eq_ignore_ascii_case(b"image"));
+                if named && close_line == end_line {
+                    break Some((i, close.map_or(bytes.len(), |c| c + 1)));
+                }
+                if close_line >= end_line {
+                    break None;
+                }
+                at = close.map_or(bytes.len(), |c| c + 1);
             } else {
                 at = i + 1;
             }
-        }
+            self.cursor.set(at);
+        };
         match found {
-            Some(i) => {
-                // Past the tag's own attributes, so `<name` text inside one
-                // is never taken for a later tag, and past a raw-text
-                // element's text (a `<p` in a script string).
-                let after = i + 1 + name.len();
-                let mut cursor = tag_close(bytes, after).map_or(after, |close| close + 1);
+            Some((i, mut cursor)) => {
+                // Past the tag's attributes, and past a raw-text element's
+                // text (a `<p` in a script string).
                 if raw_text {
                     let closing = format!("</{name}");
                     cursor = bytes[cursor..]
