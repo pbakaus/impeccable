@@ -18,7 +18,7 @@ use super::{
     normalize_static_css_value, parse_static_style_attribute, static_default_style, CssRule,
     DeclMeta, SpecifiedDecl, SpecifiedStore, StyleValues, UrlBase, STATIC_DEFAULT_STYLE,
 };
-use crate::dom::StaticDocument;
+use crate::dom::{StaticDocument, StaticElement};
 use crate::profile::{self, Meta, ProfileSink};
 use ego_tree::NodeId;
 use impeccable_core::checks::css_scan::{collect_css_custom_props, css_length_to_px};
@@ -37,6 +37,33 @@ static STYLESHEET_REL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?-u:\b)stylesheet(?-u:\b)").expect("STYLESHEET_REL_RE"));
 static REMOTE_HREF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^(https?:)?//").expect("REMOTE_HREF_RE"));
+
+// Recognize the usual async-CSS onload idiom without evaluating JavaScript.
+// Only straight-line literal media assignments and onload=null are accepted;
+// strings, comments, conditions and calls cannot masquerade as assignments.
+static ONLOAD_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*this\s*\.\s*(?:media\s*=\s*(?:'([^'\\]*)'|"([^"\\]*)")|onload\s*=\s*null)\s*(?:;|$)"#)
+        .expect("ONLOAD_ASSIGNMENT_RE")
+});
+
+fn loaded_media(mut handler: &str) -> Option<&str> {
+    let mut media = None;
+    while !handler.trim().is_empty() {
+        let assignment = ONLOAD_ASSIGNMENT_RE.captures(handler)?;
+        if let Some(value) = assignment.get(1).or_else(|| assignment.get(2)) {
+            media = Some(value.as_str());
+        }
+        handler = &handler[assignment.get(0)?.end()..];
+    }
+    media
+}
+
+fn link_media_matches(link: &StaticElement<'_>) -> bool {
+    link.get_attribute("onload")
+        .and_then(loaded_media)
+        .or_else(|| link.get_attribute("media"))
+        .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
+}
 
 /// JS: css-cascade.mjs#resolveLinkedCssPath(fileDir, href)
 /// Cache-busting (styles.css?v=3) and root-relative (/static/app.css) hrefs
@@ -111,9 +138,9 @@ fn resolve_css_path_in(
 
 /// A page's CSS as the cascade reads it: the text of every `<style>` element
 /// and every local linked stylesheet, joined with `\n`, plus where each
-/// stylesheet linked from another directory sits in that text. The text is
-/// never rewritten, so the pattern checks read every sheet as authored; only
-/// the rules collected from a foreign sheet resolve their urls against it.
+/// stylesheet linked from another directory sits in that text. Media filtering
+/// preserves offsets and leaves active URLs as authored; only the rules
+/// collected from a foreign sheet resolve their urls against it.
 #[derive(Debug, Clone, Default)]
 pub struct StaticCss {
     pub text: String,
@@ -177,8 +204,9 @@ impl StaticCss {
 ///
 /// Returns that text, as the cascade's [`StaticCss`], plus a second one for
 /// the page-level pattern scan: the same join minus the linked sheets
-/// `ignored` accepts (given the resolved path). The cascade keeps the full
-/// text.
+/// `ignored` accepts (given the resolved path). Each active sheet is media-filtered
+/// once before it enters either corpus. The cascade keeps active styles from
+/// ignored sheets too.
 pub fn collect_static_css_text(
     doc: &StaticDocument,
     file_dir: &Path,
@@ -213,11 +241,19 @@ pub fn collect_static_css_text(
     let mut warned_missing_stylesheets: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for style_el in doc.query_selector_all("style") {
-        let text = style_el.text_content();
-        push(&mut css, &text, None);
-        pattern_texts.push(text);
+        if style_el
+            .get_attribute("media")
+            .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
+        {
+            let text = super::media::screen_styles(&style_el.text_content());
+            push(&mut css, &text, None);
+            pattern_texts.push(text);
+        }
     }
     for link in doc.query_selector_all("link") {
+        if !link_media_matches(&link) {
+            continue;
+        }
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
         if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || REMOTE_HREF_RE.is_match(href) {
@@ -231,9 +267,9 @@ pub fn collect_static_css_text(
         );
         match read {
             Ok(bytes) => {
+                let text = super::media::screen_styles(&String::from_utf8_lossy(&bytes));
                 let sheet_dir = jsp::dirname(&css_path);
                 let foreign_dir = (sheet_dir != file_dir_str).then_some(sheet_dir);
-                let text = String::from_utf8_lossy(&bytes).into_owned();
                 push(&mut css, &text, foreign_dir);
                 if !ignored.is_some_and(|f| f(&css_path)) {
                     pattern_texts.push(text);
@@ -836,6 +872,7 @@ fn shorthand_slot_or_default(prop: &str, value: String) -> (String, bool) {
 }
 
 /// JS: css-cascade.mjs#buildStaticStyleMap(root, staticDoc, cssText, modules, profile, filePath)
+/// `css` is already media-filtered by [`collect_static_css_text`].
 pub fn build_static_style_map(
     doc: &mut StaticDocument,
     css: &StaticCss,
@@ -1165,6 +1202,7 @@ static FONT_STYLESHEET_RE: Lazy<Regex> = Lazy::new(|| {
 /// Whether the page links a stylesheet the static engine did not read: a
 /// remote sheet (other than a font service, which carries no box rules) or a
 /// local one it could not open. [`collect_static_css_text`] skips both.
+/// Inactive sheets cannot change the page's box rules and do not count.
 pub fn has_unread_stylesheet(doc: &StaticDocument, file_dir: &Path) -> bool {
     has_unread_stylesheet_in(
         doc,
@@ -1186,7 +1224,7 @@ pub fn has_unread_stylesheet_in(
     doc.query_selector_all("link").iter().any(|link| {
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
-        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() {
+        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || !link_media_matches(link) {
             return false;
         }
         if REMOTE_HREF_RE.is_match(href) {
