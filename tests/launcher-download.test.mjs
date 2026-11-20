@@ -234,6 +234,8 @@ for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'downl
     if (['download-failure', 'transport-failure'].includes(scenario)) {
       assert.match(result.stderr, /could not download/);
       assert.match(result.stderr, /network/);
+      // curl older than 7.75 has no %{errormsg}, so only the exit code is certain.
+      assert.match(result.stderr, /\(curl exit \d+(: [^)]+)?\);/);
       assert.deepEqual(result.files, [], 'failed downloads leave no staging files');
       assert.equal(result.requests.length, 1, 'no verification without a download');
     } else {
