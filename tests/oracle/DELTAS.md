@@ -7538,3 +7538,13 @@ other goldens listed.
 - `detect-fixture-*` (44 goldens): square-box `side-tab` findings dropped; `side-tab-every-variant.{html,css,svelte}` flag cases rounded and square pass cases added.
 - `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
 - `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
+
+## Recorded 2026-11-20: the static flush check reads clamp(), logical padding and centred labels (#1596, #1604, #1605)
+
+The file scan's `cramped-padding` flush shape read a padding it could not evaluate (`clamp()`, `calc()`) as 0px,
+never mapped `padding-inline-*` to a side, and saw no air around a label a flex row centres in its height. Each
+golden was decoded and compared finding by finding, then re-recorded from the binary, so the replay still compares
+them (no case id leads a line here): the only changes are below.
+
+- flush-against-border (`detect-fixture-json-flush-against-border-html`, `detect-fixture-text-flush-against-border-html`): `pass-segmented` no longer reports (its buttons centre their labels in the pill's 40px), 11 to 10.
+- stripe-child and overlay-positioning (`detect-fixture-json-stripe-child-html`, `detect-fixture-text-stripe-child-html`, `detect-fixture-json-overlay-positioning-html`, `detect-fixture-text-overlay-positioning-html`): `card-center` and `flex-center` centre one label in a 100px and a 120px box, so they report right/left instead of all sides.
