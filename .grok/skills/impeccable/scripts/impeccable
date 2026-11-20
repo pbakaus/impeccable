@@ -191,11 +191,15 @@ setup_help() {
 fetch_url() {
   http_status=""
   download_host=""
+  fetch_error=""
   if command -v curl >/dev/null 2>&1; then
     fetch_result=0
-    metadata=$(curl -fsSL --retry 2 -w '%{http_code} %{url_effective}' -o "$tmp" "$1" 2>/dev/null) || fetch_result=$?
+    metadata=$(curl -fsSL --retry 2 -w '%{http_code} %{url_effective} %{errormsg}' -o "$tmp" "$1" 2>/dev/null) || fetch_result=$?
     http_status=${metadata%% *}
     effective_url=${metadata#* }
+    curl_msg=${effective_url#* }
+    effective_url=${effective_url%% *}
+    fetch_error="curl exit $fetch_result${curl_msg:+: $curl_msg}"
     # Only the authority is needed, never the signed storage URL's query.
     download_host=${effective_url#*://}
     download_host=${download_host%%/*}
@@ -207,7 +211,12 @@ fetch_url() {
     download_host=$(printf '%s' "$download_host" | tr '[:upper:]' '[:lower:]')
     return "$fetch_result"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$tmp" "$1" 2>/dev/null
+    fetch_result=0
+    wget_out=$(wget -O "$tmp" "$1" 2>&1) || fetch_result=$?
+    newline='
+'
+    fetch_error="wget exit $fetch_result: ${wget_out##*$newline}"
+    return "$fetch_result"
   else
     return 1
   fi
@@ -310,7 +319,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       esac
       exit 127 ;;
   esac
-  echo "impeccable: could not download engine $version from $url; check network access, the release URL, and curl or wget availability." >&2
+  echo "impeccable: could not download engine $version from $url${fetch_error:+ ($fetch_error)}; check network access, the release URL, and curl or wget availability." >&2
   setup_help
   exit 127
 fi
