@@ -10657,7 +10657,7 @@ void main() {
   let steerLocked = false;
   let steerRequestId = null;
   let steerPendingMessage = '';
-  let steerTimedOutId = null;
+  const steerTimedOutIds = new Set();
   let steerInputWasFocused = false;
   let pageChatDotsEl = null;
   let steerAwaitTimer = null;
@@ -11246,7 +11246,7 @@ void main() {
     steerAwaitTimer = setTimeout(() => {
       if (!steerLocked || steerRequestId !== id) return;
       // The steer stays queued on the server until steer_done, so refilling the input would invite a duplicate.
-      steerTimedOutId = id;
+      steerTimedOutIds.add(id);
       unlockSteerChat({ error: steerTimeoutMessage() });
     }, STEER_AWAIT_TIMEOUT_MS);
   }
@@ -11597,8 +11597,7 @@ void main() {
   }
 
   function maybeCompleteSteer(msg) {
-    if (msg.type === 'steer_done' && steerTimedOutId && msg.id === steerTimedOutId) {
-      steerTimedOutId = null;
+    if (msg.type === 'steer_done' && steerTimedOutIds.delete(msg.id)) {
       showToast(msg.message || 'Queued steer applied', 4000);
       return true;
     }

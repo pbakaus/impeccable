@@ -21,19 +21,22 @@ describe('live-browser source contracts', () => {
     const fns = ['scheduleSteerAwaitTimeout', 'steerTimeoutMessage', 'maybeCompleteSteer']
       .map((name) => SOURCE.match(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0]);
     assert.ok(fns.every(Boolean));
-    for (const [queued, polling] of [[true, true], [false, false]]) {
-      const ctx = {
-        clearSteerAwaitTimer() {}, setTimeout: (fn) => fn(), STEER_AWAIT_TIMEOUT_MS: 1,
-        steerLocked: true, steerRequestId: 's1', steerPendingMessage: 'make it bigger',
-        steerQueuedBehindGeneration: () => queued, agentPollingConnected: polling, steerTimedOutId: null,
-        unlockSteerChat(opts) { ctx.opts = opts; ctx.steerRequestId = null; },
-        showToast(text) { ctx.toast = text; },
-      };
-      runInNewContext(`${fns.join('\n')}; scheduleSteerAwaitTimeout('s1');`, ctx);
+    const ctx = {
+      clearSteerAwaitTimer() {}, setTimeout: (fn) => fn(), STEER_AWAIT_TIMEOUT_MS: 1,
+      steerPendingMessage: 'make it bigger', steerTimedOutIds: new Set(),
+      unlockSteerChat(opts) { ctx.opts = opts; ctx.steerRequestId = null; },
+      showToast(text) { ctx.toast = text; },
+    };
+    runInNewContext(fns.join('\n'), ctx);
+    for (const [id, queued, polling] of [['s1', true, true], ['s2', false, false]]) {
+      Object.assign(ctx, { steerLocked: true, steerRequestId: id, steerQueuedBehindGeneration: () => queued, agentPollingConnected: polling });
+      runInNewContext(`scheduleSteerAwaitTimeout('${id}')`, ctx);
       assert.equal(ctx.opts.restoreMessage, undefined);
       assert.doesNotMatch(ctx.opts.error, /send it again/i);
-      assert.equal(runInNewContext(`maybeCompleteSteer({ type: 'steer_done', id: 's1', message: 'Hero enlarged' })`, ctx), true);
-      assert.equal(ctx.toast, 'Hero enlarged');
+    }
+    for (const id of ['s1', 's2']) {
+      assert.equal(runInNewContext(`maybeCompleteSteer({ type: 'steer_done', id: '${id}', message: 'done ${id}' })`, ctx), true);
+      assert.equal(ctx.toast, `done ${id}`);
     }
   });
 
