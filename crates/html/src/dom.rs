@@ -165,8 +165,7 @@ impl<'s> LineSink<'s> {
             .copied()
             .unwrap_or(self.source.len());
         let bytes = self.source.as_bytes();
-        let window = self.source.get(from..to.max(from)).unwrap_or("");
-        let found = window.match_indices('<').map(|(i, _)| from + i).find(|&i| {
+        let is_tag = |i: usize| {
             let after = i + 1 + name.len();
             bytes
                 .get(i + 1..after)
@@ -175,19 +174,44 @@ impl<'s> LineSink<'s> {
                     .get(after)
                     .is_none_or(|b| b.is_ascii_whitespace() || *b == b'/' || *b == b'>')
                 && tag_close(bytes, after).is_none_or(|close| self.line_of(close) == end_line)
-        });
+        };
+        // Comments hold no tags; the cursor is never inside one.
+        let mut at = from;
+        let mut found = None;
+        while let Some(i) = self.source.get(at..to.max(at)).and_then(|w| w.find('<')).map(|i| at + i) {
+            if bytes[i..].starts_with(b"<!--") {
+                at = self.source[i + 4..].find("-->").map_or(self.source.len(), |end| i + 4 + end + 3);
+            } else if is_tag(i) {
+                found = Some(i);
+                break;
+            } else {
+                at = i + 1;
+            }
+        }
         match found {
             Some(i) => {
                 // Past the tag's own attributes, so `<name` text inside one
-                // is never taken for a later tag.
+                // is never taken for a later tag, and past a raw-text
+                // element's text (a `<p` in a script string).
                 let after = i + 1 + name.len();
-                self.cursor.set(tag_close(bytes, after).map_or(after, |close| close + 1));
+                let mut cursor = tag_close(bytes, after).map_or(after, |close| close + 1);
+                if RAW_TEXT.iter().any(|raw| raw.eq_ignore_ascii_case(name)) {
+                    let closing = format!("</{name}");
+                    cursor = bytes[cursor..]
+                        .windows(closing.len())
+                        .position(|w| w.eq_ignore_ascii_case(closing.as_bytes()))
+                        .map_or(cursor, |end| cursor + end);
+                }
+                self.cursor.set(cursor);
                 self.line_of(i)
             }
             None => end_line,
         }
     }
 }
+
+/// Elements whose content the tokenizer reads as text, not markup.
+const RAW_TEXT: [&str; 7] = ["script", "style", "textarea", "title", "xmp", "noscript", "iframe"];
 
 /// The offset of the `>` that closes a start tag whose name ends at `from`,
 /// skipping quoted attribute values (`title="a > b"`).

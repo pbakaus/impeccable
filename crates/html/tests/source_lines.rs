@@ -69,3 +69,14 @@ fn a_tag_name_inside_an_attribute_is_not_the_tag() {
                 <div title=\"see <p\n> for details\"><p class=\"k\">Faint</p></div>\n</body></html>\n";
     assert_eq!(lines(html), [("low-contrast".to_string(), 5.0)]);
 }
+
+#[test]
+fn comments_and_script_text_hold_no_tags() {
+    let html = "<!doctype html>\n<html><head><style>.k{color:#777;background:#888}.j{color:#666;background:#777}</style></head>\n<body>\n\
+                <!-- example <p\n--> <p class=\"k\">One</p>\n\
+                <script>var s = \"<b \";\n</script><b class=\"j\">Two</b>\n</body></html>\n";
+    assert_eq!(
+        lines(html),
+        [("low-contrast".to_string(), 5.0), ("low-contrast".to_string(), 7.0)]
+    );
+}
