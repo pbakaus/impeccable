@@ -130,6 +130,9 @@ if exist "%IMPECCABLE_HOME%\bin\%version%\" goto cache_ready
 mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
 if errorlevel 1 goto cache_directory_failed
 :cache_ready
+rem Remove staging directories killed runs left in any version's cache, once
+rem two days idle (forfiles /d counts days; a live curl's open file stays).
+forfiles /p "%IMPECCABLE_HOME%\bin" /s /m .impeccable.part.* /d -2 /c "cmd /c if @isdir==TRUE rd /s /q @path" >nul 2>nul
 rem Stage the download in a directory only this run owns, as the sh launcher
 rem does with .impeccable.part.$$: concurrent first runs (parallel hooks, two
 rem agents) must never write, hash or move each other's files. mkdir fails
