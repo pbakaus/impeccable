@@ -483,10 +483,11 @@ pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>, 
 
 /// Whether a source opener named `name` can be the element the browser
 /// reported as `want`. The browser lowercases the rendered tag, so `<Input>`
-/// is `input`; with `components`, any component (`<Link>`, `<CTA>`: JSX
-/// reads a capitalised name as one) can be.
+/// is `input`; with `components`, any component (`<Link>`) can be. An
+/// all-capitals name is not one: the element scan folds it like an HTML
+/// name, so its end could not be found safely.
 fn renders_tag(name: &str, want: &str, components: bool) -> bool {
-    want.eq_ignore_ascii_case(name) || (components && name.starts_with(|c: char| c.is_ascii_uppercase()))
+    want.eq_ignore_ascii_case(name) || (components && !folds_tag_case(name))
 }
 
 /// The line the element opened on `start` closes on. None when it never
@@ -2529,8 +2530,9 @@ mod tests {
         // A `>` inside a prop expression or a quoted value does not end it.
         let arrow = [r#"<Link onClick={() => go()} title="a > b" className="demo-exit">Leave demo</Link>"#];
         assert_eq!(start(&arrow, "demo-exit", "a", Dialect::Jsx), vec![0]);
-        // An all-capitals name is a component too.
-        assert_eq!(start(&[r#"<CTA className="demo-exit">Leave demo</CTA>"#], "demo-exit", "a", Dialect::Jsx), vec![0]);
+        // An all-capitals name is read as an HTML name, as the element scan does.
+        let caps = [r#"<STYLE className="demo-exit">"#, "  <style>{css}</style>", "  <p>Body</p>", "</STYLE>"];
+        assert!(start(&caps, "demo-exit", "div", Dialect::Jsx).is_empty());
         // The locator must sit in the component's own opening tag.
         for src in [
             &[r#"<Card icon={<Icon className="demo-exit" />}>"#, "  <p>Body</p>", "</Card>"][..],
