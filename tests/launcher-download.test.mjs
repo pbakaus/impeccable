@@ -74,6 +74,15 @@ async function exercise(t, scenario) {
     fs.writeFileSync(path.join(cache, 'bin'), 'blocked');
   }
   if (scenario === 'cache-write-failure') fs.mkdirSync(cacheDir, { recursive: true });
+  if (scenario === 'cache-read-only') {
+    // An old part the sweep cannot remove must not end the run early.
+    fs.mkdirSync(cacheDir, { recursive: true });
+    const stale = path.join(cacheDir, `.impeccable.part.${spawnSync(process.execPath, ['-e', '']).pid}`);
+    fs.writeFileSync(stale, 'partial');
+    const when = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+    fs.utimesSync(stale, when, when);
+    fs.chmodSync(cacheDir, 0o555);
+  }
   if (scenario === 'stale-staging') {
     // Leftovers from an older launcher (fixed staging names) or a killed run
     // must not block or be reused by a new download.
@@ -82,6 +91,32 @@ async function exercise(t, scenario) {
       const stale = path.join(cacheDir, name);
       fs.writeFileSync(stale, 'stale');
       fs.chmodSync(stale, 0o444);
+    }
+  }
+  let survivors = [];
+  if (scenario === 'swept-staging') {
+    // #1541: SIGKILL skips the launcher's traps, so staging leftovers pile up
+    // in every version's cache until a later download sweeps them.
+    const oldVersionDir = path.join(cache, 'bin', '0.0.0-old');
+    const dead = () => spawnSync(process.execPath, ['-e', '']).pid;
+    const stale = WINDOWS
+      ? ['.impeccable.part.0912-1', '.impeccable.part.0913-2', '.impeccable.part.0914-3']
+      : [`.impeccable.part.${dead()}`, `.impeccable.part.${process.pid}`, `.impeccable.part.${dead()}`];
+    // Old with a dead owner, old with a live one (cmd has no PID to check, so
+    // only the age decides there), recent with a dead owner.
+    survivors = WINDOWS ? [stale[2]] : [stale[1], stale[2]];
+    const leftovers = [[cacheDir, stale[0], true], [cacheDir, stale[1], true], [cacheDir, stale[2], false], [oldVersionDir, stale[0], true]];
+    for (const [dir, name, old] of leftovers) {
+      fs.mkdirSync(dir, { recursive: true });
+      const leftover = path.join(dir, name);
+      if (WINDOWS) {
+        fs.mkdirSync(leftover);
+        fs.writeFileSync(path.join(leftover, BIN), 'partial');
+      } else {
+        fs.writeFileSync(leftover, 'partial');
+      }
+      const when = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+      if (old) fs.utimesSync(leftover, when, when);
     }
   }
   const tools = path.join(root, 'tools');
@@ -202,6 +237,7 @@ async function exercise(t, scenario) {
     child.on('close', (status, signal) => resolve({ status, signal, stdout, stderr }));
   });
   const result = await run();
+  if (scenario === 'cache-read-only') fs.chmodSync(cacheDir, 0o755);
   if (scenario === 'valid') {
     // The stamp is the whole check on later runs: a hash tool that always
     // fails proves nothing rehashes the cached engine.
@@ -218,7 +254,7 @@ async function exercise(t, scenario) {
     || ['cached-unstamped', 'cached-empty-stamp', 'cached-foreign-stamp', 'cached-digest-only-stamp', 'cached-stamp-trusted'].includes(scenario);
   assert.equal(requests.length, noDownload ? 0 : scenario.startsWith('outage-') ? 3 : 1,
     'cache failures, a missing digest and a verified cache make no request; other scenarios download once');
-  return { ...result, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).sort() : [], requests, cacheDir };
+  return { ...result, survivors, files: fs.existsSync(cacheDir) ? fs.readdirSync(cacheDir).sort() : [], requests, cacheDir };
 }
 
 for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'download-failure', 'transport-failure']) {
@@ -321,7 +357,21 @@ test('launcher ignores stale staging files from older or killed runs', async t =
   assert.match(result.stdout, /verified-engine/);
   assert.deepEqual(result.files.sort(),
     ['.impeccable.part.1', BIN, `${BIN}.verified`, 'impeccable.exe.part', 'impeccable.exe.sha256'].sort(),
-    'the new download lands and leaves the leftovers untouched');
+    'the new download lands and leaves recent leftovers untouched');
+});
+
+test('launcher sweeps staging leftovers that no live download owns', async t => {
+  const result = await exercise(t, 'swept-staging');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /verified-engine/);
+  assert.deepEqual(result.files, [...result.survivors, BIN, `${BIN}.verified`].sort());
+  assert.deepEqual(fs.readdirSync(path.join(result.cacheDir, '..', '0.0.0-old')), [], 'older versions are swept too');
+});
+
+test('sh launcher reports a read-only cache holding a stale part', { skip: WINDOWS || process.getuid?.() === 0 ? 'POSIX permissions, non-root' : false }, async t => {
+  const result = await exercise(t, 'cache-read-only');
+  assert.equal(result.status, 127, JSON.stringify(result));
+  assert.match(result.stderr, /cannot write to cache directory/);
 });
 
 test('cmd launcher stages each run under its own name', () => {
