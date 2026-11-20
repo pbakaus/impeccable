@@ -212,6 +212,18 @@ fetch_url() {
     return 1
   fi
 }
+# SIGKILL or a crash skips the traps below and strands the staging file, so
+# each download first removes parts in any version's cache that are an hour
+# idle and whose owner PID is gone (the age covers a curl outliving its
+# launcher). A cache it cannot write is reported later, never here.
+sweep_stale_parts() {
+  find "$cache_root/bin" -mindepth 2 -maxdepth 2 -type f -name '.impeccable.part.*' -mmin +60 2>/dev/null |
+    while IFS= read -r part; do
+      owner=${part##*.part.}
+      case "$owner" in ''|*[!0-9]*) continue ;; esac
+      kill -0 "$owner" 2>/dev/null || rm -f "$part" 2>/dev/null || :
+    done
+}
 check_download() {
   download_file=${1:-$tmp}
   if [ ! -f "$download_file" ]; then
@@ -237,6 +249,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     echo "impeccable: no checksum for engine $version ($asset) in $manifest; refusing the unverified download" >&2
     exit 127
   fi
+  sweep_stale_parts
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
   # An interrupted download (Ctrl-C, a hook timeout) would otherwise leave the
   # PID-named staging file behind for good. The handlers must exit explicitly.
