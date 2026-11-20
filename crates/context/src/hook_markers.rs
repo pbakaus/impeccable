@@ -109,6 +109,21 @@ pub fn git_bash_launcher_hook_command(launcher: &str, verb: &str) -> String {
     guarded_launcher_hook_command(&q, verb)
 }
 
+/// The guarded launcher hook string for Gemini CLI on Windows, which runs
+/// hooks through PowerShell with no per-OS field, so the `.cmd` shim goes
+/// behind a `Test-Path` guard. PowerShell reads `$env:GEMINI_PROJECT_DIR`,
+/// which Gemini's textual substitution leaves alone. Built here so install
+/// and `hooks on` write one string.
+pub fn gemini_windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
+    let cmd = format!("{launcher}.cmd");
+    let q = if launcher.starts_with("$GEMINI_PROJECT_DIR") {
+        format!("\"{}\"", cmd.replacen("$GEMINI_PROJECT_DIR", "$env:GEMINI_PROJECT_DIR", 1))
+    } else {
+        format!("'{}'", cmd.replace('\'', "''"))
+    };
+    format!("if (Test-Path -LiteralPath {q}) {{ & {q} {verb} }}")
+}
+
 /// The launcher-era markers `context` and `doctor` treat as the design hook
 /// proper (the per-edit hook and Cursor's before-edit gate). Legacy siblings
 /// like `hook-probe` are admin-only and do not count as an installed hook.
