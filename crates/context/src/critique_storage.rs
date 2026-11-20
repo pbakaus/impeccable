@@ -408,7 +408,13 @@ pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snaps
     open.pop()
 }
 
-fn coerce_slug(value: Option<&str>, cwd: &str) -> Option<String> {
+/// A path target's slug is relative to the store root, so the same file gets
+/// the same name from any cwd (#1598). URLs pass through unchanged.
+fn slug_input(v: &str, cwd: &str) -> String {
+    resolve_local_target_path(js_trim(v), cwd).unwrap_or_else(|| v.to_string())
+}
+
+fn coerce_slug(value: Option<&str>, cwd: &str, root: &str) -> Option<String> {
     let v = value?;
     if v.is_empty() {
         return None;
@@ -416,21 +422,22 @@ fn coerce_slug(value: Option<&str>, cwd: &str) -> Option<String> {
     if is_ready_slug(v) {
         return Some(v.to_string());
     }
-    slug_from_target(Some(v), cwd)
+    slug_from_target(Some(&slug_input(v, cwd)), root)
 }
 
-fn slug_candidates(value: Option<&str>, cwd: &str) -> Vec<String> {
+fn slug_candidates(value: Option<&str>, cwd: &str, root: &str) -> Vec<String> {
     let Some(v) = value.filter(|v| !v.is_empty()) else {
         return vec![];
     };
     if is_ready_slug(v) {
         return vec![v.to_string()];
     }
+    let v = slug_input(v, cwd);
     let mut slugs = Vec::new();
-    if let Some(slug) = slug_from_target(Some(v), cwd) {
+    if let Some(slug) = slug_from_target(Some(&v), root) {
         slugs.push(slug);
     }
-    if let Some(legacy) = legacy_slug_from_target(Some(v), cwd) {
+    if let Some(legacy) = legacy_slug_from_target(Some(&v), root) {
         if !slugs.contains(&legacy) {
             slugs.push(legacy);
         }
@@ -558,7 +565,7 @@ fn write_report(
     }
     // An audit may cover the whole project (`.`), which has no slug of its
     // own; it is stored as `project`. Critique keeps skipping a root target.
-    let slug = coerce_slug(rest.first().map(String::as_str), cwd)
+    let slug = coerce_slug(rest.first().map(String::as_str), cwd, &root)
         .or_else(|| (kind == "audit" && rest.get(1).is_some()).then(|| "project".to_string()));
     let body_file = rest.get(1).filter(|s| !s.is_empty());
     let (Some(slug), Some(body_file)) = (slug, body_file) else {
@@ -691,7 +698,9 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
     let rest = if args.is_empty() { &[][..] } else { &args[1..] };
     match cmd {
         "slug" => {
-            let slug = slug_from_target(rest.first().map(String::as_str), &cwd);
+            let target = rest.first().map(String::as_str).unwrap_or("");
+            let root = storage_root(target, &cwd, &env);
+            let slug = rest.first().and_then(|v| slug_from_target(Some(&slug_input(v, &cwd)), &root));
             match slug {
                 Some(s) => {
                     io.out(&format!("{}\n", s));
@@ -707,7 +716,8 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
         "latest" => {
             let target = rest.first().map(String::as_str).unwrap_or("");
             let format = rest.get(1).map(String::as_str);
-            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
+            let root = storage_root(target, &cwd, &env);
+            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd, &root);
             // JS: format && format !== '--json'  (format truthy = non-empty)
             let bad_format = format.map(|f| !f.is_empty() && f != "--json").unwrap_or(false);
             if slugs.is_empty() || bad_format {
@@ -719,7 +729,6 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             let target_path = resolve_local_target_path(target, &cwd);
             let target_identity = resolve_target_identity(target, &cwd);
             let ready_slug = is_ready_slug(target);
-            let root = storage_root(target, &cwd, &env);
             let Some(newest_for_slug) =
                 read_newest_safe_snapshot_for_slugs(&slugs, target_identity.as_deref(), &root)
             else {
@@ -779,7 +788,8 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
         "close" => {
             let slug_arg = rest.first().map(String::as_str).unwrap_or("");
             let snapshot_file = rest.get(1).map(String::as_str);
-            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
+            let root = storage_root(slug_arg, &cwd, &env);
+            let slugs = slug_candidates(rest.first().map(String::as_str), &cwd, &root);
             let snapshot_file_ok = snapshot_file.map(|s| !s.is_empty()).unwrap_or(false);
             if slugs.is_empty() || !snapshot_file_ok || rest.len() > 2 {
                 io.err("usage: close <resolved-target> <snapshot-file>\n");
@@ -792,7 +802,6 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             {
                 return 2;
             }
-            let root = storage_root(slug_arg, &cwd, &env);
             let snapshot_path = jsp::join(&[&get_critique_dir(&root), snapshot_file]);
             let md = match std::fs::symlink_metadata(&snapshot_path) {
                 Ok(m) => m,
@@ -829,7 +838,9 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
             }
         }
         "trend" => {
-            let mut slugs = slug_candidates(rest.first().map(String::as_str), &cwd);
+            let target = rest.first().map(String::as_str).unwrap_or("");
+            let root = storage_root(target, &cwd, &env);
+            let mut slugs = slug_candidates(rest.first().map(String::as_str), &cwd, &root);
             if slugs.is_empty() {
                 slugs.push("null".to_string());
             }
@@ -837,9 +848,7 @@ pub fn run_with_saved(args: &[String], io: &mut Io, saved: &mut dyn FnMut(SavedR
                 Some(l) => js_number(l),
                 None => 5.0,
             };
-            let target = rest.first().map(String::as_str).unwrap_or("");
             let target_identity = resolve_target_identity(target, &cwd);
-            let root = storage_root(target, &cwd, &env);
             let mut all: Vec<String> = slugs
                 .first()
                 .into_iter()
@@ -1161,6 +1170,17 @@ mod tests_660 {
         assert_eq!(run_capture(&proj_b, &["close", target, &name]).0, 0);
         let rows: Value = serde_json::from_str(&run_capture(&proj_b, &["trend", target]).1).unwrap();
         assert_eq!(rows.as_array().unwrap().len(), 1);
+
+        // The slug is relative to that project, so a lookup from inside it
+        // finds a report written from the sibling repo.
+        let proj_a = jsp::join(&[&root, "projA"]);
+        std::fs::create_dir_all(jsp::join(&[&proj_a, ".git"])).unwrap();
+        std::fs::create_dir_all(jsp::join(&[&proj_a, "src"])).unwrap();
+        std::fs::write(jsp::join(&[&proj_a, "src", "App.tsx"]), "x\n").unwrap();
+        let (code, out, _) = run_capture(&proj_b, &["write", "../projA/src/App.tsx", &body]);
+        assert_eq!(code, 0);
+        assert!(out.trim_end().ends_with("__src-app-tsx.md"), "{out}");
+        assert_eq!(run_capture(&proj_a, &["latest", "src/App.tsx"]).0, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
