@@ -332,10 +332,13 @@ fn elements_for(lines: &[String], query: &str, tag: Option<&str>, dialect: Diale
 /// component carrying one is the element. A tag-only search names the tag
 /// itself, and in HTML a capitalised name is that HTML tag.
 fn component_fallback(lines: &[String], queries: &[String], tag: Option<&str>, dialect: Dialect) -> bool {
-    tag.is_some()
-        && dialect != Dialect::Html
-        && !is_tag_only_search(queries, tag)
+    component_fallback_allowed(queries, tag, dialect)
         && queries.iter().all(|q| find_all_elements(lines, q, tag, dialect).is_empty())
+}
+
+/// Whether `component_fallback` may apply at all, before any file is read.
+fn component_fallback_allowed(queries: &[String], tag: Option<&str>, dialect: Dialect) -> bool {
+    tag.is_some() && dialect != Dialect::Html && !is_tag_only_search(queries, tag)
 }
 
 /// Whether the first `query` on `match_line` (after the opener, on the
