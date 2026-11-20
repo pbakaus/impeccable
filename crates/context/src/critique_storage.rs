@@ -373,38 +373,45 @@ pub fn read_latest_snapshot(slug: &str, root: &str) -> Option<Snapshot> {
 }
 
 /// JS #660: readLatestSnapshotAcrossTargets({ cwd }).
+/// From a monorepo root it also reads each workspace's store (#1598).
 pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snapshot> {
-    let root = resolve_project_root(cwd, &TargetOptions::default(), env);
-    let snapshots: Vec<Snapshot> = list_snapshots(".md", &root).iter().filter_map(|f| read_snapshot_at(f)).collect();
-    let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for s in &snapshots {
-        if snapshot_target_identity(s).is_some() {
-            if let Some(Value::String(slug)) = s.meta.get("slug") {
-                identified_slugs.insert(slug.clone());
+    let mut roots = vec![resolve_project_root(cwd, &TargetOptions::default(), env)];
+    if let Some(sel) = crate::context::resolve_workspace_selection(cwd, &TargetOptions::default(), env) {
+        roots.extend(sel.target_candidates.iter().map(|c| jsp::join(&[&sel.repo_root, &c.path])));
+    }
+    let mut open: Vec<Snapshot> = Vec::new();
+    for root in &roots {
+        let snapshots: Vec<Snapshot> = list_snapshots(".md", root).iter().filter_map(|f| read_snapshot_at(f)).collect();
+        let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for s in &snapshots {
+            if snapshot_target_identity(s).is_some() {
+                if let Some(Value::String(slug)) = s.meta.get("slug") {
+                    identified_slugs.insert(slug.clone());
+                }
             }
         }
-    }
-    // Insertion-ordered stream map: later (newer) snapshot wins per key.
-    let mut latest_by_target: Vec<(String, Snapshot)> = Vec::new();
-    for s in snapshots {
-        let slug = match s.meta.get("slug") {
-            Some(Value::String(v)) if !v.is_empty() => v.clone(),
-            _ => continue,
-        };
-        let target_identity = snapshot_target_identity(&s);
-        if target_identity.is_none() && identified_slugs.contains(&slug) {
-            continue;
+        // Insertion-ordered stream map: later (newer) snapshot wins per key.
+        let mut latest_by_target: Vec<(String, Snapshot)> = Vec::new();
+        for s in snapshots {
+            let slug = match s.meta.get("slug") {
+                Some(Value::String(v)) if !v.is_empty() => v.clone(),
+                _ => continue,
+            };
+            let target_identity = snapshot_target_identity(&s);
+            if target_identity.is_none() && identified_slugs.contains(&slug) {
+                continue;
+            }
+            let stream_key = target_identity.unwrap_or_else(|| format!("slug:{}", slug));
+            if let Some(slot) = latest_by_target.iter_mut().find(|(k, _)| *k == stream_key) {
+                slot.1 = s;
+            } else {
+                latest_by_target.push((stream_key, s));
+            }
         }
-        let stream_key = target_identity.unwrap_or_else(|| format!("slug:{}", slug));
-        if let Some(slot) = latest_by_target.iter_mut().find(|(k, _)| *k == stream_key) {
-            slot.1 = s;
-        } else {
-            latest_by_target.push((stream_key, s));
-        }
+        open.extend(latest_by_target.into_iter().map(|(_, s)| s).filter(|s| !meta_closed(s)));
     }
-    let mut open: Vec<Snapshot> = latest_by_target.into_iter().map(|(_, s)| s).filter(|s| !meta_closed(s)).collect();
-    // JS: .sort((a, b) => a.path.localeCompare(b.path)).at(-1)
-    open.sort_by(|a, b| a.path.cmp(&b.path));
+    // Snapshot names start with the ISO stamp, so the newest name wins across stores.
+    open.sort_by_key(|s| jsp::basename(&s.path));
     open.pop()
 }
 
@@ -1222,6 +1229,26 @@ mod tests_660 {
         std::fs::write(jsp::join(&[&web, "App.tsx"]), "y\n").unwrap();
         assert_eq!(run_capture(&web, &["latest", "App.tsx"]).0, 2);
         assert_eq!(run_capture(&src, &["close", "App.tsx", name]).0, 0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn monorepo_root_reads_newest_snapshot_across_workspace_stores() {
+        let root = tmp();
+        std::fs::write(jsp::join(&[&root, "package.json"]), r#"{"workspaces":["apps/*"]}"#).unwrap();
+        let mut files = Vec::new();
+        for (app, stamp) in [("web", "2026-05-12T18-30-00Z"), ("admin", "2026-05-13T09-00-00Z")] {
+            let ws = jsp::join(&[&root, "apps", app]);
+            let dir = jsp::join(&[&ws, ".impeccable", "critique"]);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(jsp::join(&[&ws, "package.json"]), format!(r#"{{"name":"{app}"}}"#)).unwrap();
+            let file = jsp::join(&[&dir, &format!("{stamp}__src-app-tsx.md")]);
+            std::fs::write(&file, format!("---\nslug: src-app-tsx\n---\n# {app}\n")).unwrap();
+            files.push((ws, file));
+        }
+        let env = HashMap::new();
+        assert_eq!(read_latest_snapshot_across_targets(&root, &env).unwrap().path, files[1].1);
+        assert_eq!(read_latest_snapshot_across_targets(&files[0].0, &env).unwrap().path, files[0].1);
         let _ = std::fs::remove_dir_all(&root);
     }
 }
