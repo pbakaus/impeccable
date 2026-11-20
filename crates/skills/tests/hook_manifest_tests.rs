@@ -99,12 +99,27 @@ fn windows_form_keeps_double_quoted_absolute_path() {
     let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", root, true, true);
     for c in commands(&out) {
         let p = skill_launcher(root, ".claude");
-        // The Windows form is the JSON-quoted path, so a host path's
-        // backslashes arrive escaped inside the command string.
-        let q = serde_json::to_string(&p).unwrap();
+        // The Windows form is the double-quoted path with `/` separators,
+        // since Claude Code runs hooks through Git Bash (#1462).
+        let q = serde_json::to_string(&p.replace('\\', "/")).unwrap();
         assert_eq!(c, format!("command=[ ! -f {q} ] || {q} hook"));
         assert!(!c.contains(&format!("'{p}")));
     }
+}
+
+#[test]
+fn windows_claude_command_uses_forward_slashes() {
+    let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", r"C:\Users\a b", true, true);
+    for c in commands(&out) {
+        assert_eq!(
+            c,
+            r#"command=[ ! -f "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" ] || "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" hook"#
+        );
+        assert!(!c.contains('\\'), "{c}");
+    }
+    // The project-relative form is unchanged on Windows.
+    let rel = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", "/proj", false, true);
+    assert_eq!(commands(&rel), commands(&rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", "/proj", false, false)));
 }
 
 #[test]

@@ -2566,7 +2566,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 fn expected_user_claude_hook_command(home: &str) -> String {
     let launcher = jsp::join(&[home, ".claude", "skills", "impeccable", "scripts", "impeccable"]);
     let q = if cfg!(windows) {
-        serde_json::to_string(&launcher).unwrap()
+        serde_json::to_string(&launcher.replace('\\', "/")).unwrap()
     } else {
         format!("'{}'", launcher.replace('\'', "'\\''"))
     };

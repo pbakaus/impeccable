@@ -93,6 +93,15 @@ pub fn windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
     format!("cmd /c if exist {shim} {shim} {verb}")
 }
 
+/// The guarded launcher hook string for Claude Code on Windows, which runs
+/// hooks through Git Bash: double quotes, `/` separators (#1462). A UNC
+/// `\\server\share` becomes `//server/share`, which Git Bash accepts. Built
+/// here so install and `hooks on` write one string.
+pub fn git_bash_launcher_hook_command(launcher: &str, verb: &str) -> String {
+    let q = serde_json::to_string(&launcher.replace('\\', "/")).unwrap_or_default();
+    format!("[ ! -f {q} ] || {q} {verb}")
+}
+
 /// The launcher-era markers `context` and `doctor` treat as the design hook
 /// proper (the per-edit hook and Cursor's before-edit gate). Legacy siblings
 /// like `hook-probe` are admin-only and do not count as an installed hook.
