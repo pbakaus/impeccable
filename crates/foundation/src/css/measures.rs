@@ -386,7 +386,42 @@ pub fn resolve_length_px(value: Option<&str>, font_size_px: f64) -> Option<f64> 
     if value.ends_with('%') {
         return Some((num / 100.0) * font_size_px);
     }
+    if let Some(px) = absolute_length_px(value, num) {
+        return Some(px);
+    }
     Some(num * font_size_px)
+}
+
+/// An absolute CSS length other than `px`, in px at 96px to the inch
+/// (`1in = 96px = 72pt = 6pc = 2.54cm = 25.4mm = 101.6Q`); `None` for any other
+/// unit or none, so the caller's fall-through still decides those. Print
+/// stylesheets set type in `pt`, and without this `15pt` fell through to the
+/// unitless branch and resolved as 15em. The unit is the whole trailing run of
+/// letters, in either case, so `vmin` and `cqmin` are not taken for inches.
+fn absolute_length_px(value: &str, num: f64) -> Option<f64> {
+    let bytes = value.as_bytes();
+    let mut start = bytes.len();
+    while start > 0 && bytes[start - 1].is_ascii_alphabetic() {
+        start -= 1;
+    }
+    // An ASCII letter is a whole character, so `start` is a char boundary.
+    let unit = &value[start..];
+    let units_per_inch = if unit.eq_ignore_ascii_case("pt") {
+        72.0
+    } else if unit.eq_ignore_ascii_case("pc") {
+        6.0
+    } else if unit.eq_ignore_ascii_case("in") {
+        1.0
+    } else if unit.eq_ignore_ascii_case("cm") {
+        2.54
+    } else if unit.eq_ignore_ascii_case("mm") {
+        25.4
+    } else if unit.eq_ignore_ascii_case("q") {
+        101.6
+    } else {
+        return None;
+    };
+    Some(num * (96.0 / units_per_inch))
 }
 
 /// Characters that fit on one line at a given measure: an average glyph runs
@@ -1306,6 +1341,33 @@ mod tests {
             None,
             "two layers are not one icon"
         );
+    }
+
+    #[test]
+    fn absolute_length_px_reads_the_whole_unit() {
+        // 1in = 96px = 72pt = 6pc = 2.54cm = 25.4mm = 101.6Q.
+        for (value, num) in [
+            ("72pt", 72.0),
+            ("6pc", 6.0),
+            ("1in", 1.0),
+            ("2.54cm", 2.54),
+            ("25.4mm", 25.4),
+            ("101.6Q", 101.6),
+            ("72PT", 72.0),
+            ("101.6q", 101.6),
+        ] {
+            assert_eq!(absolute_length_px(value, num), Some(96.0), "{value}");
+        }
+        // The unit is the whole trailing word: these end in a unit's letters
+        // without being it, and none is an absolute length.
+        let others = "10vmin 10vmax 10cqmin 10cqmax 10vw 10vh 10ch 10ex 10lh 10fr 10deg 10s \
+                      10px 10em 10rem 10% 10 1.5 1e3 inherit calc(1pt)";
+        for value in others.split(' ').chain([""]) {
+            assert_eq!(absolute_length_px(value, 10.0), None, "{value:?}");
+        }
+        // A non-ASCII tail is no unit, and slicing for it must not panic.
+        assert_eq!(absolute_length_px("10\u{2013}", 10.0), None);
+        assert_eq!(absolute_length_px("72\u{00e9}pt", 72.0), Some(96.0));
     }
 
     // Expected values below were produced by running the JS functions in Node.

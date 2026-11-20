@@ -36,6 +36,10 @@
     .flex-long-run { display: flex; flex-wrap: wrap; column-gap: 10px; width: 260px; font-size: 12px; line-height: 14px; margin: 0; }
     .run-sep { width: 1px; height: 12px; background: #cbd5e1; }
 
+    /* Absolute units resolve at 96px to the inch: 12pt is 16px, 15.5pt is 20.67px, 0.2in is 19.2px. */
+    .print-pt-run { width: 240px; font-size: 12pt; line-height: 15.5pt; margin: 0; }
+    .print-in-run { width: 300px; font-size: 0.2in; line-height: 0.256in; margin: 0; }
+
     /* Should pass: display type, heading text, single lines, non-rendered. */
     .display-statement { width: 560px; font-size: 32px; line-height: 36px; margin: 0; }
     .headline-link { font-size: 30px; line-height: 34px; text-decoration: none; color: #1a1a1a; }
@@ -54,6 +58,12 @@
     .clamped-exact-title { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; width: 260px; font-size: 14px; line-height: 16px; font-weight: 700; }
     .items-row { display: flex; flex-wrap: wrap; column-gap: 10px; row-gap: 4px; width: 260px; font-size: 12px; line-height: 15px; margin: 0; }
     .clamped-video-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 290px; font-size: 15px; line-height: 18px; font-weight: 670; }
+
+    /* A print sheet sets its leading in inches and centimetres: 0.6cm is 22.68px and 0.25in is 24px,
+       1.51x of a 15px paragraph and 1.71x of a 14px one. */
+    .print-cm-copy { width: 300px; font-size: 15px; line-height: 0.6cm; margin: 0 0 8px; }
+    .print-in-copy { width: 300px; font-size: 14px; line-height: 0.25in; margin: 0 0 8px; }
+    .print-pt-copy { width: 300px; font-size: 10pt; line-height: 16pt; margin: 0; }
   </style>
   <!-- SHOULD PASS: stylesheet source is text the browser never typesets. -->
   <style id="theme-overrides">
@@ -111,6 +121,14 @@
            run: this first run is longer than the row is wide, so it wraps
            inside its own item and its lines crowd each other. -->
       <p class="flex-long-run">The first item of this flex row is a whole sentence of reading copy, long enough to wrap inside its own box<span class="run-sep"></span>Short note</p>
+
+      <h3>Print-sheet copy set in points, 12pt over 15.5pt at 1.29</h3>
+      <!-- Read as ems, 12pt was a 192px font and 15.5pt a 2976px line box, a ratio of 15.5 that
+           passed. The real ratio is 1.29. -->
+      <p class="print-pt-run">This print-sheet paragraph is set in points and wraps to several lines, and each line sits closer to the next than reading copy can carry.</p>
+
+      <h3>Print-sheet copy set in inches, 0.2in over 0.256in at 1.28</h3>
+      <p class="print-in-run">This second print-sheet paragraph is set in inches, and its leading is a hair under the floor, so the lines crowd each other all the way down.</p>
     </div>
 
     <div class="col" data-col="pass">
@@ -201,6 +219,14 @@
       <!-- SHOULD PASS: weight 670 in a -webkit-box line clamp, however many
            lines the full text would run to. -->
       <span class="clamped-video-title">The compact luxury crossover turning heads this season, with a cabin that feels far larger than it is and a price that undercuts every rival</span>
+
+      <h3>Print-sheet leading in centimetres, inches and points</h3>
+      <!-- SHOULD PASS: absolute units resolve at 96px to the inch. Read as ems, 0.6cm over a 15px
+           paragraph was 9px (0.60x) and 0.25in over a 14px one was 3.5px (0.25x), and both flagged
+           as crushed. In px they are 1.51x and 1.71x; 16pt over 10pt is 1.6x. -->
+      <p class="print-cm-copy">This print-sheet paragraph sets its leading in centimetres, and it wraps to several comfortable lines of reading copy.</p>
+      <p class="print-in-copy">This print-sheet paragraph sets its leading in inches, and it wraps to several comfortable lines of reading copy.</p>
+      <p class="print-pt-copy">This print-sheet paragraph is set in points throughout, and it wraps to several comfortable lines of reading copy.</p>
     </div>
 
   </div>
