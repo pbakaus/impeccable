@@ -156,7 +156,9 @@ impl<'s> LineSink<'s> {
         self.line_starts.partition_point(|&start| start <= offset) as u64
     }
 
-    fn start_line(&self, name: &str) -> u64 {
+    /// `raw_text`: the element is HTML script, style or the like, whose
+    /// content the tokenizer reads as text.
+    fn start_line(&self, name: &str, raw_text: bool) -> u64 {
         let end_line = self.line.get();
         let from = self.cursor.get();
         let to = self
@@ -195,7 +197,7 @@ impl<'s> LineSink<'s> {
                 // element's text (a `<p` in a script string).
                 let after = i + 1 + name.len();
                 let mut cursor = tag_close(bytes, after).map_or(after, |close| close + 1);
-                if RAW_TEXT.iter().any(|raw| raw.eq_ignore_ascii_case(name)) {
+                if raw_text {
                     let closing = format!("</{name}");
                     cursor = bytes[cursor..]
                         .windows(closing.len())
@@ -210,7 +212,8 @@ impl<'s> LineSink<'s> {
     }
 }
 
-/// Elements whose content the tokenizer reads as text, not markup.
+/// HTML elements whose content the tokenizer reads as text, not markup (an
+/// SVG `<title>` is markup).
 const RAW_TEXT: [&str; 7] = ["script", "style", "textarea", "title", "xmp", "noscript", "iframe"];
 
 /// The offset of the `>` that closes a start tag whose name ends at `from`,
@@ -244,7 +247,8 @@ impl TreeSink for LineSink<'_> {
         self.line.set(line_number);
     }
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> NodeId {
-        let line = self.start_line(name.local.as_ref());
+        let raw_text = name.ns == html5ever::ns!(html) && RAW_TEXT.contains(&name.local.as_ref());
+        let line = self.start_line(name.local.as_ref(), raw_text);
         let id = self.inner.create_element(name, attrs, flags);
         self.lines.borrow_mut().insert(id, line as u32);
         id

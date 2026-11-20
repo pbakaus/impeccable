@@ -80,3 +80,10 @@ fn comments_and_script_text_hold_no_tags() {
         [("low-contrast".to_string(), 5.0), ("low-contrast".to_string(), 7.0)]
     );
 }
+
+#[test]
+fn an_svg_title_is_not_raw_text() {
+    let html = "<!doctype html>\n<html><head><style>.k{color:#777;background:#888}</style></head>\n<body>\n\
+                <svg><title/></svg>\n<p\n class=\"k\">Faint</p>\n<svg><title>Later</title></svg>\n</body></html>\n";
+    assert_eq!(lines(html), [("low-contrast".to_string(), 5.0)]);
+}
