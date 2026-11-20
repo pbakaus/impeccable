@@ -715,3 +715,50 @@ for (const [arch, manifestAsset] of [['AMD64', 'impeccable-windows-x64.exe'], ['
     assert.doesNotMatch(result.stderr, /uname-ran/);
   });
 }
+
+// #1462: Windows hook commands spell the launcher C:\...\scripts\impeccable,
+// and Git Bash hands that backslash-only $0 to the script. On Windows this runs
+// the launcher through Git's own sh; elsewhere a directory literally named
+// `skill\scripts` stands in, since a backslash is an ordinary filename byte.
+const GIT_SH = WINDOWS ? (() => {
+  const exec = spawnSync('git', ['--exec-path'], { encoding: 'utf8' }).stdout?.trim();
+  const git = exec && path.resolve(exec, '..', '..', '..');
+  return git && ['usr/bin/sh.exe', 'bin/sh.exe'].map(p => path.join(git, p)).find(p => fs.existsSync(p));
+})() : '/bin/sh';
+for (const form of WINDOWS ? ['absolute'] : ['absolute', 'relative']) {
+  test(`sh launcher finds its directory from a backslash path (${form})`, { skip: GIT_SH || process.env.CI ? false : 'no Git sh' }, t => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-launcher-bs-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const scripts = WINDOWS ? path.join(root, 'skill scripts') : path.join(root, 'skill\\scripts');
+    const sibling = path.join(scripts, 'bin', 'windows-x64', 'impeccable.exe');
+    const project = path.join(root, 'project');
+    fs.mkdirSync(path.dirname(sibling), { recursive: true });
+    fs.mkdirSync(project);
+    fs.writeFileSync(path.join(scripts, 'VERSION'), '0.0.0-test\n');
+    if (WINDOWS) {
+      fs.copyFileSync(process.execPath, sibling);
+      fs.writeFileSync(path.join(project, 'engine-probe.js'), "console.log('impeccable-engine 0.0.0-test');\n");
+    } else {
+      fs.writeFileSync(sibling, '#!/bin/sh\necho impeccable-engine 0.0.0-test\n', { mode: 0o755 });
+    }
+    // On POSIX the file sh opens is named `skill\scripts\impeccable`, next to the directory.
+    const launcher = WINDOWS ? path.join(scripts, 'impeccable') : `${scripts}\\impeccable`;
+    // A CRLF checkout (core.autocrlf) would break sh on `set -eu\r`.
+    fs.writeFileSync(launcher, fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable'), 'utf8').replace(/\r\n/g, '\n'));
+    const arg0 = form === 'relative' ? path.basename(launcher) : launcher;
+    // On Windows, spelled as the hook command is: a double-quoted path in `sh -c`.
+    const result = spawnSync(GIT_SH, WINDOWS ? ['-c', `"${launcher}" engine-probe`] : [arg0, 'engine-probe'], {
+      encoding: 'utf8',
+      cwd: form === 'relative' ? root : project,
+      env: {
+        PATH: WINDOWS ? `${path.dirname(GIT_SH)};${process.env.SystemRoot}\\System32` : '/usr/bin:/bin',
+        HOME: path.join(root, 'home'),
+        OS: 'Windows_NT',
+        PROCESSOR_ARCHITECTURE: 'AMD64',
+        ...(WINDOWS ? { SystemRoot: process.env.SystemRoot } : {}),
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'impeccable-engine 0.0.0-test');
+  });
+}
