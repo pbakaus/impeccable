@@ -87,6 +87,8 @@ pub struct ManifestTarget {
 
 const SESSION_STATUS_MESSAGE: &str = "Preparing build session";
 
+pub const CLAUDE_MANIFEST_DESCRIPTION: &str = "Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop.";
+
 /// The Claude Code manifest, the same entries `buildClaudeSettingsManifest`
 /// writes at install (pinned against `tests/fixtures/hook-manifests/claude-settings.json`
 /// on both sides). SessionStart is where the hook exports the session id that
@@ -97,7 +99,7 @@ pub fn claude_manifest_for_command(cmd: &str) -> Value {
             "description",
             // JS: Claude Code folded multi-edit behavior into Edit; the manifest
             // tracks the current Edit and Write tools (upstream 7d5c60d2).
-            Value::from("Impeccable design detector: immediate-tier checks after Edit/Write on UI files, full-rule deep pass on Stop."),
+            Value::from(CLAUDE_MANIFEST_DESCRIPTION),
         ),
         ("hooks", claude_compatible_hooks("Edit|Write", cmd, true)),
     ])
