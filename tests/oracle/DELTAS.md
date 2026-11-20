@@ -7539,6 +7539,16 @@ other goldens listed.
 - `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
 - `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
 
+## Recorded 2026-11-20: the static flush check reads clamp(), logical padding and centred labels (#1596, #1604, #1605)
+
+The file scan's `cramped-padding` flush shape read a padding it could not evaluate (`clamp()`, `calc()`) as 0px,
+never mapped `padding-inline-*` to a side, and saw no air around a label a flex row centres in its height. Each
+golden was decoded and compared finding by finding, then re-recorded from the binary, so the replay still compares
+them (no case id leads a line here): the only changes are below.
+
+- flush-against-border (`detect-fixture-json-flush-against-border-html`, `detect-fixture-text-flush-against-border-html`): `pass-segmented` no longer reports (its buttons centre their labels in the pill's 40px), 11 to 10.
+- stripe-child and overlay-positioning (`detect-fixture-json-stripe-child-html`, `detect-fixture-text-stripe-child-html`, `detect-fixture-json-overlay-positioning-html`, `detect-fixture-text-overlay-positioning-html`): `card-center` and `flex-center` centre one label in a 100px and a 120px box, so they report right/left instead of all sides.
+
 ## Recorded 2026-11-20: `--wait` stops asking for reruns after 30 minutes on one hand (#1566)
 
 A harness that wakes the agent each time `--wait` exits paid a full turn per minute for as long as the decision page stayed open, overnight in the report. The detached server now records `startedAt` in its state file. When no answer has come and the later of the hand's and the state's `startedAt` is more than 30 minutes old, `--wait` prints `PENDING: ...` with the page URL and exits 5 in place of `WAITING` exit 3, telling the agent to tell the user and end its turn, then collect the answer with one `--wait` once the user says they picked. A re-roll (new hand) and a restarted server each restart the clock; a round with neither field (every existing case) is unchanged. New cases, recorded from the binary and reviewed by hand: `question-wait-pending-budget` (hand 31 minutes old, exit 5 `PENDING`), `question-wait-within-budget` (29 minutes, exit 3 `WAITING`), `question-wait-restarted-server-budget` (hand 31 minutes old, server started a minute ago, exit 3), `question-wait-rerolled-hand-budget` (server 31 minutes old, hand re-rolled a minute ago, exit 3).

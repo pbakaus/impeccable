@@ -94,6 +94,9 @@ const claudeStopHook = (ws, rel) => write(
   }) + '\n',
 );
 
+// The design hook's session cache with one session last updated at `at`.
+const hookCache = (ws, at) => write(ws, '.impeccable/hook.cache.json', JSON.stringify({ version: 1, sessions: { s: { updatedAt: at, files: {} } } }) + '\n');
+
 // A user-scope Codex Stop hook as `update --user` writes it into
 // `<dir>/hooks.json` (the absolute launcher, guarded).
 const codexUserHook = (ws, dir) => write(
@@ -457,6 +460,13 @@ const cases = [
   // surface: the plugin ships its own hooks, so there is nothing to install
   // and no finding.
   { id: 'context-hook-not-installed-plugin', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }), files: IMPECCABLE_FILES },
+  // A plugin or app-bundled hook leaves no manifest, only its sessions in
+  // `.impeccable/hook.cache.json`. One updated this week counts as installed:
+  // no `hook-not-installed`, no MANUAL_DETECTOR_REQUIRED (#1392). An older one
+  // does not. No `files`: the cache carries the setup's clock.
+  { id: 'context-hook-recent-cache-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.agents/skills/impeccable/SKILL.md', ''); hookCache(ws, Date.now()); }, env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
+  { id: 'context-hook-expired-cache-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.agents/skills/impeccable/SKILL.md', ''); hookCache(ws, Date.now() - 8 * 24 * 60 * 60 * 1000); }, env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
+  { id: 'context-hook-recent-cache-plugin', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => hookCache(ws, Date.now()), env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }) },
 
   // ======================================================================
   // doctor
@@ -538,6 +548,7 @@ const cases = [
   // folder in the directory it runs in, so the fix names that directory.
   { id: 'doctor-hook-not-installed-skill-above-cwd', verb: 'doctor', workspace: 'ctx-product-only', cwd: 'web', setup: (ws) => { gitBoundary(ws, '.'); write(ws, '.claude/skills/impeccable/SKILL.md', ''); write(ws, 'web/package.json', JSON.stringify({ name: 'web' }) + '\n'); }, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
   { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
+  { id: 'doctor-hook-recent-cache-json', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => hookCache(ws, Date.now()), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
     // What DESIGN.md contradicts (REN-2129): a component it names that is gone, a colour its token file lost.
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
