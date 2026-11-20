@@ -312,7 +312,7 @@ fn elements_for(lines: &[String], query: &str, tag: Option<&str>, dialect: Diale
         let Some(opener) = find_opener_line(&masked, i, tag, components) else {
             continue;
         };
-        if components && opens_component(&masked[opener], tag) && !in_opening_tag(&masked, opener, i, query, dialect) {
+        if components && !in_opening_tag(&masked, opener, i, query, dialect) {
             continue;
         }
         if seen.contains(&opener) {
@@ -343,11 +343,6 @@ fn prefer_picked_tag<T>(candidates: &mut Vec<T>, component: impl Fn(&T) -> bool,
     if candidates.iter().any(|c| !component(c) && (!carried || carries_text(c))) {
         candidates.retain(|c| !component(c));
     }
-}
-
-/// Whether the opener on a masked `line` is a component, not the picked tag.
-fn opens_component(line: &str, tag: Option<&str>) -> bool {
-    matches!((opener_tag(line), tag), (Some(name), Some(tag)) if !renders_tag(&name, tag, false))
 }
 
 /// Whether `component_fallback` may apply at all, before any file is read.
@@ -1273,6 +1268,7 @@ fn resolve_lines(
     text: Option<&str>,
 ) -> Resolution {
     let dialect = Dialect::of(&file.path);
+    let components = component_fallback(&file.lines, queries, tag, dialect);
     let Some(text) = text else {
         if is_tag_only_search(queries, tag) {
             let candidates = collect_candidates(&file.lines, queries, tag, dialect, false);
@@ -1282,7 +1278,6 @@ fn resolve_lines(
                 _ => Resolution::Ambiguous(file, candidates),
             };
         }
-        let components = component_fallback(&file.lines, queries, tag, dialect);
         for q in queries {
             if let Some(&m) = elements_for(&file.lines, q, tag, dialect, components).first() {
                 return Resolution::Match(file, m);
@@ -1290,12 +1285,17 @@ fn resolve_lines(
         }
         return Resolution::NotLocated(file.path);
     };
-    let mut candidates = collect_candidates(&file.lines, queries, tag, dialect, component_fallback_allowed(queries, tag, dialect));
+    let mut candidates = collect_candidates(&file.lines, queries, tag, dialect, components);
     if candidates.is_empty() {
         return Resolution::NotLocated(file.path);
     }
-    let masked = mask_markup(&file.lines, dialect);
-    prefer_picked_tag(&mut candidates, |c| opens_component(&masked[c.start_line], tag), |c| !filter_by_text(&[*c], &file.lines, text).is_empty());
+    if !components && component_fallback_allowed(queries, tag, dialect) {
+        let mut all: Vec<_> = candidates.iter().map(|&c| (c, false)).collect();
+        all.extend(collect_candidates(&file.lines, queries, tag, dialect, true).into_iter()
+            .filter(|c| !candidates.contains(c)).map(|c| (c, true)));
+        prefer_picked_tag(&mut all, |c| c.1, |c| !filter_by_text(&[c.0], &file.lines, text).is_empty());
+        candidates = all.into_iter().map(|(c, _)| c).collect();
+    }
     let filtered = filter_by_text(&candidates, &file.lines, text);
     match filtered.len() {
         0 => Resolution::TextNotInFile(file, candidates),
