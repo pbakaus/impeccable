@@ -185,7 +185,8 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         // through its own opening tag, which must hold no nested element.
         for components_pass in [false, true] {
             if components_pass && !component_fallback_allowed(queries, tag, dialect) { break; }
-            let accepts = |n: &Token| tag.map_or(true, |tag| renders_tag(&n.name, tag, components_pass))
+            // The first pass took the elements of the tag itself.
+            let accepts = |n: &Token| tag.map_or(true, |tag| renders_tag(&n.name, tag, components_pass) && !(components_pass && renders_tag(&n.name, tag, false)))
                 && !(components_pass && holds_nested_element(&masked.as_deref().unwrap_or(&source)[n.start..n.end]));
             let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
                 && accepts(n)
@@ -244,27 +245,24 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
             }
         }
     }
-    // An element of the picked tag in any file beats every component.
-    if candidates.iter().any(|c| !c.component) {
-        candidates.retain(|c| !c.component);
-    }
+    let text = text.filter(|t| !t.trim().is_empty());
+    let normalize = |s: &str| WS_RUN_RE.replace_all(&s.to_lowercase(), " ").trim().to_string();
+    let carries_text = |files: &[SourceFile], c: &Candidate| text.map_or(false, |text| {
+        let source = files[c.file].lines.join("\n");
+        let actual = normalize(&TAG_RE.replace_all(&source[c.start..c.end], " "));
+        let wanted = normalize(text);
+        actual == wanted || (text_disambiguates(text) && actual.contains(&wanted))
+    });
+    prefer_picked_tag(&mut candidates, |c| c.component, |c| carries_text(&files, c));
     // Locator precedence is global, before text or shared-line filtering can
     // discard a stronger hit in favour of another file's weaker locator.
     if let Some(rank) = candidates.iter().map(|c| c.rank).min() {
         candidates.retain(|c| c.rank == rank);
     }
     if !candidates.iter().any(|c| c.shared) { return Err(files); }
-    if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
-        let normalize = |s: &str| WS_RUN_RE.replace_all(&s.to_lowercase(), " ").trim().to_string();
-        let wanted = normalize(text);
-        let filtered: Vec<_> = candidates.iter().enumerate().filter_map(|(i, c)| {
-            let source = files[c.file].lines.join("\n");
-            let inner = TAG_RE.replace_all(&source[c.start..c.end], " ");
-            let actual = normalize(&inner);
-            (actual == wanted || (text_disambiguates(text) && actual.contains(&wanted))).then_some(i)
-        }).collect();
-        if !filtered.is_empty() {
-            candidates = candidates.into_iter().enumerate().filter_map(|(i, c)| filtered.contains(&i).then_some(c)).collect();
+    if text.is_some() {
+        if candidates.iter().any(|c| carries_text(&files, c)) {
+            candidates.retain(|c| carries_text(&files, c));
         } else if candidates.len() > 1 {
             if !tag_only && candidates.iter().any(|c| !c.shared) {
                 // The line resolver lands on the first hit in walk order; hand
@@ -342,6 +340,14 @@ mod tests {
         let both = r#"<nav><a className="demo-exit">A</a><Link className="demo-exit">B</Link></nav>"#;
         let Ok(Resolution::Match(found, m)) = resolve(vec![file("app/page.tsx", both)], &queries, Some("a"), None) else { panic!() };
         assert_eq!(found.lines[m.start_line].trim(), r#"<a className="demo-exit">A</a>"#);
+        // Unless only the component carries the picked text, on one line or several.
+        let both = r#"<nav><a className="demo-exit">Home</a><Link className="demo-exit">Leave demo</Link></nav>"#;
+        let Resolution::Match(found, m) = resolve_in_file(file("app/page.tsx", both), &queries, Some("a"), Some("Leave demo")) else { panic!() };
+        assert_eq!(found.lines[m.start_line].trim(), r#"<Link className="demo-exit">Leave demo</Link>"#);
+        let lines = ["<nav>", r#"  <a className="demo-exit">Home</a>"#, r#"  <Link className="demo-exit">Leave demo</Link>"#, "</nav>"];
+        let split = SourceFile { isolation: None, path: "app/page.tsx".into(), lines: lines.map(String::from).to_vec() };
+        let Resolution::Match(found, m) = resolve_in_file(split, &queries, Some("a"), Some("Leave demo")) else { panic!() };
+        assert_eq!(found.lines[m.start_line], lines[2]);
         // Or in another file.
         let exact = r#"<nav><a href="/x" className="demo-exit">Leave demo</a></nav>"#;
         let Ok(Resolution::Match(found, _)) = resolve(vec![file("components/Nav.tsx", link), file("app/page.tsx", exact)], &queries, Some("a"), None) else { panic!() };
