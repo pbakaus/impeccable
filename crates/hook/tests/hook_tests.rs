@@ -2572,7 +2572,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 fn expected_user_claude_hook_command(home: &str) -> String {
     let launcher = jsp::join(&[home, ".claude", "skills", "impeccable", "scripts", "impeccable"]);
     let q = if cfg!(windows) {
-        serde_json::to_string(&launcher).unwrap()
+        serde_json::to_string(&launcher.replace('\\', "/")).unwrap()
     } else {
         format!("'{}'", launcher.replace('\'', "'\\''"))
     };
@@ -4119,7 +4119,7 @@ fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
         assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
         let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
         let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
-        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert!(command.contains(&account.to_str().unwrap().replace('\\', "/")), "{command}");
         assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
         assert!(!home.join(".claude/settings.json").exists());
         let (status, _, _) = admin_run(&r, &["status"]);

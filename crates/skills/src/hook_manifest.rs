@@ -18,7 +18,7 @@
 //! writers and the three readers can never disagree on what counts as ours.
 
 use impeccable_context::hermes;
-use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, guarded_launcher_hook_command, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
+use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, git_bash_launcher_hook_command, guarded_launcher_hook_command, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -246,7 +246,8 @@ fn quoted_github_user_launcher(skill_root: &str, win32: bool) -> QuotedPath {
 /// `commandWindows` sibling instead. Other providers installed on Windows keep
 /// the double-quoted path (cmd.exe treats `'` as literal, issue #533); the JS
 /// `node -e` existence wrapper has no launcher equivalent, so the POSIX guard
-/// stands there too (Claude Code on Windows runs hooks through Git Bash).
+/// stands there too. Claude Code on Windows runs hooks through Git Bash, so
+/// `.claude` also gets `/` separators (#1462).
 /// Grok is another exception: it has no per-OS field and runs `command` in the
 /// session shell (PowerShell by default on Windows), so a Windows Grok install
 /// takes the `windows_hook_command` form.
@@ -257,6 +258,7 @@ pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String 
         // Antigravity runs a hook command through `cmd /c` on Windows, where
         // the POSIX guard is not a command; `hooks on` writes this same form.
         (".grok" | ".agent", true) => return windows_hook_command(quoted, provider),
+        (".claude", true) => return git_bash_launcher_hook_command(&quoted.raw, verb),
         (".agents", _) | (".github", _) | (_, false) => &quoted.posix,
         (_, true) => &quoted.win32,
     };
