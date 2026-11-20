@@ -61,13 +61,17 @@ fn stop_manifest_entry_with_windows(command: &str, windows: &str) -> Value {
 /// The launcher paths the manifests invoke, per harness. Project-relative
 /// (or `${CLAUDE_PROJECT_DIR}` / repo-root anchored) so a committed manifest
 /// resolves on every teammate's checkout.
-/// Claude's carries the installer's existence guard (`guardedLauncher` in
+/// All four carry the installer's existence guard (`guardedLauncher` in
 /// `transformers/hooks.js`, #399): a copy in user-level settings exits 0 where
 /// the launcher is absent, and a present launcher keeps its own exit code.
-const CLAUDE_HOOK_COMMAND: &str = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
-const AGENTS_HOOK_COMMAND: &str = "\".agents/skills/impeccable/scripts/impeccable\" hook";
-const CURSOR_HOOK_COMMAND: &str = "\".cursor/skills/impeccable/scripts/impeccable\" hook";
-const GITHUB_HOOK_COMMAND: &str = "\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook";
+const CLAUDE_LAUNCHER: &str = "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable";
+const AGENTS_LAUNCHER: &str = ".agents/skills/impeccable/scripts/impeccable";
+const CURSOR_LAUNCHER: &str = ".cursor/skills/impeccable/scripts/impeccable";
+const GITHUB_LAUNCHER: &str = "$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable";
+
+fn guarded_hook_command(launcher: &str) -> String {
+    crate::hook_markers::guarded_launcher_hook_command(&format!("\"{launcher}\""), "hook")
+}
 
 pub struct ManifestTarget {
     pub provider: &'static str,
@@ -123,7 +127,7 @@ fn claude_compatible_manifest(cmd: &str, session_identity: bool) -> Value {
 }
 
 fn claude_manifest() -> Value {
-    claude_manifest_for_command(CLAUDE_HOOK_COMMAND)
+    claude_manifest_for_command(&guarded_hook_command(CLAUDE_LAUNCHER))
 }
 
 fn grok_manifest() -> Value {
@@ -138,8 +142,8 @@ fn grok_manifest() -> Value {
 }
 
 fn agents_manifest() -> Value {
-    let cmd = AGENTS_HOOK_COMMAND;
-    let win = &crate::hook_markers::windows_launcher_hook_command(".agents/skills/impeccable/scripts/impeccable", "hook");
+    let cmd = &guarded_hook_command(AGENTS_LAUNCHER);
+    let win = &crate::hook_markers::windows_launcher_hook_command(AGENTS_LAUNCHER, "hook");
     obj(vec![(
         "hooks",
         obj(vec![
@@ -163,7 +167,7 @@ fn agents_manifest() -> Value {
 /// entries from every event, so `on` also drops a leftover `preToolUse`
 /// gate entry while writing this one.
 fn cursor_manifest() -> Value {
-    crate::hook_markers::cursor_hook_manifest(CURSOR_HOOK_COMMAND, TIMEOUT_SECONDS)
+    crate::hook_markers::cursor_hook_manifest(&guarded_hook_command(CURSOR_LAUNCHER), TIMEOUT_SECONDS)
 }
 
 fn github_manifest() -> Value {
@@ -178,7 +182,7 @@ fn github_manifest() -> Value {
                     ("matcher", Value::from("edit|create|apply_patch")),
                     (
                         "bash",
-                        Value::from(GITHUB_HOOK_COMMAND),
+                        Value::from(guarded_hook_command(GITHUB_LAUNCHER)),
                     ),
                     ("timeoutSec", Value::from(TIMEOUT_SECONDS)),
                 ])]),
@@ -230,7 +234,7 @@ pub fn antigravity_hook_command(win32: bool) -> String {
     if win32 {
         crate::hook_markers::windows_launcher_hook_command(ANTIGRAVITY_LAUNCHER, "hook")
     } else {
-        format!("[ ! -f \"{ANTIGRAVITY_LAUNCHER}\" ] || \"{ANTIGRAVITY_LAUNCHER}\" hook")
+        guarded_hook_command(ANTIGRAVITY_LAUNCHER)
     }
 }
 
@@ -384,16 +388,25 @@ mod tests {
         path.to_string_lossy().into_owned()
     }
 
-    /// `hooks on` writes the installer's manifest byte for byte: the fixture
-    /// is also asserted against `buildClaudeSettingsManifest` in
+    /// `hooks on` writes the installer's manifests byte for byte: each fixture
+    /// is also asserted against its `build*HooksManifest` builder in
     /// `tests/hook-build.test.mjs`, so the two cannot drift (#1307).
     #[test]
-    fn hooks_on_claude_manifest_matches_the_installer_fixture() {
-        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/fixtures/hook-manifests/claude-settings.json");
-        let expected = std::fs::read_to_string(fixture).unwrap();
-        let actual = serde_json::to_string_pretty(&claude_manifest()).unwrap();
-        assert_eq!(actual, expected.trim_end());
+    fn hooks_on_manifests_match_the_installer_fixtures() {
+        for (provider, file) in [
+            (".claude", "claude-settings.json"),
+            (".agents", "codex-hooks.json"),
+            (".cursor", "cursor-hooks.json"),
+            (".github", "github-hooks.json"),
+        ] {
+            let target = HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider).unwrap();
+            let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/fixtures/hook-manifests")
+                .join(file);
+            let expected = std::fs::read_to_string(fixture).unwrap();
+            let actual = serde_json::to_string_pretty(&(target.manifest)()).unwrap();
+            assert_eq!(actual, expected.trim_end(), "{provider}");
+        }
     }
 
     #[test]
