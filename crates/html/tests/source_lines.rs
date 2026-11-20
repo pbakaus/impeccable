@@ -105,3 +105,10 @@ fn a_processing_instruction_holds_no_tags() {
                 <?xml <p\n ?><p class=\"k\">Faint</p>\n</body></html>\n";
     assert_eq!(lines(html), [("low-contrast".to_string(), 5.0)]);
 }
+
+#[test]
+fn an_apostrophe_in_an_unquoted_value_is_text() {
+    let html = "<!doctype html>\n<html><head><style>.k{color:#777;background:#888}</style></head>\n<body>\n\
+                <div title=don't>\n<p\n class=\"k\">Faint</p></div>\n</body></html>\n";
+    assert_eq!(lines(html), [("low-contrast".to_string(), 5.0)]);
+}

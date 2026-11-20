@@ -225,13 +225,19 @@ const RAW_TEXT: [&str; 7] = ["script", "style", "textarea", "title", "xmp", "nos
 /// skipping quoted attribute values (`title="a > b"`).
 fn tag_close(bytes: &[u8], from: usize) -> Option<usize> {
     let mut quote = None;
+    // A quote opens a value only right after `=` (an apostrophe in an
+    // unquoted value, `title=don't`, is text).
+    let mut after_equals = false;
     for (i, &b) in bytes.iter().enumerate().skip(from) {
         match quote {
             Some(q) if b == q => quote = None,
             Some(_) => {}
-            None if b == b'"' || b == b'\'' => quote = Some(b),
+            None if after_equals && (b == b'"' || b == b'\'') => quote = Some(b),
             None if b == b'>' => return Some(i),
             None => {}
+        }
+        if quote.is_none() && !b.is_ascii_whitespace() {
+            after_equals = b == b'=';
         }
     }
     None
