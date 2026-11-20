@@ -265,7 +265,7 @@ if (IS_BROWSER && !__impeccable) {
     for (const candidate of unresolved) {
       let el = null;
       try {
-        el = document.querySelector(candidate.selector);
+        el = __impeccableQueryAll(candidate.selector)[0] || null;
       } catch {
         el = null;
       }

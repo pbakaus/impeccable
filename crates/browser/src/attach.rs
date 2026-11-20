@@ -369,11 +369,13 @@ pub const RESTORE_JS: &str = r#"(() => {
     out.scroll = [window.scrollX, window.scrollY];
     out.wanted = [saved.x, saved.y];
   }
-  for (const el of document.querySelectorAll('[data-impeccable-visual-contrast-target], [data-impeccable-bgclip-text]')) {
+  for (const el of [...document.querySelectorAll('[data-impeccable-visual-contrast-target], [data-impeccable-bgclip-text]'), g.__impeccableContrastTarget].filter(Boolean)) {
     el.removeAttribute('data-impeccable-visual-contrast-target');
     el.removeAttribute('data-impeccable-bgclip-text');
+    const root = el.getRootNode();
+    if (root !== document && root.host) root.getElementById('impeccable-visual-contrast-hide-style')?.remove();
   }
-  for (const key of ['__impeccableSnapshot', '__impCap', '__impIO', '__impeccableContrastRestore', '__impeccableVisualScrollSaved', '__impeccablePausedMedia', '__impeccableAttach']) {
+  for (const key of ['__impeccableContrastTarget', '__impeccableSnapshot', '__impCap', '__impIO', '__impeccableContrastRestore', '__impeccableVisualScrollSaved', '__impeccablePausedMedia', '__impeccableAttach']) {
     try { delete g[key]; } catch (e) {}
   }
   return out;

@@ -334,3 +334,92 @@ fn a_fixed_box_under_a_translated_ancestor_scrolls_with_the_page() {
         .count();
     assert!(green > 20000, "the box under the translated ancestor is blank: {green}");
 }
+
+const SHADOW_FINDINGS_PAGE: &str = r#"<!doctype html><html><head><style>
+body { margin: 0; padding: 32px; font: 16px/1.6 system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+</style></head><body>
+<h1>Network panel</h1>
+<topo-card></topo-card>
+<p style="margin-top:300px"><span class="lbl">Port 1 up 12 Mb/s</span></p>
+<script>
+  customElements.define('topo-card', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>.lbl{font-size:9.9px;color:#7b8a8e;background:#5b6b70;padding:2px}</style><span class="lbl">Port 2 down 12 Mb/s</span>';
+    }
+  });
+</script>
+</body></html>"#;
+
+/// #1360: the only defect on the page sits in an open shadow root, and the
+/// finding names it through its host. The evidence step measures the shadow
+/// span, not the readable light-DOM `span.lbl` below it.
+#[test]
+fn findings_inside_an_open_shadow_root_are_reported_through_their_host() {
+    let env: HashMap<String, String> = std::env::vars().collect();
+    if discovery::find_browser(&env).is_err() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let port = serve(SHADOW_FINDINGS_PAGE);
+    let engine = BrowserEngine::new(env);
+    let mut browser = engine.launch().expect("launch");
+    let options = ScanOptions { viewport: Some((1280, 800)), ..Default::default() };
+    let request = EvidenceRequest::default();
+    let (findings, evidence) =
+        detect_url_evidence(&mut browser, &format!("http://127.0.0.1:{port}/"), &options, "load", 100, &request)
+            .expect("evidence scan");
+    browser.close();
+    for rule in ["low-contrast", "undersized-ui-text"] {
+        let found = findings.iter().find(|f| f.antipattern == rule);
+        let selector = found.and_then(|f| f.extras.get("selector")).and_then(Value::as_str);
+        assert_eq!(selector, Some("topo-card >>> span.lbl"), "{rule}: {findings:?}");
+    }
+    let rect = evidence.element_rects.get("topo-card >>> span.lbl").and_then(Value::as_array).expect("measured");
+    assert!(rect[1].as_f64().unwrap() < 300.0, "measured the light twin: {rect:?}");
+}
+
+const SHADOW_PICTURE_PAGE: &str = r##"<!doctype html><html><head><style>
+body { margin: 0; padding: 32px; font: 16px/1.6 system-ui, sans-serif; background: #fff; color: #1a1a1a; }
+</style></head><body>
+<h1>Network panel</h1>
+<photo-card></photo-card>
+<script>
+  const img = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80"><rect width="400" height="80" fill="#6b6b6b"/></svg>');
+  customElements.define('photo-card', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<style>.hero{padding:24px;width:400px;background:url(' + JSON.stringify(img) + ') center/cover} .hero span{font-size:20px;color:#808080}</style><div class="hero"><span>Port 4 offline since noon</span></div>';
+    }
+  });
+</script>
+</body></html>"##;
+
+/// #1360: the pixel pass hides a shadow target's glyphs too (a document
+/// style does not reach into its shadow root), so text over a picture in a
+/// component gets a verdict from the pixels.
+#[test]
+fn the_pixel_pass_reads_text_inside_an_open_shadow_root() {
+    let env: HashMap<String, String> = std::env::vars().collect();
+    if discovery::find_browser(&env).is_err() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let port = serve(SHADOW_PICTURE_PAGE);
+    let engine = BrowserEngine::new(env);
+    let mut browser = engine.launch().expect("launch");
+    let options = ScanOptions { viewport: Some((1280, 800)), ..Default::default() };
+    let request = EvidenceRequest { screenshot: false, ..Default::default() };
+    let (findings, _) =
+        detect_url_evidence(&mut browser, &format!("http://127.0.0.1:{port}/"), &options, "load", 100, &request)
+            .expect("evidence scan");
+    browser.close();
+    let pixel = findings.iter().find(|f| {
+        f.antipattern == "low-contrast"
+            && f.snippet.starts_with("pixel contrast")
+            && f.extras.get("selector").and_then(Value::as_str) == Some("photo-card >>> span")
+    });
+    assert!(pixel.is_some(), "{findings:#?}");
+}

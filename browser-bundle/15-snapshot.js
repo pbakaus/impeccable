@@ -746,7 +746,34 @@ function __createDrawableIO() {
   };
 }
 
+// What a point hits, looking inside open shadow roots: the document-level
+// calls stop at the host. The top is the innermost element; the stack has
+// each host's shadow stack spliced in front of it.
+function __snapDeepTop(x, y) {
+  let top = document.elementFromPoint(x, y);
+  while (top && top.shadowRoot) {
+    const inner = top.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === top || inner.getRootNode() !== top.shadowRoot) break;
+    top = inner;
+  }
+  return top;
+}
+function __snapDeepStack(x, y) {
+  const stack = typeof document.elementsFromPoint === 'function' ? Array.from(document.elementsFromPoint(x, y)) : [];
+  const expanded = new Set();
+  for (let i = 0; i < stack.length; i++) {
+    const root = stack[i].shadowRoot;
+    if (!root || expanded.has(root)) continue;
+    expanded.add(root);
+    const inner = Array.from(root.elementsFromPoint(x, y)).filter(e => e.getRootNode() === root);
+    stack.splice(i, 0, ...inner);
+    i--;
+  }
+  return stack;
+}
+
 const __impeccableSnapshot = {
+  queryAll: __impeccableQueryAll,
   STYLE_PROPS: __SNAP_STYLE_PROPS,
   PSEUDO_PROPS: __SNAP_PSEUDO_PROPS,
   STATE_PSEUDOS: __SNAP_STATE_PSEUDOS,
@@ -987,8 +1014,8 @@ const __impeccableSnapshot = {
   answer(needs, capture) {
     const facts = { hits: [] };
     for (const [x, y] of (needs && needs.hitTests) || []) {
-      const top = document.elementFromPoint(x, y);
-      const stack = typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : [];
+      const top = __snapDeepTop(x, y);
+      const stack = __snapDeepStack(x, y);
       facts.hits.push({
         x, y,
         top: this.idOf(top, capture),

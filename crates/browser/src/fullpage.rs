@@ -397,18 +397,20 @@ const RESTORE_JS: &str = r#"(({ scrollTop }) => {
 /// selector on `count` elements and flagged the `n`th (a repeated id): while
 /// the page still has `count` matches, the `n`th. Otherwise, and with neither,
 /// `querySelector`'s answer.
-pub const RESOLVE_FLAGGED_JS: &str = r#"((selector, identity, node) => {
+pub const RESOLVE_FLAGGED_JS: &str = concat!(
+    "((selector, identity, node) => {\n",
+    include_str!("../../../browser-bundle/12-query.js"),
+    r#"
   if (typeof node === 'number' && node > 0) {
     const cap = window.__impCap;
     const el = cap && cap.elements ? cap.elements[node] : null;
     if (el && el.isConnected) return el;
   }
-  if (Array.isArray(identity)) {
-    const all = document.querySelectorAll(selector);
-    if (all.length === identity[1]) return all[identity[0]] || null;
-  }
-  return document.querySelector(selector);
-})"#;
+  const all = __impeccableQueryAll(selector);
+  if (Array.isArray(identity) && all.length === identity[1]) return all[identity[0]] || null;
+  return all[0] || null;
+})"#
+);
 
 const ELEMENT_INTO_VIEW_JS: &str = r#"(async (resolve, { selector, identity, node, reuse, mayScroll }) => {
   let el;

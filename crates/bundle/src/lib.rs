@@ -51,6 +51,7 @@ page_js![
     "00-header.js",
     "05-natives.js",
     "10-probe.js",
+    "12-query.js",
     "15-snapshot.js",
     "30-scan-common.js",
     "35-visual.js",
@@ -80,6 +81,7 @@ const ORDER: &[&str] = &[
     "00-header.js",
     "05-natives.js",
     "10-probe.js",
+    "12-query.js",
     "15-snapshot.js",
     "@@GLUE@@",
     "@@WASM@@",
@@ -98,8 +100,8 @@ const ORDER: &[&str] = &[
 /// `05-natives.js` is left out of the snapshot piece on purpose: a content
 /// script already has its own globals, and in Firefox its `window` is an Xray
 /// view of the page's, so natives built there throw on every capture.
-const EXT_SNAPSHOT: &[&str] = &["15-snapshot.js"];
-const EXT_OVERLAY: &[&str] = &["40-overlay.js"];
+const EXT_SNAPSHOT: &[&str] = &["12-query.js", "15-snapshot.js"];
+const EXT_OVERLAY: &[&str] = &["12-query.js", "40-overlay.js"];
 const EXT_CORE: &[&str] = &["@@GLUE@@", "@@LOADER@@", "30-scan-common.js", "35-visual.js", "60-offscreen.js"];
 
 fn push_glue(out: &mut String, glue_js: &str) {

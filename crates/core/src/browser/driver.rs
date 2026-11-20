@@ -4,7 +4,7 @@
 //! of `collect_browser_findings`.)
 
 #![allow(unused_imports)]
-use super::dom::{tag_lower, Dom, ElId, Rect};
+use super::dom::{tag_lower, Dom, ElId, Rect, SelectorError};
 use super::element_checks::check_element_borders_dom;
 use super::{BrowserConfig, BrowserFinding, DisabledValue, FindingGroup};
 use crate::js_ext_a::JsMap;
@@ -29,7 +29,7 @@ pub fn scoped_ignore_active(dom: &dyn Dom, el: ElId, rule_id: &str) -> bool {
                 return true;
             }
         }
-        cur = dom.parent(c);
+        cur = super::dom::composed_parent(dom, c);
     }
     false
 }
@@ -2504,37 +2504,57 @@ pub fn build_selector_segment(dom: &dyn Dom, el: ElId) -> String {
                 .join("."),
         );
     }
-    if let Some(parent) = dom.parent(el) {
-        match dom.query_all(Some(parent), &format!(":scope > {sel}")) {
-            Ok(matching) => {
-                if matching.len() > 1 {
-                    let tag_name = dom.tag_name(el);
-                    let same_type: Vec<ElId> = dom
-                        .children(parent)
-                        .into_iter()
-                        .filter(|c| dom.tag_name(*c) == tag_name)
-                        .collect();
-                    let idx = same_type.iter().position(|c| *c == el).map(|i| i as i64).unwrap_or(-1) + 1;
-                    sel.push_str(&format!(":nth-of-type({idx})"));
-                }
+    // A top-level node of a shadow tree has no parent; its siblings are the
+    // tree's other top-level nodes.
+    let (matching, siblings) = if let Some(parent) = dom.parent(el) {
+        (dom.query_all(Some(parent), &format!(":scope > {sel}")), dom.children(parent))
+    } else if let Some(host) = dom.shadow_host(el) {
+        let sibs = dom.shadow_children(host);
+        let matching = sibs.iter().try_fold(Vec::new(), |mut v, &s| {
+            if dom.matches(s, &sel)? {
+                v.push(s);
             }
-            Err(_) => {
-                let idx = dom
-                    .children(parent)
-                    .iter()
-                    .position(|c| *c == el)
-                    .map(|i| i as i64)
-                    .unwrap_or(-1)
-                    + 1;
-                sel = format!("{tag}:nth-child({idx})");
+            Ok(v)
+        });
+        (matching, sibs)
+    } else {
+        return sel;
+    };
+    match matching {
+        Ok(matching) => {
+            if matching.len() > 1 {
+                let tag_name = dom.tag_name(el);
+                let same_type: Vec<ElId> = siblings.into_iter().filter(|c| dom.tag_name(*c) == tag_name).collect();
+                let idx = same_type.iter().position(|c| *c == el).map(|i| i as i64).unwrap_or(-1) + 1;
+                sel.push_str(&format!(":nth-of-type({idx})"));
             }
+        }
+        Err(_) => {
+            let idx = siblings.iter().position(|c| *c == el).map(|i| i as i64).unwrap_or(-1) + 1;
+            sel = format!("{tag}:nth-child({idx})");
         }
     }
     sel
 }
 
-/// JS: index.mjs#generateSelector(el)
+/// JS: index.mjs#generateSelector(el). An element inside an open shadow tree
+/// gets the selector through each host, `host >>> inner` (Playwright-style),
+/// so a light-DOM twin is never picked in its place.
 pub fn generate_selector(dom: &dyn Dom, el: ElId) -> String {
+    if let Some(host) = super::dom::tree_host(dom, el) {
+        let inner = selector_in_tree(dom, el, &|s| super::dom::query_shadow_root(dom, host, s));
+        return format!("{} >>> {inner}", generate_selector(dom, host));
+    }
+    selector_in_tree(dom, el, &|s| dom.query_all(None, s))
+}
+
+/// The selector for `el` within its own tree; `query` lists what a selector
+/// matches in that tree.
+fn selector_in_tree(
+    dom: &dyn Dom,
+    el: ElId,
+    query: &dyn Fn(&str) -> Result<Vec<ElId>, SelectorError>,
+) -> String {
     let body = dom.body();
     let root = dom.document_element();
     if Some(el) == body {
@@ -2571,7 +2591,7 @@ pub fn generate_selector(dom: &dyn Dom, el: ElId) -> String {
             break;
         }
         let try_selector = parts.join(" > ");
-        if let Ok(matches) = dom.query_all(None, &try_selector) {
+        if let Ok(matches) = query(&try_selector) {
             if matches.len() == 1 && matches[0] == el {
                 return try_selector;
             }
@@ -2611,7 +2631,7 @@ pub fn visual_contrast_result_el(dom: &dyn Dom, result: &serde_json::Value) -> O
         return None;
     }
     let sel = js_string_or_empty(selector);
-    match dom.query_one(None, &sel) {
+    match super::dom::query_one_deep(dom, &sel) {
         Ok(Some(el)) => Some(el),
         _ => None,
     }
@@ -2985,7 +3005,7 @@ pub fn collect_browser_findings(dom: &dyn Dom, config: &BrowserConfig) -> Collec
     // Product mockups the page declares are not content (decision 1 of round
     // 13), and boxes labelled as a screenshot report as advisory (r13-t5).
     let mockups = super::hidden_mockup::HiddenMockups::scan(dom);
-    let all_elements = dom.query_all(None, "*").unwrap_or_default();
+    let all_elements = super::dom::elements_deep(dom);
     for &el in &all_elements {
         if !element_is_scanned(dom, el) {
             continue;
@@ -4285,6 +4305,40 @@ mod tests {
         };
         assert!(undersized_on(visible), "{:?}", out.groups);
         assert!(!undersized_on(collapsed), "{:?}", out.groups);
+    }
+
+    /// An element in an open shadow root is scanned, named through its host
+    /// (`host >>> inner`), and a host's ignore covers its shadow tree.
+    #[test]
+    fn shadow_root_elements_are_scanned_and_named_through_their_host() {
+        let mut d = FakeDom::new();
+        let (html, body) = d.with_page();
+        d.set_rect(html, 0.0, 0.0, 1280.0, 800.0);
+        d.set_rect(body, 0.0, 0.0, 1280.0, 800.0);
+        d.el_mut(html).scroll_width = 1280.0;
+        let host = d.add(Some(body), "topo-card");
+        let label = |d: &mut FakeDom, y: f64| {
+            let s = d.add_shadow_child(host, "span");
+            d.add_text(s, "Meta 12:00");
+            d.set_attr(s, "class", "lbl");
+            d.add_selector(s, "span.lbl");
+            d.set_style(s, "fontSize", "9px");
+            d.set_rect(s, 40.0, y, 60.0, 12.0);
+            d.el_mut(s).check_visibility = Some(true);
+            s
+        };
+        let (a, b) = (label(&mut d, 100.0), label(&mut d, 140.0));
+        assert_eq!(generate_selector(&d, a), "topo-card >>> span.lbl:nth-of-type(1)");
+        assert_eq!(generate_selector(&d, b), "topo-card >>> span.lbl:nth-of-type(2)");
+        let undersized = |d: &FakeDom, el: ElId| {
+            collect_browser_findings(d, &BrowserConfig::default())
+                .groups
+                .iter()
+                .any(|g| g.el == el && g.findings.iter().any(|f| f.type_ == "undersized-ui-text"))
+        };
+        assert!(undersized(&d, a) && undersized(&d, b));
+        d.set_attr(host, "data-impeccable-ignore", "undersized-ui-text");
+        assert!(!undersized(&d, a));
     }
 
     #[test]
