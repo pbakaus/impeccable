@@ -305,9 +305,11 @@ const HOOK_EVIDENCE_WINDOW_MS: f64 = 7.0 * 24.0 * 60.0 * 60.0 * 1000.0;
 /// A plugin or app-bundled hook leaves no manifest in reach, but every hook era
 /// records its sessions in `.impeccable/hook.cache.json`: a session updated in the
 /// last 7 days counts as an installed hook, a removed one included (#1392).
+/// The first root is the active project, whose own config turns the hook off
+/// for it even when an enclosing root's cache is recent.
 fn hook_ran_recently(roots: &[String], env: &Env) -> bool {
     let now = now_ms();
-    roots.iter().any(|root| {
+    roots.first().is_some_and(|active| hook_enabled_at(active, env)) && roots.iter().any(|root| {
         hook_enabled_at(root, env)
             && read_json(&jsp::join(&[root, ".impeccable", "hook.cache.json"])).is_some_and(|cache| {
                 cache.get("sessions").and_then(Value::as_object).is_some_and(|sessions| sessions.values().any(|session| {
@@ -321,6 +323,8 @@ fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> 
     let provider_dir = match provider.id.as_str() {
         "claude-code" => ".claude", "codex" | "agents" => ".agents",
         "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        // A plugin install resolves to `source`, so its hook shows only in the cache.
+        "source" => return hook_ran_recently(&hook_manifest_search_roots(ctx, cwd, env), env),
         _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
     };
     let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
@@ -1862,6 +1866,37 @@ mod hook_not_installed_tests {
             super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
             assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"), "{age_days} days, disabled");
         }
+    }
+
+    fn recent_cache() -> String {
+        format!(r#"{{"version":1,"sessions":{{"s":{{"updatedAt":{},"files":{{}}}}}}}}"#, crate::util::now_ms() as u64)
+    }
+
+    fn manual_detector_required(fixture: &Fixture, cwd: &str) -> bool {
+        let ctx = load_context(cwd, &TargetOptions::default(), &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, cwd);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, cwd, &fixture.env, &provider);
+        parts.render().contains("MANUAL_DETECTOR_REQUIRED")
+    }
+
+    #[test]
+    fn a_plugin_install_counts_its_recent_cache() {
+        let fixture = Fixture::new("source");
+        assert!(manual_detector_required(&fixture, &fixture.project));
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        assert!(!manual_detector_required(&fixture, &fixture.project));
+    }
+
+    #[test]
+    fn an_enclosing_cache_does_not_cover_a_project_with_the_hook_off() {
+        let fixture = Fixture::new("codex");
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        fixture.put("project/web/package.json", r#"{"name":"web"}"#);
+        fixture.put("project/web/.impeccable/config.local.json", r#"{"hook":{"enabled":false}}"#);
+        let web = fixture.root.join("project").join("web").to_string_lossy().into_owned();
+        assert_eq!(load_context(&web, &TargetOptions::default(), &fixture.env).project_root, web);
+        assert!(manual_detector_required(&fixture, &web));
     }
 
     #[test]
