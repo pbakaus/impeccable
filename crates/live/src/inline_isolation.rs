@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(found.path, "app/page.tsx");
         // Tag-like text in a quoted prop is not a nested element.
         for quoted in [r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#,
-            r#"<nav><Link className="demo-exit" title="C:">Leave demo</Link></nav>"#] {
+            r#"<nav><Link className="demo-exit" title="C:\">Leave demo</Link></nav>"#] {
             assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))), "{quoted}");
         }
         // A nested element after a comment holding an apostrophe is still one.
