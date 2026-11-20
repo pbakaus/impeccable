@@ -340,7 +340,9 @@ fn component_fallback(lines: &[String], queries: &[String], tag: Option<&str>, d
 
 /// Whether the first `query` on `match_line` (after the opener, on the
 /// opener's own line) comes before the `>` that ends the opening tag
-/// starting line `opener`, as `lex_markup` reads it.
+/// starting line `opener`, as `lex_markup` reads it. An opening tag holding
+/// a nested element (`icon={<Icon className="x" />}`) is refused: the
+/// lexer does not say whose tag the locator is in.
 fn in_opening_tag(lines: &[String], opener: usize, match_line: usize, query: &str, dialect: Dialect) -> bool {
     let from = if match_line == opener {
         let Some(name) = opener_tag(&lines[opener]) else {
@@ -354,20 +356,18 @@ fn in_opening_tag(lines: &[String], opener: usize, match_line: usize, query: &st
         return false;
     };
     let locator = (match_line, lines[match_line][..from + at].chars().count());
-    let (mut open, mut end) = (0, None);
-    lex_markup(lines, opener, dialect, true, false, |event| {
-        match event {
-            Lexed::Open { .. } => open += 1,
-            Lexed::OpenEnd { line, col, .. } => {
-                open -= 1;
-                if open == 0 {
-                    end = Some((line, col));
-                    return true;
-                }
-            }
-            _ => {}
+    let (mut opened, mut end) = (false, None);
+    lex_markup(lines, opener, dialect, true, false, |event| match event {
+        Lexed::Open { .. } if opened => true,
+        Lexed::Open { .. } => {
+            opened = true;
+            false
         }
-        false
+        Lexed::OpenEnd { line, col, .. } => {
+            end = Some((line, col));
+            true
+        }
+        _ => false,
     });
     end.map_or(false, |end| locator < end)
 }
@@ -483,9 +483,10 @@ pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>, 
 
 /// Whether a source opener named `name` can be the element the browser
 /// reported as `want`. The browser lowercases the rendered tag, so `<Input>`
-/// is `input`; with `components`, any component (`<Link>`) can be.
+/// is `input`; with `components`, any component (`<Link>`, `<CTA>`: JSX
+/// reads a capitalised name as one) can be.
 fn renders_tag(name: &str, want: &str, components: bool) -> bool {
-    want.eq_ignore_ascii_case(name) || (components && !folds_tag_case(name))
+    want.eq_ignore_ascii_case(name) || (components && name.starts_with(|c: char| c.is_ascii_uppercase()))
 }
 
 /// The line the element opened on `start` closes on. None when it never
@@ -2528,8 +2529,11 @@ mod tests {
         // A `>` inside a prop expression or a quoted value does not end it.
         let arrow = [r#"<Link onClick={() => go()} title="a > b" className="demo-exit">Leave demo</Link>"#];
         assert_eq!(start(&arrow, "demo-exit", "a", Dialect::Jsx), vec![0]);
+        // An all-capitals name is a component too.
+        assert_eq!(start(&[r#"<CTA className="demo-exit">Leave demo</CTA>"#], "demo-exit", "a", Dialect::Jsx), vec![0]);
         // The locator must sit in the component's own opening tag.
         for src in [
+            &[r#"<Card icon={<Icon className="demo-exit" />}>"#, "  <p>Body</p>", "</Card>"][..],
             &[r#"<Trans><span className="demo-exit">Leave demo</span></Trans>"#][..],
             &["<Card>", "  demo-exit", "</Card>"][..],
         ] {
