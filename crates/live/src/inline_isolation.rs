@@ -102,6 +102,26 @@ fn raw_text_parent(ts: &[Token], token: &Token) -> Option<usize> {
     None
 }
 
+/// Whether an opening tag holds another element (`icon={<Icon />}`), so a
+/// locator inside it may be that element's. Quoted text is not markup.
+fn holds_nested_element(opener: &str) -> bool {
+    let bytes = opener.as_bytes();
+    let mut quote = None;
+    let mut i = 1;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if let Some(q) = quote {
+            if c == b'\\' { i += 1; } else if c == q { quote = None; }
+        } else if b"\"'`".contains(&c) {
+            quote = Some(c);
+        } else if c == b'<' && bytes.get(i + 1).map_or(false, u8::is_ascii_alphabetic) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
 struct Candidate {
     file: usize,
     rank: usize,
@@ -158,7 +178,7 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         for components_pass in [false, true] {
             if components_pass && !component_fallback_allowed(queries, tag, dialect) { break; }
             let accepts = |n: &Token| tag.map_or(true, |tag| renders_tag(&n.name, tag, components_pass))
-                && !(components_pass && source.as_bytes()[n.start + 1..n.end].windows(2).any(|w| w[0] == b'<' && w[1].is_ascii_alphabetic()));
+                && !(components_pass && holds_nested_element(&source[n.start..n.end]));
             let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
                 && accepts(n)
                 && matches_query(&source[n.start..n.end], q, tag)));
@@ -318,6 +338,9 @@ mod tests {
         let exact = r#"<nav><a href="/x" className="demo-exit">Leave demo</a></nav>"#;
         let Ok(Resolution::Match(found, _)) = resolve(vec![file("components/Nav.tsx", link), file("app/page.tsx", exact)], &queries, Some("a"), None) else { panic!() };
         assert_eq!(found.path, "app/page.tsx");
+        // Tag-like text in a quoted prop is not a nested element.
+        let quoted = r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#;
+        assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))));
         // Not in HTML, not for a tag-only search, not through a nested element.
         let tag_only = [String::from("<a")];
         for (path, text, queries) in [
