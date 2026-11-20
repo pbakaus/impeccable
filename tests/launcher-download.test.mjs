@@ -234,6 +234,7 @@ for (const scenario of ['cache-directory-failure', 'cache-write-failure', 'downl
     if (['download-failure', 'transport-failure'].includes(scenario)) {
       assert.match(result.stderr, /could not download/);
       assert.match(result.stderr, /network/);
+      assert.match(result.stderr, scenario === 'transport-failure' ? /curl exit \d+: \S/ : /curl exit \d+: The requested URL returned error: 404/);
       assert.deepEqual(result.files, [], 'failed downloads leave no staging files');
       assert.equal(result.requests.length, 1, 'no verification without a download');
     } else {
