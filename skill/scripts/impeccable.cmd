@@ -345,7 +345,7 @@ exit /b 127
 rem Delayed expansion keeps cmd metacharacters in curl's message literal.
 setlocal EnableDelayedExpansion
 if defined curl_error set "curl_error=: !curl_error!"
-echo impeccable: could not download engine %version% from %url% (curl exit %fetch_result%!curl_error!); check network access and the release URL. 1>&2
+echo impeccable: could not download engine %version% from !url! (curl exit %fetch_result%!curl_error!); check network access and the release URL. 1>&2
 endlocal
 
 :setup_failed
