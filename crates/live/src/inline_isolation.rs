@@ -102,31 +102,18 @@ fn raw_text_parent(ts: &[Token], token: &Token) -> Option<usize> {
     None
 }
 
-/// Whether an opening tag holds another element (`icon={<Icon />}`), so a
-/// locator inside it may be that element's. Quoted text is not markup;
-/// `opener` comes masked, so a comment's apostrophe opens no quote, and a
-/// quote that never closes fails closed.
+/// Whether an opening tag holds another element (`icon={<Icon />}`): a second
+/// tag the shared lexer opens. `{...}` reads as JS there, so `MouseEvent<T>`
+/// is a generic and quoted text is not markup; `opener` comes masked, and a
+/// lexer that loses its place or misses the opener (`<Foo{...p}>`) fails closed.
 fn holds_nested_element(opener: &str) -> bool {
-    let bytes = opener.as_bytes();
-    let (mut quote, mut braces) = (None, 0usize);
-    let mut i = 1;
-    while i < bytes.len() {
-        let c = bytes[i];
-        // As `tokens` reads it: a backslash escapes only inside `{…}`.
-        if let Some(q) = quote {
-            if c == b'\\' && braces > 0 { i += 1; } else if c == q { quote = None; }
-        } else if b"\"'`".contains(&c) {
-            quote = Some(c);
-        } else if c == b'{' {
-            braces += 1;
-        } else if c == b'}' {
-            braces = braces.saturating_sub(1);
-        } else if c == b'<' && bytes.get(i + 1).map_or(false, u8::is_ascii_alphabetic) {
-            return true;
-        }
-        i += 1;
-    }
-    quote.is_some()
+    let lines: Vec<String> = opener.split('\n').map(String::from).collect();
+    let mut opens = 0;
+    let clean = lex_markup(&lines, 0, Dialect::Jsx, true, false, |e| {
+        if matches!(e, Lexed::Open { .. }) { opens += 1; }
+        opens > 1
+    });
+    opens != 1 || !clean
 }
 
 struct Candidate {
@@ -346,9 +333,10 @@ mod tests {
         let exact = r#"<nav><a href="/x" className="demo-exit">Leave demo</a></nav>"#;
         let Ok(Resolution::Match(found, _)) = resolve(vec![file("components/Nav.tsx", link), file("app/page.tsx", exact)], &queries, Some("a"), None) else { panic!() };
         assert_eq!(found.path, "app/page.tsx");
-        // Tag-like text in a quoted prop is not a nested element.
+        // Tag-like text in a quoted prop or a TS generic is not a nested element.
         for quoted in [r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#,
-            r#"<nav><Link className="demo-exit" title="C:\">Leave demo</Link></nav>"#] {
+            r#"<nav><Link className="demo-exit" title="C:\">Leave demo</Link></nav>"#,
+            r#"<nav><Link onClick={(e: MouseEvent<HTMLAnchorElement>) => go(e)} className="demo-exit">Leave demo</Link></nav>"#] {
             assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))), "{quoted}");
         }
         // A nested element after a comment holding an apostrophe is still one.
