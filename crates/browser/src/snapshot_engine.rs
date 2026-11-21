@@ -36,7 +36,10 @@ use crate::cdp::{CdpError, CdpResult, Page, NATIVES_JS};
 /// `browser-bundle/15-snapshot.js` — the page-measurement producer. It defines
 /// `const __impeccableSnapshot = {...}` plus its helpers; [`ensure_snapshot_js`]
 /// wraps it so it installs `window.__impeccableSnapshot` once per page.
-const SNAPSHOT_JS: &str = include_str!("../../../browser-bundle/15-snapshot.js");
+const SNAPSHOT_JS: &str = concat!(
+    include_str!("../../../browser-bundle/12-query.js"),
+    include_str!("../../../browser-bundle/15-snapshot.js")
+);
 
 /// Install `window.__impeccableSnapshot` from [`SNAPSHOT_JS`] (idempotent).
 /// [`NATIVES_JS`] goes first in the same function, so the producer reaches

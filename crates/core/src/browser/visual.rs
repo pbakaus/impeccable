@@ -226,7 +226,7 @@ pub fn collect_visual_contrast_reasons(dom: &dyn Dom, el: ElId) -> Vec<String> {
         if x < 0.0 || y < 0.0 || x > vw || y > vh {
             continue;
         }
-        let stack = dom.elements_from_point(x, y);
+        let stack = super::dom::elements_from_point_for(dom, x, y, el);
         let self_index = stack
             .iter()
             .position(|&n| n == el || dom.contains(el, n) || dom.contains(n, el));
@@ -1666,7 +1666,7 @@ fn hit_test_layer(dom: &dyn Dom, el: ElId, text: &Rect) -> Option<LayerUnder> {
         if x < 0.0 || y < 0.0 || x > vw || y > vh {
             continue;
         }
-        let stack = dom.elements_from_point(x, y);
+        let stack = super::dom::elements_from_point_for(dom, x, y, el);
         let Some(self_index) = stack
             .iter()
             .position(|&n| n == el || dom.contains(el, n) || dom.contains(n, el))
@@ -2450,7 +2450,7 @@ pub fn collect_visual_contrast_candidates(dom: &dyn Dom, options: &Value) -> Vec
     // round 13): the element pass reports none of it, and it takes no slot
     // of either budget here.
     let mockups = super::hidden_mockup::HiddenMockups::scan(dom);
-    for el in dom.query_all(None, "*").unwrap_or_default() {
+    for el in super::dom::elements_deep(dom) {
         let base_open = (candidates.len() as f64) < max_candidates;
         let routed_open = (routed.len() as f64) < max_routed;
         if !base_open && !routed_open {
@@ -3502,7 +3502,7 @@ pub fn stack_nodes(dom: &dyn Dom, el: ElId, x: f64, y: f64, depth: f64) -> Resul
     if depth > 8.0 {
         return Err(json!({ "status": "unresolved", "reason": "background stack too deep" }));
     }
-    let stack = dom.elements_from_point(x, y);
+    let stack = super::dom::elements_from_point_for(dom, x, y, el);
     let self_index = stack.iter().position(|&n| n == el || dom.contains(el, n));
     // Text the hit test does not find at the point, where a box between it
     // and the page clips the point away, is not on screen there: what the
@@ -4246,7 +4246,7 @@ fn candidate_match(dom: &dyn Dom, selector: &str, el: ElId) -> Option<Value> {
     if !selector.contains('#') {
         return None;
     }
-    let matches = dom.query_all(None, selector).ok()?;
+    let matches = super::dom::query_all_deep(dom, selector).ok()?;
     if matches.len() < 2 {
         return None;
     }
@@ -4263,10 +4263,10 @@ pub fn candidate_element(dom: &dyn Dom, candidate: &Value) -> Result<Option<ElId
     });
     match identity {
         Some((n, count)) => {
-            let matches = dom.query_all(None, &selector).map_err(|_| ())?;
+            let matches = super::dom::query_all_deep(dom, &selector).map_err(|_| ())?;
             Ok(if matches.len() == count { matches.get(n).copied() } else { matches.first().copied() })
         }
-        None => dom.query_one(None, &selector).map_err(|_| ()),
+        None => super::dom::query_one_deep(dom, &selector).map_err(|_| ()),
     }
 }
 

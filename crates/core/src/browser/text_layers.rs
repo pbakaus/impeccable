@@ -629,7 +629,7 @@ fn covering_layer_holds_text(
         if *answer != AtPoint::Covered {
             continue;
         }
-        let stack = dom.elements_from_point(x, y);
+        let stack = super::dom::elements_from_point_for(dom, x, y, el);
         let Some(first) = stack.iter().position(|&n| dom.contains(el, n)) else {
             continue;
         };
@@ -682,7 +682,7 @@ fn at_point(
     resolved: Option<Rgba>,
     stays: bool,
 ) -> AtPoint {
-    let stack = dom.elements_from_point(x, y);
+    let stack = super::dom::elements_from_point_for(dom, x, y, el);
     if stack.is_empty() {
         return AtPoint::Unanswered;
     }

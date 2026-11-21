@@ -5011,11 +5011,11 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
                 for t in text_els.iter().filter(in_layer) {
                     for (x, y) in occlusion_points_on_lines(dom, t.el, &t.rect, vw, vh) {
                         asked += 1;
-                        match dom.element_from_point(x, y) {
+                        match super::dom::element_from_point_for(dom, x, y, t.el) {
                             Some(a)
                                 if a != layer
                                     && !dom.contains(layer, a)
-                                    && buried_under_the_page(dom, &dom.elements_from_point(x, y), t.el, layer) => {}
+                                    && buried_under_the_page(dom, &super::dom::elements_from_point_for(dom, x, y, t.el), t.el, layer) => {}
                             _ => return false,
                         }
                     }
@@ -5035,7 +5035,7 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
         let mut occluder_kind = "";
         for (x, y) in occlusion_points_on_lines(dom, el, rect, vw, vh) {
             total += 1;
-            let Some(top) = dom.element_from_point(x, y) else { continue };
+            let Some(top) = super::dom::element_from_point_for(dom, x, y, el) else { continue };
             if top == el || dom.contains(el, top) || dom.contains(top, el) {
                 continue;
             }
@@ -5057,7 +5057,7 @@ pub fn check_text_occlusion_dom(dom: &dyn Dom) -> Vec<ElFinding> {
             }
             // The answer may lie on a layer that buries the victim, not on
             // the victim.
-            let stack = dom.elements_from_point(x, y);
+            let stack = super::dom::elements_from_point_for(dom, x, y, el);
             if buried_under_answer(dom, &stack, el) {
                 continue;
             }

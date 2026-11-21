@@ -352,7 +352,7 @@ fn rendered_for_browser_rule(dom: &dyn Dom, el: ElId, aria: bool) -> bool {
         if js::to_lower_case(&dom.style(c, "contentVisibility")) == "hidden" {
             return false;
         }
-        cur = dom.parent(c);
+        cur = super::dom::composed_parent(dom, c);
     }
     true
 }
@@ -372,7 +372,7 @@ pub fn effective_opacity_dom(dom: &dyn Dom, el: ElId) -> f64 {
         if o <= 0.02 {
             return 0.0;
         }
-        cur = dom.parent(c);
+        cur = super::dom::composed_parent(dom, c);
     }
     o
 }

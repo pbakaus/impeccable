@@ -121,9 +121,9 @@ const __impeccableDom = {
   scroll_x() { return window.scrollX; },
   scroll_y() { return window.scrollY; },
   hostname() { return location.hostname; },
-  element_from_point(x, y) { return __intern(document.elementFromPoint(x, y)); },
+  element_from_point(x, y) { return __intern(__snapDeepTop(x, y)); },
   elements_from_point(x, y) {
-    return typeof document.elementsFromPoint === 'function' ? __ids_of(document.elementsFromPoint(x, y)) : [];
+    return __ids_of(__snapDeepStack(x, y));
   },
   css_escape(s) { return CSS.escape(s); },
   // JSON `[[["prop","value"],...], ...]` of the first @keyframes rule named
@@ -220,7 +220,19 @@ const __impeccableDom = {
   },
   previous_element_sibling(el) { return __intern(__el(el).previousElementSibling); },
   next_element_sibling(el) { return __intern(__el(el).nextElementSibling); },
-  contains(a, b) { return __el(a).contains(__el(b)); },
+  // Composed: a hit-test stack names elements inside shadow trees.
+  contains(a, b) {
+    const target = __el(a);
+    if (target.contains(__el(b))) return true;
+    for (let n = __el(b); n; n = n.parentNode && n.parentNode.nodeType === 11 ? n.parentNode.host : n.parentNode) {
+      if (n === target) return true;
+    }
+    return false;
+  },
+  shadow_host(el) {
+    const p = __el(el).parentNode;
+    return __intern(p && p.nodeType === 11 ? p.host : null);
+  },
   matches(el, selector) {
     try { return __el(el).matches(selector) ? 1 : 0; } catch { return __SEL_ERR; }
   },

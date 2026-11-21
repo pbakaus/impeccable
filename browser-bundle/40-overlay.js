@@ -589,7 +589,7 @@ function createImpeccableOverlay({ extensionMode = false, antipatterns = [] } = 
   // view first so positionOverlay reads the post-scroll rect).
   function highlightSelector(selector) {
     try {
-      const target = selector ? document.querySelector(selector) : null;
+      const target = selector ? __impeccableQueryAll(selector)[0] || null : null;
       if (!target) return;
       if (!isInViewport(target) && target.scrollIntoView) {
         target.scrollIntoView({ behavior: 'instant', block: 'center' });
