@@ -437,9 +437,13 @@ export function createSession({ fetch, store, issuer, launch, redirectUri, now =
       return { ok: answer?.status === 204 || answer?.status === 404 };
     },
 
-    /** Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as `startWalk`. */
-    async planWalk(body) {
-      const answer = await call(issuer(), '/walks/plan?can=hears', body).catch(() => null);
+    /**
+     * Asks the server for a short plan of a walk (`{ persona, task, url }`). `{ ok: true, plan }`, or `{ ok: false, why }` as
+     * `startWalk`. `early`: asked before the person sent the task, as they paused writing it; a server that doesn't know
+     * the word plans it all the same.
+     */
+    async planWalk(body, { early = false } = {}) {
+      const answer = await call(issuer(), `/walks/plan?can=hears${early ? '&early=1' : ''}`, body).catch(() => null);
       if (answer?.status === 404) return { ok: false, why: 'unavailable' };
       if (notPro(answer)) return { ok: false, why: 'not-pro' };
       if (answer?.status === 403 && answer.json?.error === 'insufficient_scope') return { ok: false, why: 'scope' };
