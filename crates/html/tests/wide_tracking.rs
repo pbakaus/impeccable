@@ -119,6 +119,32 @@ fn declared_uppercase_stays_exempt() {
 }
 
 #[test]
+fn arabic_cursive_text_always_flags_positive_tracking_even_with_uppercase_or_short_label() {
+    // Short Arabic label (<20 chars) with text-transform: uppercase and letter-spacing: 0.10em
+    // breaks Arabic cursive ligatures and must NOT receive the Latin uppercase/label exemption.
+    assert_eq!(
+        tracking_hits(
+            r#"<span class="run" style="letter-spacing: 0.10em; text-transform: uppercase">الذكاء الاصطناعي</span>"#
+        ),
+        1
+    );
+    // Subtle 0.03em positive tracking on Arabic prose also breaks cursive shaping.
+    assert_eq!(
+        tracking_hits(
+            r#"<p class="run" style="letter-spacing: 0.03em">منصة تصميم الواجهات الذكية تدعم اللغة العربية باتجاه من اليمين إلى اليسار دون تقطيع الحروف.</p>"#
+        ),
+        1
+    );
+    // Zero tracking on Arabic passes cleanly.
+    assert_eq!(
+        tracking_hits(
+            r#"<p class="run" style="letter-spacing: 0em">منصة تصميم الواجهات الذكية تدعم اللغة العربية باتجاه من اليمين إلى اليسار دون تقطيع الحروف.</p>"#
+        ),
+        0
+    );
+}
+
+#[test]
 fn fixture_flag_and_pass_cases() {
     let fixture = repo_root().join("tests/fixtures/antipatterns/wide-tracking.html");
     assert!(fixture.is_file(), "missing fixture at {}", fixture.display());

@@ -312,6 +312,38 @@ pub fn justifies_without_word_spaces_text(text: &str) -> bool {
     exempt > other
 }
 
+/// Whether `c` is an Arabic-script character whose cursive joining (ligature
+/// shaping) is broken by positive `letter-spacing`.
+pub fn is_arabic_script_char(c: char) -> bool {
+    matches!(
+        c as u32,
+        0x0600..=0x06FF
+            | 0x0750..=0x077F
+            | 0x08A0..=0x08FF
+            | 0xFB50..=0xFDFF
+            | 0xFE70..=0xFEFF
+    )
+}
+
+/// True when most alphabetic letters in `text` are Arabic script. Arabic is
+/// unicameral and obligatorily cursive: any positive `letter-spacing` breaks
+/// glyph joining regardless of `text-transform: uppercase` or label length.
+pub fn is_arabic_script_text(text: &str) -> bool {
+    let mut ar = 0usize;
+    let mut other = 0usize;
+    for c in text.chars().take(JUSTIFY_SCRIPT_SAMPLE_CHARS) {
+        if !c.is_alphabetic() {
+            continue;
+        }
+        if is_arabic_script_char(c) {
+            ar += 1;
+        } else {
+            other += 1;
+        }
+    }
+    ar > 0 && ar >= other
+}
+
 // ─── Kicker above heading ───────────────────────────────────────────────────
 
 /// Input of `isKickerCandidate`. Numbers are JS numbers: pass NaN where the

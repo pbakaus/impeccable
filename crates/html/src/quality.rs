@@ -1103,12 +1103,24 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
         }
     }
 
-    // --- Wide letter spacing on body text ---
-    if q.has_direct_text && text_len > 20 {
+    // --- Wide letter spacing on body text (and any Arabic cursive text) ---
+    if q.has_direct_text && text_len > 0 {
         if let (Some(ls), Some(font_size)) = (q.letter_spacing_px, font_size) {
             if ls > 0.0 && font_size > 0.0 {
                 let tracking_em = ls / font_size;
-                if tracking_em > 0.05 {
+                let own = collapse_ws(js::trim(&el.text_content()));
+                let direct = collapse_ws(js::trim(&el.direct_text()));
+                let sample = if direct.chars().any(char::is_alphabetic) { &direct } else { &own };
+                let arabic_cursive = impeccable_core::checks::text_rules::is_arabic_script_text(sample);
+                if arabic_cursive {
+                    findings.push(RuleHit::new(
+                        "wide-tracking",
+                        format!(
+                            "letter-spacing: {}em on Arabic cursive text (breaks glyph joining)",
+                            to_fixed(tracking_em, 2)
+                        ),
+                    ));
+                } else if text_len > 20 && tracking_em > 0.05 {
                     // Wide tracking is the standard treatment for an
                     // uppercase eyebrow, label or button. `text-transform`
                     // says so outright, and capitals typed into the markup
@@ -1117,7 +1129,6 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     // A run inside the label length keeps the looser reading
                     // it had (a CJK label with a Latin acronym); this engine
                     // has no layout, so it counts as one line.
-                    let own = collapse_ws(js::trim(&el.text_content()));
                     let every_letter_caps = utf16_len(&own) < ALL_CAPS_LONG_RUN
                         && is_capitalized_run(&own)
                         && own.chars().filter(|c| c.is_alphabetic()).all(|c| c.is_uppercase());
@@ -1130,11 +1141,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                     // browser engine and extreme-negative-tracking read it.
                     // The script is read from the element's own text, not a
                     // child's; text with no letters of its own is read whole.
-                    let cjk = {
-                        let direct = collapse_ws(js::trim(&el.direct_text()));
-                        let sample = if direct.chars().any(char::is_alphabetic) { &direct } else { &own };
-                        impeccable_core::checks::text_rules::is_cjk_text(sample)
-                    };
+                    let cjk = impeccable_core::checks::text_rules::is_cjk_text(sample);
                     if !caps_label && !cjk {
                         findings.push(RuleHit::new(
                             "wide-tracking",

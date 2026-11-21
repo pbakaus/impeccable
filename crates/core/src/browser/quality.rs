@@ -3081,12 +3081,20 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
         }
     }
 
-    // --- Wide letter spacing on body text ---
-    if has_direct_text && text_len > 20 {
+    // --- Wide letter spacing on body text (and any Arabic cursive text) ---
+    if has_direct_text && text_len > 0 {
         if let Some(ls) = q.letter_spacing_px {
             if ls > 0.0 && font_size > 0.0 {
                 let tracking_em = ls / font_size;
-                if tracking_em > 0.05 {
+                let own_direct = collapse_ws(js::trim(&direct_text(dom, el)));
+                let own_full = collapse_ws(js::trim(&dom.text_content(el)));
+                let sample = if own_direct.chars().any(char::is_alphabetic) { &own_direct } else { &own_full };
+                if crate::checks::text_rules::is_arabic_script_text(sample) {
+                    findings.push(RuleHit::new(
+                        "wide-tracking",
+                        format!("letter-spacing: {}em on Arabic cursive text (breaks glyph joining)", to_fixed(tracking_em, 2)),
+                    ));
+                } else if text_len > 20 && tracking_em > 0.05 {
                     // Wide tracking is the standard treatment for an
                     // uppercase eyebrow, label or button. `text-transform`
                     // says so outright; capitals typed into the markup say
@@ -3106,22 +3114,7 @@ pub fn check_quality(dom: &dyn Dom, q: &QualityInput) -> Vec<RuleHit> {
                     let caps_label = st("textTransform") == "uppercase"
                         || (!lowered
                             && (typed_caps_text(dom, el) || typed_caps_label(dom, el, q.line_height_px, false)));
-                    // Han, kana and Hangul sit in square cells and are set
-                    // with open tracking by convention, as the crushed
-                    // tracking check below already reads them
-                    // (weathernews.jp's FAQ titles at 0.10em). The script
-                    // is read from the element's own text, not a child's
-                    // (an English line with a hidden Japanese translation
-                    // keeps its finding); only text with no letters of its
-                    // own is read from the whole run.
-                    let cjk = {
-                        let own = collapse_ws(js::trim(&direct_text(dom, el)));
-                        if own.chars().any(char::is_alphabetic) {
-                            is_cjk_text(&own)
-                        } else {
-                            is_cjk_text(&collapse_ws(js::trim(&dom.text_content(el))))
-                        }
-                    };
+                    let cjk = is_cjk_text(sample);
                     if !caps_label && !control_label && !cjk {
                         findings.push(RuleHit::new(
                             "wide-tracking",
