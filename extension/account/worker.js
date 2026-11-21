@@ -52,11 +52,17 @@ const proOf = (answer) => (answer.signedIn === false || answer.pro === false ? f
 /** A check-in for an `answer` that says signed in with Pro (waiting.js). */
 const checkedIn = (answer, how) => { if (proOf(answer) === true) void agent.checkIn(how); return answer; };
 
+/** Whether the account signed in had Pro at the last clear answer: null signed out, or not known. */
+let hadPro = null;
 /** What the popup is told of the account. */
 async function status() {
   const answer = await account();
   const signedIn = await session.signedIn().catch(() => false);
-  void agent.keep(signedIn ? proOf(answer) : false).catch(() => undefined);
+  const pro = signedIn ? proOf(answer) : null;
+  void agent.keep(signedIn ? pro : false).catch(() => undefined);
+  // Pro bought while signed in: its welcome page, as after a first sign-in with Pro (once, `welcomeSeen`).
+  if (hadPro === false && pro === true) void welcome(answer);
+  if (pro !== null || !signedIn) hadPro = pro;
   // A kept sign-in is said even while the server is out of reach, so it can still be signed out.
   return answer.ok && answer.signedIn === undefined && signedIn ? { ...answer, signedIn } : answer;
 }
@@ -252,7 +258,7 @@ const ANSWERS = {
   async 'sign-out'() { await chrome.storage.local.remove('appForSite').catch(() => undefined); await session.signOut(); await agent.forget(); await chrome.storage.session.set({ personaCreate: null }); return status(); },
   async server({ server }) {
     if (!issuerAllowed(server, UNPACKED)) return { ok: false, why: 'server' };
-    if (server !== issuer) { await agent.forget(); await chrome.storage.local.remove('appForSite').catch(() => undefined); }
+    if (server !== issuer) { hadPro = null; await agent.forget(); await chrome.storage.local.remove('appForSite').catch(() => undefined); }
     issuer = server;
     await chrome.storage.local.set({ accountServer: server });
     return status().then(checkedIn);

@@ -329,8 +329,9 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   Object.assign(globalThis, {
     document, location: { search }, addEventListener() {},
     chrome: {
-      // A persona made is in the list from then on, as the worker's is; one removed is gone from it.
-      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); if (message.account === 'remove' && remove.ok) personas.splice(personas.findIndex((p) => p.mine && p.slug === message.slug) >>> 0, 1); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, remove, journeys }[message.account]; } },
+      // A persona made is in the list from then on, as the worker's is; one removed is gone from it. The account comes
+      // as a copy, as a message does: a test changes it for the next answer only.
+      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); if (message.account === 'remove' && remove.ok) personas.splice(personas.findIndex((p) => p.mine && p.slug === message.slug) >>> 0, 1); return { status: status && { ...status }, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, remove, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: at }]; }, onActivated: { addListener: (listener) => activated.push(listener) }, onUpdated: { addListener: (listener) => updated.push(listener) } },
@@ -695,15 +696,53 @@ for (const [label, status, offers] of [
   ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, ['get-pro', 'another-account']],
 ]) {
   test(`with no walk running, the side panel offers ${offers.join(' and ')}: ${label}`, async (t) => {
-    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
     assert.deepEqual(h.acts(), offers);
     assert.equal(h.app.querySelector('section[id="panel-scan"]')?.hidden, false, 'Scan is on the screen');
     if (offers[0] === 'get-pro') {
       assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
+      const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
+      const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
+      const shown = asked(h);
+      await h.switchTo(2);
+      await h.navigate('https://impeccable.reviews/app/-/account?tab=plan');
+      assert.equal(asked(h), shown + 1, 'back from another tab, or the tab gone elsewhere: asked again, once in 2 s');
+      await wait(2000);
+      await h.navigate('https://impeccable.reviews/app/-/account');
+      assert.equal(asked(h), shown + 2);
       await h.press('get-pro');
       await h.press('another-account');
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
+      const out = asked(h);
+      await wait(60_000);
+      assert.equal(asked(h), out, 'signed out, the account is not asked again');
+      // Paid in the checkout's tab, the panel left open: within a moment it has Pro, with no reopening.
+      const paying = { ...status };
+      const p = await sidePanel({ view: STUBS['signed-out'], status: paying, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+      await p.press('get-pro');
+      await p.press('get-pro');
+      const first = asked(p);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'not-pro'], 'asked again once, however often pressed');
+      // A Scan walk meanwhile: no asking while it runs, and again once it is over.
+      await p.show(STUBS.walking);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'walking']);
+      await p.show(undefined);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [2, 'not-pro']);
+      // The server out of reach for a moment (no word on Pro), asked on a timer or another tab: still no Pro, still asking.
+      delete paying.pro;
+      await wait(5000);
+      await p.switchTo(3);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [4, 'not-pro']);
+      paying.pro = true;
+      await wait(5000);
+      assert.deepEqual([p.body.dataset.screen, p.sent.some((m) => m.account === 'personas'), p.acts().includes('send')], ['home', true, true]);
+      const done = asked(p);
+      await wait(60_000);
+      assert.equal(asked(p), done, 'with Pro, no more asking');
       return;
     }
     if (!offers.includes('sign-in')) return;

@@ -1125,9 +1125,31 @@ async function signOut() {
   render();
 }
 
+/**
+ * After Get Pro, the account is asked again every few seconds for ten minutes, until it has Pro or this screen goes:
+ * the checkout runs in a tab beside the panel, which need not lose or regain focus, and Pro lands a moment after paying.
+ * Only a clear answer is taken (Pro, or signed out): one with no word on Pro (the server out of reach) changes nothing.
+ */
+const PRO_EVERY = 5000;
+const settled = (answer) => answer?.pro === true || answer?.signedIn === false;
+let proUntil = 0;
+let proTimer = null;
+const proAgain = () => { proTimer = setTimeout(() => { if (screen() === 'not-pro' && Date.now() < proUntil) void knowAccount(settled).finally(proAgain); else proTimer = null; }, PRO_EVERY); };
+function awaitPro() {
+  proUntil = Date.now() + 10 * 60 * 1000;
+  if (!proTimer) proAgain();
+}
+/** Asked again on a look (the panel focused, another tab, the tab gone elsewhere): once in 2 s at most, and without Pro, a clear answer only. */
+let lookedAt = -Infinity;
+function relook() {
+  if (Date.now() - lookedAt < 2000) return;
+  lookedAt = Date.now();
+  void knowAccount(screen() === 'not-pro' ? settled : undefined);
+}
+
 /** Signed in without Impeccable Pro, by the server's word: Scan, then Get Pro and another account. */
 const notPro = () => [scanBox(), el('div', { class: 'foot' }, el('p', { class: 'task', text: COPY.notPro.line }),
-  button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
+  button('get-pro', COPY.notPro.getPro, 'gold full', () => { awaitPro(); void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
   button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); }))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
@@ -1193,6 +1215,8 @@ function render() {
   // The account popover belongs to the home, and signed out to that screen: another screen closes it.
   if (shown !== 'home' && shown !== 'loading' && shown !== 'signed-out') pre.menu = false;
   // The moment's time runs from when it is first drawn; a stand-in holds it.
+  // Back to no Pro (a Scan walk over) within Get Pro's ten minutes: asked again, as before.
+  if (shown === 'not-pro' && !proTimer && Date.now() < proUntil) proAgain();
   if (shown === 'connected' && !connectedFor && !stubbed) connectedFor = setTimeout(() => { pre.connected = false; connectedFor = null; render(); }, CONNECTED_MS);
   const focused = document.activeElement?.getAttribute?.('data-act');
   const body = document.body;
@@ -1232,9 +1256,12 @@ async function look() {
   hereUrl = tab?.url ?? '';
 }
 
-async function knowAccount() {
+/** `taken`: whether to take this answer; every answer, but for Get Pro's rechecks. */
+async function knowAccount(taken = () => true) {
   const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
-  const was = account?.signedIn === true;
+  if (!taken(answer)) return;
+  // Pro come just now (Get Pro paid for) counts as just signed in: no personas were asked for without it.
+  const was = account?.signedIn === true && account.pro !== false;
   const before = screen();
   account = answer?.ok === true && answer.available === true ? answer : null;
   if (account?.signedIn === true && account.pro !== false && (!was || pre.personas === null)) void loadPersonas();
@@ -1309,15 +1336,16 @@ async function start() {
       clearTimeout(settling);
       settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
     };
-    chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
+    // Without Pro, back from another tab or the tab gone elsewhere (paid there, maybe): asked again.
+    chrome.tabs.onActivated.addListener(() => { if (screen() === 'not-pro') relook(); void look().then(() => { moved(); render(); }); });
     // Scan names the tab's site: drawn again only when the site changes, as a redraw moves its box.
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { if (screen() === 'not-pro') relook(); const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
     const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (just === true) connect();
     if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
-    if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
+    if (BUILD.account) { void knowAccount(); addEventListener('focus', relook); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.
     act('hello');
   }
