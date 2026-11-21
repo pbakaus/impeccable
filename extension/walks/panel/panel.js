@@ -751,8 +751,8 @@ const WHY = COPY.why;
 
 /**
  * The plan asked for while the person pauses writing, before they send it, so the walk usually has its plan ready
- * (REN-2190: the plan is one model call of about 4 s). Keyed by who walks, the words, the tab and the width; Send takes it
- * only when all four are still the same, else asks again. One the person never sends is dropped here, unsaid. At most
+ * (REN-2190: the plan is one model call of about 4 s). Keyed by who walks, the words, the tab, its address and the width;
+ * Send takes it only when all are still the same (a tab gone to another page asks again), else asks again. One the person never sends is dropped here, unsaid. At most
  * one is asked at a time and {@link EARLY_MAX} between sends: each spends one of the person's plans an hour.
  */
 const EARLY_PAUSE_MS = 1200;
@@ -761,7 +761,7 @@ const EARLY_MAX = 3;
 let early = null;
 let earlyTimer = null;
 let earlyAsked = 0;
-const planKey = (person, task) => JSON.stringify([refOf(person), task.trim(), here, pre.width]);
+const planKey = (person, task) => JSON.stringify([refOf(person), task.trim(), here, hereUrl, pre.width]);
 const askPlan = (person, task, isEarly) => chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task, tabId: here, device: pre.width, ...(isEarly ? { early: true } : {}) }).catch(() => null);
 function askEarly() {
   clearTimeout(earlyTimer);
@@ -773,7 +773,8 @@ function askEarly() {
     if (early?.key === key) return;
     earlyAsked += 1;
     const asked = { key, pending: true, answer: askPlan(person, task, true) };
-    asked.answer.finally(() => { asked.pending = false; });
+    // Words changed while this one was asked: the newest are asked once it answers, within the same limits.
+    asked.answer.finally(() => { asked.pending = false; const now = picked(); if (early === asked && now && planKey(now, pre.task) !== asked.key) askEarly(); });
     early = asked;
   }, EARLY_PAUSE_MS);
 }
