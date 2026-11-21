@@ -64,6 +64,13 @@ fn active_queries_still_report_real_contrast_errors() {
 }
 
 #[test]
+fn empty_media_blocks_apply_in_an_active_stylesheet() {
+    assert_eq!(contrast_count("@media{body{color:#eee}}"), 1);
+    assert_eq!(contrast_count("@media /* all */ {body{color:#eee}}"), 1);
+    assert_eq!(contrast_count("@media print{@media{body{color:#eee}}}"), 0);
+}
+
+#[test]
 fn inactive_parent_stays_inactive_and_layer_contents_are_preserved() {
     assert_eq!(
         contrast_count("@media print{@media screen{body{color:#eee}}}"),
@@ -250,6 +257,10 @@ fn linked_stylesheets_use_media_assigned_by_simple_onload_handlers() {
     std::fs::write(dir.join("async.css"), "body{color:#eee}").unwrap();
     for (handler, expected) in [
         ("this.media='all'", 1),
+        ("media='all'", 1),
+        (" media = &quot;screen&quot;; ", 1),
+        ("if(media!='all')media='all'", 1),
+        (" if (media !== &quot;all&quot;) media = 'all'; ", 1),
         ("this.media=&quot;screen&quot;", 1),
         ("this.media=''", 1),
         ("this.onload=null;this.media='all'", 1),
@@ -261,6 +272,9 @@ fn linked_stylesheets_use_media_assigned_by_simple_onload_handlers() {
         ("console.log(`this.media='all'`)", 0),
         ("/* this.media='all' */", 0),
         ("if (false) this.media='all'", 0),
+        ("if(media=='all')media='all'", 0),
+        ("if(media!='print')media='all'", 0),
+        ("if(media!='all')media='all';media='print'", 0),
         ("this.media=='all'", 0),
     ] {
         let html = format!("<html><head><style>body{{color:#111;background:#fff;font:16px Georgia}}</style><link rel='stylesheet' media='print' href='async.css' onload=\"{handler}\"></head><body><p>Async stylesheet text.</p></body></html>");

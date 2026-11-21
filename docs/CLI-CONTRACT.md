@@ -38,9 +38,10 @@ Notation: `stdout>` / `stderr>` are literal writes; `exit N`; template strings u
 Static HTML scans resolve CSS for one environment, matching the default rendered
 scan: `screen`, a light color scheme, and a 1280 × 800 CSS-pixel viewport. This
 applies to inline and local linked stylesheets, their `media` attributes, and
-nested `@media` blocks. Nonmatching and unsupported queries do not contribute
-styles, custom properties, or CSS pattern findings. Plain CSS/JS text scans are
-unchanged; a static HTML scan is not a review of every responsive state.
+nested `@media` blocks. An empty `@media` query matches all media. Nonmatching
+and unsupported queries do not contribute styles, custom properties, or CSS
+pattern findings. A static HTML scan covers one state. Plain CSS/JS text scans
+are unchanged.
 
 Supported conditions are `screen`/`all` media types (other media types do not
 match), `not`/`only`, comma-separated alternatives, grouped `and`/`or` conditions,
@@ -54,11 +55,11 @@ em/rem (16px). Unsupported features, units, functions, and malformed conditions
 are excluded, including when negated. Use a rendered scan at the desired viewport
 for other environments. Existing `@supports` and `@layer` behavior is unchanged.
 
-For local linked stylesheets, a simple `onload="this.media='all'"` handler
-supplies the media value after loading. Straight-line literal `this.media`
-assignments, with optional `this.onload=null` statements, are supported; the
-last media assignment wins. Other JavaScript is not evaluated and keeps the
-original `media` attribute. This includes conditions, calls, and escaped values.
+For local linked stylesheets, literal assignments to `this.media` or `media`
+in `onload` supply the media value after loading. The last assignment wins,
+with optional `this.onload=null` statements allowed. The loadCSS form
+`if(media!='all')media='all'` also resolves to `all`. The static scan keeps
+the original media attribute for other handlers.
 
 The recorded `collectStaticCssRules` function vectors retain their historical
 behavior. Runtime scans filter media before the collector and custom-property

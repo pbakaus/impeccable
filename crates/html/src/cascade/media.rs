@@ -194,10 +194,13 @@ fn condition(t: &[Term]) -> Option<bool> {
     }
 }
 
-/// Evaluate a nonempty media query list. Callers handle absent/empty attributes.
+/// Evaluate a media query list. An empty list matches all media.
 pub fn matches_media(query: &str) -> bool {
     let mut source = ParserInput::new(query);
     let mut input = Parser::new(&mut source);
+    if input.is_exhausted() {
+        return true;
+    }
     loop {
         let parsed: Result<_, cssparser::ParseError<'_, ()>> =
             input.parse_until_before(Delimiter::Comma, |p| Ok(terms(p, 0)));
@@ -301,6 +304,8 @@ mod tests {
     #[test]
     fn query_grammar_and_unknown_negation() {
         for query in [
+            "",
+            "/* empty */",
             "SCREEN and ( width : 1280px )",
             "screen/**/and (width:80rem)",
             "screen/* , ( */ and (width:80rem)",
@@ -319,7 +324,6 @@ mod tests {
             assert!(matches_media(query), "{query}");
         }
         for query in [
-            "",
             "only",
             "not",
             "screen and",

@@ -38,15 +38,23 @@ static STYLESHEET_REL_RE: Lazy<Regex> =
 static REMOTE_HREF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^(https?:)?//").expect("REMOTE_HREF_RE"));
 
-// Recognize the usual async-CSS onload idiom without evaluating JavaScript.
-// Only straight-line literal media assignments and onload=null are accepted;
-// strings, comments, conditions and calls cannot masquerade as assignments.
+// Recognize literal media assignments without running the handler.
 static ONLOAD_ASSIGNMENT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"^\s*this\s*\.\s*(?:media\s*=\s*(?:'([^'\\]*)'|"([^"\\]*)")|onload\s*=\s*null)\s*(?:;|$)"#)
+    Regex::new(r#"^\s*(?:(?:this\s*\.\s*)?media\s*=\s*(?:'([^'\\\r\n]*)'|"([^"\\\r\n]*)")|this\s*\.\s*onload\s*=\s*null)\s*(?:;|$)"#)
         .expect("ONLOAD_ASSIGNMENT_RE")
 });
 
+// loadCSS changes media to "all" only if it is not already "all".
+static ONLOAD_LOADCSS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"^\s*if\s*\(\s*media\s*!==?\s*(?:'all'|"all")\s*\)\s*media\s*=\s*(?:'all'|"all")\s*;?\s*$"#)
+        .expect("ONLOAD_LOADCSS_RE")
+});
+
 fn loaded_media(mut handler: &str) -> Option<&str> {
+    if ONLOAD_LOADCSS_RE.is_match(handler) {
+        return Some("all");
+    }
+
     let mut media = None;
     while !handler.trim().is_empty() {
         let assignment = ONLOAD_ASSIGNMENT_RE.captures(handler)?;
@@ -58,11 +66,12 @@ fn loaded_media(mut handler: &str) -> Option<&str> {
     media
 }
 
-fn link_media_matches(link: &StaticElement<'_>) -> bool {
-    link.get_attribute("onload")
+fn stylesheet_media_matches(sheet: &StaticElement<'_>) -> bool {
+    sheet.get_attribute("onload")
+        .filter(|_| sheet.tag_lower() == "link")
         .and_then(loaded_media)
-        .or_else(|| link.get_attribute("media"))
-        .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
+        .or_else(|| sheet.get_attribute("media"))
+        .is_none_or(super::media::matches_media)
 }
 
 /// JS: css-cascade.mjs#resolveLinkedCssPath(fileDir, href)
@@ -241,17 +250,14 @@ pub fn collect_static_css_text(
     let mut warned_missing_stylesheets: std::collections::HashSet<String> =
         std::collections::HashSet::new();
     for style_el in doc.query_selector_all("style") {
-        if style_el
-            .get_attribute("media")
-            .is_none_or(|m| m.trim().is_empty() || super::media::matches_media(m))
-        {
+        if stylesheet_media_matches(&style_el) {
             let text = super::media::screen_styles(&style_el.text_content());
             push(&mut css, &text, None);
             pattern_texts.push(text);
         }
     }
     for link in doc.query_selector_all("link") {
-        if !link_media_matches(&link) {
+        if !stylesheet_media_matches(&link) {
             continue;
         }
         let rel = link.get_attribute("rel").unwrap_or("");
@@ -1224,7 +1230,7 @@ pub fn has_unread_stylesheet_in(
     doc.query_selector_all("link").iter().any(|link| {
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
-        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || !link_media_matches(link) {
+        if !STYLESHEET_REL_RE.is_match(rel) || href.is_empty() || !stylesheet_media_matches(link) {
             return false;
         }
         if REMOTE_HREF_RE.is_match(href) {
