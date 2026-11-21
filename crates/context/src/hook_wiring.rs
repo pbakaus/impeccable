@@ -134,7 +134,12 @@ fn claude_manifest() -> Value {
 }
 
 fn grok_manifest() -> Value {
-    let command = if cfg!(windows) {
+    grok_manifest_for(cfg!(windows))
+}
+
+/// Grok's manifest for one platform (tests compare it with install's on any host).
+pub fn grok_manifest_for(win32: bool) -> Value {
+    let command = if win32 {
         crate::hook_markers::windows_launcher_hook_command(GROK_LAUNCHER, "hook")
     } else {
         guarded_hook_command(GROK_LAUNCHER)
@@ -199,11 +204,15 @@ fn github_manifest() -> Value {
 /// No per-edit detector: BeforeTool carries the session id into
 /// `build-phase` shell calls, AfterAgent runs the build-completion check.
 const GEMINI_LAUNCHER: &str = "$GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable";
-const GEMINI_HOOK_COMMAND_WINDOWS: &str = "& \"$env:GEMINI_PROJECT_DIR/.gemini/skills/impeccable/scripts/impeccable.cmd\" hook";
 
 fn gemini_manifest() -> Value {
-    let cmd = if cfg!(windows) {
-        GEMINI_HOOK_COMMAND_WINDOWS.to_string()
+    gemini_manifest_for(cfg!(windows))
+}
+
+/// Gemini's manifest for one platform (tests compare it with install's on any host).
+pub fn gemini_manifest_for(win32: bool) -> Value {
+    let cmd = if win32 {
+        crate::hook_markers::gemini_windows_launcher_hook_command(GEMINI_LAUNCHER, "hook")
     } else {
         crate::hook_markers::guarded_launcher_hook_command(GEMINI_LAUNCHER, "hook")
     };

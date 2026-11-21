@@ -443,6 +443,36 @@ describe('release.mjs guards', () => {
     assert.match(stderr, /No changelog entry found for "Extension v3\.0\.0"/);
   });
 
+  // Catches an extension released with walk helpers older than the web app's (its stand-in and secret-typing fixes
+  // shipped nowhere): the release reads pristine main's PAGE_HELPERS_HASH and refuses any other.
+  it('extension: refuses walk helpers that differ from pristine main, and passes ones that match', () => {
+    const pristine = path.join(root, 'pristine');
+    const pristineOrigin = path.join(root, 'pristine-origin.git');
+    execFileSync('git', ['init', '--bare', pristineOrigin]);
+    fs.mkdirSync(path.join(pristine, 'src', 'outings'), { recursive: true });
+    git(pristine, 'init', '-b', 'main');
+    git(pristine, 'config', 'user.email', 'test@example.com');
+    git(pristine, 'config', 'user.name', 'Release Test');
+    fs.writeFileSync(path.join(pristine, 'src', 'outings', 'page-helpers.ts'), "export const PAGE_HELPERS_HASH = 'aaaa1111';\n");
+    git(pristine, 'add', '-A');
+    git(pristine, 'commit', '-m', 'helpers');
+    git(pristine, 'remote', 'add', 'origin', pristineOrigin);
+    git(pristine, 'push', '-u', 'origin', 'main');
+    const release = (hash) => {
+      write('site/pages/changelog.astro', `${CHANGELOG}<article>\n  <div class="changelog-version-header"><span class="cf-version">Extension v2.0.0</span></div>\n  <ul class="cf-items">\n    <li><strong>Walks.</strong> Fresh helpers.</li>\n  </ul>\n</article>\n`);
+      write('extension/walks/page-helpers.js', `export const HASH = '${hash}';\n`);
+      git(workDir, 'add', '-A');
+      git(workDir, 'commit', '-m', `helpers ${hash}`);
+      git(workDir, 'push', 'origin', 'main');
+      return runReleaseWith({ PRISTINE_DIR: pristine }, workDir, 'extension');
+    };
+    const stale = release('bbbb2222');
+    assert.equal(stale.code, 1);
+    assert.match(stale.stderr, /walk helpers bbbb2222, but pristine main has aaaa1111/);
+    const fresh = release('aaaa1111');
+    assert.match(fresh.stdout, /walk helpers aaaa1111 match pristine main/);
+  });
+
   it('refuses when a release artifact is missing', () => {
     fs.rmSync(path.join(workDir, 'dist/universal.zip'));
     git(workDir, 'add', '-A');
