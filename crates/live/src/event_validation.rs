@@ -33,7 +33,7 @@ fn is_valid_id(v: Option<&Value>) -> bool {
 }
 
 fn is_valid_variant_id_str(s: &str) -> bool {
-    (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit())
+    (1..=3).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_digit()) && s.parse::<u16>().is_ok_and(|n| n > 0)
 }
 
 fn is_valid_variant_id(v: Option<&Value>) -> bool {

@@ -70,6 +70,7 @@
     "test:skill-activation": "node scripts/run-tests.mjs skill-activation",
     "test:skill-workflow": "node scripts/run-tests.mjs skill-workflow",
     "test:live-svelte-adapter-deepseek": "node scripts/run-tests.mjs live-svelte-adapter-deepseek",
+    "test:live-vue-accept": "node scripts/run-tests.mjs live-vue-accept",
     "test:rust-changed": "node scripts/test-rust-changed.mjs",
     "smoke:hooks": "node scripts/smoke-provider-hooks.mjs",
     "audit": "bun audit --audit-level=moderate",
