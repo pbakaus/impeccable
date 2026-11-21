@@ -6,6 +6,10 @@
 
 mod local;
 
+#[cfg(test)]
+#[path = "foundations/golden.rs"]
+mod golden;
+
 use impeccable_common::Io;
 use std::collections::BTreeMap;
 
