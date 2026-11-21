@@ -605,7 +605,9 @@ impl FileFacts {
             facts.ci_unknown = unknown;
         }
 
-        if whole_candidate(path) && text.len() <= MAX_BYTES as usize {
+        // Already cut to MAX_BYTES above; a cut through a character decodes a
+        // few bytes longer, and the sample still stands, as the old read's did.
+        if whole_candidate(path) {
             facts.whole = Some(Rc::from(text));
         }
         facts
