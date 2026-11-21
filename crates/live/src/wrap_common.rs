@@ -336,6 +336,15 @@ fn component_fallback(lines: &[String], queries: &[String], tag: Option<&str>, d
         && queries.iter().all(|q| find_all_elements(lines, q, tag, dialect).is_empty())
 }
 
+/// Among the candidates carrying the picked text (all of them when none
+/// does), an element of the picked tag beats every component.
+fn prefer_picked_tag<T>(candidates: &mut Vec<T>, component: impl Fn(&T) -> bool, carries_text: impl Fn(&T) -> bool) {
+    let carried = candidates.iter().any(&carries_text);
+    if candidates.iter().any(|c| !component(c) && (!carried || carries_text(c))) {
+        candidates.retain(|c| !component(c));
+    }
+}
+
 /// Whether `component_fallback` may apply at all, before any file is read.
 fn component_fallback_allowed(queries: &[String], tag: Option<&str>, dialect: Dialect) -> bool {
     tag.is_some() && dialect != Dialect::Html && !is_tag_only_search(queries, tag)
@@ -1276,9 +1285,16 @@ fn resolve_lines(
         }
         return Resolution::NotLocated(file.path);
     };
-    let candidates = collect_candidates(&file.lines, queries, tag, dialect, components);
+    let mut candidates = collect_candidates(&file.lines, queries, tag, dialect, components);
     if candidates.is_empty() {
         return Resolution::NotLocated(file.path);
+    }
+    if !components && component_fallback_allowed(queries, tag, dialect) {
+        let mut all: Vec<_> = candidates.iter().map(|&c| (c, false)).collect();
+        all.extend(collect_candidates(&file.lines, queries, tag, dialect, true).into_iter()
+            .filter(|c| !candidates.contains(c)).map(|c| (c, true)));
+        prefer_picked_tag(&mut all, |c| c.1, |c| !filter_by_text(&[c.0], &file.lines, text).is_empty());
+        candidates = all.into_iter().map(|(c, _)| c).collect();
     }
     let filtered = filter_by_text(&candidates, &file.lines, text);
     match filtered.len() {
