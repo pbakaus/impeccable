@@ -109,9 +109,18 @@ describe('hook manifest builders', () => {
   });
 
   // `impeccable hooks on` (crates/context/src/hook_wiring.rs) asserts the same
-  // fixture, so the installer and the repair write one manifest (#1307).
-  it('matches the shared Claude manifest fixture the engine also pins', () => {
-    assert.deepEqual(buildClaudeSettingsManifest(), readJson('tests/fixtures/hook-manifests/claude-settings.json'));
+  // fixtures, so the installer and the repair write one manifest (#1307).
+  it('matches the shared manifest fixtures the engine also pins', () => {
+    for (const [manifest, file] of [
+      [buildClaudeSettingsManifest(), 'claude-settings.json'],
+      [buildCodexHooksManifest('.agents'), 'codex-hooks.json'],
+      [buildCursorHooksManifest(), 'cursor-hooks.json'],
+      [buildGitHubHooksManifest(), 'github-hooks.json'],
+      [buildGrokHooksManifest(), 'grok-hooks.json'],
+      [buildGeminiHooksManifest(), 'gemini-settings.json'],
+    ]) {
+      assert.deepEqual(manifest, readJson(`tests/fixtures/hook-manifests/${file}`), file);
+    }
   });
 
   it('builds Codex project-local hooks for the real detector hook', () => {

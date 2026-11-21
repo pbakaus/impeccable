@@ -14,8 +14,7 @@ const HINT: &str = "Optional: npx impeccable login keeps your critiques and audi
 
 const OFFER: &str =
     "\nSign in to keep your critiques and audits in your Impeccable account and see this
-repository on your Home. With Pro, the detector catches more and Loop collects
-your agents' questions. No account yet? Signing in creates one.
+repository on your Home. No account yet? Signing in creates one.
 ";
 
 #[derive(Debug, PartialEq)]

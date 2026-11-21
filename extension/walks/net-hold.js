@@ -24,33 +24,63 @@
 // key at a sign-in pause, and when the walk ends. Every rule of ours is removed when this worker starts, looked at again
 // with each request the tab asks for, and often while any is up, so none outlives its walk.
 import { hooks, note, walk, writesHeld } from './driver.js';
+import { STAGING_APP, STAGING_READ_ONLY, STAGING_REFUSED } from './guard.js';
+
+/**
+ * A RE2 filter for one of the guard's path patterns on the staging app: what the Fetch hold doesn't see (a frame in a
+ * process of its own, a worker, a popup's first moments) meets the same pages refused. By the path as written, not
+ * decoded: the second layer, where the guard's own check is the first.
+ */
+const stagingFilter = (pattern) => `^https://${STAGING_APP.replace(/\./g, '\\.')}\\.?(:443)?${pattern.source.replace(/^\^/, '').replaceAll('(\\/|$)', '([/?#]|$)')}`;
 
 const FRAMES = 20541;
 const ELSEWHERE = 20542;
-const OURS = [FRAMES, ELSEWHERE];
+/**
+ * The person's own agent on our staging app (guard.js): a rule a page, in its tab and from its sites, numbered from
+ * here. One pattern a rule: Chrome takes no regular expression past a small memory bound (measured: the patterns joined
+ * into one are refused as `memoryLimitExceeded`, each alone is taken).
+ */
+const STAGING_FIRST = 20550;
 const WRITES = ['post', 'put', 'patch', 'delete', 'connect', 'other'];
 /** Every kind of request, the top of a tab included: a rule leaves that out unless it is named. */
 const EVERY_KIND = { resourceTypes: ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'webtransport', 'webbundle', 'other'] };
 const RECHECK_MS = 250;
+/** Each page refused whatever the method, then each the agent may only look at: its filter and the methods held. */
+const STAGING_PAGES = [...STAGING_REFUSED.map((p) => [stagingFilter(p), null]), ...STAGING_READ_ONLY.map((p) => [stagingFilter(p), WRITES])];
+const OURS = [FRAMES, ELSEWHERE, ...STAGING_PAGES.flatMap((_, n) => [STAGING_FIRST + 2 * n, STAGING_FIRST + 2 * n + 1])];
 
 /** The tabs that were open when the walk began, besides its own: the person's, left alone. None when Chrome would not list them. */
 let theirs = [];
 
 /** The walk's sites by name, as a rule takes them: no scheme, no port, no brackets. */
 const hostsOf = (origins) => [...new Set(origins.map((origin) => {
-  try { return new URL(origin).hostname.replace(/^\[|\]$/g, '').toLowerCase(); } catch { return ''; }
+  try { return new URL(origin).hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase(); } catch { return ''; }
 }).filter(Boolean))];
 
-/** The rules the walk needs right now: none unless it drives with its writes closed. */
+/** The rules the walk needs right now: the write hold's while it drives with writes closed, the staging app's while an agent may use it. */
 function wanted() {
-  if (!walk || !writesHeld()) return [];
+  if (!walk) return [];
   const sites = hostsOf(walk.allowed);
   if (sites.length === 0) return [];
   const block = { type: 'block' };
-  return [
+  const staging = walk.agent && sites.includes(STAGING_APP) ? stagingRules(sites, block) : [];
+  if (!writesHeld()) return staging;
+  return [...staging,
     { id: FRAMES, priority: 1, action: block, condition: { tabIds: [walk.tabId], excludedInitiatorDomains: sites, requestMethods: WRITES, ...EVERY_KIND } },
     { id: ELSEWHERE, priority: 1, action: block, condition: { excludedTabIds: [walk.tabId, ...theirs], initiatorDomains: sites, requestMethods: WRITES, ...EVERY_KIND } },
   ];
+}
+
+/** In the agent's tab, all but its own page's loads (the Fetch hold answers those, told); elsewhere, what its sites start. */
+function stagingRules(sites, block) {
+  const notTop = { resourceTypes: EVERY_KIND.resourceTypes.filter((kind) => kind !== 'main_frame') };
+  return STAGING_PAGES.flatMap(([regexFilter, methods], n) => {
+    const page = { regexFilter, isUrlFilterCaseSensitive: false, ...(methods ? { requestMethods: methods } : {}) };
+    return [
+      { id: STAGING_FIRST + 2 * n, priority: 2, action: block, condition: { tabIds: [walk.tabId], ...page, ...notTop } },
+      { id: STAGING_FIRST + 2 * n + 1, priority: 2, action: block, condition: { excludedTabIds: [walk.tabId, ...theirs], initiatorDomains: sites, ...page, ...EVERY_KIND } },
+    ];
+  });
 }
 
 let shown = null;
@@ -80,8 +110,11 @@ async function apply() {
   if (!up && recheck) { clearInterval(recheck); recheck = null; }
 }
 
-/** Brings the rules in line with the walk, in order: resolves once Chrome has them. */
-function sync() {
+/**
+ * Brings the rules in line with the walk, in order: resolves once Chrome has them. The agent waits on it after the
+ * person allows another site, before the tab goes there (agent.js), so no page of it runs ahead of its rules.
+ */
+export function sync() {
   chain = chain.then(apply, apply);
   return chain;
 }

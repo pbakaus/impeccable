@@ -166,7 +166,7 @@ mod tests {
         assert!(line.starts_with("::warning file=src/card.html,title=Side-tab accent border::"));
         assert!(!line.contains("line="));
         assert!(line.contains("[side-tab] border-left: 4px%0A"));
-        assert!(line.contains("A bar down one side of a box"));
+        assert!(line.contains("A bar down one side of a rounded box"));
     }
 
     #[test]

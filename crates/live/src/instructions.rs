@@ -176,7 +176,7 @@ pub fn instructions_for_event(event: &Map<String, Value>, self_cmd: &str) -> Opt
                 reply_cmd(self_cmd, &id, "done --data '{\"status\":\"done\",\"appliedEntryIds\":[...],\"failed\":[],\"files\":[...],\"notes\":[]}'")
             ))
         }
-        "timeout" => Some("No event arrived; poll again immediately.".to_string()),
+        "timeout" => Some("No event arrived; poll again immediately. After the third timeout in a row, stop polling: tell the user the page is still live (in the generate lane, that the variants wait there for Accept or Discard) and to tell you here once they act on it, then end your turn; the next live-poll collects whatever they did meanwhile.".to_string()),
         "exit" => Some(format!(
             "Session over: kill any background poll, then {} stop (removes the injected script tag). Sweep leftover impeccable-variants-start / impeccable-carbonize-start markers from source.",
             script_cmd(self_cmd, "live-server")

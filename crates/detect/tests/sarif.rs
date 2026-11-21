@@ -103,7 +103,7 @@ fn sarif_writes_a_log_to_stdout() {
     assert!(rules[0]["help"]["text"]
         .as_str()
         .unwrap()
-        .contains("A bar down one side of a box"));
+        .contains("A bar down one side of a rounded box"));
     assert_eq!(rules[0]["properties"]["category"], "slop");
     let result = &log["runs"][0]["results"][0];
     assert_eq!(result["ruleId"], "side-tab");
@@ -111,7 +111,7 @@ fn sarif_writes_a_log_to_stdout() {
     assert_eq!(result["level"], "warning");
     let message = result["message"]["text"].as_str().unwrap();
     assert!(message.starts_with("border-left: 4px\n"), "{message}");
-    assert!(message.contains("A bar down one side of a box"), "{message}");
+    assert!(message.contains("A bar down one side of a rounded box"), "{message}");
     let loc = &result["locations"][0]["physicalLocation"];
     assert_eq!(loc["artifactLocation"]["uri"], "card.html");
     assert_eq!(loc["artifactLocation"]["uriBaseId"], "%SRCROOT%");

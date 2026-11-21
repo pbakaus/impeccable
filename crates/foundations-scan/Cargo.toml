@@ -1,0 +1,16 @@
+[package]
+name = "impeccable-foundations-scan"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+# The Foundations checks over a file source: the CLI reads a checkout, a
+# wasm host reads a repository's tree listing and blobs (`scan_listing`).
+# No filesystem, process, thread or clock use, so it builds for
+# wasm32-unknown-unknown.
+
+[dependencies]
+impeccable-html = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }

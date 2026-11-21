@@ -34,7 +34,7 @@ use impeccable_core::checks::css_scan::{side_stripe_index, CssHostIndex};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
 use impeccable_core::checks::side_bar::{
-    corners_round, is_inline_side_tab, is_typographic_selector, scan_css_text_for_side_bars_with, side_bar_stands_on,
+    corners_round, is_inline_side_tab, scan_css_text_for_side_bars_with, side_bar_stands,
     side_bar_thickness,
 };
 use impeccable_core::checks::rules::{is_rounded_away_from_side, RuleHit, SafeTagTextSeen};
@@ -300,7 +300,7 @@ pub fn detect_html_source(
                 {
                     continue;
                 }
-                if let Some(mut f) = mk(&h.id, &h.snippet) {
+                if let Some(mut f) = try_finding(&h.id, fp, &h.snippet, el.source_line()) {
                     // A hit's own severity (a contrast ratio just under its
                     // bar) overrides the registry's.
                     if let Some(sev) = h.severity.filter(|s| !s.is_empty()) {
@@ -453,19 +453,15 @@ pub fn detect_html_source(
                 let stands = if side % 2 == 1 {
                     let thickness = side_bar_thickness(&f.snippet).unwrap_or(0.0);
                     if hosts.is_empty() {
-                        side_bar_stands_on(
-                            thickness,
-                            index().side_bar_on_rounded_host(&f),
-                            is_typographic_selector(f.selector.as_deref().unwrap_or("")),
-                        )
+                        side_bar_stands(thickness, index().side_bar_on_rounded_host(&f))
                     } else {
                         hosts.iter().any(|el| {
-                            side_bar_stands_on(
-                                thickness,
-                                corners_round(corners(el).as_ref()),
-                                crate::adapters::static_is_typographic(el),
-                            )
-                        })
+                            side_bar_stands(thickness, corners_round(corners(el).as_ref()))
+                        }) || (impeccable_core::checks::side_bar::is_state_side_bar(&f)
+                            && hosts.iter().any(|el| {
+                                !impeccable_core::checks::side_bar::inline_style_squares_box(el.get_attribute("style"))
+                            })
+                            && side_bar_stands(thickness, index().side_bar_on_rounded_host(&f)))
                     }
                 } else if hosts.is_empty() {
                     index().side_stripe_on_rounded_host(&f)

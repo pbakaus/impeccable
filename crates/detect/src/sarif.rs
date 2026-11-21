@@ -335,7 +335,7 @@ mod tests {
         assert!(side["help"]["text"]
             .as_str()
             .unwrap()
-            .contains("A bar down one side of a box"));
+            .contains("A bar down one side of a rounded box"));
         assert_eq!(side["properties"]["category"], "slop");
         assert!(rules.len() < catalog().len());
 
@@ -351,7 +351,7 @@ mod tests {
         assert_eq!(warning["ruleId"], "side-tab");
         let message = warning["message"]["text"].as_str().unwrap();
         assert!(message.starts_with("border-left: 4px\n"), "{message}");
-        assert!(message.contains("A bar down one side of a box"), "{message}");
+        assert!(message.contains("A bar down one side of a rounded box"), "{message}");
         let loc = &warning["locations"][0]["physicalLocation"];
         assert_eq!(loc["artifactLocation"]["uri"], "src/card.html");
         assert_eq!(loc["artifactLocation"]["uriBaseId"], "%SRCROOT%");

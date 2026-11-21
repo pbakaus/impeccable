@@ -5,23 +5,43 @@ use super::*;
 pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
     let mut out = Vec::new();
     if !s.hooks.is_empty() {
-        if s.harness == "claude" {
-            out.push(s.root.join("settings.json"));
-        } else {
-            out.extend([s.root.join("hooks.json"), s.root.join("config.toml")]);
+        match s.harness.as_str() {
+            "claude" => out.push(s.root.join("settings.json")),
+            "codex" => out.extend([s.root.join("hooks.json"), s.root.join("config.toml")]),
+            "cursor" | "copilot" => out.push(render::hooks_file(s)),
+            _ => unreachable!(),
         }
-    } else if s.harness == "codex" && !s.mcp_approvals.is_empty() {
-        out.push(s.root.join("config.toml"));
+    }
+    if s.wake_plugin.is_some() { out.push(render::hooks_file(s)); }
+    if !s.mcp_approvals.is_empty() {
+        let path = s.root.join(if s.harness == "cursor" {
+            "cli-config.json"
+        } else {
+            "config.toml"
+        });
+        if !out.contains(&path) {
+            out.push(path);
+        }
+    }
+    if !s.http_mcp_servers.is_empty() {
+        out.push(s.root.join(match s.harness.as_str() { "copilot" => "mcp-config.json", "opencode" => "opencode.json", _ => "mcp.json" }));
     }
     if s.instruction.is_some() {
-        out.push(s.root.join(if s.harness == "claude" {
-            "CLAUDE.md"
-        } else {
-            "AGENTS.md"
-        }));
+        out.push(render::rule_file(s));
     }
     out
 }
+/// Planning a dedicated hooks file must not create its missing parent directory.
+pub(super) fn physical_target(s: &Spec, path: &Path) -> Result<PathBuf, (&'static str, String, i32)> {
+    if render::dedicated_wake_file(s).as_deref() == Some(path) {
+        let parent = path.parent().unwrap();
+        if matches!(fs::symlink_metadata(parent), Err(e) if e.kind() == io::ErrorKind::NotFound) {
+            return Ok(canonical_target(parent)?.join(path.file_name().unwrap()));
+        }
+    }
+    canonical_target(path)
+}
+
 pub(super) fn plan(
     s: &Spec,
     j: Option<&Journal>,
@@ -30,7 +50,7 @@ pub(super) fn plan(
     let mut resources = Vec::new();
     for path in targets(s) {
         let before = fs::read(&path).ok();
-        let _physical = canonical_target(&path)?;
+        let _physical = physical_target(s, &path)?;
         let after = render(s, &path, before.as_deref())?;
         let change = match (&before, after.as_slice()) {
             (None, []) => "unchanged",
@@ -131,7 +151,7 @@ pub(super) fn resource_matches(
                 return Ok(false);
             };
             for hook in &journal.spec.hooks {
-                let entry = hook.entry();
+                let entry = hook.entry(&s.harness);
                 if entry == resource.last_written_value
                     && hooks
                         .get(&hook.event)
@@ -155,6 +175,7 @@ pub(super) fn resource_matches(
             };
             Ok(body == expected)
         }
+        "json-entries" => Ok(render::render(s, &resource.path, Some(&bytes))? == bytes),
         "mcp-approval" => {
             let text = String::from_utf8_lossy(&bytes);
             let path = resource.path.display().to_string();

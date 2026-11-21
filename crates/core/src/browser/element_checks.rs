@@ -167,7 +167,6 @@ pub fn check_element_borders_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
             // elliptical corner (`50% / 4px`) leaves the circle test unread.
             box_size: (!radius_value.contains('/')).then_some([rect.width, rect.height]),
         },
-        element_is_typographic(dom, el),
     );
     // A side-tab is a card of text with a coloured edge; a card a visitor
     // cannot see (in a tab pane at opacity 0, a slide parked off its track)
@@ -432,19 +431,6 @@ fn element_rounds(dom: &dyn Dom, el: ElId, width: f64) -> bool {
     crate::checks::side_bar::corners_round(parse_radius_corners(Some(&dom.style(el, "borderRadius")), width).as_ref())
 }
 
-/// Whether the element is a quote or a code line
-/// ([`crate::checks::side_bar::is_typographic_box`]), off its tag, its
-/// ancestors' tags and its class.
-pub fn element_is_typographic(dom: &dyn Dom, el: ElId) -> bool {
-    let mut tags = Vec::new();
-    let mut at = Some(el);
-    while let Some(e) = at.filter(|_| tags.len() < 12) {
-        tags.push(tag_lower(dom, e));
-        at = dom.parent(e);
-    }
-    crate::checks::side_bar::is_typographic_box(&class_attr(dom, el), tags.iter().map(String::as_str))
-}
-
 /// JS: checks.mjs#checkElementPseudoStripeDOM(el). A bar down the left or
 /// right edge is read on any tag in any state ([`crate::checks::side_bar`]);
 /// a band across the top or bottom keeps the rounded-card gate.
@@ -503,7 +489,7 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
                 None
             };
             thickness = w;
-            if edge.is_some() && !crate::checks::side_bar::side_bar_stands_on(w, element_rounds(dom, el, rect.width), element_is_typographic(dom, el)) {
+            if edge.is_some() && !crate::checks::side_bar::side_bar_stands(w, element_rounds(dom, el, rect.width)) {
                 continue;
             }
         }
@@ -749,7 +735,7 @@ fn inset_stripe_detail(dom: &dyn Dom, el: ElId, tag: &str, shadow: &str, width: 
             (true, false) => {
                 if !visible
                     || ax > crate::checks::side_bar::SIDE_BAR_MAX_PX
-                    || !crate::checks::side_bar::side_bar_stands_on(ax, element_rounds(dom, el, width), element_is_typographic(dom, el))
+                    || !crate::checks::side_bar::side_bar_stands(ax, element_rounds(dom, el, width))
                 {
                     continue;
                 }
@@ -6777,11 +6763,11 @@ mod tests {
         // A selected row's stripe is a side tab too.
         d.set_attr(tr, "aria-selected", "true");
         assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1);
-        // Off a table, a bar of 2px or more is a side tab on any box; a
-        // thinner one only on a rounded box.
+        // Off a table, a bar is a side tab only on a rounded box, at any
+        // width.
         let card_stripe = "rgb(99, 102, 241) 4px 0px 0px 0px inset";
         d.set_styles(card, &[("boxShadow", card_stripe), ("borderRadius", "0px")]);
-        assert_eq!(check_element_inset_stripe_dom(&d, card).len(), 1);
+        assert!(check_element_inset_stripe_dom(&d, card).is_empty());
         d.set_style(card, "boxShadow", "rgb(17, 24, 39) 1px 0px 0px 0px inset");
         assert!(check_element_inset_stripe_dom(&d, card).is_empty());
         d.set_style(card, "borderRadius", "6px");
@@ -6894,8 +6880,8 @@ mod tests {
         );
         assert_eq!(check_element_inset_stripe_dom(&d, td)[0].snippet, "td — border-right 3px stripe on a row or cell (right edge)");
         d.set_styles(td, &stripe);
-        // An ARIA row's side border is the borders check's side bar, square
-        // or rounded.
+        // An ARIA row's side border is the borders check's side bar, once
+        // the row is rounded.
         let grid_row = d.add(Some(body), "div");
         visible(&mut d, grid_row);
         d.set_rect(grid_row, 0.0, 0.0, 600.0, 48.0);
@@ -6904,7 +6890,9 @@ mod tests {
         d.set_attr(grid_row, "class", "has-error");
         d.set_styles(grid_row, &stripe);
         assert!(check_element_inset_stripe_dom(&d, grid_row).is_empty(), "ARIA row");
-        assert_eq!(check_element_borders_dom(&d, grid_row).len(), 1, "ARIA row");
+        assert!(check_element_borders_dom(&d, grid_row).is_empty(), "square ARIA row");
+        d.set_style(grid_row, "borderRadius", "6px");
+        assert_eq!(check_element_borders_dom(&d, grid_row).len(), 1, "rounded ARIA row");
         // A plain cell is a stripe only while it paints nothing else.
         let plain_row = d.add(Some(table), "tr");
         let plain = d.add(Some(plain_row), "td");
@@ -7011,7 +6999,7 @@ mod tests {
     }
 
     #[test]
-    fn pseudo_stripe_on_a_square_host_needs_two_px() {
+    fn pseudo_stripe_is_a_side_tab_only_on_a_rounded_host() {
         let (mut d, body) = page();
         let quote = d.add(Some(body), "div");
         visible(&mut d, quote);
@@ -7033,23 +7021,17 @@ mod tests {
         ] {
             d.set_pseudo_style(quote, "::before", p, v);
         }
-        assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
-        d.set_pseudo_style(quote, "::before", "width", "1px");
         assert!(check_element_pseudo_stripe_dom(&d, quote).is_empty());
         d.set_style(quote, "borderRadius", "4px");
         assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
-        // A square pull quote's rule is typography; rounded, it is a tab.
-        d.set_attr(quote, "class", "pullquote");
+        d.set_pseudo_style(quote, "::before", "width", "1px");
         assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
-        d.set_style(quote, "borderRadius", "0px");
-        d.set_pseudo_style(quote, "::before", "width", "4px");
-        assert!(check_element_pseudo_stripe_dom(&d, quote).is_empty());
     }
 
     /// A side border is a side tab on any box from 2px, and at any width on
     /// a box rounded at all.
     #[test]
-    fn side_border_is_a_side_bar_on_any_box() {
+    fn side_border_is_a_side_bar_only_on_a_rounded_box() {
         let mut d = FakeDom::new();
         let (_html, body) = d.with_page();
         let card = d.add(Some(body), "div");
@@ -7077,8 +7059,6 @@ mod tests {
         let snippets_of = |d: &FakeDom, el: ElId| check_element_borders_dom(d, el).into_iter().map(|h| h.snippet).collect::<Vec<_>>();
         let snippets = |d: &FakeDom| snippets_of(d, card);
         for (width, radius, want) in [
-            ("4px", "0px", "border-left: 4px"),
-            ("2px", "0px", "border-left: 2px"),
             ("4px", "10px", "border-left: 4px + border-radius: 10px"),
             ("4px", "10px 0px 0px 10px", "border-left: 4px + border-radius: 10px"),
             ("1px", "6px", "border-left: 1px + border-radius: 6px"),
@@ -7087,21 +7067,22 @@ mod tests {
             with(&mut d, width, radius);
             assert_eq!(snippets(&d), vec![want], "{width} {radius}");
         }
-        // A hairline on a square box is a divider.
-        with(&mut d, "1px", "0px");
-        assert!(snippets(&d).is_empty());
-        // On a pressed, active button too.
+        // Any bar on a square box is fine.
+        for width in ["1px", "2px", "6px"] {
+            with(&mut d, width, "0px");
+            assert!(snippets(&d).is_empty(), "{width}");
+        }
+        // On a pressed, active button too, once it is rounded.
         d.set_attr(button, "aria-pressed", "true");
         d.set_attr(button, "class", "is-active");
         with_on(&mut d, button, "2px", "0px");
-        assert_eq!(snippets_of(&d, button), vec!["border-left: 2px"]);
-        // A radius the engine cannot read is not known to round the box: a
-        // hairline there stays silent, a 2px bar reports.
+        assert!(snippets_of(&d, button).is_empty());
+        with_on(&mut d, button, "2px", "6px");
+        assert_eq!(snippets_of(&d, button), vec!["border-left: 2px + border-radius: 6px"]);
+        // A radius the engine cannot read is not known to round the box.
         for unreadable in ["", "calc(0.5rem)", "var(--radius)"] {
-            with(&mut d, "1px", unreadable);
+            with(&mut d, "4px", unreadable);
             assert!(snippets(&d).is_empty(), "radius {unreadable:?}");
-            with(&mut d, "2px", unreadable);
-            assert_eq!(snippets(&d).len(), 1, "radius {unreadable:?}");
         }
     }
 

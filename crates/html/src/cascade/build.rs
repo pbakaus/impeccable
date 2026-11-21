@@ -78,6 +78,25 @@ pub(crate) fn resolve_linked_css_path(file_dir: &str, href: &str) -> String {
 /// cut: an image url's path after its `%XX` escapes are decoded, where a
 /// `#` or `?` is part of the file name (#560).
 pub(crate) fn resolve_css_path_exact(file_dir: &str, stripped: &str) -> String {
+    resolve_css_path_in(file_dir, stripped, &disk_is_file, &disk_exists)
+}
+
+fn disk_is_file(path: &str) -> bool {
+    std::fs::metadata(path).map(|m| m.is_file()).unwrap_or(false)
+}
+
+fn disk_exists(path: &str) -> bool {
+    Path::new(path).exists()
+}
+
+/// [`resolve_css_path_exact`] over any file source: `is_file` and `exists`
+/// answer for the paths the resolution looks at.
+fn resolve_css_path_in(
+    file_dir: &str,
+    stripped: &str,
+    is_file: &dyn Fn(&str) -> bool,
+    exists: &dyn Fn(&str) -> bool,
+) -> String {
     let root_relative = stripped.starts_with('/') && !stripped.starts_with("//");
     if !root_relative {
         return jsp::resolve("/", &[file_dir, stripped]);
@@ -105,16 +124,11 @@ pub(crate) fn resolve_css_path_exact(file_dir: &str, stripped: &str) -> String {
             break; // never use the filesystem root as document root
         }
         let candidate = jsp::join(&[&dir, &rel]);
-        if std::fs::metadata(&candidate)
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-        {
+        if is_file(&candidate) {
             return candidate;
         }
         // Stop at the project root so a coincidental ~/static/app.css cannot win.
-        if Path::new(&jsp::join(&[&dir, "package.json"])).exists()
-            || Path::new(&jsp::join(&[&dir, ".git"])).exists()
-        {
+        if exists(&jsp::join(&[&dir, "package.json"])) || exists(&jsp::join(&[&dir, ".git"])) {
             break;
         }
         dir = parent;
@@ -1190,7 +1204,23 @@ static FONT_STYLESHEET_RE: Lazy<Regex> = Lazy::new(|| {
 /// local one it could not open. [`collect_static_css_text`] skips both.
 /// Inactive sheets cannot change the page's box rules and do not count.
 pub fn has_unread_stylesheet(doc: &StaticDocument, file_dir: &Path) -> bool {
-    let dir = file_dir.to_string_lossy().into_owned();
+    has_unread_stylesheet_in(
+        doc,
+        &file_dir.to_string_lossy(),
+        &disk_is_file,
+        &disk_exists,
+    )
+}
+
+/// [`has_unread_stylesheet`] over any file source, for hosts without a
+/// filesystem: `is_file` and `exists` answer for the paths resolution looks
+/// at, in the same form as `dir`.
+pub fn has_unread_stylesheet_in(
+    doc: &StaticDocument,
+    dir: &str,
+    is_file: &dyn Fn(&str) -> bool,
+    exists: &dyn Fn(&str) -> bool,
+) -> bool {
     doc.query_selector_all("link").iter().any(|link| {
         let rel = link.get_attribute("rel").unwrap_or("");
         let href = link.get_attribute("href").unwrap_or("");
@@ -1200,9 +1230,8 @@ pub fn has_unread_stylesheet(doc: &StaticDocument, file_dir: &Path) -> bool {
         if REMOTE_HREF_RE.is_match(href) {
             return !FONT_STYLESHEET_RE.is_match(href);
         }
-        !std::fs::metadata(resolve_linked_css_path(&dir, href))
-            .map(|m| m.is_file())
-            .unwrap_or(false)
+        let stripped = href.split(['?', '#']).next().unwrap_or("");
+        !is_file(&resolve_css_path_in(dir, stripped, is_file, exists))
     })
 }
 

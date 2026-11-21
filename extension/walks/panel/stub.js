@@ -43,6 +43,17 @@ const MORE = [
   { n: 12, did: 'Opened “Settings”', said: 'Small grey text. Hard to read.' },
 ];
 const walkingLong = run(walking, MORE.map((step) => ({ type: 'step', step })));
+/** The person's own agent (agent.js): asking for its first site, then driving with its live log. */
+const AGENT = { type: 'agent', name: 'Claude Code', site: 'https://linear.app' };
+const AGENT_STEPS = [
+  { n: 1, did: 'Opened linear.app/acme/team/REN/active' },
+  { n: 2, did: 'Clicked “REN-2053”' },
+  { n: 3, did: 'Set the page to 390 × 844' },
+  { n: 4, did: 'Scrolled' },
+  { n: 5, did: 'Clicked “Comment”' },
+  { n: 6, did: 'Typed “Walked it at 390: the header wraps.” into “Leave a comment…”' },
+];
+const agentWalking = run(emptyView(true), [AGENT, { type: 'opened', name: 'Claude Code', site: AGENT.site }, ...AGENT_STEPS.map((step) => ({ type: 'step', step }))]);
 /** A walk under way that gains a step every 1.5 s (panel.js), to watch the list grow: two steps, then the rest. */
 const walkingLive = run(waiting, [{ type: 'opened', name: 'Robert', site: HANDOFF.site }, ...STEPS.slice(0, 2).map((step) => ({ type: 'step', step }))]);
 export const FEED = { 'walking-live': [...STEPS.slice(2), ...MORE] };
@@ -72,6 +83,9 @@ export const STUBS = {
   asking: run(walking, [{ type: 'ask', ask: { kind: 'delete', what: 'Delete the to-do “Buy oat milk and bread”' } }]),
   'asking-upload': run(walking, [{ type: 'ask', ask: { kind: 'send', what: 'Add a photo to the to-do’s picture field' } }]),
   'asking-go': run(walking, [{ type: 'ask', ask: { kind: 'go', what: 'oat-milk-deals.example' } }]),
+  'agent-asking': run(emptyView(true), [AGENT, { type: 'ask', ask: { kind: 'site', what: 'linear.app' } }]),
+  'agent-walking': agentWalking,
+  'agent-asking-more': run(agentWalking, [{ type: 'ask', ask: { kind: 'site', what: 'github.com' } }]),
   done: run(walking, [finish([])]),
   'done-issues': run(walking, [finish(ISSUES)]),
   stopped: run(walking, [{ type: 'stop' }]),
@@ -147,9 +161,8 @@ export const PRE = {
   'make-typed': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED },
   'make-making': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, making: true },
   'make-made': { personas: PERSONAS, screen: 'make', apps: APPS, made: MADE },
-  // The first time Create a persona opens: its intro. Then the box with the Disability list open, Low vision picked; and one made on a phone with it.
-  intro: { personas: PERSONAS, screen: 'intro' },
-  'make-needs': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, device: 'phone', disability: 'low-vision', needs: true },
+  // The box with a phone and Low vision picked; and one made on a phone with it.
+  'make-needs': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, device: 'phone', disability: 'low-vision' },
   'make-made-chosen': { personas: PERSONAS, screen: 'make', apps: APPS, made: { ...MADE, device: 'mobile', sees: 'older-eyes' }, device: 'phone', disability: 'low-vision' },
   'make-refused': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, note: COPY.make.limit(3) },
   // No app with personas of its own (none, or none with any), and the apps still coming: no "Use a persona from your app".
@@ -186,5 +199,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'intro', 'make-needs', 'make-made-chosen', 'make-refused', 'make-no-apps', 'make-apps-loading', 'make-listening', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-needs', 'make-made-chosen', 'make-refused', 'make-no-apps', 'make-apps-loading', 'make-listening', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

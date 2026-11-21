@@ -13,7 +13,7 @@ export const COPY = {
   command: 'npx @impeccable/reviews walk',
 
   /** No account to start from here (the store build): the terminal. */
-  idle: { line: 'No journey running.', how: 'Start one from your terminal:' },
+  idle: { how: 'Start a journey from your terminal:' },
   copy: { action: 'Copy command', done: 'Copied' },
 
   /** Signed in, and the server says the account has no Impeccable Pro. */
@@ -56,35 +56,20 @@ export const COPY = {
     sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
     sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
   },
-  /** The first time Create a persona opens: four screens, each a headline and its button, then the box. */
-  intro: {
-    skip: 'Skip',
-    screens: [
-      ['Imagine you’re the persona.', 'I’m imagining it'],
-      ['How do you use the web each day?', 'Next'],
-      ['What drives you mad in apps?', 'Next'],
-      ['And what makes you smile?', 'Tell us'],
-    ],
-  },
+  /** Create a persona's intro: these lines play above the box, one after another, and it stays on the last. */
+  intro: ['Imagine you’re the persona.', 'How do you use the web each day?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now tell us who you are.'],
   /** Make a persona: one description makes one (account/worker.js `create`). A refusal keys on the worker's reason. */
   make: {
-    name: 'Your persona',
-    about: 'Who they are, in a line.',
     describe: 'Who are you, and what do you love or hate in apps?',
     action: 'Create',
-    /** The persona's own device (`home.widths` names each), and one disability: the list's question, then each choice and its line. */
-    device: 'Device',
+    /** The persona's own device (`home.widths` names each), and one disability: each choice and its line. */
+    device: 'Preferred device',
     disability: 'Disability',
-    none: 'None',
-    needs: 'Anything that changes how you use apps?',
     disabilities: {
-      none: ['No disability', ''],
+      none: ['None', ''],
       'low-vision': ['Low vision', 'blurry, low contrast'],
       blind: ['Blind', 'uses a screen reader'],
       'colour-blind': ['Colour-blind', 'red and green look alike'],
-      motor: ['Unsteady hands', 'slow with a mouse'],
-      hearing: ['Hard of hearing', 'needs captions'],
-      cognitive: ['Focus and memory', 'needs things simple'],
     },
     /** On the + once the person has as many of their own as the server allows. */
     full: (max) => `You can make up to ${max || 3} personas for now`,
@@ -179,6 +164,28 @@ export const COPY = {
     go: (name, host) => `Let ${name || 'your persona'} go to ${host}?`,
     yes: 'Yes',
     no: 'No',
+    /** The person's own agent asks for a site (agent.js). */
+    site: (name, host) => `Let ${name || 'your agent'} use ${host}?`,
+    once: 'Allow once',
+    always: 'Always allow',
+    notNow: 'Not now',
+  },
+  /** The person's own agent driving their browser (agent.js): its line, and each step in the live log. */
+  yourAgent: {
+    line: (name) => `${name || 'Your agent'} is using your browser`,
+    wants: (name) => `${name || 'Your agent'} wants to use your browser`,
+    /** Chrome's notice while a site question waits: the panel is where it's answered. */
+    notice: (name, host) => `Let ${name || 'your agent'} use ${host}?`,
+    noticeHow: 'Open the Impeccable side panel to answer.',
+    first: (name) => `${name || 'Your agent'} is looking at the page.`,
+    opened: (where) => `Opened ${where}`,
+    back: 'Went back',
+    viewport: (width, height) => `Set the page to ${width} × ${height}`,
+    clicked: (what) => `Clicked “${what}”`,
+    clickedAt: (x, y) => `Clicked at ${x}, ${y}`,
+    typed: (what, into) => `Typed “${what}”${into ? ` into “${into}”` : ''}`,
+    pressed: (key) => `Pressed ${key}`,
+    scrolled: 'Scrolled',
   },
   takeover: { line: (name) => `Your turn. ${name || 'Your persona'} picks up where you leave off.` },
 

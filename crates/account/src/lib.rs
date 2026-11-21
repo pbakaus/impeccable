@@ -375,7 +375,8 @@ fn already_signed_in_inner(io: &mut Io, unless_stale: bool) -> Option<()> {
 fn report_entitlement(io: &mut Io, e: &Result<Entitlement, SessionError>) {
     match e {
         Ok(Entitlement { pro: true, .. }) => io.err("Pro rules: included.\n"),
-        Ok(_) => io.err("Plan: Free. Pro adds Detector Pro, dozens of extra rules. See impeccable.style/pricing\n"),
+        // Pro isn't on sale yet: an account without it hears nothing about it (Paul, 17 Nov).
+        Ok(_) => {}
         Err(e) => io.err(&format!("Couldn't check Pro access: {e}.\n")),
     }
 }
@@ -480,10 +481,7 @@ pub fn run_whoami(args: &[String], io: &mut Io) -> i32 {
             match &plan {
                 Some(p) => io.out(&plan_lines(p)),
                 None if e.pro => io.out("Pro rules: included.\n"),
-                None => io.out("Pro rules: not included with this account.\n"),
-            }
-            if !e.pro {
-                io.out(&format!("{}\n", pro::PRICING));
+                None => {}
             }
             0
         }

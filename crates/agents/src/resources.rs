@@ -41,6 +41,33 @@ pub(super) fn apply(
             ));
         }
     }
+    if let Some(old) = old.filter(|o| ["cursor", "copilot", "opencode"].contains(&o.spec.harness.as_str())) {
+        for path in targets(&old.spec)
+            .into_iter()
+            .filter(|p| render::json_entries_file(&old.spec, p))
+        {
+            let current = fs::read(&path).unwrap_or_default();
+            if render(&old.spec, &path, Some(&current))? != current {
+                return Err((
+                    "mcp_file_drift",
+                    "MCP configuration changed outside the engine".into(),
+                    4,
+                ));
+            }
+        }
+    }
+    if s.harness == "opencode" && (s.wake_plugin.is_some() || old.is_some_and(|j| j.spec.wake_plugin.is_some())) {
+        let path = render::hooks_file(s);
+        if let Ok(current) = fs::read(&path) {
+            let physical = canonical_target(&path)?;
+            let expected = old.and_then(|j| j.snapshots.iter().find(|x| x.path == physical))
+                .map(|x| x.last_written_value.as_slice())
+                .or_else(|| s.wake_plugin.as_deref().map(str::as_bytes));
+            if expected != Some(current.as_slice()) {
+                return Err(("plugin_drift", "The opencode Loop plugin was changed; it was left alone".into(), 4));
+            }
+        }
+    }
     // A managed block the person edited is theirs: a reapply that would
     // replace it is refused before anything is written (pristine#4333).
     if s.instruction.is_some() {
@@ -69,7 +96,7 @@ pub(super) fn apply(
     let mut touched_physical = Vec::new();
     for path in touched {
         let before = fs::read(&path).ok();
-        let physical = canonical_target(&path)?;
+        let physical = targets::physical_target(s, &path)?;
         touched_physical.push(physical.clone());
         let mut base = before.clone();
         if let Some(old) = old {
@@ -96,7 +123,7 @@ pub(super) fn apply(
                 };
                 if let Some(updated) = render::remove_owned(
                     &old_spec,
-                    &physical,
+                    &path,
                     base.as_deref().unwrap_or_default(),
                     original,
                 )? {
@@ -133,7 +160,9 @@ pub(super) fn apply(
         if before != next {
             writes.push((path.clone(), next, managed));
         } else if managed {
-            if let Some(mut claim) = find_resource_claim(home, &physical) {
+            if let Some(mut claim) = old.and_then(|j| j.snapshots.iter().find(|x| x.path == physical)).cloned()
+                .or_else(|| find_resource_claim(home, &physical))
+            {
                 let id = installation_claim(s);
                 if !claim.claims.contains(&id) {
                     claim.claims.push(id)
@@ -156,12 +185,17 @@ pub(super) fn apply(
             }
         }
     }
+    let new_dirs = render::dedicated_wake_file(s).and_then(|p| p.parent().map(Path::to_path_buf))
+        .filter(|p| matches!(fs::symlink_metadata(p), Err(e) if e.kind() == io::ErrorKind::NotFound))
+        .map(|p| canonical_target(&p)).transpose()?.into_iter().collect::<Vec<_>>();
+    let mut created_dirs = old.map(|j| j.created_dirs.clone()).unwrap_or_default();
+    for dir in &new_dirs { if !created_dirs.contains(dir) { created_dirs.push(dir.clone()); } }
     let pending_path = home.join(format!("{}.pending.json", installation_id(s)));
     let pending_targets = writes
         .iter()
         .map(|(p, after, _)| {
             Ok(PendingTarget {
-                path: canonical_target(p)?,
+                path: targets::physical_target(s, p)?,
                 before: fs::read(p).ok(),
                 after: after.clone(),
             })
@@ -180,10 +214,12 @@ pub(super) fn apply(
                 desired_spec: s.clone(),
                 prior_spec: old.map(|j| j.spec.clone()),
                 targets: pending_targets,
+                created_dirs: new_dirs.clone(),
             },
         )?;
         failpoint("journal_intent")?;
     }
+    for dir in &new_dirs { fs::create_dir(dir).map_err(ioerr)?; }
     for (logical, next, managed) in writes {
         let before = fs::read(&logical).ok();
         let path = if let Some(next) = &next {
@@ -247,6 +283,7 @@ pub(super) fn apply(
         spec: s.clone(),
         snapshots: all,
         resources,
+        created_dirs,
     })
 }
 pub(super) fn build_resource_records(
@@ -321,12 +358,26 @@ pub(super) fn build_resource_records(
             };
             let before = snap.before.as_deref().unwrap_or_default();
             let after = snap.last_written_value.as_slice();
-            if (path.ends_with("settings.json") || path.ends_with("hooks.json"))
-                && !s.hooks.is_empty()
+            if s.wake_plugin.is_some() && path == render::hooks_file(s) {
+                add("plugin", "wake", &physical.display().to_string(),
+                    snap.before.as_ref().map(|b| Value::String(String::from_utf8_lossy(b).into_owned())),
+                    Value::String(s.wake_plugin.clone().unwrap()));
+            }
+            if render::json_entries_file(s, &path)
+            {
+                add(
+                    "json-entries",
+                    "entries",
+                    &physical.display().to_string(),
+                    render::parse_unique_json(before).ok(),
+                    render::parse_unique_json(after).unwrap_or(Value::Null),
+                );
+            }
+            if path == render::hooks_file(s) && !s.hooks.is_empty()
             {
                 let pre = render::parse_unique_json(before).ok();
                 for h in &s.hooks {
-                    let entry = h.entry();
+                    let entry = h.entry(&s.harness);
                     let present = pre
                         .as_ref()
                         .and_then(|v| v.get("hooks"))
@@ -645,16 +696,23 @@ pub(super) fn undo(
             }
             removed.push(snap.path.clone())
         } else {
+            // Select the format from the logical target, even when a parent is linked.
+            let logical = targets(&j.spec).into_iter()
+                .find(|p| canonical_target(p).is_ok_and(|physical| physical == snap.path))
+                .unwrap_or_else(|| snap.path.clone());
             // What was written, not what the caller asks about now.
             match render::remove_owned(
                 &j.spec,
-                &snap.path,
+                &logical,
                 current.as_deref().unwrap_or_default(),
                 snap.before.as_deref(),
             )? {
                 Some(updated) if current.as_deref() != Some(updated.as_slice()) => {
                     safe_write(&snap.path, current.as_deref(), &updated)?;
                     removed.push(snap.path.clone());
+                    for server in render::drifted_http_servers(&j.spec, &logical, &updated, snap.before.as_deref()) {
+                        conflicts.push(json!(format!("{}#mcp:{server}", snap.path.display())));
+                    }
                     // A hook the person edited stays; report it, not just the file.
                     for hook in render::drifted_hooks(&j.spec, &updated, snap.before.as_deref()) {
                         conflicts.push(json!(format!("{}#{hook}", snap.path.display())));
@@ -683,6 +741,7 @@ pub(super) fn undo(
             .into_iter()
             .map(|name| json!(format!("mcp:{name}"))),
     );
+    for dir in j.created_dirs.iter().rev() { let _ = fs::remove_dir(dir); }
     let _ = s;
     Ok(json!({"removed":true,"resourcesRemoved":removed,"conflicts":conflicts}))
 }

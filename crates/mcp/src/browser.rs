@@ -15,8 +15,9 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// The Chrome Web Store build of the Impeccable extension: the only origin the host serves.
-pub const EXTENSION_IDS: &[&str] = &["bdkgmiklpdmaojlpflclinlofgjfpabf"];
+/// The Impeccable extension's origins, the only ones the host serves: the Chrome Web Store build, and the developer
+/// build loaded unpacked, whose manifest `key` pins its ID (only the developer build asks for native messaging yet).
+pub const EXTENSION_IDS: &[&str] = &["bdkgmiklpdmaojlpflclinlofgjfpabf", "apffhogljdpdafpcjokfkgbcmhldjmpi"];
 /// Chrome's own caps: a host's message to the extension is at most 1 MB, the extension's to the host 64 MiB.
 pub const TO_EXTENSION_MAX: usize = 1024 * 1024;
 pub const FROM_EXTENSION_MAX: usize = 64 * 1024 * 1024;
@@ -74,17 +75,17 @@ pub fn write_frame(w: &mut impl Write, v: &Value, max: usize) -> io::Result<()> 
 pub fn tools() -> Vec<Value> {
     let num = || json!({ "type": "number" });
     vec![
-        json!({ "name": "browser_open", "description": "Open a page in the person's own Chrome. They allow each site once or always.",
+        json!({ "name": "browser_open", "description": "Open a page in the person's own Chrome (they allow each site once or always); answers with its accessibility tree, each control's [ref] beside it.",
             "inputSchema": { "type": "object", "properties": { "url": { "type": "string" } }, "required": ["url"] } }),
-        json!({ "name": "browser_act", "description": "Act on the open page: goto, back, click, type, press, scroll, or set the viewport (a real 390 wide).",
+        json!({ "name": "browser_act", "description": "Act on the open page by a control's ref (or x, y): goto, back, click, type, press, scroll, or set the viewport (a real 390 wide). Answers with the tree after.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string", "enum": ["goto", "back", "click", "type", "press", "scroll", "viewport"] },
-                "x": num(), "y": num(), "dx": num(), "dy": num(), "width": num(), "height": num(),
+                "ref": { "type": "integer" }, "x": num(), "y": num(), "dx": num(), "dy": num(), "width": num(), "height": num(),
                 "text": { "type": "string" }, "key": { "type": "string" }, "url": { "type": "string" } }, "required": ["op"] } }),
-        json!({ "name": "browser_look", "description": "Look at the open page: a screenshot, a zoomed region, a motion filmstrip, computed styles or ink edges at a point, or the accessibility tree.",
+        json!({ "name": "browser_look", "description": "Look at the open page: a screenshot, a zoomed region (x, y, w, h), a motion filmstrip, computed styles and tokens or ink edges of a ref or point, or the tree.",
             "inputSchema": { "type": "object", "properties": {
                 "kind": { "type": "string", "enum": ["screenshot", "zoom", "filmstrip", "styles", "ink", "tree"] },
-                "x": num(), "y": num(), "w": num(), "h": num(), "seconds": num() }, "required": ["kind"] } }),
+                "ref": { "type": "integer" }, "x": num(), "y": num(), "w": num(), "h": num(), "seconds": num() }, "required": ["kind"] } }),
         json!({ "name": "browser_end", "description": "End your browser session and hand the tab back.",
             "inputSchema": { "type": "object", "properties": {} } }),
     ]

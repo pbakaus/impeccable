@@ -18,7 +18,8 @@
     "identity",
     "alarms",
     "notifications",
-    "declarativeNetRequestWithHostAccess"
+    "declarativeNetRequestWithHostAccess",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -39,7 +40,6 @@
     "default_path": "walks/panel/panel.html"
   },
   "action": {
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

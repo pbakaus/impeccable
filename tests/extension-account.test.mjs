@@ -425,31 +425,25 @@ describe('account worker', () => {
     // Said once however often asked: the list and the count, never the row's id or link.
     assert.deepEqual([warned.length, warned[0]?.slice(1), /o8|evil/.test(JSON.stringify(warned))], [1, ['journeys', 1], false]);
   });
-  it('points the toolbar icon at the side panel while signed in, and back at the popup on sign-out', async () => {
+  // The side panel is the whole extension in Chrome (the decider, 18 Nov): the icon opens it signed in or out, with Pro
+  // or without, during a walk and after, and nothing points it at a popup.
+  it('opens the side panel from the toolbar icon whatever the account, never a popup', async () => {
     await loaded;
     startServer(() => json(404, {}));
     await ask({ account: 'status' }, fromPopup);
-    assert.deepEqual(toolbar.slice(-2), [{ popup: '' }, { openPanelOnActionClick: true }]);
-    // Signed in, and the server says the account has no Impeccable Pro, or doesn't say: the popup alone, until it says Pro.
     const served = globalThis.fetch;
     for (const said of [{ pro: false }, {}]) {
       globalThis.fetch = async (url, init = {}) => (url.startsWith(`${ISSUER}/extension/v1/me`) ? json(init.headers?.authorization ? 200 : 401, { email: 'mira@example.com', ...said }) : served(url, init));
       assert.equal((await ask({ account: 'status' }, fromPopup)).pro, false, JSON.stringify(said));
-      assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], false]);
     }
-    // A walk under way (here, handed over and waiting) keeps the panel offered whatever the account; ended, it goes.
     const { dispatch } = await import('../extension/walks/store.js');
     dispatch({ type: 'handoff', handoff: { persona: { name: 'Mira', role: '' }, errand: { name: '', goal: 'Look around.', doneWhen: [] }, site: 'http://localhost:3000' } });
-    assert.equal(offered.at(-1), true, 'live: offered');
-    await ask({ account: 'status' }, fromPopup);
-    assert.equal(offered.at(-1), true, 'still offered without Pro while the walk is under way');
     dispatch({ type: 'stop' });
-    assert.equal(offered.at(-1), false, 'the walk over: not offered');
     globalThis.fetch = served;
     await ask({ account: 'status' }, fromPopup);
-    assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: '' }, { openPanelOnActionClick: true }], true]);
     await ask({ account: 'sign-out' }, fromPopup);
-    assert.deepEqual([toolbar.slice(-2), offered.at(-1)], [[{ popup: 'popup/popup.html' }, { openPanelOnActionClick: false }], true], 'signed out: the panel is offered again');
+    assert.deepEqual(toolbar.filter((step) => 'popup' in step), []);
+    assert.deepEqual([toolbar.filter((step) => 'openPanelOnActionClick' in step).map((step) => step.openPanelOnActionClick), offered.filter((on) => on === false)], [[true], []]);
     records.set(ISSUER, kept(ISSUER, 'refresh-walk'));
   });
 
@@ -553,6 +547,24 @@ describe('account worker', () => {
       assert.deepEqual([posted.at(-1).body.device, session.handoff.device], width === 'phone' ? ['mobile', 'phone'] : [undefined, undefined]);
     });
   }
+
+  // Catches a plan the side panel asks as the person pauses writing going out unmarked, so the server can't count the
+  // ones never sent; and a sent one marked as early (REN-2190).
+  it('marks a plan asked before the task was sent as early, and only that one', async () => {
+    await loaded;
+    const served = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url, init = {}) => {
+      if (String(url).startsWith(`${ISSUER}/extension/v1/walks/plan`)) { asked.push(String(url)); return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } }); }
+      return served(url, init);
+    };
+    try {
+      for (const early of [true, false]) assert.equal((await ask({ account: 'plan', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, ...(early ? { early } : {}) }, fromPanel)).ok, true);
+      assert.deepEqual(asked, [`${ISSUER}/extension/v1/walks/plan?can=hears&early=1`, `${ISSUER}/extension/v1/walks/plan?can=hears`]);
+    } finally {
+      globalThis.fetch = served;
+    }
+  });
 
   // Making a persona: each answer the server gives, as the popup (or the side panel's empty home) hears it.
   const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };

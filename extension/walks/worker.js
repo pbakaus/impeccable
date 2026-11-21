@@ -53,6 +53,7 @@ import { isStartPage } from './handoff.js';
 import { HASH as HELPERS } from './page-helpers.js';
 import './toolbar.js';
 import './net-hold.js';
+import './agent.js';
 
 // What the driver tells of the tab goes out the way a reply does.
 speak((message) => say(message));
@@ -70,6 +71,8 @@ async function handle(data, from) {
     const run = Object.hasOwn(ops, req.op) ? ops[req.op] : null;
     if (!run) throw fail('NotSupported', `unknown op ${String(req.op).slice(0, 40)}`);
     if (req.op !== 'open' && req.op !== 'close' && !needsNoTab(req.op) && !walk) throw fail('OutingClosed', 'no tab is open');
+    // The person's own agent has the browser (agent.js): nothing on the socket reaches its tab.
+    if (walk?.agent) throw fail('NotSupported', 'the browser is in use');
     reply = { id: req.id, ok: true, ...(await run(req)) };
   } catch (err) {
     reply = { id: req.id, ok: false, error: { name: err?.name || 'Error', message: String(err?.message ?? err).slice(0, 500) } };
@@ -95,7 +98,7 @@ async function connect() {
     // First, while the walk is still as the socket left it; then nobody is left to ask anything of the tab, and the
     // debugger does not stay on it.
     unlinked({ opened, reason: event.reason });
-    void ops.close();
+    if (!walk?.agent) void ops.close();
   };
 }
 

@@ -99,12 +99,27 @@ fn windows_form_keeps_double_quoted_absolute_path() {
     let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", root, true, true);
     for c in commands(&out) {
         let p = skill_launcher(root, ".claude");
-        // The Windows form is the JSON-quoted path, so a host path's
-        // backslashes arrive escaped inside the command string.
-        let q = serde_json::to_string(&p).unwrap();
+        // The Windows form is the double-quoted path with `/` separators,
+        // since Claude Code runs hooks through Git Bash (#1462).
+        let q = serde_json::to_string(&p.replace('\\', "/")).unwrap();
         assert_eq!(c, format!("command=[ ! -f {q} ] || {q} hook"));
         assert!(!c.contains(&format!("'{p}")));
     }
+}
+
+#[test]
+fn windows_claude_command_uses_forward_slashes() {
+    let out = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", r"C:\Users\a b", true, true);
+    for c in commands(&out) {
+        assert_eq!(
+            c,
+            r#"command=[ ! -f "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" ] || "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" hook"#
+        );
+        assert!(!c.contains('\\'), "{c}");
+    }
+    // The project-relative form is unchanged on Windows.
+    let rel = rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", "/proj", false, true);
+    assert_eq!(commands(&rel), commands(&rewrite_hook_commands_for_platform(&claude_bundle_manifest(), ".claude", "/proj", false, false)));
 }
 
 #[test]
@@ -767,6 +782,21 @@ fn gemini_windows_command_is_powershell() {
     let shim = jsp::join(&["C:/Users/o''k", ".gemini", "skills", "impeccable", "scripts", "impeccable.cmd"]);
     assert_eq!(cmd, format!("if (Test-Path -LiteralPath '{shim}') {{ & '{shim}' hook }}"));
     assert!(value_has_launcher_hook_marker(&Value::String(cmd)));
+}
+
+/// `hooks on` and a project install write the same Grok and Gemini commands
+/// on both platforms (#1307).
+#[test]
+fn hooks_on_grok_and_gemini_match_the_project_install() {
+    use impeccable_context::hook_wiring::{gemini_manifest_for, grok_manifest_for};
+    for (provider, file, hooks_on) in [(".grok", "grok-hooks.json", grok_manifest_for as fn(bool) -> Value), (".gemini", "gemini-settings.json", gemini_manifest_for)] {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hook-manifests").join(file);
+        let bundle: Value = serde_json::from_str(&std::fs::read_to_string(fixture).unwrap()).unwrap();
+        for win32 in [false, true] {
+            let installed = rewrite_hook_commands_for_platform(&bundle, provider, "/proj", false, win32);
+            assert_eq!(hooks_on(win32), installed, "{provider} win32={win32}");
+        }
+    }
 }
 
 #[test]
