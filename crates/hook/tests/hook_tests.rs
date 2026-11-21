@@ -665,7 +665,8 @@ fn monorepo_design_batch_notes_follow_the_displayed_file() {
                 hook::run_hook(&r, &edit_event(&cwd, &a, "s1"));
             }
             let sidecar = t.write(if stale_app == "a" { "apps/a/.impeccable/design.json" }
-                else { ".impeccable/design.json" }, "{}");
+                else { ".impeccable/design.json" }, &json!({"schemaVersion": 2,
+                    "designMdFingerprint": impeccable_common::design_fingerprint::fingerprint(b"Old source")}).to_string());
             std::fs::File::options().write(true).open(sidecar).unwrap()
                 .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000)).unwrap();
             let out = if mode == "stop" {
@@ -681,7 +682,7 @@ fn monorepo_design_batch_notes_follow_the_displayed_file() {
                 hook::run_hook(&r, &event.to_string()).stdout
             };
             assert!(out.contains("apps/a/src/probe.css"), "{mode}: {out}");
-            assert_eq!(out.contains("DESIGN.md is newer"), stale_app == "a", "{mode}: {out}");
+            assert_eq!(out.contains("sidecar may be out of date"), stale_app == "a", "{mode}: {out}");
         }
     }
 }
@@ -873,7 +874,8 @@ fn stop_baseline_unknown_notice_respects_small_output_budget() {
         if stale {
             // Make the notice eligible only at Stop; no sleeps or clock races.
             t.write("DESIGN.md", "---\nname: Test\n---\n");
-            let sidecar = t.write(".impeccable/design.json", "{}");
+            let sidecar = t.write(".impeccable/design.json", &json!({"schemaVersion": 2,
+                "designMdFingerprint": impeccable_common::design_fingerprint::fingerprint(b"Old source")}).to_string());
             std::fs::File::options().write(true).open(sidecar).unwrap()
                 .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000)).unwrap();
             assert!(design_system_options(&read_config(&cwd), &cwd).md_newer_than_json());
@@ -887,7 +889,7 @@ fn stop_baseline_unknown_notice_respects_small_output_budget() {
         assert!(text.contains("[attribution unknown]"), "{text}");
         assert!(text.contains("card.css"), "{text}");
         if stale {
-            assert_eq!(text.contains("DESIGN.md is newer"), budget > 500, "{text}");
+            assert_eq!(text.contains("sidecar may be out of date"), budget > 500, "{text}");
             let cache: Value = serde_json::from_str(&t.read(".impeccable/hook.cache.json")).unwrap();
             assert_eq!(cache["sessions"]["s1"]["designNoteShown"] == json!(true), budget > 500);
         }
@@ -3944,6 +3946,34 @@ fn expiry_removes_only_old_session_dirs_of_ours() {
 }
 
 #[test]
+fn design_sidecar_notice_uses_content_instead_of_checkout_timestamps() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let source = "---\nname: Test\n---\n";
+    let design = t.write("DESIGN.md", source);
+    let sidecar = json!({"schemaVersion": 2,
+        "designMdFingerprint": impeccable_common::design_fingerprint::fingerprint(source.as_bytes())});
+    t.write(".impeccable/design.json", &sidecar.to_string());
+    // Windows requires a writable handle to change file timestamps.
+    let set_time = |seconds| std::fs::File::options().write(true).open(&design).unwrap().set_modified(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(seconds)
+    ).unwrap();
+    set_time(2_000_000_000);
+    assert!(!design_system_options(&read_config(&cwd), &cwd).md_newer_than_json(), "unchanged checkout");
+    t.write("DESIGN.md", &format!("{source}\nChanged guidance.\n"));
+    set_time(100);
+    assert!(design_system_options(&read_config(&cwd), &cwd).md_newer_than_json(), "changed bytes with old time");
+    t.write("DESIGN.md", source);
+    assert!(!design_system_options(&read_config(&cwd), &cwd).md_newer_than_json(), "restored source");
+    t.write(".impeccable/design.json", "{}");
+    set_time(2_000_000_000);
+    assert!(design_system_options(&read_config(&cwd), &cwd).md_newer_than_json(), "legacy uses timestamp fallback");
+    set_time(100);
+    assert!(!design_system_options(&read_config(&cwd), &cwd).md_newer_than_json(), "older legacy source stays current");
+}
+
+#[test]
 fn enabled_config_reports_missing_wiring() {
     let t = Tmp::new();
     t.write(".impeccable/config.json", r#"{"hook":{"enabled":true}}"#);
@@ -4628,4 +4658,32 @@ fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects(
     assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
     t.write("DESIGN.md", "# Design\n");
     assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
+}
+
+#[test]
+fn design_sidecar_fingerprint_compares_raw_source_bytes() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let source = b"---\nname: Test\n---\n\xff\n";
+    std::fs::write(std::path::Path::new(&cwd).join("DESIGN.md"), source).unwrap();
+    t.write(".impeccable/design.json", &json!({"schemaVersion": 2,
+        "designMdFingerprint": impeccable_common::design_fingerprint::fingerprint(source)}).to_string());
+    assert!(!design_system_options(&read_config(&cwd), &cwd).md_newer_than_json());
+}
+
+#[test]
+fn legacy_sidecar_note_does_not_claim_content_verification() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let design = t.write("DESIGN.md", "---\nname: Test\n---\n");
+    t.write(".impeccable/design.json", "{}");
+    std::fs::File::options().write(true).open(design).unwrap()
+        .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(2_000_000_000)).unwrap();
+    let scan = design_system_options(&read_config(&cwd), &cwd);
+    let note = append_design_system_note(&rt(&cwd), "A finding", &scan);
+    assert!(note.contains("may be out of date"), "{note}");
+    assert!(!note.contains("verified"), "{note}");
+    assert!(note.contains("document"), "{note}");
 }
