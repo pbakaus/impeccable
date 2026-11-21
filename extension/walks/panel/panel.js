@@ -768,7 +768,8 @@ function askEarly() {
   earlyTimer = setTimeout(() => {
     const person = picked();
     const task = pre.task.trim();
-    if (!person || pre.screen !== 'home' || task.length < EARLY_MIN || earlyAsked >= EARLY_MAX || early?.pending) return;
+    // The screen shown, not the home's own state: a walk started elsewhere shows over a home still at 'home'.
+    if (!person || screen() !== 'home' || task.length < EARLY_MIN || earlyAsked >= EARLY_MAX || early?.pending) return;
     const key = planKey(person, task);
     if (early?.key === key) return;
     earlyAsked += 1;
