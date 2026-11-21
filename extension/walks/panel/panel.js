@@ -597,7 +597,7 @@ function home() {
   if (pre.personas === undefined) return loading();
   // Every account has personas, the six defaults at least: a list that came back empty is one that didn't load.
   if (!person) return [top(hereUrl, { tools: true }), el('div', { class: 'mid' }, el('p', { class: 'act', text: COPY.home.failed }), unloaded())];
-  const box = el('textarea', { class: 'text scrolls', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); } });
+  const box = el('textarea', { class: 'text scrolls', rows: 3, maxlength: 2000, placeholder: voice ? COPY.voice.listening : COPY.home.ask(person.name), 'aria-label': COPY.home.ask(person.name), oninput: (event) => { pre.task = event.target.value; voice?.retype(pre.task); askEarly(); } });
   box.value = pre.task;
   const send = () => { hush(); pre.task = (box.value ?? pre.task).trim(); if (pre.task) void plan(); else box.focus(); };
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } });
@@ -718,6 +718,7 @@ function hear() {
     // The box holds what typing can: a longer talk stops there and says so, rather than going on unseen.
     onText: (text, settled) => {
       pre[words] = text.slice(0, most);
+      if (words === 'task') askEarly();
       const box = app.querySelector('textarea.text');
       // The newest words in view: a long talk outgrows the box.
       if (box) { box.value = pre[words]; box.scrollTop = box.scrollHeight; fade(box); }
@@ -748,13 +749,49 @@ function hush() {
 
 const WHY = COPY.why;
 
-/** Send: the person's task becomes the persona's short plan. */
+/**
+ * The plan asked for while the person pauses writing, before they send it, so the walk usually has its plan ready
+ * (REN-2190: the plan is one model call of about 4 s). Keyed by who walks, the words, the tab, its address and the width;
+ * Send takes it only when all are still the same (a tab gone to another page asks again), else asks again. One the person never sends is dropped here, unsaid. At most
+ * one is asked at a time and {@link EARLY_MAX} between sends: each spends one of the person's plans an hour.
+ */
+const EARLY_PAUSE_MS = 1200;
+const EARLY_MIN = 12;
+const EARLY_MAX = 3;
+let early = null;
+let earlyTimer = null;
+let earlyAsked = 0;
+const planKey = (person, task) => JSON.stringify([refOf(person), task.trim(), here, hereUrl, pre.width]);
+const askPlan = (person, task, isEarly) => chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task, tabId: here, device: pre.width, ...(isEarly ? { early: true } : {}) }).catch(() => null);
+function askEarly() {
+  clearTimeout(earlyTimer);
+  earlyTimer = setTimeout(() => {
+    const person = picked();
+    const task = pre.task.trim();
+    // The screen shown, not the home's own state: a walk started elsewhere shows over a home still at 'home'.
+    if (!person || screen() !== 'home' || task.length < EARLY_MIN || earlyAsked >= EARLY_MAX || early?.pending) return;
+    const key = planKey(person, task);
+    if (early?.key === key) return;
+    earlyAsked += 1;
+    const asked = { key, pending: true, answer: askPlan(person, task, true) };
+    // Words changed while this one was asked: the newest are asked once it answers, within the same limits.
+    asked.answer.finally(() => { asked.pending = false; const now = picked(); if (early === asked && now && planKey(now, pre.task) !== asked.key) askEarly(); });
+    early = asked;
+  }, EARLY_PAUSE_MS);
+}
+
+/** Send: the person's task becomes the persona's short plan, the one already asked for when it is still the one wanted. */
 async function plan() {
   const person = picked();
   pre.screen = 'planning';
   pre.note = '';
   render();
-  const answer = await chrome.runtime.sendMessage({ account: 'plan', persona: refOf(person), task: pre.task, tabId: here, device: pre.width }).catch(() => null);
+  clearTimeout(earlyTimer);
+  const ready = early?.key === planKey(person, pre.task) ? early.answer : null;
+  early = null;
+  earlyAsked = 0;
+  const first = ready ? await ready : null;
+  const answer = first?.ok ? first : await askPlan(person, pre.task, false);
   if (pre.screen !== 'planning') return;
   // `runAt`: the width this walk will run at, which is Desktop where the server's word on widths was never heard.
   if (answer?.ok) { pre.plan = answer.plan; pre.runAt = WIDTHS.includes(answer.width) ? answer.width : pre.width; pre.screen = 'plan'; } else { pre.note = WHY[answer?.why] ?? COPY.why.failed; pre.screen = 'home'; }
