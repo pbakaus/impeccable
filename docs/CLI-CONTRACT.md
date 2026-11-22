@@ -3540,7 +3540,11 @@ Successful local report writes always return a JSON object with `path`, even
 when signed out, opted out or unable to upload; `savedTo` is optional. With reports
 turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
 "message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
-`savedTo` prefers Foundations. `--quiet` and `--github` suppress receipts.
+`savedTo` prefers Foundations. `live-poll --json` streams unbuffered, so it
+records an accepted variant before writing that accept event (within the
+upload's two seconds) and puts the prototype's page on the event as `savedTo`;
+plain `live-poll` keeps the accept last and prints the receipt on stderr.
+`--quiet` and `--github` suppress receipts.
 Failures say what could not be saved and how to try again; nothing is queued
 for retry. A telemetry opt-out prints its effective setting and how to turn
 saving back on, once per project per day. Signed-out hints stay unchanged.
