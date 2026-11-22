@@ -3467,7 +3467,9 @@ a known app home cannot supply a derived page link.
 receipt. A detect findings array becomes an object with `findings` and
 `savedTo` when a page was saved; without a saved page its shape is unchanged.
 Successful local report writes always return a JSON object with `path`, even
-when signed out, opted out or unable to upload; `savedTo` is optional. When several pages were saved, `savedPages` lists them all and
+when signed out, opted out or unable to upload; `savedTo` is optional. With reports
+turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
+"message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
 `savedTo` prefers Foundations. `--quiet` and `--github` suppress receipts.
 Failures say what could not be saved and how to try again; nothing is queued
 for retry. A telemetry opt-out prints its effective setting and how to turn

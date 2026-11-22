@@ -37,7 +37,13 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         let out = cap.stdout.borrow();
         let value = serde_json::from_slice::<serde_json::Value>(&out).or_else(|e| {
             if matches!(args.first().map(String::as_str), Some("critique-storage" | "audit-storage")) && code == 0 {
-                Ok(serde_json::json!({"path": String::from_utf8_lossy(&out).trim()}))
+                let text = String::from_utf8_lossy(&out);
+                let text = text.trim();
+                // Reports off writes no file: say so, never as a path a script would read.
+                Ok(match text.strip_prefix("REPORTS OFF:") {
+                    Some(_) => serde_json::json!({"saved": false, "reportsOff": true, "message": text}),
+                    None => serde_json::json!({"path": text}),
+                })
             } else { Err(e) }
         });
         if let Ok(mut value) = value {
@@ -726,6 +732,25 @@ mod receipt_fake;
 #[cfg(test)]
 mod receipt_tests {
     use super::*;
+
+    #[test]
+    fn report_json_with_reports_off_names_no_path() {
+        let fake = super::receipt_fake::Fake::start();
+        let env = fake.env("receipt-off");
+        let root = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]);
+        std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+        std::fs::write(root.join(".impeccable/config.json"), r#"{"reports":{"enabled":false}}"#).unwrap();
+        std::fs::write(root.join("body.md"), "Report").unwrap();
+        let mut env = env;
+        env.insert("IMPECCABLE_CRITIQUE_META".into(), r#"{"target":"Home","total_score":24,"max_score":40,"p0_count":0,"p1_count":0}"#.into());
+        let (mut io, cap) = Io::captured("", root.clone(), env);
+        let body = root.join("body.md").to_string_lossy().into_owned();
+        let args = ["critique-storage", "write", "home", body.as_str(), "--json"].map(str::to_owned);
+        assert_eq!(run(&args, &mut io, InstalledPack::NONE), 0);
+        let output: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+        assert_eq!(output["reportsOff"], true, "{output}");
+        assert!(output.get("path").is_none(), "{output}");
+    }
 
     #[test]
     fn streaming_live_commands_are_never_buffered() {
