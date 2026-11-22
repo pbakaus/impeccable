@@ -10,6 +10,16 @@ pub fn page(account: &Account, page: &str, label: Option<&str>) -> Option<String
     Some(url.into())
 }
 
+/// The page the service says an upload landed on (its answer's http(s) `url`),
+/// else [`page`]'s link built here (REN-2343).
+pub fn landed(answer: &serde_json::Value, built: Option<String>) -> Option<String> {
+    answer["url"]
+        .as_str()
+        .filter(|u| u.starts_with("https://") || u.starts_with("http://"))
+        .map(str::to_owned)
+        .or(built)
+}
+
 thread_local! {
     static JSON_RECEIPTS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
 }

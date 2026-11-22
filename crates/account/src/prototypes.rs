@@ -73,7 +73,7 @@ fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u6
     };
     Some(match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
-            crate::receipt::saved(io, crate::receipt::page(&signed_in.0, "critiques", None), quiet);
+            crate::receipt::saved(io, crate::receipt::landed(&v, crate::receipt::page(&signed_in.0, "critiques", None)), quiet);
             return None;
         },
         Ok(_) => "the account service gave an answer this version doesn't read; update with npx impeccable update".into(),

@@ -3560,12 +3560,12 @@ Until Pro is on sale, the CLI names Pro only to an account that has it. An accou
 
 ### Upload page receipts
 
-Every successful upload prints `Saved to Impeccable: <url>`: foundations
-use `/-/foundations?repo=<encoded uploaded label>` (without a label,
-`/-/foundations`), health counts use `/-/design-health`, DESIGN.md uses
-`/-/design`, and prototypes use `/-/critiques`, relative to the account's
-known app home. Critiques and audits retain the server's report URL, falling
-back to the Critiques page when a known home exists. Custom services without
+Every successful upload prints `Saved to Impeccable: <url>`. The link is the
+http(s) `url` the service's answer names when it names one (REN-2343), else a
+page built here: foundations use `/-/foundations?repo=<encoded uploaded label>`
+(without a label, `/-/foundations`), health counts use `/-/design-health`,
+DESIGN.md uses `/-/design`, and critiques, audits and prototypes use
+`/-/critiques`, relative to the account's known app home. Custom services without
 a known app home cannot supply a derived page link.
 
 `--json` / `-json` adds `savedTo` to the output object instead of printing a

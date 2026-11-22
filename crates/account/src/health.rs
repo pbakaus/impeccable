@@ -260,10 +260,13 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
                 foundation_body,
             );
         synced.foundations = foundation_result.is_ok();
-        if synced.foundations {
-            crate::receipt::saved(io, crate::receipt::page(&account, "foundations", repo.label.as_deref()), quiet);
-        } else if let Err(error) = foundation_result {
-            crate::receipt::failed_upload(io, "Foundations", &error, quiet);
+        match foundation_result {
+            Ok(answer) => crate::receipt::saved(
+                io,
+                crate::receipt::landed(&answer, crate::receipt::page(&account, "foundations", repo.label.as_deref())),
+                quiet,
+            ),
+            Err(error) => crate::receipt::failed_upload(io, "Foundations", &error, quiet),
         }
     } else {
         crate::stale_grant::emit(
@@ -286,9 +289,9 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
-        Ok(_) => {
+        Ok(answer) => {
             synced.health = true;
-            crate::receipt::saved(io, crate::receipt::page(&account, "design-health", None), quiet);
+            crate::receipt::saved(io, crate::receipt::landed(&answer, crate::receipt::page(&account, "design-health", None)), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
                 // In the person's words, not a feature's name: what was kept, where, and how to stop.

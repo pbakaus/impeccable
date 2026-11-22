@@ -72,6 +72,32 @@ fn foundations_failure_is_one_honest_line_and_opt_out_is_once() {
 }
 
 #[test]
+fn a_scan_names_the_pages_the_service_says_it_landed_on() {
+    // A link only when it's http(s); otherwise the page built here (REN-2343).
+    let built = Some("https://app.impeccable.style/app/-/design".to_string());
+    assert_eq!(receipt::landed(&json!({"url": "https://h/app/-/design?repo=a"}), built.clone()).as_deref(), Some("https://h/app/-/design?repo=a"));
+    for answer in [json!({}), json!({"url": "javascript:alert(1)"}), json!({"url": 3})] {
+        assert_eq!(receipt::landed(&answer, built.clone()), built, "{answer}");
+    }
+    let fake = Fake::start();
+    { let mut k = fake.knobs.lock().unwrap(); k.health = true; k.foundations = true; }
+    let env = fake.env("receipt-landed");
+    login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    let root = Path::new(&env["IMPECCABLE_HOME"]).join("repo");
+    std::fs::create_dir_all(&root).unwrap();
+    assert!(std::process::Command::new("git").args(["init", "-q"]).arg(&root).status().unwrap().success());
+    fake.route("POST", "/cli/v1/foundations", 200, vec![], r#"{"outcome":"recorded","inPlace":0,"failing":0,"url":"https://h/app/-/foundations?repo=repo"}"#);
+    fake.route("POST", "/cli/v1/health/scans", 200, vec![], r#"{"outcome":"recorded","url":"https://h/app/-/design-health?repo=repo"}"#);
+    let scan = health::Scan { foundations: Default::default(), root: root.to_string_lossy().into(), files_scanned: 1, hits: vec![], ruleset: vec!["side-tab".into()], engine_version: "0.1.29".into(), started: SystemTime::now() };
+    let (mut io, cap) = Io::captured("", root, env);
+    health::after_scan(&mut io, &scan, false);
+    let said = String::from_utf8_lossy(&cap.stderr.borrow()).into_owned();
+    for page in ["foundations", "design-health"] {
+        assert!(said.contains(&format!("Saved to Impeccable: https://h/app/-/{page}?repo=repo\n")), "{said}");
+    }
+}
+
+#[test]
 fn json_receipts_are_data_and_quiet_receipts_print_nothing() {
     let (mut io, cap) = Io::captured("", std::env::temp_dir(), Default::default());
     let (_, urls) = receipt::capture(|| receipt::saved(&mut io, Some("https://example.com/app/-/design".into()), true));
