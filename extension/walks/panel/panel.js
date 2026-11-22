@@ -955,7 +955,8 @@ function end() {
     // The way back to the home, in the top row as on every other screen; the results stay one press away below.
     top(view.site ?? hereUrl, { back: () => { ended = true; render(); } }),
     el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
-      face(walking(), 132, state === 'done' ? 'delighted' : state === 'failed' ? 'confused' : 'neutral'),
+      // Delighted only when the persona got through (REN-2331); a walk that ended without finishing shows that.
+      face(walking(), 132, state === 'done' ? (view.outcome && !view.outcome.finished ? 'frustrated' : 'delighted') : state === 'failed' ? 'confused' : 'neutral'),
       el('h2', { class: 'hd', role: 'status', text: head }),
       why ? el('p', { class: 'err', role: 'alert', text: why }) : saidNo ? el('p', { class: 'line task', text: COPY.end.saidNo(name(), saidNo) }) : view.workflow?.goal ? el('q', { class: 'task', text: view.workflow.goal }) : null),
     el('span', { class: 'grow' }),
