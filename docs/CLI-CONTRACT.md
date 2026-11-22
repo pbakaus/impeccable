@@ -3255,7 +3255,7 @@ is the foreground equivalent of `taste.get` for agents without MCP. It
 revalidates the requested slice using the same account session, conditional
 GET, repository resolution, locks, fallback and cache as the worker. Text
 prints personal rules, repository rules, the server's `say` line and
-`rev: <revision>`. JSON prints `{state, rules, repositoryRules, say, rev}`.
+`rev: <revision>`. JSON prints `{state, rules, repositoryRules, say, rev, paused}`. When the person paused their own taste but the repository's rules are served (`state: "ready"`, `paused: true`), text output starts with "Your own taste is paused; these are this repository's rules."
 The revision is the exact ETag, including quotes if present; a response
 without ETag uses the hex SHA-256 of the sanitized state/rules/repositoryRules/
 say tuple. `--since` is compared locally after revalidation. If unchanged,

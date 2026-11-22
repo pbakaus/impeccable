@@ -263,6 +263,13 @@ fn foreground_reads_revalidate_print_rules_say_and_rev_and_report_unchanged() {
     let (mut read_io, cap) = Io::captured("", io.cwd.clone(), io.env.clone());
     assert_eq!(taste::run(&[], &mut read_io), 0);
     assert_eq!(String::from_utf8_lossy(&cap.stdout.borrow()), "Taste is off.\n");
+    // Paused personal taste with the repository's rules still served (t13v, 22 Nov).
+    fake.route("GET", "/cli/v1/taste", 200, vec![("etag", "rev-2".into())], json!({"version":1,"state":"ready","paused":true,"rules":[],
+        "repositoryRules":[{"id":"repo","text":"Repository rule","direction":"avoid"}]}).to_string());
+    let (mut read_io, cap) = Io::captured("", io.cwd.clone(), io.env.clone());
+    assert_eq!(taste::run(&["--focus=web".into()], &mut read_io), 0);
+    let text = String::from_utf8_lossy(&cap.stdout.borrow()).to_string();
+    assert!(text.starts_with("Your own taste is paused; these are this repository's rules.\n- Avoid: Repository rule\n"), "{text}");
     impeccable_account::logout(&io.env).unwrap();
     let (mut read_io, cap) = Io::captured("", io.cwd.clone(), io.env.clone());
     assert_eq!(taste::run(&[], &mut read_io), 1);
