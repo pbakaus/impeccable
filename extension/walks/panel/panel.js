@@ -936,6 +936,17 @@ function ease(list, was) {
 const found = () => (view.outcome ? view.outcome.issues.length : view.steps.filter((step) => step.issue).length);
 const resultsUrl = () => view.outcome?.replayUrl ?? walkUrl;
 
+/**
+ * The end screen's face, as the web's outcomes have it (REN-2331, src/app-rpc/walk-outcome.ts): got through is
+ * delighted, with friction or got partway is confused. No verdict (no boolean `finished`) is no mood.
+ */
+function mood(state) {
+  if (state === 'failed') return 'confused';
+  const finished = view.outcome?.finished;
+  if (state !== 'done' || typeof finished !== 'boolean') return 'neutral';
+  return finished && view.outcome.issues.length === 0 ? 'delighted' : 'confused';
+}
+
 function end() {
   const state = view.state;
   const n = found();
@@ -955,7 +966,7 @@ function end() {
     // The way back to the home, in the top row as on every other screen; the results stay one press away below.
     top(view.site ?? hereUrl, { back: () => { ended = true; render(); } }),
     el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
-      face(walking(), 132, state === 'done' ? 'delighted' : state === 'failed' ? 'confused' : 'neutral'),
+      face(walking(), 132, mood(state)),
       el('h2', { class: 'hd', role: 'status', text: head }),
       why ? el('p', { class: 'err', role: 'alert', text: why }) : saidNo ? el('p', { class: 'line task', text: COPY.end.saidNo(name(), saidNo) }) : view.workflow?.goal ? el('q', { class: 'task', text: view.workflow.goal }) : null),
     el('span', { class: 'grow' }),
