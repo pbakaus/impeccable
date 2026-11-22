@@ -3192,6 +3192,13 @@ Connection and read timeouts are capped at the remaining request budget.
 ureq's synchronous DNS lookup remains unbounded.
 Native projects follow the same report-save path.
 
+After a successful critique or audit upload, a signed-in person with health
+uploads enabled gets a detached whole-repository `detect . --quiet` refresh
+of Design health and Foundations, when the report's project is inside git.
+The CLI records the attempt before spawning and starts at most one per
+repository top in 24 hours, including failed attempts. The refresh and its
+failures are silent and do not change the save command's output or exit code.
+
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
