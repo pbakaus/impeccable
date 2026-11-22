@@ -525,6 +525,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert!(v["productType"].is_null());
                     assert!(v["scannedAt"].as_str().unwrap().ends_with('Z'));
+                    assert!(parse_label(v.get("label")).is_ok() && parse_place(v.get("place")).is_ok(), "{v}");
                     // The service refuses the whole upload over one unknown id.
                     for (id, state) in v["items"].as_object().unwrap() {
                         assert!(FOUNDATION_IDS.contains(&id.as_str()), "{id}");
@@ -573,7 +574,10 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
                     assert_eq!(v["changedAt"].as_str().unwrap().len(), 24);
-                    if parse_label(v.get("label")).is_err() {
+                    if let Err(field) = parse_place(v.get("place")) {
+                        record.lock().unwrap().refused.push((field.into(), v));
+                        json(400, serde_json::json!({"error":"invalid_request", "field":field}))
+                    } else if parse_label(v.get("label")).is_err() {
                         record.lock().unwrap().refused.push(("label".into(), v));
                         json(
                             400,

@@ -1476,6 +1476,12 @@ mod repo_identity_tests {
         // Only a remote-less repo names its place: the parent folder, never the home folder (REN-2313).
         assert_eq!(local.2, home.file_name().and_then(|n| n.to_str()).map(String::from));
         assert_eq!(remote.2, None);
+        // A parent name the service would refuse is never sent.
+        for parent in ["me:host", &"p".repeat(61)] {
+            let top = home.join(parent).join("repo");
+            assert_eq!(place(&top.to_string_lossy(), &env), None, "{parent}");
+        }
+        assert_eq!(place(&home.join(&"p".repeat(60)).join("repo").to_string_lossy(), &env).map(|p| p.len()), Some(60));
         let mut at_home = env.clone();
         at_home.insert("HOME".into(), home.display().to_string());
         assert_eq!(repo_identity(&top, Ok(None), &at_home).expect("local id").2, None);
