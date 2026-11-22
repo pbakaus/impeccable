@@ -67,6 +67,7 @@ impl Gate {
 #[derive(Default)]
 pub struct Record {
     pub hits: HashMap<String, usize>,
+    pub taste_calls: Vec<serde_json::Value>,
     pub taste_reads: Vec<(String, Option<String>)>,
     pub revoked: Vec<String>,
     /// The `scope` of each authorize request.
@@ -303,6 +304,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
     }
+    if path == "/cli/v1/taste/calls" {
+        record.lock().unwrap().taste_calls.push(serde_json::from_slice(&body).unwrap());
+    }
     let q: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
@@ -312,12 +316,11 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .and_then(|a| a.strip_prefix("Bearer "))
         .map(str::to_string);
 
-    let custom = knobs
-        .lock()
-        .unwrap()
-        .routes
-        .get(&(method.clone(), path.to_string()))
-        .cloned();
+    let custom = {
+        let k = knobs.lock().unwrap();
+        k.routes.get(&(method.clone(), target.to_string()))
+            .or_else(|| k.routes.get(&(method.clone(), path.to_string()))).cloned()
+    };
     if method == "GET" && path == "/cli/v1/setup" {
         record.lock().unwrap().setup_projects.push(headers.get("impeccable-project").cloned());
     }

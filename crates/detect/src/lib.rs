@@ -78,6 +78,9 @@ Commands:
   telemetry off|on|status          Turn the roll API's anonymous usage data off or on, or show it
   login                            Sign in to your Impeccable account
   logout                           Sign out on this machine
+  taste [--focus web|slides|motion] [--since <rev>] [--json]  Read your taste
+  taste note                       Record a design choice and its lasting rule
+  context [--target <path>] [--command <verb>] [--focus web|slides|motion]  Read project context and task-focused taste
   whoami                           Show the signed-in account and whether it includes Pro rules
   status                           Show what Impeccable is connected to for you, and the one next step
   walkthrough <recording>          Turn a screen recording into a Needs you walkthrough (MP4, poster, chapters)

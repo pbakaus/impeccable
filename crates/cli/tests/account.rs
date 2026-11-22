@@ -411,7 +411,7 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     assert!(std::fs::read_to_string(&claude_md).unwrap().starts_with("# mine\n\n<!-- impeccable start -->\n"));
     // A line turned on here (as loop connect does) is sent, not undone.
     let t = std::fs::read_to_string(&claude_md).unwrap();
-    let loop_line = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+    let loop_line = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable), recommendation first, not a question tool or chat unless they're talking with you now. Keep working, read the reply with needs_you.answer, withdraw it once moot. If Loop isn't connected, ask in chat.";
     std::fs::write(&claude_md, t.replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"))).unwrap();
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1);
@@ -485,7 +485,7 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
     }
     let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
     let lines = |f: &std::path::Path| std::fs::read_to_string(f).unwrap_or_default();
-    let loop_line = "When you need a person's decision or input, use needs_you.post (Impeccable)";
+    let loop_line = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable)";
     let taste_page = r#"{"rev":1,"team":null,"me":["taste"]}"#;
     fake.route("GET", "/cli/v1/agents", 200, vec![], taste_page);
     refresh();

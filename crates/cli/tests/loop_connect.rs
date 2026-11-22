@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const URL: &str = "https://api.impeccable.style/mcp";
-const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+const INSTRUCTION: &str = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable), recommendation first, not a question tool or chat unless they're talking with you now. Keep working, read the reply with needs_you.answer, withdraw it once moot. If Loop isn't connected, ask in chat.";
 
 struct Box {
     root: PathBuf,
