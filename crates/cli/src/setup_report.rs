@@ -11,18 +11,22 @@ pub fn schedule(io: &Io) {
     spawn_refresh(io, "setup-report");
 }
 
-pub fn schedule_taste(io: &Io) {
-    if impeccable_account::taste::wanted(io) {
-        spawn_refresh(io, "taste-refresh");
+pub fn schedule_taste(io: &Io, focus: Option<&str>) {
+    if impeccable_account::taste::wanted_for(io, focus) {
+        spawn_refresh_args(io, "taste-refresh", &focus.map(|f| vec!["--focus", f]).unwrap_or_default());
     }
 }
 
 pub(crate) fn spawn_refresh(io: &Io, verb: &str) {
+    spawn_refresh_args(io, verb, &[]);
+}
+
+fn spawn_refresh_args(io: &Io, verb: &str, args: &[&str]) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
     let mut cmd = Command::new(exe);
-    cmd.arg(verb)
+    cmd.arg(verb).args(args)
         .current_dir(&io.cwd)
         .envs(&io.env)
         .stdin(Stdio::null())

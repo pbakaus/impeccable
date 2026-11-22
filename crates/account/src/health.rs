@@ -644,6 +644,14 @@ pub(crate) fn critique_repo(
     repo_identity(&top, remote, env)
 }
 
+/// GitHub owner/name using the same bounded origin read and resolver as uploads.
+pub fn github_repository(root: &str) -> Option<String> {
+    let raw = git_with_timeout(root, &["config", "--get", "remote.origin.url"], Duration::from_millis(150))?;
+    let remote = resolve_remote(&raw)?;
+    let name = remote.strip_prefix("https://github.com/")?;
+    crate::taste::valid_repository(name).then(|| name.to_string())
+}
+
 /// The repo's name as the service shows it: from its remote; with none, its folder's
 /// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
 /// Only a repository with no remote at all: one whose remote can't be read as a

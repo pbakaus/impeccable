@@ -388,13 +388,15 @@ impl Store {
 
     /// [`Store::clear_taste`] for a caller already holding the taste lock.
     pub(crate) fn clear_taste_holding(&self, _taste: &Lock) {
-        let path = self.account.home.join("taste.json");
-        if impeccable_context::taste::read(&path).is_some_and(|v| v["issuer"] == self.account.issuer) {
-            let _ = fs::remove_file(path);
+        for focus in [None, Some("web"), Some("slides"), Some("motion")] {
+            let path = self.account.home.join(impeccable_context::taste::cache_name(focus));
+            if impeccable_context::taste::read(&path).is_some_and(|v| v["issuer"] == self.account.issuer) {
+                let _ = fs::remove_file(path);
+            }
         }
     }
 
-    /// The one `taste.json` under a home, shared by every issuer: writes and
+    /// The taste cache family under a home, shared by every issuer: writes and
     /// deletions hold this home-wide lock, taken after the lifecycle lock.
     pub(crate) fn taste_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
         fs::create_dir_all(home).map_err(|e| e.to_string())?;
