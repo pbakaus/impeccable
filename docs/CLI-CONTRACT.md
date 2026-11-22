@@ -3187,7 +3187,17 @@ Native projects follow the same report-save path.
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
-`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`na`, and `counts`. Optional `title` is the observed page title or first h1:
+collapse Unicode whitespace runs, remove Unicode Cc/Cf characters, trim, and
+cap at 120 Unicode code points. Empty or non-string titles are omitted.
+Optional `heuristics` is an array of `{n,score}` with integer `n` 1–10 and
+integer `score` 0–4, excluding N/A heuristics. Invalid entries and duplicate
+indices are dropped. Non-array heuristics are omitted. Optional `p2_count`
+and `p3_count` must be integers 0–100; invalid counts are dropped. These
+cleaned fields persist in snapshot frontmatter (heuristics as a JSON array)
+and appear in trend reads. Payload v1 sends `title` when known, `heuristics`,
+and `counts.p0` through `counts.p3`; missing heuristic detail or optional
+counts remain null. Both metadata environment variables accept these fields.
 `body` is passed separately to the save callback, never recovered from
 frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
 inputs must be regular files, never final symlinks or reparse points, with a

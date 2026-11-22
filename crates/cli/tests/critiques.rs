@@ -45,7 +45,7 @@ fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
     assert!(child.wait().unwrap().success());
 }
 
-const META: &str = r#"{"target":"Pricing","total_score":24,"max_score":32,"na_heuristics":"7,10","p0_count":1,"p1_count":2}"#;
+const META: &str = r#"{"target":"Pricing","total_score":24,"max_score":32,"na_heuristics":"7,10","p0_count":1,"p1_count":2,"p2_count":3,"p3_count":4,"title":"Pricing plans","heuristics":[{"n":1,"score":4},{"n":2,"score":3}]}"#;
 fn write(env: &HashMap<String, String>, root: &Path) -> Output {
     impeccable(
         env,
@@ -100,10 +100,11 @@ fn only_new_reports_upload_and_explicit_off_wins() {
     assert_eq!(b["target"], "Pricing");
     assert_eq!(b["score"], serde_json::json!({"total":24,"max":32}));
     assert_eq!(b["na"], serde_json::json!([7, 10]));
-    assert_eq!(b["heuristics"], serde_json::Value::Null);
+    assert_eq!(b["title"], "Pricing plans");
+    assert_eq!(b["heuristics"], serde_json::json!([{"n":1,"score":4},{"n":2,"score":3}]));
     assert_eq!(
         b["counts"],
-        serde_json::json!({"p0":1,"p1":2,"p2":null,"p3":null})
+        serde_json::json!({"p0":1,"p1":2,"p2":3,"p3":4})
     );
     assert_eq!(
         b["body"],
@@ -112,7 +113,7 @@ Crowded header.
 "
     );
     assert!(b.get("label").is_none());
-    assert_eq!(b.as_object().unwrap().len(), 9);
+    assert_eq!(b.as_object().unwrap().len(), 10);
     impeccable(&env, root, &["critique-storage", "latest", "pricing"])
         .output()
         .unwrap();
@@ -285,6 +286,44 @@ fn review_numeric_target_keeps_its_original_spelling() {
     let r = fake.record.lock().unwrap();
     assert_eq!(r.critiques.len(), 1);
     assert_eq!(r.critiques[0]["target"], "00404");
+}
+
+#[test]
+fn optional_metadata_is_cleaned_without_losing_the_upload() {
+    let (fake, env) = setup("critique-optional-metadata");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let title = format!("  Plans\t \n\u{200e}{}\0  ", "界".repeat(200));
+    for (title, expected) in [
+        (title, Some(format!("Plans {}", "界".repeat(114)))),
+        (" \0\u{200d} \n".into(), None),
+    ] {
+        let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+        meta["title"] = title.into();
+        meta["heuristics"] = serde_json::json!([
+            {"n":1,"score":4}, {"n":0,"score":2}, {"n":2,"score":5},
+            {"n":3,"score":"2"}, {"n":4.5,"score":2}, null,
+            {"n":1,"score":2}, {"n":9,"score":0}
+        ]);
+        meta["p2_count"] = (-1).into();
+        meta["p3_count"] = 101.into();
+        let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+            .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+        assert!(out.status.success());
+        let records = fake.record.lock().unwrap();
+        let b = records.critiques.last().expect("upload landed");
+        assert_eq!(b.get("title").and_then(|v| v.as_str()), expected.as_deref());
+        assert_eq!(b["heuristics"], serde_json::json!([{"n":1,"score":4},{"n":9,"score":0}]));
+        assert!(b["counts"]["p2"].is_null());
+        assert!(b["counts"]["p3"].is_null());
+        let path = String::from_utf8_lossy(&out.stdout).lines().next().unwrap().to_string();
+        let saved = std::fs::read_to_string(path).unwrap();
+        let front = impeccable_context::critique_storage::parse_frontmatter(&saved);
+        assert_eq!(front.get("title").and_then(|v| v.as_str()), expected.as_deref());
+        assert_eq!(front["heuristics"], b["heuristics"]);
+        assert!(!front.contains_key("p2_count"));
+        assert!(!front.contains_key("p3_count"));
+    }
+    assert_eq!(fake.hits("/cli/v1/critiques"), 2);
 }
 
 #[test]

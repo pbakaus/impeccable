@@ -626,6 +626,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiqueId",
                         "createdAt",
                         "target",
+                        "title",
                         "repoKey",
                         "label",
                         "score",
