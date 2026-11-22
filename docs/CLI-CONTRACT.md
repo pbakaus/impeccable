@@ -3227,8 +3227,14 @@ After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
 Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
-is sent as optional `label`, using design health's label recipe. Local-only
-repos and invalid names omit `label`. No label is sent without a repo key.
+is sent as optional `label`, using design health's label recipe; a repo with
+no remote sends its folder's name. Invalid names omit `label`. No label is sent
+without a repo key. A repo with no remote also sends optional `place`: its parent
+folder's name only (never a path), cleaned like `label` and at most 60
+characters, so two clones with one name can be told apart (REN-2313). It is
+left out when the parent is the home folder, whose name is usually the
+person's login. Design health, foundations and design uploads send `place` by
+the same rule.
 
 After a variant accept that succeeds (`live-accept --variant N`, directly or
 through `live-poll`, including a receipt replay; never `--discard`), the CLI

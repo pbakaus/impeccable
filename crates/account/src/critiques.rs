@@ -348,12 +348,10 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     };
     let mut top = None;
     if let Some(root) = root {
-        if let Some((repo_top, key, label)) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
+        if let Some((repo_top, key, label, place)) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
             top = Some(repo_top);
             body["repoKey"] = key.into();
-            if let Some(label) = label {
-                body["label"] = label.into();
-            }
+            crate::health::name_body(&mut body, label.as_deref(), place.as_deref());
         }
     }
     if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {

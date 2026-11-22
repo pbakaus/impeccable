@@ -637,6 +637,9 @@ fn repo_labels_use_the_remote_or_folder_name_and_are_omitted_when_invalid() {
         if expected.is_none() {
             assert!(body.get("label").is_none());
         }
+        // Only a repo with no remote names its place: the parent folder (REN-2313).
+        let place = remote.is_none().then(|| root.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str())).flatten();
+        assert_eq!(body.get("place").and_then(serde_json::Value::as_str), place);
     }
 }
 
