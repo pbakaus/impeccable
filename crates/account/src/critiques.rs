@@ -547,6 +547,9 @@ pub fn frame_request<R>(
     wait: Duration,
     send: impl FnOnce(&Client, &str) -> R,
 ) -> Option<R> {
+    // Under the lock, like a report upload: two seconds at most, so `critiques
+    // off` and `forget`, which wait three, always get their turn.
+    let wait = wait.min(Duration::from_secs(2));
     let session = frame_session(io, login, wait)?;
     let account = session.account();
     let _admission = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO).ok()?;

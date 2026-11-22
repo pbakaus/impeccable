@@ -3235,7 +3235,8 @@ viewport WebPs (quality 80, one lower-quality retry if over 300 KB). Failed
 loads, documents answered with a non-2xx status, redirects to another origin
 or path (query/hash changes are allowed), and frames still over 300 KB are
 dropped. Every request below rechecks that sign-in, `critiques:write` and the
-upload opt-outs under the critiques upload lock and sends while holding it, so
+upload opt-outs under the critiques upload lock and sends while holding it,
+for two seconds at most like a report upload, so
 `critiques off` or `forget` stops the next one. Each frame reserves with
 `POST /cli/v1/critiques/captures` (`sha256`, `bytes`, `contentType`),
 optionally uploads with an authenticated WebP POST to the returned
