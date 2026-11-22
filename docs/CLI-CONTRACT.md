@@ -2979,8 +2979,9 @@ runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
-has a two-second deadline, no retries and no terminal messages. A 404 or any
-other failure leaves the health request, detect output and exit code intact.
+has a two-second deadline and no retries. Every successful upload names its
+Foundations page; failures print one `Not saved to Impeccable:` line with a next
+step. A failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
@@ -3103,7 +3104,7 @@ has a two-second elapsed-time budget, no retries; busy upload or lifecycle
 locks skip it. Credential and file/git preparation run in bounded read workers
 that cannot upload. HTTP connect/read timeouts are capped at the remaining
 budget. DNS resolution remains synchronous and unbounded in ureq.
-A 404 is quietly deferred, as are all other failures.
+A failed POST prints `Not saved to Impeccable:` with a reason and a step to try again.
 
 The upload takes a consistent, generation-matched state/credential snapshot
 under the lifecycle lock without waiting or prompting. An expired token can be
@@ -3174,12 +3175,12 @@ Status reports the saved preference, independent of sign-in or CI.
 
 After a successful `critique-storage write`, the CLI makes at most one
 best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
-the storage verb's exit code. The first successful upload per sign-in appends
-N2 to the critique-storage write step's stdout. `--json` (including `-json`),
-`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+the storage verb's exit code. Every successful upload prints its page link;
+the first per sign-in also explains how to stop uploads. `--json` (including `-json`),
+`--quiet` and `--github` suppress the notice without marking it shown; JSON carries the page URL as `savedTo`. A login-keyed
 marker in the account store prevents repeats; a new sign-in hears it again.
 If saving the marker fails, the notice still prints and the upload is kept. It never
-uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+uploads from hooks, reads, closes or disabled reports. Audit writes upload too. CI,
 telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
 preferences skip uploads. Credential reads share the two-second budget and
 never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
@@ -3210,7 +3211,7 @@ frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
 inputs must be regular files, never final symlinks or reparse points, with a
 64 KB size check on the opened handle before reading and a bounded read to
 catch growth. Absolute temporary files outside the project remain valid.
-Encoded upload requests over 80 KB are silently skipped.
+Encoded upload requests over 80 KB print `Not saved to Impeccable: the report is over 80 KB; save a shorter report`.
 
 The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
 admission and the entire POST with `on`, `off` and `forget`. An uploader
@@ -3521,3 +3522,25 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
 ## Pro before it's on sale (17 Nov 2026)
 
 Until Pro is on sale, the CLI names Pro only to an account that has it. An account without Pro gets no Pro or pricing line: none from `login`, `whoami` or install's sign-in offer, no `Pro rules are off: this account doesn't include them` line on a scan, no `needs-pro` place and no `upgrade` next step among the setup lines. A world that needs Pro still says so when someone asks for it.
+
+### Upload page receipts
+
+Every successful upload prints `Saved to Impeccable: <url>`: foundations
+use `/-/foundations?repo=<encoded uploaded label>` (without a label,
+`/-/foundations`), health counts use `/-/design-health`, DESIGN.md uses
+`/-/design`, and prototypes use `/-/critiques`, relative to the account's
+known app home. Critiques and audits retain the server's report URL, falling
+back to the Critiques page when a known home exists. Custom services without
+a known app home cannot supply a derived page link.
+
+`--json` / `-json` adds `savedTo` to the output object instead of printing a
+receipt. A detect findings array becomes an object with `findings` and
+`savedTo` when a page was saved; without a saved page its shape is unchanged.
+Successful local report writes always return a JSON object with `path`, even
+when signed out, opted out or unable to upload; `savedTo` is optional. With reports
+turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
+"message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
+`savedTo` prefers Foundations. `--quiet` and `--github` suppress receipts.
+Failures say what could not be saved and how to try again; nothing is queued
+for retry. A telemetry opt-out prints its effective setting and how to turn
+saving back on, once per project per day. Signed-out hints stay unchanged.

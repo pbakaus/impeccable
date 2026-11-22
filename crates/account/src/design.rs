@@ -229,12 +229,18 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         token,
         body,
     );
-    if !answer
-        .ok()
-        .is_some_and(|v| matches!(v["outcome"].as_str(), Some("recorded" | "repeat")))
-    {
-        return;
+    match answer {
+        Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {}
+        Ok(_) => {
+            crate::receipt::failed(io, "the design document upload was not confirmed", quiet);
+            return;
+        }
+        Err(error) => {
+            crate::receipt::failed_upload(io, "DESIGN.md", &error, quiet);
+            return;
+        }
     }
+    crate::receipt::saved(io, crate::receipt::page(&account, "design", None), quiet);
     crate::upload_notice::emit(
         io,
         &account,
