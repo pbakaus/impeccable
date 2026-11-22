@@ -53,6 +53,13 @@ fn test_git_deadline() -> Option<Duration> {
         .map(Duration::from_millis)
 }
 
+/// A critique's repo questions share its two-second upload budget, so each gets
+/// 150 ms, unless a test raises it: a loaded runner misses that and the
+/// critique uploads without its repo key.
+fn critique_git_deadline() -> Duration {
+    test_git_deadline().unwrap_or(Duration::from_millis(150))
+}
+
 /// How long a change to `health.json` waits for one in another process.
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
@@ -706,7 +713,7 @@ pub(crate) fn critique_repo_at(
     root: &str,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, String, Option<String>, Option<String>)> {
-    let short = Duration::from_millis(150);
+    let short = critique_git_deadline();
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
     let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
     repo_identity(&top, remote, env).map(|(key, label, place)| (top, key, label, place))
@@ -714,7 +721,7 @@ pub(crate) fn critique_repo_at(
 
 /// GitHub owner/name using the same bounded origin read and resolver as uploads.
 pub fn github_repository(root: &str) -> Option<String> {
-    let raw = git_with_timeout(root, &["config", "--get", "remote.origin.url"], Duration::from_millis(150))?;
+    let raw = git_with_timeout(root, &["config", "--get", "remote.origin.url"], critique_git_deadline())?;
     let remote = resolve_remote(&raw)?;
     let name = remote.strip_prefix("https://github.com/")?;
     crate::taste::valid_repository(name).then(|| name.to_string())
