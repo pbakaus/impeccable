@@ -194,6 +194,26 @@ if [ "$worlds" = 1 ]; then
   fi
 fi
 
+# 4c. Taste for the kind of work (REN-2325, REN-2326): focused reads and a recorded call.
+#     Skipped where staging doesn't offer taste:write or the binary has no taste verb yet.
+case "$scopes" in *" taste:write "*) taste=1 ;; *) taste=0; info "staging does not offer taste:write; taste skipped" ;; esac
+if [ "$taste" = 1 ] && ! "$BIN" taste --help > /dev/null 2>&1; then taste=0; info "this binary has no taste verb; taste skipped"; fi
+if [ "$taste" = 1 ]; then
+  for kind in web slides motion; do
+    (cd "$R" && "$BIN" taste --focus "$kind" --json) > "$H/taste-$kind.json" 2> "$H/taste-$kind.err"; rc=$?
+    check "taste: --focus $kind reads (exit 0, JSON with a state)" '[ $rc = 0 ] && jq -e .state "$H/taste-$kind.json" >/dev/null'
+    info "taste $kind: state $(jq -r .state "$H/taste-$kind.json" 2>/dev/null) rules $(jq -r '.rules|length' "$H/taste-$kind.json" 2>/dev/null) paused $(jq -r '.paused // false' "$H/taste-$kind.json" 2>/dev/null) $(head -c 160 "$H/taste-$kind.err")"
+  done
+  "$BIN" taste --focus nope > /dev/null 2> "$H/taste-bad.err"; rc=$?
+  check "taste: an unknown kind is a usage error" '[ $rc != 0 ] && grep -q "web, slides or motion" "$H/taste-bad.err"'
+  stamp="e2e $(date -u +%Y%m%dT%H%M%S) $$"
+  note() { (cd "$R" && "$BIN" taste note --chose "Walk check $stamp: the plain list" --over "cards" --rule "Walk check $stamp: lists over cards in settings" --json) 2> "$H/taste-note.err"; }
+  first=$(note | jq -r .outcome 2>/dev/null); second=$(note | jq -r .outcome 2>/dev/null)
+  info "taste note: first $first, second $second $(head -c 160 "$H/taste-note.err")"
+  check "taste note: records, or says taste is paused or full" 'case "$first" in recorded|paused|full) true ;; *) false ;; esac'
+  check "taste note: the same call twice records once" '[ "$first" != recorded ] || [ "$second" = duplicate ]'
+fi
+
 # 5. Two sessions on one sign-in (pristine #4576): session B is a copy of A's stored
 #    sign-in. Each forced refresh rotates the refresh token, so B's second refresh
 #    presents a token A already used. Before #4576 that revoked the whole grant.
