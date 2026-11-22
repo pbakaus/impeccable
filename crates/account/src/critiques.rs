@@ -370,7 +370,7 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
                 body["branch"] = branch.into();
             }
             if let Some(n) = pull_number(&snapshot.meta) {
-                body["pullNumber"] = n.into();
+                body["pr"] = n.into();
             }
             top = Some(repo.top);
         }

@@ -3229,7 +3229,7 @@ With a repo key, the upload also names where the critique ran (REN-2377), so a
 critique of a checked-out pull request files under it: `headSha` (HEAD's commit,
 40 or 64 lowercase hex, once the repository has a commit), `branch` (the
 checked-out branch's short name from git, left out when HEAD is detached) and
-`pullNumber` (the critique meta's optional `pr`, a number or `#`-prefixed digits
+`pr` (the critique meta's optional `pr`, a number or `#`-prefixed digits
 from 1). The top, commit and branch come from one `git rev-parse` within the
 existing 150 ms; before the first commit the top is asked for alone.
 

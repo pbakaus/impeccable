@@ -1227,7 +1227,7 @@ fn a_critique_names_the_branch_commit_and_pull_request_it_ran_on() {
     let record = fake.record.lock().unwrap();
     assert!(record.refused.is_empty(), "{:?}", record.refused);
     let [first, second] = &record.critiques[..] else { panic!("{:?}", record.critiques) };
-    assert_eq!((first["headSha"].as_str(), first["branch"].as_str(), first["pullNumber"].as_u64()), (Some(sha.as_str()), Some("ada/fix-nav"), Some(134)));
+    assert_eq!((first["headSha"].as_str(), first["branch"].as_str(), first["pr"].as_u64()), (Some(sha.as_str()), Some("ada/fix-nav"), Some(134)));
     assert_eq!(second["headSha"].as_str(), Some(sha.as_str()));
-    assert!(second.get("branch").is_none() && second.get("pullNumber").is_none(), "{second}");
+    assert!(second.get("branch").is_none() && second.get("pr").is_none(), "{second}");
 }

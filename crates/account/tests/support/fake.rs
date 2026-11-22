@@ -705,7 +705,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "place",
                         "branch",
                         "headSha",
-                        "pullNumber",
+                        "pr",
                         "score",
                         "na",
                         "heuristics",
@@ -1033,8 +1033,8 @@ fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
         let ok = h.as_str().is_some_and(|h| matches!(h.len(), 40 | 64) && h.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
         if !ok || !keyed { return Err("headSha"); }
     }
-    if let Some(n) = body.get("pullNumber") {
-        if !n.as_u64().is_some_and(|n| n >= 1) || !keyed { return Err("pullNumber"); }
+    if let Some(n) = body.get("pr") {
+        if !n.as_u64().is_some_and(|n| n >= 1) || !keyed { return Err("pr"); }
     }
     parse_place(body.get("place"))?;
     Ok(())
