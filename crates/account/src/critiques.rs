@@ -357,6 +357,8 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
         return not_saved("the report is over 80 KB; save a shorter report");
     }
+    let critique_id = body["critiqueId"].as_str().unwrap_or("").to_string();
+    let label = body["title"].as_str().unwrap_or("").to_string();
     let (answer, login) = match send(io, started, &signed_in, "/cli/v1/critiques", body, quiet) {
         Ok(sent) => sent,
         Err(stop) => return stopped(stop),
@@ -366,6 +368,14 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             if let Some(top) = &top {
                 crate::health::refresh_after_report(io, top);
+            }
+            if let Some(url) = snapshot.meta.get("url").and_then(Value::as_str).filter(|u| {
+                url::Url::parse(u).is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
+            }) {
+                impeccable_common::proc::spawn_refresh_args(
+                    io, project_root(snapshot).unwrap_or(&io.cwd), "critique-frames",
+                    &[&critique_id, &login.to_string(), url, &label],
+                );
             }
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
@@ -510,4 +520,39 @@ mod preference_tests {
         assert!(!enabled(&io));
         std::fs::remove_dir_all(home).unwrap();
     }
+}
+
+/// Credentials for the detached frame job: the sign-in the critique uploaded
+/// under (`login`), with `critiques:write` and the same upload opt-outs. No
+/// renewal or prompt: an expired or switched session simply drops frames.
+pub fn frame_session(io: &Io, login: u64, wait: Duration) -> Option<Session> {
+    let (account, state) = ready(io, Some(&io.cwd)).ok()?;
+    let session = Session::load_for_upload(&account, wait)?;
+    if !session.matches_upload(&state)
+        || session.state.login != login
+        || !session.state.scopes.iter().any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+        || session.existing_access_token().is_none()
+    { return None; }
+    Some(session)
+}
+
+/// One frame request, ordered against `critiques off` and `forget` like a
+/// report upload: it rechecks the sign-in and consent under the upload lock
+/// and sends while holding it. `None` when any check fails or the lock is busy.
+pub fn frame_request<R>(
+    io: &Io,
+    login: u64,
+    wait: Duration,
+    send: impl FnOnce(&Client, &str) -> R,
+) -> Option<R> {
+    // Under the lock, like a report upload: two seconds at most, so `critiques
+    // off` and `forget`, which wait three, always get their turn.
+    let wait = wait.min(Duration::from_secs(2));
+    let session = frame_session(io, login, wait)?;
+    let account = session.account();
+    let _admission = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO).ok()?;
+    if !enabled(io) {
+        return None;
+    }
+    Some(send(&Client::with_deadline(account, wait), session.existing_access_token()?))
 }
