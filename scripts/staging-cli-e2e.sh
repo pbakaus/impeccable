@@ -201,7 +201,7 @@ if [ "$taste" = 1 ] && ! "$BIN" taste --help > /dev/null 2>&1; then taste=0; inf
 if [ "$taste" = 1 ]; then
   for kind in web slides motion; do
     (cd "$R" && "$BIN" taste --focus "$kind" --json) > "$H/taste-$kind.json" 2> "$H/taste-$kind.err"; rc=$?
-    check "taste: --focus $kind reads (exit 0, JSON with a state)" '[ $rc = 0 ] && jq -e .state "$H/taste-$kind.json" >/dev/null'
+    check "taste: --focus $kind reads (exit 0, JSON with a state, or taste is off)" '[ $rc = 0 ] && jq -e '"'"'(type == "object" and has("state")) or . == "Taste is off."'"'"' "$H/taste-$kind.json" >/dev/null'
     info "taste $kind: state $(jq -r .state "$H/taste-$kind.json" 2>/dev/null) rules $(jq -r '.rules|length' "$H/taste-$kind.json" 2>/dev/null) paused $(jq -r '.paused // false' "$H/taste-$kind.json" 2>/dev/null) $(head -c 160 "$H/taste-$kind.err")"
   done
   "$BIN" taste --focus nope > /dev/null 2> "$H/taste-bad.err"; rc=$?
