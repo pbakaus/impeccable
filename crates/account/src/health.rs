@@ -261,7 +261,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             );
         synced.foundations = foundation_result.is_ok();
         match foundation_result {
-            Ok(answer) => crate::receipt::saved(
+            Ok(answer) => crate::receipt::saved_first(
                 io,
                 crate::receipt::landed(&answer, crate::receipt::page(&account, "foundations", repo.label.as_deref())),
                 quiet,

@@ -76,7 +76,10 @@ fn a_scan_names_the_pages_the_service_says_it_landed_on() {
     // A link only when it's http(s); otherwise the page built here (REN-2343).
     let built = Some("https://app.impeccable.style/app/-/design".to_string());
     assert_eq!(receipt::landed(&json!({"url": "https://h/app/-/design?repo=a"}), built.clone()).as_deref(), Some("https://h/app/-/design?repo=a"));
-    for answer in [json!({}), json!({"url": "javascript:alert(1)"}), json!({"url": 3})] {
+    for answer in [
+        json!({}), json!({"url": "javascript:alert(1)"}), json!({"url": 3}), json!({"url": "https://"}),
+        json!({"url": "https://h/app\nSaved to Impeccable: https://evil"}), json!({"url": "https://h/\u{1b}[2J"}),
+    ] {
         assert_eq!(receipt::landed(&answer, built.clone()), built, "{answer}");
     }
     let fake = Fake::start();
@@ -95,6 +98,17 @@ fn a_scan_names_the_pages_the_service_says_it_landed_on() {
     for page in ["foundations", "design-health"] {
         assert!(said.contains(&format!("Saved to Impeccable: https://h/app/-/{page}?repo=repo\n")), "{said}");
     }
+}
+
+#[test]
+fn json_receipts_lead_with_foundations_whatever_its_address() {
+    let (mut io, _) = Io::captured("", std::env::temp_dir(), Default::default());
+    let (_, urls) = receipt::capture(|| {
+        receipt::saved(&mut io, Some("https://h/projects/repo/design".into()), true);
+        receipt::saved_first(&mut io, Some("https://h/projects/repo/foundations".into()), true);
+        receipt::saved(&mut io, Some("https://h/projects/repo/health".into()), true);
+    });
+    assert_eq!(urls, ["https://h/projects/repo/foundations", "https://h/projects/repo/design", "https://h/projects/repo/health"]);
 }
 
 #[test]
