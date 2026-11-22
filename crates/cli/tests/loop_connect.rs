@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const URL: &str = "https://api.impeccable.style/mcp";
-const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now.";
+const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 
 struct Box {
     root: PathBuf,

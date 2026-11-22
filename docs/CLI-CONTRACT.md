@@ -2502,7 +2502,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
 - `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
-  (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now." An installation an older CLI made, whose engine-managed
+  (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
   block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
   block through the engine on the next connect, and the line moves into the
   Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets

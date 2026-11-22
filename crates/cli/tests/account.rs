@@ -411,7 +411,7 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     assert!(std::fs::read_to_string(&claude_md).unwrap().starts_with("# mine\n\n<!-- impeccable start -->\n"));
     // A line turned on here (as loop connect does) is sent, not undone.
     let t = std::fs::read_to_string(&claude_md).unwrap();
-    let loop_line = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now.";
+    let loop_line = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
     std::fs::write(&claude_md, t.replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"))).unwrap();
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1);

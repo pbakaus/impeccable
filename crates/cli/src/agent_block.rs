@@ -16,7 +16,7 @@ pub(crate) const END: &str = "<!-- impeccable end -->";
 const OLD_TASTE: (&str, &str) = ("<!-- impeccable:taste -->", "<!-- /impeccable:taste -->");
 
 /// Ask through Loop rather than in a terminal.
-pub(crate) const LOOP: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now.";
+pub(crate) const LOOP: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 /// Matches the MCP server's own instruction text.
 pub(crate) const TASTE: &str = "Before UI work: taste.get with focus web, slides or motion (or impeccable taste --focus <kind>). Record the person's design calls with taste.note (or impeccable taste note).";
 
