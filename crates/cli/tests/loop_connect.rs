@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const URL: &str = "https://api.impeccable.style/mcp";
-const INSTRUCTION: &str = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable), recommendation first, not a question tool or chat unless they're talking with you now. Keep working, read the reply with needs_you.answer, withdraw it once moot. If Loop isn't connected, ask in chat.";
+const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now.";
 
 struct Box {
     root: PathBuf,
@@ -1196,7 +1196,7 @@ const TASTE_END: &str = "<!-- /impeccable:taste -->";
 /// The one Impeccable block (REN-2056) and the taste switch's line in it.
 const START: &str = "<!-- impeccable start -->";
 const END: &str = "<!-- impeccable end -->";
-const TASTE_LINE: &str = "Impeccable Taste: before design or UI work";
+const TASTE_LINE: &str = "Before UI work: taste.get with focus";
 
 fn read(p: &Path) -> String {
     fs::read_to_string(p).unwrap_or_default()
@@ -1621,7 +1621,7 @@ fn cursor_connect_roundtrip_merges_and_gates_hooks() {
         let rules = fs::read_to_string(root.join("rules/impeccable.mdc")).unwrap();
         assert!(rules.starts_with("---\nalwaysApply: true\n---\n"));
         assert!(rules.contains(INSTRUCTION));
-        assert!(rules.contains("Impeccable Taste:"));
+        assert!(rules.contains(TASTE_LINE));
         assert_eq!(
             fs::read_to_string(b.home().join("cursor-calls")).unwrap(),
             "mcp enable impeccable\n"

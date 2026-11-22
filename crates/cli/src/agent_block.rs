@@ -16,9 +16,9 @@ pub(crate) const END: &str = "<!-- impeccable end -->";
 const OLD_TASTE: (&str, &str) = ("<!-- impeccable:taste -->", "<!-- /impeccable:taste -->");
 
 /// Ask through Loop rather than in a terminal.
-pub(crate) const LOOP: &str = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable), recommendation first, not a question tool or chat unless they're talking with you now. Keep working, read the reply with needs_you.answer, withdraw it once moot. If Loop isn't connected, ask in chat.";
+pub(crate) const LOOP: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool unless they're chatting with you now.";
 /// Matches the MCP server's own instruction text.
-pub(crate) const TASTE: &str = "Impeccable Taste: before design or UI work, get the person's taste once per task for the kind of work: taste.get with focus web (sites and app screens), slides (decks) or motion (animation and video), or impeccable taste --focus <kind> without MCP. Pass since: <rev> while its rules are still in your context. Say \"Applied your taste: <rule>\" when one shapes a choice. When the person picks one option over another or corrects a design, record it: taste.note, or impeccable taste note without MCP.";
+pub(crate) const TASTE: &str = "Before UI work: taste.get with focus web, slides or motion (or impeccable taste --focus <kind>). Record the person's design calls with taste.note (or impeccable taste note).";
 
 /// Every switch, its label for the settings page, and its line, in the order the lines
 /// appear. The repo settings page mirrors this (`impeccable switches --catalog`), pinned
