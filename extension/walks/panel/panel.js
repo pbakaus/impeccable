@@ -942,9 +942,15 @@ const resultsUrl = () => view.outcome?.replayUrl ?? walkUrl;
  */
 function mood(state) {
   if (state === 'failed') return 'confused';
+  const ending = state === 'done' ? verdict() : null;
+  return ending === 'through' ? 'delighted' : ending ? 'confused' : 'neutral';
+}
+
+/** A finished walk's outcome, as the web names it: through, friction or partway; null with no verdict. */
+function verdict() {
   const finished = view.outcome?.finished;
-  if (state !== 'done' || typeof finished !== 'boolean') return 'neutral';
-  return finished && view.outcome.issues.length === 0 ? 'delighted' : 'confused';
+  if (typeof finished !== 'boolean') return null;
+  return !finished ? 'partway' : view.outcome.issues.length ? 'friction' : 'through';
 }
 
 function end() {
@@ -955,7 +961,7 @@ function end() {
   const why = reason ? (typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site, name()) : COPY.failed[reason]) : null;
   // The first deed the person said No to (a walk with no plan): the walk's page says it in these words. `held` is not a No.
   const saidNo = view.outcome && !view.outcome.finished ? view.steps.find((step) => step.refused === 'no')?.n : undefined;
-  const head = state === 'done' ? COPY.end.done(name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
+  const head = state === 'done' ? COPY.end[verdict() ?? 'done'](name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
   const label = n > 0 ? COPY.end.found(name(), n) : COPY.end.see(name());
   // No results page to open (a walk from the terminal that ended early): the way home instead.
   const results = link ? el('button', { class: 'btn btn-gold btn-big', type: 'button', 'data-act': 'results', 'data-issues': String(n),

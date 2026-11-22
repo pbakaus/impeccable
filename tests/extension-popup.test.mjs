@@ -693,6 +693,7 @@ for (const [label, outcome, mood] of [['got through', { finished: true, issues: 
     const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome }].reduce(reduce, STUBS.waiting);
     const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
     assert.equal(h.app.querySelector('div.end')?.querySelector('span.face')?.attributes['data-mood'], mood);
+    assert.match(h.app.querySelector('div.end')?.querySelector('[role="status"]')?.textContent ?? '', { delighted: / got through\.$/, confused: outcome.finished ? / got through, with friction\.$/ : / got partway\.$/ }[mood]);
   });
 }
 
