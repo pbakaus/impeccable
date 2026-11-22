@@ -384,15 +384,15 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
                 } else {
                     crate::upload_notice::Kind::Critique
                 });
-            let at = v["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://"));
-            let mut line = match at {
+            let at = crate::receipt::landed(&v, crate::receipt::page(&signed_in.0, "critiques", None));
+            let mut line = match &at {
                 Some(url) => format!("Saved to Impeccable: {url}"),
-                None => crate::receipt::page(&signed_in.0, "critiques", None).map(|url| format!("Saved to Impeccable: {url}")).unwrap_or_else(|| "Saved to Impeccable.".to_string()),
+                None => "Saved to Impeccable.".to_string(),
             };
             if first {
                 line.push_str(&format!("\nEvery {} you save uploads; to stop: impeccable critiques off", report.noun()));
             }
-            if quiet { crate::receipt::saved(io, at.map(str::to_owned).or_else(|| crate::receipt::page(&signed_in.0, "critiques", None)), quiet); }
+            if quiet { crate::receipt::saved(io, at, quiet); }
             Some(line + "\n")
         }
         Ok(_) => not_saved("the account service gave an answer this version doesn't read; update with npx impeccable update"),

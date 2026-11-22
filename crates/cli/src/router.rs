@@ -47,7 +47,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             } else { Err(e) }
         });
         if let Ok(mut value) = value {
-            if let Some(url) = urls.iter().find(|u| u.contains("/-/foundations")).or(urls.first()) {
+            // Foundations leads when a scan saved several pages (receipt::saved_first).
+            if let Some(url) = urls.first() {
                 if value.is_array() { value = serde_json::json!({"findings": value}); }
                 if value.is_object() {
                     value["savedTo"] = url.as_str().into();
