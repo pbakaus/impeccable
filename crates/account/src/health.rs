@@ -729,9 +729,10 @@ pub(crate) fn critique_repo_at(
     env: &std::collections::HashMap<String, String>,
 ) -> Option<CritiqueRepo> {
     let short = critique_git_deadline();
-    // One question answers the top, HEAD's commit and the branch; it fails
-    // only before the first commit, which then asks for the top alone.
-    let (top, head_sha, branch) = match git_with_timeout(root, &["rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD"], short) {
+    // One question answers the top, HEAD's commit and the branch. It fails
+    // only before the first commit, which then asks for the top alone; a git
+    // that ran out of time ends the lookup, as it always has.
+    let (top, head_sha, branch) = match git_run(root, &["rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD"], short).ok()? {
         Some(out) => {
             let mut lines = out.lines().map(str::trim);
             let top = lines.next().filter(|t| !t.is_empty())?.to_string();
