@@ -3541,8 +3541,8 @@ when signed out, opted out or unable to upload; `savedTo` is optional. With repo
 turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
 "message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
 `savedTo` prefers Foundations. `live-poll --json` streams unbuffered, so it
-records an accepted variant before writing that accept event (within the
-upload's two seconds) and puts the prototype's page on the event as `savedTo`;
+records an accepted variant before writing that accept event (waiting two
+seconds at most, even if DNS stalls) and puts the page on it as `savedTo`;
 plain `live-poll` keeps the accept last and prints the receipt on stderr.
 `--quiet` and `--github` suppress receipts.
 Failures say what could not be saved and how to try again; nothing is queued
