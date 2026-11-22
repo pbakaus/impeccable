@@ -319,8 +319,10 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     let Some(mut body) = payload(snapshot, report) else {
         return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
     };
+    let mut top = None;
     if let Some(root) = root {
-        if let Some((key, label)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
+        if let Some((repo_top, key, label)) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
+            top = Some(repo_top);
             body["repoKey"] = key.into();
             if let Some(label) = label {
                 body["label"] = label.into();
@@ -337,8 +339,8 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     use crate::http::ApiError;
     match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
-            if let Some(root) = root {
-                crate::health::refresh_after_report(io, root);
+            if let Some(top) = &top {
+                crate::health::refresh_after_report(io, top);
             }
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet

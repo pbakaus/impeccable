@@ -342,18 +342,17 @@ pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &s
 
 /// A successful critique/audit upload can refresh the full repository silently.
 /// Detect uploads scans, never critiques, so this worker cannot recurse.
-pub(crate) fn refresh_after_report(io: &Io, project: &Path) {
+/// `top` is the repository top the upload already read, so this adds no git lookup.
+pub(crate) fn refresh_after_report(io: &Io, top: &str) {
     if !wanted(io) {
         return;
     }
-    let Some(root) = repo_top(&project.to_string_lossy()) else {
-        return;
-    };
+    let root = top;
     let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
         return;
     };
     if claim_report_refresh(&io.env, &root, now.as_secs()) {
-        impeccable_common::proc::spawn_refresh_args(io, Path::new(&root), "detect", &[".", "--quiet"]);
+        impeccable_common::proc::spawn_refresh_args(io, Path::new(root), "detect", &[".", "--quiet"]);
     }
 }
 
@@ -361,10 +360,15 @@ fn claim_report_refresh(env: &std::collections::HashMap<String, String>, root: &
     // Local repository tops, not remotes: separate clones each need their own scan.
     // Persist only an opaque key, just as firstScans does.
     let key = hex(&Sha256::digest(root.as_bytes()));
+    let due = |l: &Local| l.sync() && l.critique_refreshes.get(&key).is_none_or(|last| now.saturating_sub(*last) >= 86_400);
+    // Most saves find today's refresh already claimed: read only, never rewrite the file.
+    if !Local::read(env).is_some_and(|l| due(&l)) {
+        return false;
+    }
     let mut claimed = false;
     let saved = Local::update_with_wait(env, Duration::ZERO, |l| {
-        if l.sync() && l.critique_refreshes.get(&key).is_none_or(|last| now.saturating_sub(*last) >= 86_400) {
-            l.critique_refreshes.insert(key, now);
+        if due(l) {
+            l.critique_refreshes.insert(key.clone(), now);
             claimed = true;
         }
     });
@@ -687,10 +691,18 @@ pub(crate) fn critique_repo(
     root: &str,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
+    critique_repo_at(root, env).map(|(_, key, label)| (key, label))
+}
+
+/// [`critique_repo`] plus the repository top it read, so a caller needs no second git lookup.
+pub(crate) fn critique_repo_at(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, String, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
     let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
-    repo_identity(&top, remote, env)
+    repo_identity(&top, remote, env).map(|(key, label)| (top, key, label))
 }
 
 /// GitHub owner/name using the same bounded origin read and resolver as uploads.

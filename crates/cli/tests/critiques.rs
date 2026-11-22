@@ -1053,3 +1053,35 @@ fn successful_report_uploads_refresh_health_once_a_day_only_when_wanted_in_git()
     assert_eq!(marks().as_object().unwrap().len(), 1);
     assert_ne!(marks(), expired);
 }
+
+#[test]
+fn a_report_upload_refreshes_health_and_foundations_in_the_background() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        (k.critiques, k.health, k.foundations) = (true, true, true);
+    }
+    let env = fake.env("critique-health-upload");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]).join("work").join("site");
+    std::fs::create_dir_all(&root).unwrap();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/antipatterns");
+    std::fs::copy(fixtures.join("cream-palette.html"), root.join("index.html")).unwrap();
+    std::fs::write(root.join("report.md"), "# Report\nCrowded header.").unwrap();
+    for args in [vec!["init", "-q"], vec!["remote", "add", "origin", "https://github.com/acme/site.git"]] {
+        assert!(Command::new("git").args(args).current_dir(&root).status().unwrap().success());
+    }
+    assert!(write(&env, &root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    // The refresh is detached: wait for its uploads without blocking the save.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while (fake.hits("/cli/v1/health/scans") == 0 || fake.hits("/cli/v1/foundations") == 0)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let r = fake.record.lock().unwrap();
+    let scan = r.scans.last().expect("the background refresh uploaded a health scan");
+    assert_eq!(scan["repoKey"], r.critiques[0]["repoKey"]);
+    assert!(r.foundations.last().is_some(), "the background refresh uploaded Foundations");
+}
