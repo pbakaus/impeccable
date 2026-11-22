@@ -3225,6 +3225,13 @@ admission and the entire POST with `on`, `off` and `forget`. An uploader
 does not wait for this lock; preference commands wait at most three seconds.
 After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
+With a repo key, the upload also names where the critique ran (REN-2377), so a
+critique of a checked-out pull request files under it: `headSha` (HEAD's commit,
+40 or 64 lowercase hex, once the repository has a commit), `branch` (the
+checked-out branch's short name from git, left out when HEAD is detached) and
+`pullNumber` (the critique meta's optional `pr`, a number or `#`-prefixed digits
+from 1). The top, commit and branch come from one `git rev-parse` within the
+existing 150 ms; before the first commit the top is asked for alone.
 
 Optional critique meta `url` names the http(s) page viewed and is never sent in
 the critique payload. A successful upload starts the silent, detached
