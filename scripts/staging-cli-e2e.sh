@@ -103,7 +103,7 @@ check "context: says the install is signed in" '[ "$(acct)" = "ACCOUNT: signed i
 if [ $health = 1 ] && [ -z "$HOME_URL" ]; then
   info "setup: the Home link check runs against staging's issuer only"
 elif [ $health = 1 ]; then
-  check "setup: the sign-in's first scan names Foundations" 'grep -qF "See it in Foundations: $HOME_URL/-/foundations" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
+  check "setup: the sign-in's first scan names Foundations" 'grep -q "^See it in Foundations:" "$H/login.err" && grep -qF "$HOME_URL/-/foundations" "$H/login.err" && grep -q "^Added this repository to your account: " "$H/login.err"'
   check "setup: a repository with no remote goes up under its folder's name" 'grep -q "Sent its name, finding counts and foundations checks" "$H/login.err"'
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
@@ -144,7 +144,7 @@ fi
 # The scan's notices (no secrets: product lines only), so a failure shows its cause.
 while IFS= read -r line; do info "detect stderr: $line"; done < <(grep -E "^(Design health|Pro rules)" "$H/detect.err" | cut -c1-200)
 if [ $health = 1 ]; then
-  check "health: the scan's counts were saved (one-time notice)" 'grep -q "counts were saved to your account" "$H/detect.err"'
+  check "health: the scan's counts were saved (one-time notice)" 'grep -q "^Saved this scan.s counts to " "$H/detect.err"'
   "$BIN" health status > "$H/health.out" 2>&1
   info "health status: $(head -1 "$H/health.out" | cut -c1-200)"
   check "health: status says on" 'grep -q "^Design health: on" "$H/health.out"'
