@@ -1,6 +1,6 @@
 //! Best-effort detached critique frames. No output, receipts, or retries.
 use base64::Engine;
-use impeccable_account::{critiques::frame_session, http::Client};
+use impeccable_account::critiques::{frame_request, frame_session};
 use impeccable_browser::{
     cdp::{Browser, EvalOutcome, Viewport},
     discovery,
@@ -25,18 +25,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     else {
         return 0;
     };
+    let Some(login) = args.get(1).and_then(|s| s.parse::<u64>().ok()) else {
+        return 0;
+    };
     let Some(url) = args
-        .get(1)
+        .get(2)
         .and_then(|s| url::Url::parse(s).ok())
         .filter(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
     else {
         return 0;
     };
-    let Some(session) = frame_session(io, deadline.saturating_duration_since(Instant::now()))
-    else {
+    // The sign-in the critique uploaded under, or nothing is captured at all.
+    if frame_session(io, login, deadline.saturating_duration_since(Instant::now())).is_none() {
         return 0;
-    };
-    let account = session.account().clone();
+    }
     let Ok(exe) = discovery::find_browser(&io.env) else {
         return 0;
     };
@@ -64,6 +66,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 deadline.saturating_duration_since(Instant::now()),
             )
             .ok()?;
+            // An error page is not the page: only a successful document is kept.
+            let status = page.main_document_response()?["status"].as_f64()?;
+            if !(200.0..300.0).contains(&status) {
+                return None;
+            }
             // Check after load and again after capture, so late redirects are dropped too.
             let location = |page: &mut impeccable_browser::cdp::Page<'_>| match page
                 .evaluate("location.href")
@@ -101,27 +108,20 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     if frames.is_empty() || Instant::now() >= deadline {
         return 0;
     }
-    let Some(current) = frame_session(io, deadline.saturating_duration_since(Instant::now()))
-    else {
-        return 0;
-    };
-    if current.state.login != session.state.login {
-        return 0;
-    }
-    let Some(token) = current.existing_access_token().map(str::to_owned) else {
-        return 0;
-    };
     let id = id.clone();
     let mut metadata = serde_json::Map::new();
-    if let Some(label) = args.get(2) {
+    if let Some(label) = args.get(3) {
         metadata.insert("title".into(), label.clone().into());
     }
     impeccable_context::critique_storage::clean_report_metadata(&mut metadata);
     let label = metadata.get("title").cloned();
     // DNS in the shared HTTP stack is synchronous. Keep it off the worker's
     // main thread so even a stuck resolver cannot extend the job's lifetime.
+    // Every request rechecks the sign-in and consent under the upload lock.
+    let (cwd, env) = (io.cwd.clone(), io.env.clone());
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
+        let (io, _) = Io::captured("", cwd, env);
         let left = || {
             deadline
                 .checked_duration_since(Instant::now())
@@ -131,11 +131,15 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         for (viewport, width, height, bytes) in frames {
             let Some(wait) = left() else { break };
             let hash = format!("{:x}", Sha256::digest(&bytes));
-            let reserved = Client::with_deadline(&account, wait).post_json(
-                &format!("{}/cli/v1/critiques/captures", account.issuer),
-                &token,
-                json!({"sha256": hash, "bytes": bytes.len(), "contentType": "image/webp"}),
-            );
+            let Some(reserved) = frame_request(&io, login, wait, |client, token| {
+                client.post_json(
+                    &format!("{}/cli/v1/critiques/captures", client.origin()),
+                    token,
+                    json!({"sha256": hash, "bytes": bytes.len(), "contentType": "image/webp"}),
+                )
+            }) else {
+                return;
+            };
             let reserved = match reserved {
                 Ok(v) => v,
                 Err(e) if e.status() == Some(429) => return,
@@ -149,10 +153,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     continue;
                 };
                 let Some(wait) = left() else { break };
-                match Client::with_deadline(&account, wait).post_capture(upload, &token, &bytes) {
-                    Ok(v) if v["key"].as_str() == Some(key) => {}
-                    Err(e) if e.status() == Some(429) => return,
-                    _ => continue,
+                match frame_request(&io, login, wait, |client, token| client.post_capture(upload, token, &bytes)) {
+                    None => return,
+                    Some(Ok(v)) if v["key"].as_str() == Some(key) => {}
+                    Some(Err(e)) if e.status() == Some(429) => return,
+                    Some(_) => continue,
                 }
             }
             let mut frame =
@@ -164,11 +169,13 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
         if !captures.is_empty() {
             if let Some(wait) = left() {
-                let _ = Client::with_deadline(&account, wait).post_json(
-                    &format!("{}/cli/v1/critiques/{id}/captures", account.issuer),
-                    &token,
-                    json!({"captures": captures}),
-                );
+                let _ = frame_request(&io, login, wait, |client, token| {
+                    client.post_json(
+                        &format!("{}/cli/v1/critiques/{id}/captures", client.origin()),
+                        token,
+                        json!({"captures": captures}),
+                    )
+                });
             }
         }
         let _ = tx.send(());

@@ -181,6 +181,11 @@ impl Client {
         json_body(req.send_bytes(body))
     }
 
+    /// The account service's origin every request stays on.
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+
     /// Critique frame upload: authenticated, same-origin, exact byte length.
     pub fn post_capture(&self, url: &str, bearer: &str, body: &[u8]) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;

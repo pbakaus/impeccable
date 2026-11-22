@@ -1087,7 +1087,7 @@ fn a_report_upload_refreshes_health_and_foundations_in_the_background() {
 }
 
 // The service's fake validates actual bytes, lengths, hashes and issued keys.
-fn frame_page(redirect: bool) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<()>) {
+fn frame_page(mode: &'static str) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<()>) {
     use std::io::{Read, Write};
     use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1099,21 +1099,31 @@ fn frame_page(redirect: bool) -> (String, std::sync::Arc<std::sync::atomic::Atom
     let handle = std::thread::spawn(move || {
         while !done.load(Ordering::SeqCst) {
             match listener.accept() {
-                Ok((mut stream, _)) => {
-                    stream.set_read_timeout(Some(std::time::Duration::from_secs(1))).unwrap();
+                // One thread per connection: Chrome opens spare connections that
+                // send nothing, and the real request must not wait behind them.
+                Ok((mut stream, _)) => { let seen = seen.clone(); std::thread::spawn(move || {
+                    // An accepted socket inherits the listener's non-blocking mode on macOS.
+                    stream.set_nonblocking(false).unwrap();
+                    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
                     let mut buf = [0; 4096];
                     let n = stream.read(&mut buf).unwrap_or(0);
                     let request = String::from_utf8_lossy(&buf[..n]);
+                    if n == 0 {
+                        return;
+                    }
                     if request.starts_with("GET /page ") {
                         seen.fetch_add(1, Ordering::SeqCst);
                     }
-                    if redirect && request.starts_with("GET /page ") {
+                    if mode == "redirect" && request.starts_with("GET /page ") {
                         let _ = write!(stream, "HTTP/1.1 302 Found\r\nLocation: /signin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    } else if mode == "error" && request.starts_with("GET /page ") {
+                        let body = "<h1>Server error</h1>";
+                        let _ = write!(stream, "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
                     } else {
                         let body = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>body{background:#fcfaf7;color:#222;font:24px sans-serif}</style><h1>Pricing</h1><p>Plans for everyone.</p>";
                         let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
                     }
-                }
+                }); }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(20)),
                 Err(_) => break,
             }
@@ -1122,19 +1132,18 @@ fn frame_page(redirect: bool) -> (String, std::sync::Arc<std::sync::atomic::Atom
     (url, hits, stop, handle)
 }
 
-fn check_frames(redirect: bool) {
+fn check_frames(mode: &'static str) {
+    let dropped = mode != "ok";
     use std::sync::atomic::Ordering;
-    if impeccable_browser::discovery::find_browser(&std::env::vars().collect()).is_err() {
-        eprintln!("skip: no installed browser found");
-        return;
-    }
-    let (fake, mut env) = setup(if redirect { "frames-redirect" } else { "frames-upload" });
+    let (fake, mut env) = setup(&format!("frames-{mode}"));
     // Browser discovery uses the same environment in the detached worker.
-    for key in ["IMPECCABLE_BROWSER", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH", "PUPPETEER_DANGEROUS_NO_SANDBOX"] {
+    // Chrome on Windows also needs its profile folders to start.
+    for key in ["IMPECCABLE_BROWSER", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH", "PUPPETEER_DANGEROUS_NO_SANDBOX",
+        "LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramFiles", "ProgramFiles(x86)"] {
         if let Ok(v) = std::env::var(key) { env.insert(key.into(), v); }
     }
     let root = Path::new(&env["IMPECCABLE_HOME"]);
-    let (url, hits, stop, server) = frame_page(redirect);
+    let (url, hits, stop, server) = frame_page(mode);
     let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
     meta["url"] = url.into();
     let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
@@ -1144,14 +1153,20 @@ fn check_frames(redirect: bool) {
     assert!(fake.record.lock().unwrap().critiques[0].get("url").is_none());
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
     while std::time::Instant::now() < deadline {
-        if !redirect && fake.record.lock().unwrap().captures.len() == 2 { break; }
+        if !dropped && fake.record.lock().unwrap().captures.len() == 2 { break; }
+        if dropped && hits.load(Ordering::SeqCst) >= 2 {
+            // Both pages were seen; give a wrongly kept frame time to upload.
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     stop.store(true, Ordering::SeqCst);
     server.join().unwrap();
-    assert!(hits.load(Ordering::SeqCst) >= 2, "worker navigated both viewports");
+    let seen = hits.load(Ordering::SeqCst);
+    assert!(seen >= 2, "worker navigated both viewports ({seen} page loads)");
     let record = fake.record.lock().unwrap();
-    if redirect {
+    if dropped {
         assert!(record.captures.is_empty());
         assert_eq!(record.hits.get("/cli/v1/critiques/captures").copied().unwrap_or(0), 0);
     } else {
@@ -1168,8 +1183,15 @@ fn check_frames(redirect: bool) {
     }
 }
 
+/// One browser at a time: the page itself attaches both frames, and a
+/// redirect elsewhere or an error page attaches none.
 #[test]
-fn uploaded_critique_attaches_desktop_and_phone_frames() { check_frames(false); }
-
-#[test]
-fn a_redirect_to_another_path_drops_frames() { check_frames(true); }
+fn a_critique_attaches_frames_only_of_the_page_itself() {
+    if impeccable_browser::discovery::find_browser(&std::env::vars().collect()).is_err() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    for mode in ["ok", "redirect", "error"] {
+        check_frames(mode);
+    }
+}

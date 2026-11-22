@@ -3228,11 +3228,15 @@ A fresh UUID identifies each saved report; `createdAt` is its save time.
 
 Optional critique meta `url` names the http(s) page viewed and is never sent in
 the critique payload. A successful upload starts the silent, detached
-`critique-frames` worker under the same sign-in, scope and upload opt-outs.
+`critique-frames` worker, given the critique's id and the sign-in it uploaded
+under; it captures nothing for any other sign-in.
 Within a single 20-second budget it captures desktop 1440×900 and phone 390×844
 viewport WebPs (quality 80, one lower-quality retry if over 300 KB). Failed
-loads, redirects to another origin or path (query/hash changes are allowed),
-and frames still over 300 KB are dropped. Each frame reserves with
+loads, documents answered with a non-2xx status, redirects to another origin
+or path (query/hash changes are allowed), and frames still over 300 KB are
+dropped. Every request below rechecks that sign-in, `critiques:write` and the
+upload opt-outs under the critiques upload lock and sends while holding it, so
+`critiques off` or `forget` stops the next one. Each frame reserves with
 `POST /cli/v1/critiques/captures` (`sha256`, `bytes`, `contentType`),
 optionally uploads with an authenticated WebP POST to the returned
 `uploadUrl` with exact Content-Length, then successful keys attach through

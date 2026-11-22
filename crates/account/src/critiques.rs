@@ -376,7 +376,7 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
             }) {
                 impeccable_common::proc::spawn_refresh_args(
                     io, project_root(snapshot).unwrap_or(&io.cwd), "critique-frames",
-                    &[&critique_id, url, &label],
+                    &[&critique_id, &login.to_string(), url, &label],
                 );
             }
             // The first save on a sign-in also says it happens every time and how to stop.
@@ -524,14 +524,34 @@ mod preference_tests {
     }
 }
 
-/// Credentials for the detached frame job, with the same upload opt-outs.
-/// No renewal or interactive prompt: an expired session simply drops frames.
-pub fn frame_session(io: &Io, wait: Duration) -> Option<Session> {
+/// Credentials for the detached frame job: the sign-in the critique uploaded
+/// under (`login`), with `critiques:write` and the same upload opt-outs. No
+/// renewal or prompt: an expired or switched session simply drops frames.
+pub fn frame_session(io: &Io, login: u64, wait: Duration) -> Option<Session> {
     let (account, state) = ready(io, Some(&io.cwd)).ok()?;
     let session = Session::load_for_upload(&account, wait)?;
     if !session.matches_upload(&state)
+        || session.state.login != login
         || !session.state.scopes.iter().any(|s| s == crate::oauth::CRITIQUES_SCOPE)
         || session.existing_access_token().is_none()
     { return None; }
     Some(session)
+}
+
+/// One frame request, ordered against `critiques off` and `forget` like a
+/// report upload: it rechecks the sign-in and consent under the upload lock
+/// and sends while holding it. `None` when any check fails or the lock is busy.
+pub fn frame_request<R>(
+    io: &Io,
+    login: u64,
+    wait: Duration,
+    send: impl FnOnce(&Client, &str) -> R,
+) -> Option<R> {
+    let session = frame_session(io, login, wait)?;
+    let account = session.account();
+    let _admission = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO).ok()?;
+    if !enabled(io) {
+        return None;
+    }
+    Some(send(&Client::with_deadline(account, wait), session.existing_access_token()?))
 }
