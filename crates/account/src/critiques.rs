@@ -119,7 +119,7 @@ fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
 /// One line on stdout, where the person's agent reads it, after a saved
 /// critique (journey 3): where it went, why it didn't, or once a day per
 /// project while signed out, how to keep its history. Nothing when sync is off,
-/// in CI, under an opt-out, or with `--json`/`--quiet`/`--github`.
+/// in CI, or with `--json`/`--quiet`/`--github`. Telemetry opt-outs get a daily explanation.
 pub fn after_save(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) {
     // Quiet saves still upload; they only say nothing, and spend no once-only line.
     if let Some(line) = upload(io, snapshot, report, quiet).filter(|_| !quiet) {
@@ -144,6 +144,10 @@ fn project_root(snapshot: &SavedReport) -> Option<&std::path::Path> {
 /// Signed out: at most once a day per project, so a run of critiques costs the
 /// customer's agent one line, not one per report.
 fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: Report) -> Option<String> {
+    daily_nudge(account, root, "sign-in", format!("Keep this {}'s history: npx impeccable login\n", report.noun()))
+}
+
+fn daily_nudge(account: &Account, root: Option<&std::path::Path>, kind: &str, line: String) -> Option<String> {
     use sha2::{Digest, Sha256};
     let project = root.map(|r| r.to_string_lossy().into_owned()).unwrap_or_default();
     let digest = Sha256::digest(project.as_bytes());
@@ -152,7 +156,7 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: R
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() / 86_400)
         .unwrap_or(0);
-    let marker = |day: u64| account.dir().join(format!("critique-sign-in-nudge-{key}-{day}"));
+    let marker = |day: u64| account.dir().join(format!("critique-{kind}-nudge-{key}-{day}"));
     let _ = crate::store::private_dir(&account.dir());
     // Creating today's marker is the claim, so parallel saves print the line once.
     match std::fs::OpenOptions::new().write(true).create_new(true).open(marker(today)) {
@@ -161,13 +165,25 @@ fn signed_out_nudge(account: &Account, root: Option<&std::path::Path>, report: R
         _ => {}
     }
     let _ = std::fs::remove_file(marker(today.saturating_sub(1)));
-    Some(format!("Keep this {}'s history: npx impeccable login\n", report.noun()))
+    Some(line)
+}
+
+/// Explain the effective opt-out at most once per project per day.
+pub fn opt_out_nudge(io: &Io, root: &std::path::Path) -> Option<String> {
+    let reason = impeccable_context::telemetry::opt_out_reason(&io.env, &root.to_string_lossy())
+        .or_else(|| impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy()))?;
+    let account = Account::from_env(&io.env).ok()?;
+    let step = if reason.starts_with("DO_NOT_TRACK") { "Unset DO_NOT_TRACK" }
+        else if reason.starts_with("IMPECCABLE_NO_TELEMETRY") { "Unset IMPECCABLE_NO_TELEMETRY" }
+        else { "Set telemetry to true in that file" };
+    daily_nudge(&account, Some(root), "telemetry", format!("Not saved to Impeccable: {reason}. {step} to enable saving.\n"))
 }
 
 /// Why an upload stopped before an answer. Each caller words its own line.
 pub(crate) enum Stop {
-    /// Sync off, CI, an opt-out, or a sign-in the service would not widen: say nothing.
+    /// Sync off, CI, or a sign-in the service would not widen: say nothing.
     Silent,
+    OptOut,
     SignedOut(Account),
     NoAccount(String),
     Slow,
@@ -184,17 +200,18 @@ pub(crate) enum Stop {
 pub(crate) fn ready(io: &Io, root: Option<&std::path::Path>) -> Result<(Account, crate::store::State), Stop> {
     if !enabled(io)
         || io.env.get("CI").is_some_and(|v| !v.is_empty())
-        || impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
-            .is_some()
     {
         return Err(Stop::Silent);
+    }
+    if impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy()).is_some() {
+        return Err(Stop::OptOut);
     }
     let account = Account::from_env(&io.env).map_err(Stop::NoAccount)?;
     // Also honor an opt-out at the project root.
     if root.is_some_and(|root| {
         impeccable_context::telemetry::opt_out_reason(&io.env, &root.to_string_lossy()).is_some()
     }) {
-        return Err(Stop::Silent);
+        return Err(Stop::OptOut);
     }
     match crate::store::Store::new(&account).state().filter(|s| s.signed_in) {
         Some(state) => Ok((account, state)),
@@ -287,9 +304,10 @@ pub(crate) fn send(
 fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> Option<String> {
     let started = Instant::now();
     let root = project_root(snapshot);
-    const SLOW: &str = "the account service took too long; the report is saved locally and the next critique will upload";
+    const SLOW: &str = "Impeccable took too long to answer; the report is saved locally. Run it again to save it.";
     let stopped = |stop: Stop| match stop {
         Stop::Silent => None,
+        Stop::OptOut => None,
         Stop::SignedOut(account) => {
             if quiet {
                 None
@@ -309,6 +327,7 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     };
     let signed_in = match ready(io, root) {
         Ok(signed_in) => signed_in,
+        Err(Stop::OptOut) if !quiet => return opt_out_nudge(io, root.unwrap_or(&io.cwd)),
         Err(stop) => return stopped(stop),
     };
     let Some(mut body) = payload(snapshot, report) else {
@@ -342,21 +361,22 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
             let at = v["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://"));
             let mut line = match at {
                 Some(url) => format!("Saved to Impeccable: {url}"),
-                None => "Saved to Impeccable.".to_string(),
+                None => crate::receipt::page(&signed_in.0, "critiques", None).map(|url| format!("Saved to Impeccable: {url}")).unwrap_or_else(|| "Saved to Impeccable.".to_string()),
             };
             if first {
-                line.push_str(&format!(" Every {} you save uploads; to stop: impeccable critiques off", report.noun()));
+                line.push_str(&format!("\nEvery {} you save uploads; to stop: impeccable critiques off", report.noun()));
             }
+            if quiet { crate::receipt::saved(io, at.map(str::to_owned).or_else(|| crate::receipt::page(&signed_in.0, "critiques", None)), quiet); }
             Some(line + "\n")
         }
         Ok(_) => not_saved("the account service gave an answer this version doesn't read; update with npx impeccable update"),
         Err(ApiError::Status { status: 401, .. }) => not_saved(format!("your sign-in expired; {RELOGIN}")),
         Err(ApiError::Status { status: 403, .. }) => not_saved(format!("this sign-in can't save critiques; {RELOGIN}")),
         Err(ApiError::Status { status: 409, .. }) => not_saved("it was made before you deleted your critique history"),
-        Err(ApiError::Status { status: 429, .. }) => not_saved("you've reached the upload limit (10 a minute, 200 a day); the next critique after that will upload"),
+        Err(ApiError::Status { status: 429, .. }) => not_saved("you've reached the upload limit (10 a minute, 200 a day); run it again later to save it"),
         Err(ApiError::Status { status: 400 | 413, .. }) => not_saved("the account service refused the report; update with npx impeccable update"),
-        Err(e @ ApiError::Status { .. }) => not_saved(format!("the account service had a problem ({e}); the next critique will upload")),
-        Err(ApiError::Network(e)) => not_saved(format!("{e}; the report is saved locally and the next critique will upload")),
+        Err(ApiError::Status { .. }) => not_saved("Impeccable had a problem; the report is saved locally. Run it again to save it.".to_string()),
+        Err(ApiError::Network(_)) => not_saved("Impeccable couldn't be reached; the report is saved locally. Run it again to save it.".to_string()),
     }
 }
 

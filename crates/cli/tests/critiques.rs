@@ -157,9 +157,9 @@ fn gates_and_service_failures_preserve_the_saved_report() {
         (401, "your sign-in expired; sign in again with npx impeccable login"),
         (403, "this sign-in can't save critiques; sign in again with npx impeccable login"),
         (409, "it was made before you deleted your critique history"),
-        (429, "you've reached the upload limit (10 a minute, 200 a day); the next critique after that will upload"),
-        (404, "the account service had a problem (HTTP 404); the next critique will upload"),
-        (500, "the account service had a problem (HTTP 500); the next critique will upload"),
+        (429, "you've reached the upload limit (10 a minute, 200 a day); run it again later to save it"),
+        (404, "Impeccable had a problem; the report is saved locally. Run it again to save it."),
+        (500, "Impeccable had a problem; the report is saved locally. Run it again to save it."),
     ] {
         fake.route("POST", "/cli/v1/critiques", status, vec![], "{}");
         let out = write(&env, root);
@@ -650,7 +650,7 @@ fn the_service_accepts_optional_labels_only_with_repo_keys() {
 fn every_save_links_its_critique_and_the_first_on_a_sign_in_says_how_to_stop() {
     let (fake, env) = setup("critique-notice");
     let root = Path::new(&env["IMPECCABLE_HOME"]);
-    let stop = " Every critique you save uploads; to stop: impeccable critiques off";
+    let stop = "\nEvery critique you save uploads; to stop: impeccable critiques off";
     let hook = impeccable(&env, root, &["hook-before-edit"])
         .output()
         .unwrap();

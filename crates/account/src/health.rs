@@ -6,7 +6,7 @@
 //!
 //! An upload never changes what `detect` printed or its exit code: it runs
 //! after the output, has one 5-second deadline (token refresh included), and
-//! any failure is silent. It is skipped, before anything is read from the
+//! failures are reported without changing its exit code. It is skipped, before anything is read from the
 //! network or git, when `CI` is set, when telemetry is off (`DO_NOT_TRACK`,
 //! `IMPECCABLE_NO_TELEMETRY`, `"telemetry": false`), when sync is off
 //! (`impeccable health off`), or when nobody is signed in.
@@ -165,6 +165,9 @@ impl Synced {
 pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // The scanned root's own config may opt out too (an off anywhere wins).
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
+        if !quiet {
+            if let Some(line) = crate::critiques::opt_out_nudge(io, Path::new(&scan.root)) { io.err(&line); }
+        }
         return Synced::default();
     }
     design::after_scan(io, scan, quiet);
@@ -176,7 +179,9 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
 /// DESIGN.md contents are never part of it (the next `detect` syncs them).
 /// The caller has checked [`wanted_at_sign_in`] and [`can_record`].
 pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
-    upload(io, scan, true)
+    let (synced, urls) = crate::receipt::capture(|| upload(io, scan, true));
+    for url in urls { crate::receipt::saved(io, Some(url), false); }
+    synced
 }
 
 fn upload(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
@@ -193,6 +198,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
         return synced;
     };
     let Ok(mut session) = Session::load(&account) else {
+        if !quiet { io.err("Not saved to Impeccable: your sign-in could not be read. Run npx impeccable login.\n"); }
         return synced;
     };
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
@@ -208,6 +214,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // A busy sign-in (another command mid-refresh) skips this upload rather
     // than holding detect on the lock.
     let Ok(token) = session.access_token_within(std::time::Duration::ZERO) else {
+        if !quiet { io.err("Not saved to Impeccable: your sign-in could not be renewed. Run npx impeccable login.\n"); }
         return synced;
     };
     // The one-time notice and hint belong to this sign-in on this service.
@@ -227,7 +234,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
         );
     }
     // Its own request and consent: a switched-off route (404) or any other
-    // failure is silent and never prevents the health upload.
+    // failure is reported and never prevents the health upload.
     if session.state.foundations {
         let mut foundation_body = json!({
             "version": 1,
@@ -240,13 +247,18 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
         if let Some(label) = &repo.label {
             foundation_body["label"] = label.clone().into();
         }
-        synced.foundations = Client::with_deadline(&account, Duration::from_secs(2))
+        let foundation_result = Client::with_deadline(&account, Duration::from_secs(2))
             .post_json(
                 &format!("{}/cli/v1/foundations", account.issuer),
                 &token,
                 foundation_body,
-            )
-            .is_ok();
+            );
+        synced.foundations = foundation_result.is_ok();
+        if synced.foundations {
+            crate::receipt::saved(io, crate::receipt::page(&account, "foundations", repo.label.as_deref()), quiet);
+        } else if let Err(error) = foundation_result {
+            crate::receipt::failed_upload(io, "Foundations", &error, quiet);
+        }
     } else {
         crate::stale_grant::emit(
             io,
@@ -270,6 +282,10 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
         Ok(_) => {
             synced.health = true;
+            if !synced.foundations {
+                crate::receipt::saved(io, crate::receipt::page(&account, "foundations", repo.label.as_deref()), quiet);
+            }
+            crate::receipt::saved(io, crate::receipt::page(&account, "design-health", None), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
                 // In the person's words, not a feature's name: what was kept, where, and how to stop.
@@ -282,16 +298,9 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
         }
         Err(ApiError::Status { status: 403, .. }) => {
             crate::stale_grant::note_health_denied(&account, session.state.login);
-            crate::stale_grant::emit(
-                io,
-                &account,
-                session.state.login,
-                None,
-                Duration::ZERO,
-                quiet,
-            );
+            if !quiet { io.err("Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.\n"); }
         }
-        Err(_) => {}
+        Err(error) => crate::receipt::failed_upload(io, "This scan", &error, quiet),
     }
     synced
 }

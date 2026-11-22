@@ -9,6 +9,31 @@ pub type InstalledPack =
 /// Route a CLI invocation using this build's hooks. Callers own stream flushing
 /// and process exit; registry registration is process-wide and idempotent.
 pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
+    let uploads = args.first().is_some_and(|v| matches!(v.as_str(), "detect" | "foundations" | "critique-storage" | "audit-storage") || v.starts_with("live") || impeccable_detect::looks_like_detect_target(v, &io.cwd.to_string_lossy()));
+    if uploads && !args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github")) && args.iter().any(|a| matches!(a.as_str(), "--json" | "-json")) {
+        let (mut capture, cap) = Io::captured("", io.cwd.clone(), io.env.clone());
+        std::mem::swap(&mut io.stdout, &mut capture.stdout);
+        let (code, urls) = impeccable_account::receipt::capture(|| run_inner(args, io, pack));
+        std::mem::swap(&mut io.stdout, &mut capture.stdout);
+        let out = cap.stdout.borrow();
+        if let (Some(url), Ok(mut value)) = (urls.iter().find(|u| u.contains("/-/foundations")).or(urls.first()), serde_json::from_slice::<serde_json::Value>(&out).or_else(|e| {
+            if matches!(args.first().map(String::as_str), Some("critique-storage" | "audit-storage")) && code == 0 {
+                Ok(serde_json::json!({"path": String::from_utf8_lossy(&out).trim()}))
+            } else { Err(e) }
+        })) {
+            if value.is_array() { value = serde_json::json!({"findings": value}); }
+            if value.is_object() {
+                value["savedTo"] = url.as_str().into();
+                if urls.len() > 1 { value["savedPages"] = serde_json::json!(urls); }
+                io.out(&format!("{}\n", serde_json::to_string_pretty(&value).unwrap()));
+            } else { io.out(&String::from_utf8_lossy(&out)); }
+        } else { io.out(&String::from_utf8_lossy(&out)); }
+        return code;
+    }
+    run_inner(args, io, pack)
+}
+
+fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     pack.install();
     let html = impeccable_html::StaticHtmlEngine {
         static_rule_pack: pack.static_rule_pack,
@@ -167,7 +192,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 saved = Some(s)
             });
             if let Some(snapshot) = saved {
-                let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json"));
+                let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
                 impeccable_account::critiques::after_save(io, &snapshot, impeccable_account::critiques::Report::Audit, quiet);
             }
             code
@@ -244,7 +269,8 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "hooks" | "hook-admin" => impeccable_hook::run_hook_admin(rest, io),
         // A successful variant accept records the prototyping session (REN-1917), after its result is out.
         v if v.starts_with("live") => impeccable_live::run_with_accepted(v, rest, io, &mut |io, a| {
-            impeccable_account::prototypes::after_accept(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms))
+            let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github" | "--json" | "-json"));
+            impeccable_account::prototypes::after_accept_quiet(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), quiet)
         }),
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
@@ -277,6 +303,9 @@ fn detect(
     // Most runs can't upload (not signed in, CI, opted out): those don't
     // pay for a report.
     if !impeccable_account::health::wanted(io) {
+        if !args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github")) && impeccable_account::health::wanted_at_sign_in(io) {
+            if let Some(line) = impeccable_account::critiques::opt_out_nudge(io, &io.cwd) { io.err(&line); }
+        }
         return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
     }
     let started = std::time::SystemTime::now();
@@ -664,5 +693,34 @@ mod verb_tests {
         run(&["-y"], false);
         assert_eq!(launcher.exists(), cfg!(unix));
         let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[cfg(test)]
+#[path = "../../account/tests/support/fake.rs"]
+mod receipt_fake;
+
+#[cfg(test)]
+mod receipt_tests {
+    use super::*;
+
+    #[test]
+    fn report_json_carries_the_server_url_without_extra_output() {
+        let fake = super::receipt_fake::Fake::start();
+        fake.knobs.lock().unwrap().critiques = true;
+        let mut env = fake.env("receipt-json");
+        impeccable_account::login(&env, &mut |u| super::receipt_fake::browser(u), std::time::Duration::from_secs(10)).unwrap();
+        let root = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]);
+        std::fs::write(root.join("body.md"), "Report").unwrap();
+        env.insert("IMPECCABLE_CRITIQUE_META".into(), r#"{"target":"Home","total_score":24,"max_score":40,"p0_count":0,"p1_count":0}"#.into());
+        let (mut io, cap) = Io::captured("", root.clone(), env);
+        let body = root.join("body.md").to_string_lossy().into_owned();
+        let args = ["critique-storage", "write", "home", body.as_str(), "--json"].map(str::to_owned);
+        let code = run(&args, &mut io, InstalledPack::NONE);
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&cap.stderr.borrow()));
+        let output: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+        assert!(output["savedTo"].as_str().unwrap().contains("/app/-/critiques?report="));
+        assert!(output["path"].as_str().is_some());
+        assert!(cap.stderr.borrow().is_empty());
     }
 }
