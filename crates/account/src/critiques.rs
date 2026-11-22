@@ -44,7 +44,9 @@ impl Report {
 
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
 fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
-    let m = &snapshot.meta;
+    let mut metadata = snapshot.meta.clone();
+    impeccable_context::critique_storage::clean_report_metadata(&mut metadata);
+    let m = &metadata;
     let total = m.get("total_score")?.as_u64()?;
     let max = m.get("max_score")?.as_u64()?;
     // The storage parser reads a single N/A index as a number, a list as text.
@@ -106,9 +108,12 @@ fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
     let mut out = json!({
         "version": 1, "critiqueId": id, "createdAt": created_at,
         "target": target, "score": { "total": total, "max": max }, "na": na,
-        "heuristics": null, "counts": { "p0": p0, "p1": p1, "p2": count("p2_count"), "p3": count("p3_count") },
+        "heuristics": m.get("heuristics"), "counts": { "p0": p0, "p1": p1, "p2": count("p2_count"), "p3": count("p3_count") },
         "body": body
     });
+    if let Some(title) = m.get("title") {
+        out["title"] = title.clone();
+    }
     // Only an audit names its kind: a critique's upload stays as every server so far reads it.
     if report == Report::Audit {
         out["kind"] = "audit".into();
@@ -433,6 +438,30 @@ pub fn run_refresh(args: &[String], io: &mut Io) -> i32 {
 #[cfg(test)]
 mod preference_tests {
     use super::*;
+
+    #[test]
+    fn optional_report_details_survive_payload_validation() {
+        let mut meta = json!({
+            "target": "localhost", "timestamp": "2026-11-22T12-00-00Z",
+            "total_score": 24, "max_score": 40, "p0_count": 1, "p1_count": 2,
+            "p2_count": 3, "p3_count": 4,
+            "title": format!("  Plans\t \n\u{200e}{}\0", "界".repeat(200)),
+            "heuristics": [{"n":1,"score":4}, {"n":11,"score":2}, {"n":2,"score":5},
+                {"n":3,"score":"2"}, {"n":4.5,"score":2}, null, {"n":1,"score":0}]
+        }).as_object().unwrap().clone();
+        let snapshot = |meta| SavedReport { path: String::new(), body: "Report".into(), meta };
+        let out = payload(&snapshot(meta.clone()), Report::Critique).unwrap();
+        assert_eq!(out["title"], format!("Plans {}", "界".repeat(114)));
+        assert_eq!(out["heuristics"], json!([{"n":1,"score":4}]));
+        assert_eq!(out["counts"], json!({"p0":1,"p1":2,"p2":3,"p3":4}));
+        meta.insert("title".into(), " \0\u{200d} \n".into());
+        meta.insert("p2_count".into(), (-1).into());
+        meta.insert("p3_count".into(), 101.into());
+        let out = payload(&snapshot(meta), Report::Critique).unwrap();
+        assert!(out.get("title").is_none());
+        assert!(out["counts"]["p2"].is_null());
+        assert!(out["counts"]["p3"].is_null());
+    }
 
     #[test]
     fn critique_default_is_on_and_explicit_off_wins() {
