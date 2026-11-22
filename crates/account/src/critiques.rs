@@ -337,6 +337,9 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     use crate::http::ApiError;
     match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
+            if let Some(root) = root {
+                crate::health::refresh_after_report(io, root);
+            }
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
                 && crate::upload_notice::first(&signed_in.0, login, if report == Report::Audit {

@@ -993,3 +993,63 @@ fn an_accepted_variant_records_the_prototype_once_and_never_when_opted_out() {
     assert!(accept().status.success());
     assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
 }
+
+#[test]
+fn successful_report_uploads_refresh_health_once_a_day_only_when_wanted_in_git() {
+    let (fake, env) = setup("critique-health-refresh");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let health = root.join("health.json");
+    let marks = || -> serde_json::Value {
+        std::fs::read(&health).ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v.get("critiqueRefreshes").cloned())
+            .unwrap_or(serde_json::json!({}))
+    };
+    // An upload outside git leaves no scheduling timestamp.
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    assert_eq!(marks(), serde_json::json!({}));
+    assert!(Command::new("git").args(["init", "-q"]).current_dir(root)
+        .status().unwrap().success());
+    fake.route("POST", "/cli/v1/critiques", 500, vec![], "{}");
+    assert!(write(&env, root).status.success());
+    assert_eq!(marks(), serde_json::json!({}));
+    fake.route("POST", "/cli/v1/critiques", 200, vec![], r#"{"outcome":"recorded"}"#);
+    std::fs::write(&health, r#"{"sync":false}"#).unwrap();
+    let before = write(&env, root);
+    assert!(before.status.success());
+    assert!(before.stderr.is_empty());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 3);
+    assert_eq!(marks(), serde_json::json!({}));
+    std::fs::write(&health, r#"{"sync":true}"#).unwrap();
+    let first = write(&env, root);
+    let claimed = marks();
+    assert_eq!(claimed.as_object().unwrap().len(), 1);
+    assert!(claimed.as_object().unwrap().values().all(|v| v.as_u64().unwrap() > 0));
+    let second = write(&env, root);
+    assert_eq!(marks(), claimed);
+    // After the initial upload notice, scheduling changes no output or status.
+    for out in [&before, &first, &second] {
+        let text = String::from_utf8(out.stdout.clone()).unwrap();
+        let path = text.lines().next().unwrap();
+        assert!(Path::new(path).is_file());
+        assert_eq!(out.stdout, format!("{path}\nSaved to Impeccable.\n").as_bytes());
+    }
+    assert_eq!(first.stderr, before.stderr);
+    assert_eq!(second.stderr, before.stderr);
+    assert_eq!(first.status.code(), before.status.code());
+    assert_eq!(second.status.code(), before.status.code());
+    // An audit uses the same success hook, even when its upload notice is quiet.
+    let mut expired = claimed;
+    for value in expired.as_object_mut().unwrap().values_mut() {
+        *value = 1.into();
+    }
+    std::fs::write(&health, serde_json::json!({"sync":true,"critiqueRefreshes":expired}).to_string()).unwrap();
+    let audit = impeccable(&env, root, &["audit-storage", "write", ".", "report.md", "--quiet"])
+        .env("IMPECCABLE_REPORT_META", r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":2}"#)
+        .output().unwrap();
+    assert!(audit.status.success());
+    assert!(audit.stderr.is_empty());
+    assert_eq!(marks().as_object().unwrap().len(), 1);
+    assert_ne!(marks(), expired);
+}

@@ -340,6 +340,38 @@ pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &s
     }
 }
 
+/// A successful critique/audit upload can refresh the full repository silently.
+/// Detect uploads scans, never critiques, so this worker cannot recurse.
+pub(crate) fn refresh_after_report(io: &Io, project: &Path) {
+    if !wanted(io) {
+        return;
+    }
+    let Some(root) = repo_top(&project.to_string_lossy()) else {
+        return;
+    };
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return;
+    };
+    if claim_report_refresh(&io.env, &root, now.as_secs()) {
+        impeccable_common::proc::spawn_refresh_args(io, Path::new(&root), "detect", &[".", "--quiet"]);
+    }
+}
+
+fn claim_report_refresh(env: &std::collections::HashMap<String, String>, root: &str, now: u64) -> bool {
+    // Local repository tops, not remotes: separate clones each need their own scan.
+    // Persist only an opaque key, just as firstScans does.
+    let key = hex(&Sha256::digest(root.as_bytes()));
+    let mut claimed = false;
+    let saved = Local::update_with_wait(env, Duration::ZERO, |l| {
+        if l.sync() && l.critique_refreshes.get(&key).is_none_or(|last| now.saturating_sub(*last) >= 86_400) {
+            l.critique_refreshes.insert(key, now);
+            claimed = true;
+        }
+    });
+    // Failure (including a busy lock) never spawns an unthrottled worker.
+    saved.is_ok() && claimed
+}
+
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
     if args.first().map(String::as_str) == Some("design") {
@@ -485,6 +517,8 @@ struct Local {
     hinted: Option<String>,
     /// Opaque keys of the repositories a sign-in already scanned.
     first_scans: Vec<String>,
+    /// Last critique-triggered refresh attempt, by hashed repository top.
+    critique_refreshes: std::collections::BTreeMap<String, u64>,
 }
 
 impl Local {
@@ -516,6 +550,11 @@ impl Local {
                 .and_then(Value::as_array)
                 .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
+            critique_refreshes: v
+                .get("critiqueRefreshes")
+                .and_then(Value::as_object)
+                .map(|m| m.iter().filter_map(|(k, v)| v.as_u64().map(|t| (k.clone(), t))).collect())
+                .unwrap_or_default(),
         })
     }
     fn sync(&self) -> bool {
@@ -530,6 +569,13 @@ impl Local {
         env: &std::collections::HashMap<String, String>,
         change: impl FnOnce(&mut Local),
     ) -> Result<(), String> {
+        Self::update_with_wait(env, LOCK_WAIT, change)
+    }
+    fn update_with_wait(
+        env: &std::collections::HashMap<String, String>,
+        wait: Duration,
+        change: impl FnOnce(&mut Local),
+    ) -> Result<(), String> {
         let path = Local::path(env).ok_or("no home directory; set IMPECCABLE_HOME")?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -541,7 +587,7 @@ impl Local {
             .truncate(false)
             .open(path.with_extension("json.lock"))
             .map_err(|e| format!("could not open the design health lock: {e}"))?;
-        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        let deadline = std::time::Instant::now() + wait;
         loop {
             match lock.try_lock() {
                 Ok(()) => break,
@@ -579,6 +625,9 @@ impl Local {
         }
         if !local.first_scans.is_empty() {
             m.insert("firstScans".into(), local.first_scans.into());
+        }
+        if !local.critique_refreshes.is_empty() {
+            m.insert("critiqueRefreshes".into(), json!(local.critique_refreshes));
         }
         let saved = crate::store::write_private(&path, Value::Object(m).to_string().as_bytes());
         drop(lock);
@@ -1022,6 +1071,37 @@ fn label(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn report_refresh_claim_is_per_top_atomic_and_expires_after_24_hours() {
+        let env = std::collections::HashMap::from([(
+            "IMPECCABLE_HOME".into(),
+            crate::test_fake::temp_home("report-refresh-claim").to_string_lossy().into_owned(),
+        )]);
+        let now = 1_794_000_000;
+        let claims: Vec<_> = (0..8).map(|_| {
+            let env = env.clone();
+            std::thread::spawn(move || claim_report_refresh(&env, "/repo", now))
+        }).collect();
+        assert_eq!(claims.into_iter().map(|t| t.join().unwrap() as usize).sum::<usize>(), 1);
+        assert!(!claim_report_refresh(&env, "/repo", now + 86_399));
+        assert!(!claim_report_refresh(&env, "/repo", now - 1));
+        assert!(claim_report_refresh(&env, "/repo", now + 86_400));
+        assert!(claim_report_refresh(&env, "/another-clone", now));
+        let local = Local::read(&env).unwrap();
+        assert_eq!(local.critique_refreshes.len(), 2);
+        // A busy lock skips immediately; unreadable/disabled state cannot claim.
+        let path = Local::path(&env).unwrap();
+        let lock = std::fs::OpenOptions::new().write(true).open(path.with_extension("json.lock")).unwrap();
+        lock.lock().unwrap();
+        assert!(!claim_report_refresh(&env, "/busy", now));
+        drop(lock);
+        std::fs::write(&path, b"unreadable").unwrap();
+        assert!(!claim_report_refresh(&env, "/bad-state", now));
+        Local::update(&env, |l| l.sync = Some(false)).unwrap();
+        assert!(!claim_report_refresh(&env, "/disabled", now));
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
 
     fn scan(hits: Vec<(&str, &str, &str, bool)>) -> Scan {
         Scan {
