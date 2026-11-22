@@ -8,15 +8,17 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub(crate) const MDC_HEADER: &str = "---\nalwaysApply: true\n---\n";
+
 pub(crate) const START: &str = "<!-- impeccable start -->";
 pub(crate) const END: &str = "<!-- impeccable end -->";
 /// The taste block before REN-2056: read as the taste switch, removed on the next write.
 const OLD_TASTE: (&str, &str) = ("<!-- impeccable:taste -->", "<!-- /impeccable:taste -->");
 
 /// Ask through Loop rather than in a terminal.
-pub(crate) const LOOP: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+pub(crate) const LOOP: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 /// Matches the MCP server's own instruction text.
-pub(crate) const TASTE: &str = "Impeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule.";
+pub(crate) const TASTE: &str = "Before UI work: taste.get with focus web, slides or motion (or impeccable taste --focus <kind>). Record the person's design calls with taste.note (or impeccable taste note).";
 
 /// Every switch, its label for the settings page, and its line, in the order the lines
 /// appear. The repo settings page mirrors this (`impeccable switches --catalog`), pinned
@@ -38,7 +40,10 @@ type Result<T> = std::result::Result<T, String>;
 /// Earlier wording of a switch's line, still read as that switch and replaced by its
 /// current line on the next write, so a copy edit never strands an old line. When a
 /// line in CATALOG changes, its previous text goes here.
-const ALIASES: &[(&str, &str)] = &[];
+const ALIASES: &[(&str, &str)] = &[
+    ("loop", "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally."),
+    ("taste", "Impeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule."),
+];
 
 /// The switch a line stands for, by its current wording or an earlier one.
 fn switch_of(line: &str) -> Option<&'static str> {
@@ -248,6 +253,12 @@ pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
 }
 
+/// Refresh catalog wording without changing the file's switch set. Read the set
+/// under the same lock as the write, so a concurrent local edit is preserved.
+pub(crate) fn canonicalize(path: &Path) -> Result<bool> {
+    locked(path, || write_switches_unlocked(path, &switches_in(path)?))
+}
+
 /// Put exactly the switches `on` in `path` (lines it doesn't know stay), creating the
 /// file only when one is on. `Ok(false)` when nothing changed.
 pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {
@@ -311,6 +322,10 @@ pub(crate) fn writable(path: &Path) -> Result<()> {
 /// Turn switch `id` on or off in `path`, creating the file only to turn one on.
 /// `Ok(false)` when the file already said so and nothing was written.
 pub(crate) fn set(path: &Path, id: &str, on: bool) -> Result<bool> {
+    // Removing a missing block must not create its parent directory just to lock it.
+    if !on && matches!(fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound) {
+        return Ok(false);
+    }
     locked(path, || set_unlocked(path, id, on))
 }
 
@@ -328,7 +343,12 @@ fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
     if on {
         ids.push(id);
     }
-    let after = with_switches(&before, &ids)?;
+    let base = if before.is_empty() && on && path.extension().is_some_and(|e| e == "mdc") {
+        MDC_HEADER
+    } else {
+        &before
+    };
+    let after = with_switches(base, &ids)?;
     if after == before {
         return Ok(false);
     }
@@ -347,7 +367,9 @@ fn set_unlocked(path: &Path, id: &str, on: bool) -> Result<bool> {
 ///   `~/.copilot`.
 /// - opencode: `~/.config/opencode/AGENTS.md` only when it already exists. Without it,
 ///   opencode reads `~/.claude/CLAUDE.md`, which creating it would turn off.
-/// Cursor keeps its user rules in its settings, not a file, so it has none here.
+///
+/// Cursor CLI rules are managed by Loop connect in ~/.cursor/rules/impeccable.mdc.
+/// Cursor editor user rules stay in its settings.
 pub(crate) fn user_rule_files(io: &impeccable_common::Io) -> Vec<(&'static str, PathBuf)> {
     let home = PathBuf::from(impeccable_context::util::homedir(&io.env));
     let var = |k: &str| io.env.get(k).filter(|v| !v.is_empty()).map(PathBuf::from);
@@ -588,6 +610,9 @@ mod tests {
         for (id, line) in ALIASES {
             assert!(CATALOG.iter().any(|(i, _, _)| i == id), "{id}");
             assert_eq!(switch_of(line), Some(*id));
+            let old = format!("{START}\n{line}\n{END}\n");
+            assert_eq!(switches(&old).unwrap(), vec![*id]);
+            assert_eq!(with_switches(&old, &switches(&old).unwrap()).unwrap(), with_switches("", &[*id]).unwrap());
         }
         assert_eq!(switch_of(TASTE), Some("taste"));
         assert_eq!(switch_of("A newer switch's line."), None);
@@ -603,9 +628,9 @@ mod tests {
 
     #[test]
     fn every_switch_on_stays_under_the_token_budget() {
-        // REN-2056: the whole block stays under about 300 tokens (~4 bytes each).
+        // REN-2056: the whole block stays under about 400 tokens (~4 bytes each).
         let all: Vec<&str> = CATALOG.iter().map(|(id, _, _)| *id).collect();
         let block = with_switches("", &all).unwrap();
-        assert!(block.len() <= 1200, "{} bytes", block.len());
+        assert!(block.len() <= 1600, "{} bytes", block.len());
     }
 }

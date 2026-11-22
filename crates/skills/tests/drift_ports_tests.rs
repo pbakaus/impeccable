@@ -687,8 +687,10 @@ fn manifest_names_launcher(manifest: &str, home: &str, provider: &str) -> bool {
     }
     let p = jsp::join(&[home, provider, "skills", "impeccable", "scripts", "impeccable"]);
     let escaped = p.replace('\\', "\\\\");
+    // Claude's Windows form uses `/` separators (#1462).
+    let forward = p.replace('\\', "/");
     let value: Value = serde_json::from_str(&read(manifest)).unwrap();
-    any_string(&value, &|s: &str| s.contains(&p) || s.contains(&escaped))
+    any_string(&value, &|s: &str| s.contains(&p) || s.contains(&escaped) || s.contains(&forward))
 }
 
 #[test]

@@ -3,10 +3,11 @@
 //! `Failing`, or nothing (not sent) when the files can't prove either way.
 //!
 //! Every file is reached through a [`Source`]: the CLI's reads a checkout
-//! (`impeccable foundations`, a full `detect`), and [`scan_listing`] reads a
-//! repository's tree listing and blobs for hosts without a filesystem (a
-//! wasm32 Worker). Nothing here touches the filesystem, a process, a thread
-//! or the clock.
+//! (`impeccable foundations`, a full `detect`), and [`ListingScan`] accepts a
+//! repository's tree listing and streamed blobs for hosts without a filesystem
+//! (a wasm32 Worker). [`scan_listing`] remains as a map-based convenience
+//! wrapper. Nothing here touches the filesystem, a process, a thread or the
+//! clock.
 
 use regex::Regex;
 use serde_json::Value;
@@ -16,14 +17,16 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 mod listing;
-pub use listing::{scan_listing, ListingOptions, Outcome};
+pub use listing::{scan_listing, ListingOptions, ListingScan, Outcome};
 
 /// Paths the walk lists before it stops.
 pub const MAX_FILES: usize = 20_000;
 /// Directory entries the walk looks at, files and directories alike.
 pub const MAX_ENTRIES: usize = 100_000;
-/// Bytes the read cache keeps; past it, files are read but not kept.
-const MAX_CACHED: usize = 64 * 1024 * 1024;
+/// Whole text retained for structural files. Other files become facts.
+const MAX_WHOLE_BYTES: usize = 4 * 1024 * 1024;
+/// Maximum number of structural files whose text can be retained.
+const MAX_WHOLE_FILES: usize = 128;
 /// Bytes the secrets scan reads in all; past it, nothing is proven.
 const MAX_SECRET_BYTES: u64 = 256 * 1024 * 1024;
 /// Files read for their content.
@@ -82,6 +85,47 @@ pub trait Source {
     /// [`MAX_FILE`]; `None` for anything else or a file that can't be read.
     /// Any path may be asked for, listed or not.
     fn read(&self, path: &str) -> Option<Vec<u8>>;
+    /// Per-file facts computed from one bounded read. Sources that accept
+    /// streaming input can override this and return facts without retaining
+    /// the file text. The default implementation reads and summarizes once.
+    fn file_facts(&self, path: &str) -> FactRead {
+        let Some(bytes) = self.read(path) else {
+            return FactRead::Unreadable;
+        };
+        let Some(text) = text_of(bytes) else {
+            return FactRead::Unreadable;
+        };
+        let unread =
+            if matches!(ext(path), "html" | "htm") && text.to_ascii_lowercase().contains("<link") {
+                let doc = impeccable_html::dom::StaticDocument::parse(&text);
+                self.unread_stylesheet(path, &doc)
+            } else {
+                false
+            };
+        FactRead::Present(FileFacts::from_text(path, &text, unread))
+    }
+    /// Read and summarize one tracked file for the secrets check. Listing
+    /// sources can answer from per-file secret facts and never return text.
+    fn secret_read(&self, path: &str, left: u64) -> SecretRead {
+        let Some(bytes) = self.read_whole(path, left.saturating_add(1)) else {
+            return SecretRead::Skipped { read_bytes: 0 };
+        };
+        let head = &bytes[..bytes.len().min(8192)];
+        if head.contains(&0) {
+            return SecretRead::Skipped {
+                read_bytes: head.len() as u64,
+            };
+        }
+        let read_bytes = bytes.len() as u64;
+        if read_bytes > left {
+            return SecretRead::OverBudget { read_bytes };
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        SecretRead::Text {
+            read_bytes,
+            facts: SecretFacts::from_text(path, &text),
+        }
+    }
     /// Up to `limit` bytes of a regular file, for the secrets scan; `None`
     /// for anything else or a file that can't be read. A source may stop
     /// after the first 8,192 bytes once they hold a NUL byte.
@@ -97,6 +141,502 @@ pub trait Source {
     fn top(&self) -> Option<Box<dyn Source + '_>> {
         None
     }
+}
+
+/// The result of summarizing one file from a source.
+#[derive(Clone, Debug, Default)]
+pub enum FactRead {
+    /// The listing has not supplied this file yet.
+    Missing,
+    /// The file was supplied but is binary, oversized, or unreadable.
+    #[default]
+    Unreadable,
+    /// The text was summarized and then dropped, except for bounded
+    /// structural files retained whole by [`FileFacts`].
+    Present(FileFacts),
+}
+
+/// A redacted location discovered during the one-time secrets pass.
+#[derive(Clone, Debug)]
+pub struct SecretFact {
+    line: usize,
+    kind: &'static str,
+}
+
+/// Per-file secrets summary. It contains locations and kinds only, never a
+/// matched key or value.
+#[derive(Clone, Debug, Default)]
+pub struct SecretFacts {
+    bytes: u64,
+    nul_at: Option<usize>,
+    firebase: bool,
+    env_lines: Vec<usize>,
+    hits: Vec<SecretFact>,
+}
+
+impl SecretFacts {
+    fn from_text(path: &str, text: &str) -> Self {
+        let bytes = text.len() as u64;
+        let nul_at = text.as_bytes().iter().take(8192).position(|b| *b == 0);
+        let mut facts = SecretFacts {
+            bytes,
+            nul_at,
+            firebase: matches!(
+                name(path),
+                "google-services.json" | "GoogleService-Info.plist"
+            ) || ["authDomain", "firebaseapp.com", "messagingSenderId"]
+                .iter()
+                .any(|marker| text.contains(marker)),
+            env_lines: if is_env_file(name(path)) {
+                secret_env_lines(text).into_iter().take(5).collect()
+            } else {
+                Vec::new()
+            },
+            hits: Vec::new(),
+        };
+        let mut line = 1usize;
+        let mut at = 0usize;
+        for matched in secrets_regex().find_iter(text) {
+            line += text[at..matched.start()].matches('\n').count();
+            at = matched.start();
+            if facts.firebase && matched.as_str().starts_with("AIza") {
+                continue;
+            }
+            if !matched.as_str().starts_with("-----") && is_placeholder(matched.as_str()) {
+                continue;
+            }
+            if facts.hits.len() < 5 {
+                facts.hits.push(SecretFact {
+                    line,
+                    kind: secret_kind(matched.as_str()).unwrap_or("key"),
+                });
+            }
+        }
+        facts
+    }
+
+    fn estimated_bytes(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + self.env_lines.capacity() * std::mem::size_of::<usize>()
+            + self.hits.capacity() * std::mem::size_of::<SecretFact>()
+    }
+}
+
+/// Result of a bounded secrets read. `Missing` is used only by incremental
+/// listing sources and means the host should fetch the requested path.
+#[derive(Clone, Debug)]
+pub enum SecretRead {
+    Missing,
+    Skipped { read_bytes: u64 },
+    OverBudget { read_bytes: u64 },
+    Text { read_bytes: u64, facts: SecretFacts },
+}
+
+/// Small check-specific facts derived from one file. Structural files may
+/// retain whole text, up to 128 files and 4 MiB total per scan, for parsers
+/// that have no smaller equivalent representation; all other file text is
+/// dropped after these facts are computed.
+#[derive(Clone, Debug, Default)]
+pub struct FileFacts {
+    whole: Option<Rc<str>>,
+    bytes: usize,
+    inline_ignore: bool,
+    page_unresolved: bool,
+    php_page: bool,
+    ci_test: bool,
+    ci_trigger: bool,
+    ci_unknown: bool,
+    deps: BTreeSet<String>,
+    package_valid: bool,
+    package_library: bool,
+    package_renovate: bool,
+    scripts: BTreeSet<String>,
+    package_dependencies: BTreeSet<String>,
+    icon_links: Vec<(String, String)>,
+    manifest_icons: Vec<String>,
+    has_icons: bool,
+    error_boundary: bool,
+    catch_all: bool,
+    social_preview: bool,
+    captures_errors: bool,
+    motion_guard: bool,
+    has_motion: bool,
+    design_vars: BTreeSet<String>,
+    design_uses: BTreeSet<String>,
+    design_theme: bool,
+    design_tailwind_colors: bool,
+    hardcoded_colors: usize,
+    giant_lines: Option<usize>,
+    generated: bool,
+    migration_seen: bool,
+    migration_missing: bool,
+    rails_api_only: bool,
+    astro_src_dir: Option<String>,
+    astro_public_dir: Option<String>,
+}
+
+impl FileFacts {
+    fn estimated_bytes(&self) -> usize {
+        let set_bytes = |values: &BTreeSet<String>| {
+            values
+                .iter()
+                // String header, backing allocation, and an estimate for its
+                // share of the B-tree node that owns it.
+                .map(|value| value.capacity() + std::mem::size_of::<String>() + 32)
+                .sum::<usize>()
+        };
+        std::mem::size_of::<Self>()
+            + self.whole.as_ref().map_or(0, |text| text.len())
+            + set_bytes(&self.deps)
+            + set_bytes(&self.scripts)
+            + set_bytes(&self.package_dependencies)
+            + set_bytes(&self.design_vars)
+            + set_bytes(&self.design_uses)
+            + self.icon_links.capacity() * std::mem::size_of::<(String, String)>()
+            + self
+                .icon_links
+                .iter()
+                .map(|(a, b)| a.capacity() + b.capacity())
+                .sum::<usize>()
+            + self.manifest_icons.capacity() * std::mem::size_of::<String>()
+            + self
+                .manifest_icons
+                .iter()
+                .map(String::capacity)
+                .sum::<usize>()
+            + self.astro_src_dir.as_ref().map_or(0, String::capacity)
+            + self.astro_public_dir.as_ref().map_or(0, String::capacity)
+    }
+
+    fn from_text(path: &str, text: &str, stylesheet_unresolved: bool) -> Self {
+        let sample_len = text.len().min(MAX_BYTES as usize);
+        let text = String::from_utf8_lossy(&text.as_bytes()[..sample_len]);
+        let text = text.as_ref();
+        let evidence = evidence_text(path, text);
+        let mut facts = Self {
+            bytes: text.len(),
+            inline_ignore: text.contains("impeccable-disable")
+                || text.contains("impeccable-ignore"),
+            page_unresolved: stylesheet_unresolved,
+            ..Self::default()
+        };
+
+        if UI_EXTS.contains(&ext(path)) {
+            static OUTSIDE: OnceLock<Regex> = OnceLock::new();
+            static SCRIPT: OnceLock<Regex> = OnceLock::new();
+            static KIND: OnceLock<Regex> = OnceLock::new();
+            static IMPORT: OnceLock<Regex> = OnceLock::new();
+            let outside = re(
+                &OUTSIDE,
+                r#"(?is)<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
+            );
+            let script = re(&SCRIPT, r"(?is)<script\b[^>]*>");
+            let kind = re(
+                &KIND,
+                r#"(?i)\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#,
+            );
+            let import = re(&IMPORT, r#"(?i)@import\s+(?:url\(\s*)?["']?(?:https?:)?//"#);
+            let runs_script = script.find_iter(text).any(|m| {
+                let Some(c) = kind.captures(m.as_str()) else {
+                    return true;
+                };
+                let value = c
+                    .get(1)
+                    .or(c.get(2))
+                    .or(c.get(3))
+                    .map_or("", |v| v.as_str())
+                    .trim()
+                    .to_ascii_lowercase();
+                !(value == "importmap" || value == "application/json" || value.ends_with("+json"))
+            });
+            facts.page_unresolved |= match ext(path) {
+                "html" | "htm" => outside.is_match(text) || runs_script || import.is_match(text),
+                "css" | "scss" | "sass" | "less" => import.is_match(text),
+                _ => false,
+            };
+        }
+
+        if ext(path) == "php" {
+            static PAGE: OnceLock<Regex> = OnceLock::new();
+            facts.php_page = re(
+                &PAGE,
+                r"(?i)<!doctype html|(?:^|[^<])<(?:html|head|body)[\s>]",
+            )
+            .is_match(&evidence);
+        }
+
+        let n = name(path);
+        if n == "package.json" && path.matches('/').count() <= 2 {
+            if let Ok(value) = serde_json::from_str::<Value>(text) {
+                for key in ["dependencies", "devDependencies", "peerDependencies"] {
+                    if let Some(object) = value.get(key).and_then(Value::as_object) {
+                        facts.deps.extend(object.keys().cloned());
+                        facts.package_dependencies.extend(object.keys().cloned());
+                    }
+                }
+                if path == "package.json" {
+                    if let Some(scripts) = value.get("scripts").and_then(Value::as_object) {
+                        facts.scripts.extend(scripts.keys().cloned());
+                    }
+                }
+                facts.package_library = ["main", "exports", "bin"]
+                    .iter()
+                    .any(|k| value.get(*k).is_some());
+                facts.package_renovate = value.get("renovate").is_some();
+                facts.package_valid = true;
+            }
+        }
+        if matches!(
+            n,
+            "requirements.txt"
+                | "pyproject.toml"
+                | "Pipfile"
+                | "Gemfile"
+                | "go.mod"
+                | "Cargo.toml"
+                | "composer.json"
+        ) {
+            for word in text.split(|c: char| !(c.is_ascii_alphanumeric() || "-_/@.".contains(c))) {
+                if !word.is_empty() {
+                    facts
+                        .deps
+                        .insert(format!("{n}:{}", word.to_ascii_lowercase()));
+                }
+            }
+        }
+
+        facts.has_icons = evidence.contains("icons");
+        facts.icon_links = extract_icon_links(&evidence);
+        // A page's `rel="manifest"` may link a file of any name, so any JSON
+        // object that could hold icons keeps their sources.
+        if text.trim_start().starts_with('{') && text.contains("icons") {
+            facts.manifest_icons = serde_json::from_str::<Value>(text)
+                .ok()
+                .and_then(|v| v.get("icons").and_then(Value::as_array).cloned())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|i| i.get("src").and_then(Value::as_str).map(str::to_string))
+                .collect();
+        }
+        facts.error_boundary = text.contains("ErrorBoundary");
+        static CATCH_ALL: OnceLock<Regex> = OnceLock::new();
+        facts.catch_all = re(
+            &CATCH_ALL,
+            r#"path\s*[=:]\s*\{?\s*["'`](\*|/\*)["'`]|/:pathMatch\(\.\*\)\*|/:catchAll\(\.\*\)"#,
+        )
+        .is_match(text);
+        facts.social_preview = {
+            let t = evidence.as_str();
+            t.contains("og:image")
+                || t.contains("twitter:image")
+                || (t.contains("useSeoMeta") && t.contains("ogImage"))
+                || (t.contains("openGraph") && t.contains("images"))
+        };
+        static CAPTURE: OnceLock<Regex> = OnceLock::new();
+        let capture = re(
+            &CAPTURE,
+            r#"\bcapture_exceptions["']?\s*[:=]\s*(?:true|True|\{)|\bposthog\??\.captureException\b|["'`]\$exception["'`]|\bsentry-cdn\.com/|\.ingest\.(?:[a-z]{2}\.)?sentry\.io\b|\b_rollbarConfig\b|\bDD_RUM\.init\b|\bdatadoghq-browser-agent\b|\bcdn\.logrocket\.(?:io|com)/|\bjs\.honeybadger\.io/|\bbugsnag(?:\.min)?\.js\b"#,
+        );
+        facts.captures_errors = capture.is_match(&evidence);
+
+        static MOTION: OnceLock<Regex> = OnceLock::new();
+        static GUARD: OnceLock<Regex> = OnceLock::new();
+        let motion = re(
+            &MOTION,
+            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-[\w\[]+|\.animate\s*\(|\b(?:in|out|transition):[a-z]|\btransition:[a-z]|<motion\."#,
+        );
+        let guard = re(
+            &GUARD,
+            r"prefers-reduced-motion|\bmotion-(safe|reduce):|\buseReducedMotion\b|\breducedMotion\b|\bMotionConfig\b",
+        );
+        facts.motion_guard = guard.is_match(&evidence);
+        facts.has_motion = motion
+            .find_iter(&evidence)
+            .any(|m| m.as_str() != "animate-none")
+            || tailwind_transition(&evidence);
+
+        static COLOR_VAR: OnceLock<Regex> = OnceLock::new();
+        static COLOR_USE: OnceLock<Regex> = OnceLock::new();
+        static HARD: OnceLock<Regex> = OnceLock::new();
+        static THEME: OnceLock<Regex> = OnceLock::new();
+        let color_var = re(
+            &COLOR_VAR,
+            r"(?i)--[\w-]+\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\()",
+        );
+        let color_use = re(&COLOR_USE, r"\bvar\(\s*(--[\w-]+)\s*[,)]");
+        let hard = re(&HARD, r"(?i)#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|\brgba?\(\s*\d");
+        let theme = re(
+            &THEME,
+            r"\b(createTheme|extendTheme|createStitches|defineTokens|defineSemanticTokens|createGlobalTheme|createThemeContract)\s*\(",
+        );
+        for m in color_var.find_iter(&evidence) {
+            let property = m.as_str().split(':').next().unwrap_or("");
+            if !["--swiper-", "--tw-", "--bs-", "--mdc-"]
+                .iter()
+                .any(|p| property.starts_with(p))
+            {
+                facts.design_vars.insert(property.trim().to_string());
+            }
+        }
+        facts
+            .design_uses
+            .extend(color_use.captures_iter(&evidence).map(|c| c[1].to_string()));
+        facts.design_theme = theme.is_match(&evidence)
+            || (evidence.contains("@theme") && evidence.contains("--color-"));
+        facts.design_tailwind_colors =
+            name(path).starts_with("tailwind.config.") && evidence.contains("colors");
+        let stripped = color_var.replace_all(&evidence, "");
+        facts.hardcoded_colors = hard
+            .find_iter(&stripped)
+            .filter(|m| m.start() == 0 || stripped.as_bytes()[m.start() - 1] != b'&')
+            .count();
+
+        facts.giant_lines = Some(text.lines().count());
+        let head = text
+            .lines()
+            .take(5)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_ascii_lowercase();
+        facts.generated = head.contains("@generated")
+            || head.contains("do not edit")
+            || head.contains("auto-generated")
+            || head.contains("autogenerated");
+        static API_ONLY: OnceLock<Regex> = OnceLock::new();
+        facts.rails_api_only =
+            re(&API_ONLY, r"\bconfig\.api_only\s*=\s*true\b").is_match(&evidence);
+        let lower_path = path.to_ascii_lowercase();
+        if lower_path.ends_with(".up.sql") {
+            facts.migration_seen = true;
+        } else if matches!(
+            ext(path),
+            "rb" | "php" | "js" | "ts" | "cjs" | "mjs" | "sql"
+        ) {
+            facts.migration_seen = false;
+        }
+        if ext(path) == "rb" && lower_path.contains("db/migrate/") {
+            facts.migration_seen = true;
+            facts.migration_missing = !(text.contains("def change") || text.contains("def down"));
+        } else if ext(path) == "php"
+            && lower_path.contains("migrations/")
+            && text.contains("function up")
+        {
+            facts.migration_seen = true;
+            facts.migration_missing = !text.contains("function down");
+        } else if ["js", "ts", "cjs", "mjs"].contains(&ext(path))
+            && lower_path.contains("migrations/")
+        {
+            static UP: OnceLock<Regex> = OnceLock::new();
+            static DOWN: OnceLock<Regex> = OnceLock::new();
+            let up = re(
+                &UP,
+                r"\b(exports\.up|function\s+up|async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(\(|function)|public\s+async\s+up\s*\()",
+            );
+            let down = re(
+                &DOWN,
+                r"\b(exports\.down|function\s+down|async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(\(|function)|public\s+async\s+down\s*\()",
+            );
+            facts.migration_seen = up.is_match(&text);
+            facts.migration_missing = facts.migration_seen && !down.is_match(&text);
+        } else if ext(path) == "sql"
+            && !lower_path.ends_with(".up.sql")
+            && !lower_path.ends_with(".down.sql")
+        {
+            let marker = if text.contains("-- migrate:up") {
+                Some("-- migrate:down")
+            } else if text.contains("-- +goose Up") {
+                Some("-- +goose Down")
+            } else {
+                None
+            };
+            if let Some(marker) = marker {
+                facts.migration_seen = true;
+                let body = text.split(marker).nth(1).unwrap_or("");
+                facts.migration_missing = !body
+                    .lines()
+                    .map(str::trim)
+                    .any(|l| !l.is_empty() && !l.starts_with("--"));
+            }
+        }
+
+        if n.starts_with("astro.config.") {
+            static DIR: OnceLock<Regex> = OnceLock::new();
+            let dir = re(
+                &DIR,
+                r#"\b(srcDir|publicDir)\s*:\s*['"`](?:\./)?([^'"`]+?)/?['"`]"#,
+            );
+            for capture in dir.captures_iter(text) {
+                if &capture[1] == "srcDir" {
+                    facts.astro_src_dir = Some(capture[2].to_string());
+                } else {
+                    facts.astro_public_dir = Some(capture[2].to_string());
+                }
+            }
+        }
+
+        let ci_file = (path.starts_with(".github/workflows/")
+            && matches!(ext(path), "yml" | "yaml"))
+            || matches!(
+                path,
+                ".gitlab-ci.yml"
+                    | ".circleci/config.yml"
+                    | "bitbucket-pipelines.yml"
+                    | "azure-pipelines.yml"
+            );
+        if ci_file {
+            static CI_TEST: OnceLock<Regex> = OnceLock::new();
+            static CI_TRIGGER: OnceLock<Regex> = OnceLock::new();
+            let test = re(
+                &CI_TEST,
+                r#"(?m)(?:^|&&|;|\|\|)[ \t]*['"]?(?:(?:bundle[ \t]+exec)[ \t]+)?(?:\./)?(?:\b(npm|pnpm|yarn|bun)\s+(?:(?:-r|--filter\s+\S+)\s+)?(run\s+)?test\b|\bnpm\s+t\b|\b(npx|pnpx|bunx)\s+(vitest|jest|playwright|mocha|ava)\b|\bvitest\b|\bjest\b|\bplaywright\s+test\b|\bpytest\b|\bcargo\s+(test|nextest)\b|\bgo\s+test\b|\brspec\b|\bphpunit\b|\bpest\b|\bmix\s+test\b|\bdeno\s+test\b|\bgradlew?\s+(test|check)\b|\bmvnw?\b.*\b(test|verify)\b|\bdotnet\s+test\b|\b(turbo|nx)\s+(run\s+)?test\b|\b(make|just)\s+(test|check)\b|\bnode\s+--test\b|\byarn\s+workspaces\b[^\n]*\btest\b|\bnx\s+run-many\b[^\n]*\s(?:-t|--target[= ])\s*test\b|\bbin/rails\s+test\b|\brake\s+(test|spec)\b|\btox\b|\bnox\b|\bswift\s+test\b|\bflutter\s+test\b)"#,
+            );
+            let trigger = re(&CI_TRIGGER, r"\b(push|pull_request|pull_request_target)\b");
+            let ci = evidence_text(path, text);
+            let commands = ci_commands(&ci);
+            let unknown = ci.lines().any(|l| {
+                (l.contains("uses:")
+                    && !l.contains("actions/checkout@")
+                    && !l.contains("actions/setup-"))
+                    || l.trim_start().starts_with("- task:")
+            }) || !ci_known_non_test_commands(&commands);
+            facts.ci_test = test.is_match(&commands);
+            facts.ci_trigger = !path.starts_with(".github/")
+                || trigger.is_match(ci.split("\njobs:").next().unwrap_or(&ci));
+            facts.ci_unknown = unknown;
+        }
+
+        // Already cut to MAX_BYTES above; a cut through a character decodes a
+        // few bytes longer, and the sample still stands, as the old read's did.
+        if whole_candidate(path) {
+            facts.whole = Some(Rc::from(text));
+        }
+        facts
+    }
+}
+
+fn whole_candidate(path: &str) -> bool {
+    let n = name(path);
+    let depth = path.matches('/').count();
+    depth == 0
+        && matches!(
+            n.to_ascii_lowercase().as_str(),
+            "readme" | "readme.md" | "readme.markdown" | "readme.txt" | "readme.rst"
+        )
+}
+
+fn extract_icon_links(text: &str) -> Vec<(String, String)> {
+    static LINK: OnceLock<Regex> = OnceLock::new();
+    static REL: OnceLock<Regex> = OnceLock::new();
+    static HREF: OnceLock<Regex> = OnceLock::new();
+    re(&LINK, r"(?is)<link\b[^>]*>")
+        .find_iter(text)
+        .filter_map(|link| {
+            let tag = link.as_str();
+            let rel = re(&REL, r#"(?i)\brel\s*=\s*["']([^"']+)["']"#).captures(tag)?;
+            let href = re(&HREF, r#"(?i)\bhref\s*=\s*["']([^"']+)["']"#).captures(tag)?;
+            Some((rel[1].to_ascii_lowercase(), href[1].to_string()))
+        })
+        .collect()
 }
 
 /// What git says it tracks.
@@ -245,14 +785,16 @@ struct Project<'a> {
     truncated: bool,
     reads: std::cell::Cell<usize>,
     read_capped: std::cell::Cell<bool>,
-    cache: std::cell::RefCell<std::collections::HashMap<String, Option<Rc<str>>>>,
-    cached: std::cell::Cell<usize>,
+    facts: std::cell::RefCell<std::collections::HashMap<String, Option<Rc<FileFacts>>>>,
+    whole_files: std::cell::Cell<usize>,
+    whole_bytes: std::cell::Cell<usize>,
     /// The root package.json's dependencies: they name the framework.
     root_deps: BTreeSet<String>,
     /// Every manifest's, nested ones included: for SDK lookups.
     deps: BTreeSet<String>,
     scripts: BTreeSet<String>,
-    package_jsons: Vec<Value>,
+    has_package_json: bool,
+    package_renovate: bool,
     has_manifest: bool,
     /// A web view's file names, mapped back to the real ones.
     alias: std::collections::HashMap<String, String>,
@@ -311,8 +853,24 @@ pub fn scan(src: &dyn Source) -> Report {
         put("app-icons", Some(w.app_icons()));
         put("not-found-page", w.not_found_page());
         put("social-previews", Some(w.social_previews()));
-        put("legal-pages", Some(w.legal_pages()));
-        put("error-tracking", Some(w.error_tracking()));
+        // A web app in a folder of its own often isn't all that the site
+        // serves: legal pages and error capture may live beside it (a backend
+        // at the repository's top, its `legal/` texts). Either place lays them.
+        let either = |a: State, b: &dyn Fn() -> State| {
+            if a == State::Checked || (view.is_some() && b() == State::Checked) {
+                State::Checked
+            } else {
+                a
+            }
+        };
+        put(
+            "legal-pages",
+            Some(either(w.legal_pages(), &|| p.legal_pages())),
+        );
+        put(
+            "error-tracking",
+            Some(either(w.error_tracking(), &|| p.error_tracking())),
+        );
     }
     let (ignores, unresolved) = p.page_hints();
     r.inline_ignores = ignores;
@@ -400,12 +958,14 @@ impl<'a> Project<'a> {
             truncated,
             reads: Default::default(),
             read_capped: Default::default(),
-            cache: Default::default(),
-            cached: Default::default(),
+            facts: Default::default(),
+            whole_files: Default::default(),
+            whole_bytes: Default::default(),
             root_deps: BTreeSet::new(),
             deps: BTreeSet::new(),
             scripts: BTreeSet::new(),
-            package_jsons: Vec::new(),
+            has_package_json: false,
+            package_renovate: false,
             has_manifest: false,
             alias: Default::default(),
         }
@@ -441,25 +1001,17 @@ impl<'a> Project<'a> {
             }
         }
         // Astro names its source and public folders in its config.
-        static DIR: OnceLock<Regex> = OnceLock::new();
-        let dir = re(
-            &DIR,
-            r#"\b(srcDir|publicDir)\s*:\s*['"`](?:\./)?([^'"`]+?)/?['"`]"#,
-        );
         let (mut src, mut public) = (None, None);
         if let Some(cfg) = self.files.iter().find(|f| {
             f.strip_prefix(app.as_str())
                 .is_some_and(|r| !r.contains('/') && r.starts_with("astro.config."))
         }) {
-            if let Some(t) = self.read(cfg) {
-                for c in dir.captures_iter(&t) {
-                    let d = format!("{app}{}/", &c[2]);
-                    if &c[1] == "srcDir" {
-                        src = Some(d);
-                    } else {
-                        public = Some(d);
-                    }
-                }
+            if let Some(facts) = self.fact(cfg) {
+                src = facts.astro_src_dir.as_ref().map(|d| format!("{app}{d}/"));
+                public = facts
+                    .astro_public_dir
+                    .as_ref()
+                    .map(|d| format!("{app}{d}/"));
             }
         }
         if app.is_empty() && src.is_none() && public.is_none() {
@@ -488,15 +1040,8 @@ impl<'a> Project<'a> {
         files.sort();
         let mut root_deps = self.root_deps.clone();
         if !app.is_empty() {
-            if let Some(v) = self
-                .read(&format!("{app}package.json"))
-                .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            {
-                for key in ["dependencies", "devDependencies", "peerDependencies"] {
-                    if let Some(o) = v.get(key).and_then(Value::as_object) {
-                        root_deps.extend(o.keys().cloned());
-                    }
-                }
+            if let Some(facts) = self.fact(&format!("{app}package.json")) {
+                root_deps.extend(facts.package_dependencies.iter().cloned());
             }
         }
         Some(Project {
@@ -505,12 +1050,14 @@ impl<'a> Project<'a> {
             truncated: self.truncated,
             reads: Default::default(),
             read_capped: Default::default(),
-            cache: Default::default(),
-            cached: Default::default(),
+            facts: Default::default(),
+            whole_files: Default::default(),
+            whole_bytes: Default::default(),
             root_deps,
             deps: self.deps.clone(),
             scripts: self.scripts.clone(),
-            package_jsons: Vec::new(),
+            has_package_json: false,
+            package_renovate: false,
             has_manifest: self.has_manifest,
             alias,
         })
@@ -539,49 +1086,13 @@ impl<'a> Project<'a> {
     /// come from outside the files (a remote stylesheet, a linked local one
     /// that isn't there to read, any script). Unread files count as both, so a pass is never assumed.
     fn page_hints(&self) -> (bool, bool) {
-        static OUTSIDE: OnceLock<Regex> = OnceLock::new();
-        static SCRIPT: OnceLock<Regex> = OnceLock::new();
-        static IMPORT: OnceLock<Regex> = OnceLock::new();
-        let outside = re(
-            &OUTSIDE,
-            r#"(?is)<link\b[^>]*\bstylesheet\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//|<link\b[^>]*\bhref\s*=\s*["']?(?:https?:)?//[^>]*\bstylesheet\b"#,
-        );
-        // Any script can restyle the page, inline or loaded; data blocks
-        // (JSON-LD, import maps) run nothing.
-        let script = re(&SCRIPT, r"(?is)<script\b[^>]*>");
-        static KIND: OnceLock<Regex> = OnceLock::new();
-        let kind = re(&KIND, r#"(?i)\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#);
-        let import = re(&IMPORT, r#"(?i)@import\s+(?:url\(\s*)?["']?(?:https?:)?//"#);
-        let runs = |t: &str| {
-            script.find_iter(t).any(|m| {
-                // Only the type attribute marks a data block: a `src` or `id`
-                // that merely says "json" still loads and runs a script.
-                let Some(c) = kind.captures(m.as_str()) else { return true };
-                let value = c.get(1).or(c.get(2)).or(c.get(3)).map_or("", |v| v.as_str());
-                let value = value.trim().to_ascii_lowercase();
-                !(value == "importmap" || value == "application/json" || value.ends_with("+json"))
-            })
-        };
         let (mut ignores, mut unresolved) = (false, false);
         for f in self.files.iter().filter(|f| UI_EXTS.contains(&ext(f))) {
-            let Some(t) = self.read(f) else {
+            let Some(fact) = self.fact(f) else {
                 return (true, true);
             };
-            ignores |= t.contains("impeccable-disable") || t.contains("impeccable-ignore");
-            match ext(f) {
-                "html" | "htm" => {
-                    unresolved |= outside.is_match(&t) || runs(&t) || import.is_match(&t);
-                    // A linked local stylesheet the detector can't read (one a build
-                    // hasn't produced yet) leaves the page's colors unseen; the
-                    // engine's own test, so the two never disagree.
-                    if !unresolved && t.to_ascii_lowercase().contains("<link") {
-                        let doc = impeccable_html::dom::StaticDocument::parse(&t);
-                        unresolved |= self.src.unread_stylesheet(f, &doc);
-                    }
-                }
-                "css" | "scss" | "sass" | "less" => unresolved |= import.is_match(&t),
-                _ => {}
-            }
+            ignores |= fact.inline_ignore;
+            unresolved |= fact.page_unresolved;
         }
         (ignores, unresolved)
     }
@@ -594,10 +1105,9 @@ impl<'a> Project<'a> {
         self.files.iter().any(|p| f(p))
     }
 
-    /// A file's text, up to [`MAX_BYTES`]; `None` for binary, oversize or
-    /// unreadable files, and once [`MAX_READS`] is spent (noted).
-    fn read(&self, rel: &str) -> Option<Rc<str>> {
-        if let Some(hit) = self.cache.borrow().get(rel) {
+    /// The small facts for a file, keeping only bounded structural text.
+    fn fact(&self, rel: &str) -> Option<Rc<FileFacts>> {
+        if let Some(hit) = self.facts.borrow().get(rel) {
             return hit.clone();
         }
         if self.reads.get() >= MAX_READS {
@@ -606,15 +1116,37 @@ impl<'a> Project<'a> {
         }
         self.reads.set(self.reads.get() + 1);
         let real = self.alias.get(rel).map_or(rel, String::as_str);
-        let text: Option<Rc<str>> = self.src.read(real).and_then(text_of).map(Rc::from);
-        let size = text.as_ref().map_or(0, |t| t.len());
-        if self.cached.get() + size <= MAX_CACHED {
-            self.cached.set(self.cached.get() + size);
-            self.cache
-                .borrow_mut()
-                .insert(rel.to_string(), text.clone());
+        match self.src.file_facts(real) {
+            // Not fetched yet: noted as wanted once, and not asked for (or
+            // counted against MAX_READS) again this pass.
+            FactRead::Missing | FactRead::Unreadable => {
+                self.facts.borrow_mut().insert(rel.to_string(), None);
+                None
+            }
+            FactRead::Present(mut facts) => {
+                let whole_size = facts.whole.as_ref().map_or(0, |text| text.len());
+                if whole_size > 0
+                    && (self.whole_files.get() >= MAX_WHOLE_FILES
+                        || self.whole_bytes.get().saturating_add(whole_size) > MAX_WHOLE_BYTES)
+                {
+                    facts.whole = None;
+                } else if whole_size > 0 {
+                    self.whole_files.set(self.whole_files.get() + 1);
+                    self.whole_bytes.set(self.whole_bytes.get() + whole_size);
+                }
+                let facts = Rc::new(facts);
+                self.facts
+                    .borrow_mut()
+                    .insert(rel.to_string(), Some(facts.clone()));
+                Some(facts)
+            }
         }
-        text
+    }
+
+    /// A structural file's retained whole text, when it fits the scan's
+    /// count and byte limits.
+    fn read(&self, rel: &str) -> Option<Rc<str>> {
+        self.fact(rel)?.whole.clone()
     }
 
     fn load_manifests(&mut self) {
@@ -646,25 +1178,17 @@ impl<'a> Project<'a> {
             }
         }
         for f in pkgs {
-            let Some(text) = self.read(&f) else { continue };
-            let Ok(v) = serde_json::from_str::<Value>(&text) else {
-                continue;
-            };
-            for key in ["dependencies", "devDependencies", "peerDependencies"] {
-                if let Some(o) = v.get(key).and_then(Value::as_object) {
-                    self.deps.extend(o.keys().cloned());
-                    if f == "package.json" {
-                        self.root_deps.extend(o.keys().cloned());
-                    }
-                }
-            }
-            // The root README's commands run at the root.
+            let Some(facts) = self.fact(&f) else { continue };
+            self.deps.extend(facts.deps.iter().cloned());
             if f == "package.json" {
-                if let Some(o) = v.get("scripts").and_then(Value::as_object) {
-                    self.scripts.extend(o.keys().cloned());
-                }
+                self.root_deps
+                    .extend(facts.package_dependencies.iter().cloned());
+                self.scripts.extend(facts.scripts.iter().cloned());
             }
-            self.package_jsons.push(v);
+            if facts.package_valid {
+                self.has_package_json = true;
+                self.package_renovate |= facts.package_renovate;
+            }
         }
         // Other ecosystems' dependency names, coarse: for SDK lookups only.
         for f in [
@@ -677,15 +1201,8 @@ impl<'a> Project<'a> {
             "composer.json",
         ] {
             if self.has(f) {
-                if let Some(text) = self.read(f) {
-                    for word in
-                        text.split(|c: char| !(c.is_ascii_alphanumeric() || "-_/@.".contains(c)))
-                    {
-                        if !word.is_empty() {
-                            self.deps
-                                .insert(format!("{f}:{}", word.to_ascii_lowercase()));
-                        }
-                    }
+                if let Some(facts) = self.fact(f) {
+                    self.deps.extend(facts.deps.iter().cloned());
                 }
             }
         }
@@ -715,23 +1232,13 @@ impl<'a> Project<'a> {
     }
 
     fn has_templates(&self) -> bool {
-        static PAGE: OnceLock<Regex> = OnceLock::new();
         self.any(|f| {
             let e = ext(f);
             let html = matches!(e, "html" | "htm");
             let served = f.starts_with("public/") || f.starts_with("static/");
             // In a served folder a PHP file is a page only when it writes
             // one: `public/index.php` is also every API's front controller.
-            let php_page = || {
-                e == "php"
-                    && self.read(f).is_some_and(|t| {
-                        re(
-                            &PAGE,
-                            r"(?i)<!doctype html|(?:^|[^<])<(?:html|head|body)[\s>]",
-                        )
-                        .is_match(&evidence_text(f, &t))
-                    })
-            };
+            let php_page = || e == "php" && self.fact(f).is_some_and(|fact| fact.php_page);
             !is_test_path(f)
                 && ((served && (html || php_page()))
                     || ((html || TEMPLATE_EXTS.contains(&e))
@@ -769,12 +1276,10 @@ impl<'a> Project<'a> {
             return false;
         }
         // Rails API applications may still carry scaffolded HTML views.
-        static API_ONLY: OnceLock<Regex> = OnceLock::new();
         if self.other_dep("Gemfile", "rails")
-            && self.read("config/application.rb").is_some_and(|t| {
-                re(&API_ONLY, r"\bconfig\.api_only\s*=\s*true\b")
-                    .is_match(&evidence_text("config/application.rb", &t))
-            })
+            && self
+                .fact("config/application.rb")
+                .is_some_and(|fact| fact.rails_api_only)
         {
             return false;
         }
@@ -848,13 +1353,6 @@ impl<'a> Project<'a> {
         if self.notes_only() {
             return None;
         }
-        static TEST: OnceLock<Regex> = OnceLock::new();
-        static TRIGGER: OnceLock<Regex> = OnceLock::new();
-        let test = re(
-            &TEST,
-            r#"(?m)(?:^|&&|;|\|\|)[ \t]*['"]?(?:(?:bundle[ \t]+exec)[ \t]+)?(?:\./)?(?:\b(npm|pnpm|yarn|bun)\s+(?:(?:-r|--filter\s+\S+)\s+)?(run\s+)?test\b|\bnpm\s+t\b|\b(npx|pnpx|bunx)\s+(vitest|jest|playwright|mocha|ava)\b|\bvitest\b|\bjest\b|\bplaywright\s+test\b|\bpytest\b|\bcargo\s+(test|nextest)\b|\bgo\s+test\b|\brspec\b|\bphpunit\b|\bpest\b|\bmix\s+test\b|\bdeno\s+test\b|\bgradlew?\s+(test|check)\b|\bmvnw?\b.*\b(test|verify)\b|\bdotnet\s+test\b|\b(turbo|nx)\s+(run\s+)?test\b|\b(make|just)\s+(test|check)\b|\bnode\s+--test\b|\byarn\s+workspaces\b[^\n]*\btest\b|\bnx\s+run-many\b[^\n]*\s(?:-t|--target[= ])\s*test\b|\bbin/rails\s+test\b|\brake\s+(test|spec)\b|\btox\b|\bnox\b|\bswift\s+test\b|\bflutter\s+test\b)"#,
-        );
-        let trigger = re(&TRIGGER, r"\b(push|pull_request|pull_request_target)\b");
         let ci: Vec<&String> = self
             .files
             .iter()
@@ -871,28 +1369,11 @@ impl<'a> Project<'a> {
             .collect();
         let mut unknown = false;
         for f in ci {
-            let text = self.read(f)?;
-            let text = evidence_text(f, &text);
-            // A custom action may run tests; its contents are unknown.
-            unknown |= text.lines().any(|l| {
-                (l.contains("uses:")
-                    && !l.contains("actions/checkout@")
-                    && !l.contains("actions/setup-"))
-                    || l.trim_start().starts_with("- task:")
-            });
-            let runs = ci_commands(&text);
-            unknown |= !ci_known_non_test_commands(&runs);
-            if !test.is_match(&runs) {
-                continue;
+            let facts = self.fact(f)?;
+            unknown |= facts.ci_unknown;
+            if facts.ci_test && facts.ci_trigger {
+                return Some(State::Checked);
             }
-            if f.starts_with(".github/") {
-                // The triggers come before `jobs:`.
-                let head = text.split("\njobs:").next().unwrap_or(&text);
-                if !trigger.is_match(head) {
-                    continue;
-                }
-            }
-            return Some(State::Checked);
         }
         (!unknown).then_some(State::Failing)
     }
@@ -912,10 +1393,7 @@ impl<'a> Project<'a> {
         ]
         .iter()
         .any(|f| self.has(f))
-            || self
-                .package_jsons
-                .iter()
-                .any(|p| p.get("renovate").is_some())
+            || self.package_renovate
     }
 
     fn infrastructure_as_code(&self) -> Option<State> {
@@ -974,13 +1452,8 @@ impl<'a> Project<'a> {
         }
         // Package projects without app evidence have nothing to deploy.
         let library = self
-            .read("package.json")
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .is_some_and(|p| {
-                ["main", "exports", "bin"]
-                    .iter()
-                    .any(|k| p.get(k).is_some())
-            })
+            .fact("package.json")
+            .is_some_and(|facts| facts.package_library)
             || self.has("Cargo.toml")
             || self.has("pyproject.toml")
             || self.has("setup.py")
@@ -1047,7 +1520,7 @@ impl<'a> Project<'a> {
             &SCRIPT,
             r"\b(npm|pnpm|yarn|bun)\s+run\s+([\w:.-]+)|\b(npm)\s+(start|test)\b|\b(pnpm|yarn)\s+(dev|start|build|preview|serve|lint)\b",
         );
-        if !self.package_jsons.is_empty() {
+        if self.has_package_json {
             for c in script.captures_iter(&text) {
                 let s = c
                     .get(2)
@@ -1067,16 +1540,6 @@ impl<'a> Project<'a> {
     }
 
     fn reversible_migrations(&self) -> Option<State> {
-        static UP: OnceLock<Regex> = OnceLock::new();
-        static DOWN: OnceLock<Regex> = OnceLock::new();
-        let up = re(
-            &UP,
-            r"\b(exports\.up|function\s+up|async\s+up\s*\(|\bup\s*[:=]\s*(async\s*)?(\(|function)|public\s+async\s+up\s*\()",
-        );
-        let down = re(
-            &DOWN,
-            r"\b(exports\.down|function\s+down|async\s+down\s*\(|\bdown\s*[:=]\s*(async\s*)?(\(|function)|public\s+async\s+down\s*\()",
-        );
         let mut seen = 0usize;
         let mut missing = 0usize;
         let in_migrations = |f: &str| {
@@ -1090,29 +1553,32 @@ impl<'a> Project<'a> {
             let n = name(f);
             match ext(f) {
                 "rb" if f.contains("db/migrate/") => {
-                    let Some(t) = self.read(f) else { continue };
+                    let Some(facts) = self.fact(f) else { continue };
+                    if !facts.migration_seen {
+                        continue;
+                    }
                     seen += 1;
-                    if !(t.contains("def change") || t.contains("def down")) {
+                    if facts.migration_missing {
                         missing += 1;
                     }
                 }
                 "php" if f.contains("migrations/") => {
-                    let Some(t) = self.read(f) else { continue };
-                    if !t.contains("function up") {
+                    let Some(facts) = self.fact(f) else { continue };
+                    if !facts.migration_seen {
                         continue;
                     }
                     seen += 1;
-                    if !t.contains("function down") {
+                    if facts.migration_missing {
                         missing += 1;
                     }
                 }
                 "js" | "ts" | "cjs" | "mjs" if f.contains("migrations/") => {
-                    let Some(t) = self.read(f) else { continue };
-                    if !up.is_match(&t) {
+                    let Some(facts) = self.fact(f) else { continue };
+                    if !facts.migration_seen {
                         continue;
                     }
                     seen += 1;
-                    if !down.is_match(&t) {
+                    if facts.migration_missing {
                         missing += 1;
                     }
                 }
@@ -1128,21 +1594,12 @@ impl<'a> Project<'a> {
                     if n.ends_with(".down.sql") {
                         continue;
                     }
-                    let Some(t) = self.read(f) else { continue };
-                    let marker = if t.contains("-- migrate:up") {
-                        "-- migrate:down"
-                    } else if t.contains("-- +goose Up") {
-                        "-- +goose Down"
-                    } else {
+                    let Some(facts) = self.fact(f) else { continue };
+                    if !facts.migration_seen {
                         continue;
-                    };
+                    }
                     seen += 1;
-                    let body = t.split(marker).nth(1).unwrap_or("");
-                    let has_body = body
-                        .lines()
-                        .map(str::trim)
-                        .any(|l| !l.is_empty() && !l.starts_with("--"));
-                    if !has_body {
+                    if facts.migration_missing {
                         missing += 1;
                     }
                 }
@@ -1224,33 +1681,19 @@ impl<'a> Project<'a> {
             }
         }) || self.any(|f| next_route(f, "apple-icon"))
             || self.any(|f| {
-                next_route(f, "manifest")
-                    && self
-                        .read(f)
-                        .is_some_and(|t| evidence_text(f, &t).contains("icons"))
+                next_route(f, "manifest") && self.fact(f).is_some_and(|facts| facts.has_icons)
             });
-        static LINK: OnceLock<Regex> = OnceLock::new();
-        static REL: OnceLock<Regex> = OnceLock::new();
-        static HREF: OnceLock<Regex> = OnceLock::new();
         for f in self.files.iter().filter(|f| {
             (UI_EXTS.contains(&ext(f)) || TEMPLATE_EXTS.contains(&ext(f))) && !is_test_path(f)
         }) {
-            let Some(t) = self.read(f) else { continue };
-            let t = evidence_text(f, &t);
-            for link in re(&LINK, r"(?is)<link\b[^>]*>").find_iter(&t) {
-                let tag = link.as_str();
-                let rel = re(&REL, r#"(?i)\brel\s*=\s*["']([^"']+)["']"#).captures(tag);
-                let href = re(&HREF, r#"(?i)\bhref\s*=\s*["']([^"']+)["']"#).captures(tag);
-                let (Some(rel), Some(href)) = (rel, href) else {
-                    continue;
-                };
-                let rel = rel[1].to_ascii_lowercase();
+            let Some(facts) = self.fact(f) else { continue };
+            for (rel, href) in &facts.icon_links {
                 // An icon written into the page itself is still an icon.
-                if href[1].starts_with("data:image/") {
+                if href.starts_with("data:image/") {
                     favicon |= rel.split_whitespace().any(|r| r == "icon");
                     continue;
                 }
-                let Some(target) = self.icon_target(f, &href[1]) else {
+                let Some(target) = self.icon_target(f, href) else {
                     continue;
                 };
                 if image(&target) {
@@ -1310,29 +1753,23 @@ impl<'a> Project<'a> {
     }
 
     fn manifest_has_icon(&self, f: &str) -> bool {
-        self.read(f)
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-            .and_then(|v| v.get("icons").and_then(Value::as_array).cloned())
-            .is_some_and(|icons| {
-                icons.iter().any(|icon| {
-                    icon.get("src").and_then(Value::as_str).is_some_and(|src| {
-                        let Some(target) = self.icon_target(f, src) else {
-                            return false;
-                        };
-                        self.has(&target)
-                            && matches!(
-                                ext(&target).to_ascii_lowercase().as_str(),
-                                "png" | "svg" | "ico" | "webp" | "jpg" | "jpeg"
-                            )
-                    })
-                })
+        self.fact(f).is_some_and(|facts| {
+            facts.manifest_icons.iter().any(|src| {
+                let Some(target) = self.icon_target(f, src) else {
+                    return false;
+                };
+                self.has(&target)
+                    && matches!(
+                        ext(&target).to_ascii_lowercase().as_str(),
+                        "png" | "svg" | "ico" | "webp" | "jpg" | "jpeg"
+                    )
             })
+        })
     }
 
     fn not_found_page(&self) -> Option<State> {
         static NEXT_APP: OnceLock<Regex> = OnceLock::new();
         static PAGE_404: OnceLock<Regex> = OnceLock::new();
-        static CATCH_ALL: OnceLock<Regex> = OnceLock::new();
         let next_app = re(
             &NEXT_APP,
             r"^(src/)?app/(.*/)?not-found\.(tsx|jsx|ts|js|mdx)$",
@@ -1354,7 +1791,7 @@ impl<'a> Project<'a> {
         } else if self.dep("@remix-run/react") || self.dep("@react-router/dev") {
             let root_boundary = ["app/root.tsx", "app/root.jsx", "app/root.ts", "app/root.js"]
                 .iter()
-                .any(|f| self.has(f) && self.read(f).is_some_and(|t| t.contains("ErrorBoundary")));
+                .any(|f| self.has(f) && self.fact(f).is_some_and(|fact| fact.error_boundary));
             root_boundary || self.any(|f| f.starts_with("app/routes/") && name(f).starts_with("$."))
         } else if self.dep("gatsby") {
             self.any(|f| page_404("src/pages/", f))
@@ -1371,10 +1808,6 @@ impl<'a> Project<'a> {
             self.has("public/404.html") || self.any(|f| f.starts_with("app/views/errors/not_found"))
         } else if self.has("index.html") || self.has("public/index.html") {
             // A static 404, or the client router's catch-all route.
-            let catch_all = re(
-                &CATCH_ALL,
-                r#"path\s*[=:]\s*\{?\s*["'`](\*|/\*)["'`]|/:pathMatch\(\.\*\)\*|/:catchAll\(\.\*\)"#,
-            );
             ["404.html", "public/404.html", "static/404.html"]
                 .iter()
                 .any(|f| self.has(f))
@@ -1385,7 +1818,7 @@ impl<'a> Project<'a> {
                         f.starts_with("src/")
                             && matches!(ext(f), "tsx" | "jsx" | "ts" | "js" | "vue")
                     })
-                    .any(|f| self.read(f).is_some_and(|t| catch_all.is_match(&t)))
+                    .any(|f| self.fact(f).is_some_and(|fact| fact.catch_all))
         } else {
             return None;
         };
@@ -1415,15 +1848,7 @@ impl<'a> Project<'a> {
                     )
             })
             .filter(|f| !is_test_path(f))
-            .any(|f| {
-                self.read(f).is_some_and(|t| {
-                    let t = evidence_text(f, &t);
-                    t.contains("og:image")
-                        || t.contains("twitter:image")
-                        || (t.contains("useSeoMeta") && t.contains("ogImage"))
-                        || (t.contains("openGraph") && t.contains("images"))
-                })
-            });
+            .any(|f| self.fact(f).is_some_and(|facts| facts.social_preview));
         if found {
             State::Checked
         } else {
@@ -1544,7 +1969,8 @@ impl<'a> Project<'a> {
         ];
         let found = js.iter().any(|d| self.any_dep(d))
             || js_prefixes.iter().any(|p| self.dep_prefix(p))
-            || other.iter().any(|(m, w)| self.other_dep(m, w));
+            || other.iter().any(|(m, w)| self.other_dep(m, w))
+            || self.captures_errors();
         if found {
             State::Checked
         } else {
@@ -1552,17 +1978,26 @@ impl<'a> Project<'a> {
         }
     }
 
+    /// Error capture with no package to show for it: a provider's loader
+    /// script in a page, or exceptions sent from code over the provider's
+    /// own API (PostHog's `$exception` events and `capture_exceptions`, a
+    /// Sentry ingest address). Comments don't count.
+    fn captures_errors(&self) -> bool {
+        const CODE: &[&str] = &[
+            "js", "jsx", "ts", "tsx", "mjs", "cjs", "svelte", "vue", "astro", "html", "htm", "py",
+            "rb", "go", "php", "erb", "ex", "exs", "rs",
+        ];
+        self.files
+            .iter()
+            .filter(|f| {
+                (CODE.contains(&ext(f)) || TEMPLATE_EXTS.contains(&ext(f)))
+                    && !is_test_path(f)
+                    && !is_minified(f)
+            })
+            .any(|f| self.fact(f).is_some_and(|facts| facts.captures_errors))
+    }
+
     fn reduced_motion(&self) -> Option<State> {
-        static MOTION: OnceLock<Regex> = OnceLock::new();
-        static GUARD: OnceLock<Regex> = OnceLock::new();
-        let motion = re(
-            &MOTION,
-            r#"@keyframes\b|\banimation\s*:|\btransition\s*:|\banimate-[\w\[]+|\.animate\s*\(|\b(?:in|out|transition):[a-z]|\btransition:[a-z]|<motion\."#,
-        );
-        let guard = re(
-            &GUARD,
-            r"prefers-reduced-motion|\bmotion-(safe|reduce):|\buseReducedMotion\b|\breducedMotion\b|\bMotionConfig\b",
-        );
         let motion_dep = [
             "framer-motion",
             "motion",
@@ -1585,14 +2020,12 @@ impl<'a> Project<'a> {
             if UI_EXTS.contains(&ext(f)) {
                 has_ui = true;
             }
-            let Some(t) = self.read(f) else { continue };
-            let t = evidence_text(f, &t);
-            if guard.is_match(&t) {
+            let Some(facts) = self.fact(f) else { continue };
+            if facts.motion_guard {
                 return Some(State::Checked);
             }
             // `animate-none` turns an animation off; it is not one.
-            has_motion |= motion.find_iter(&t).any(|m| m.as_str() != "animate-none")
-                || tailwind_transition(&t);
+            has_motion |= facts.has_motion;
         }
         if !has_ui {
             return None;
@@ -1605,20 +2038,6 @@ impl<'a> Project<'a> {
     }
 
     fn design_tokens(&self) -> Option<State> {
-        static COLOR_VAR: OnceLock<Regex> = OnceLock::new();
-        static COLOR_USE: OnceLock<Regex> = OnceLock::new();
-        static HARD: OnceLock<Regex> = OnceLock::new();
-        static THEME: OnceLock<Regex> = OnceLock::new();
-        let color_var = re(
-            &COLOR_VAR,
-            r"(?i)--[\w-]+\s*:\s*(#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|oklch\(|oklab\(|lab\(|lch\(|color-mix\()",
-        );
-        let color_use = re(&COLOR_USE, r"\bvar\(\s*(--[\w-]+)\s*[,)]");
-        let hard = re(&HARD, r"(?i)#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|\brgba?\(\s*\d");
-        let theme = re(
-            &THEME,
-            r"\b(createTheme|extendTheme|createStitches|defineTokens|defineSemanticTokens|createGlobalTheme|createThemeContract)\s*\(",
-        );
         if self.any(|f| {
             let n = name(f).to_ascii_lowercase();
             n == "tokens.json"
@@ -1641,38 +2060,17 @@ impl<'a> Project<'a> {
             if UI_EXTS.contains(&e) {
                 ui = true;
             }
-            let Some(t) = self.read(f) else { continue };
-            let t = evidence_text(f, &t);
-            for m in color_var.find_iter(&t) {
-                let property = m.as_str().split(':').next().unwrap_or("");
-                if !["--swiper-", "--tw-", "--bs-", "--mdc-"]
-                    .iter()
-                    .any(|p| property.starts_with(p))
-                {
-                    project_colors.insert(property.trim().to_string());
-                }
-            }
-            for c in color_use.captures_iter(&t) {
-                used_colors.insert(c[1].to_string());
-            }
-            if (tailwind_config && t.contains("colors"))
-                || (t.contains("@theme") && t.contains("--color-"))
+            let Some(facts) = self.fact(f) else { continue };
+            project_colors.extend(facts.design_vars.iter().cloned());
+            used_colors.extend(facts.design_uses.iter().cloned());
+            if facts.design_tailwind_colors
+                || facts.design_theme
                 || !project_colors.is_disjoint(&used_colors)
-                || theme.is_match(&t)
             {
                 return Some(State::Checked);
             }
             if UI_EXTS.contains(&e) {
-                // A colour inside a custom property's definition is a
-                // token, used or not, never a hard-coded colour.
-                let t = color_var.replace_all(&t, "");
-                hardcoded += hard
-                    .find_iter(&t)
-                    .filter(|m| {
-                        // Numeric HTML entities aren't CSS colours.
-                        m.start() == 0 || t.as_bytes()[m.start() - 1] != b'&'
-                    })
-                    .count();
+                hardcoded += facts.hardcoded_colors;
             }
         }
         (ui && hardcoded >= 20).then_some(State::Failing)
@@ -1718,23 +2116,13 @@ impl<'a> Project<'a> {
                 continue;
             }
             any = true;
-            let Some(t) = self.read(f) else { continue };
-            let head: String = t
-                .lines()
-                .take(5)
-                .collect::<Vec<_>>()
-                .join("\n")
-                .to_ascii_lowercase();
-            if head.contains("@generated")
-                || head.contains("do not edit")
-                || head.contains("auto-generated")
-                || head.contains("autogenerated")
-            {
+            let Some(facts) = self.fact(f) else { continue };
+            if facts.generated {
                 continue;
             }
-            let lines = t.lines().count();
+            let lines = facts.giant_lines.unwrap_or(0);
             // Long lines on average: minified or data, not hand-written.
-            if lines > GIANT_LINES && t.len() / lines.max(1) < 200 {
+            if lines > GIANT_LINES && facts.bytes / lines.max(1) < 200 {
                 giant.push((f.clone(), lines));
             }
         }
@@ -1793,26 +2181,30 @@ impl<'a> Project<'a> {
             // The whole file, within what's left of the budget: a key past
             // a per-file cap would pass unseen.
             let left = MAX_SECRET_BYTES.saturating_sub(bytes);
-            let (read, raw) = if reads > MAX_SECRET_READS {
-                (Whole::OverBudget, 0)
+            let read = if reads > MAX_SECRET_READS {
+                SecretRead::OverBudget { read_bytes: 0 }
             } else {
-                whole(self.src.read_whole(f, left + 1), left)
+                self.src.secret_read(f, left)
+            };
+            let read_bytes = match &read {
+                SecretRead::Missing => 0,
+                SecretRead::Skipped { read_bytes }
+                | SecretRead::OverBudget { read_bytes }
+                | SecretRead::Text { read_bytes, .. } => *read_bytes,
             };
             // Every byte read counts, skipped binaries included.
-            bytes += raw;
-            let t = match read {
-                Whole::Text(t) => t,
-                Whole::Skip => continue,
-                Whole::OverBudget => {
+            bytes += read_bytes;
+            let facts = match read {
+                SecretRead::Text { facts, .. } => facts,
+                SecretRead::Skipped { .. } | SecretRead::Missing => continue,
+                SecretRead::OverBudget { .. } => {
                     drop(hit);
                     return (hits, found.then_some(State::Failing), !in_git);
                 }
             };
-            // One pass over the file, counting lines as it goes.
-            let (mut line, mut at) = (1usize, 0usize);
             // A tracked env file: a value under a secret-looking name.
             if env {
-                for l in secret_env_lines(&t) {
+                for l in facts.env_lines {
                     hit(
                         SecretHit {
                             file: f.clone(),
@@ -1823,26 +2215,12 @@ impl<'a> Project<'a> {
                     );
                 }
             }
-            let firebase = matches!(n, "google-services.json" | "GoogleService-Info.plist")
-                || ["authDomain", "firebaseapp.com", "messagingSenderId"]
-                    .iter()
-                    .any(|m| t.contains(m));
-            for m in secrets_regex().find_iter(&t) {
-                line += t[at..m.start()].matches('\n').count();
-                at = m.start();
-                if firebase && m.as_str().starts_with("AIza") {
-                    continue;
-                }
-                // Redaction tests and docs use obvious stand-ins.
-                // (A private key's body has long fixed runs: never a stand-in.)
-                if !m.as_str().starts_with("-----") && is_placeholder(m.as_str()) {
-                    continue;
-                }
+            for secret in facts.hits {
                 hit(
                     SecretHit {
                         file: f.clone(),
-                        line,
-                        kind: secret_kind(m.as_str()).unwrap_or("key"),
+                        line: secret.line,
+                        kind: secret.kind,
                     },
                     &mut found,
                 );
@@ -2086,31 +2464,6 @@ fn secret_kind(matched: &str) -> Option<&'static str> {
         .map(|(_, k)| *k)
 }
 
-/// A whole text file; `None` for binary or unreadable ones.
-enum Whole {
-    Text(String),
-    /// Binary, unreadable, or not a regular file (a symlink, a device).
-    Skip,
-    OverBudget,
-}
-
-/// A whole read's text (or why not) and the raw bytes it took.
-fn whole(read: Option<Vec<u8>>, left: u64) -> (Whole, u64) {
-    let Some(buf) = read else {
-        return (Whole::Skip, 0);
-    };
-    // A binary head: the source may have stopped there.
-    let head = &buf[..buf.len().min(8192)];
-    if head.contains(&0) {
-        return (Whole::Skip, head.len() as u64);
-    }
-    let raw = buf.len() as u64;
-    if raw > left {
-        return (Whole::OverBudget, raw);
-    }
-    (Whole::Text(String::from_utf8_lossy(&buf).into_owned()), raw)
-}
-
 /// A capped read's text; `None` for a binary one.
 fn text_of(buf: Vec<u8>) -> Option<String> {
     if buf.iter().take(8192).any(|b| *b == 0) {
@@ -2239,12 +2592,47 @@ fn evidence_text(file: &str, text: &str) -> String {
     };
     let slash = matches!(
         ext(file),
-        "js" | "jsx" | "ts" | "tsx" | "mjs" | "cjs" | "vue" | "svelte" | "astro" | "scss" | "less"
+        "js" | "jsx"
+            | "ts"
+            | "tsx"
+            | "mjs"
+            | "cjs"
+            | "vue"
+            | "svelte"
+            | "astro"
+            | "scss"
+            | "less"
+            | "go"
+            | "rs"
+            | "php"
     );
-    let hash = matches!(ext(file), "yml" | "yaml" | "sh" | "py" | "rb" | "toml");
+    let hash = matches!(
+        ext(file),
+        "yml" | "yaml" | "sh" | "py" | "rb" | "toml" | "php" | "ex" | "exs"
+    );
+    // Indented templates comment a line and everything indented under it:
+    // Pug `//`, Haml `-#` and `/`, Slim `/`.
+    let indented = |l: &str| match ext(file) {
+        "pug" => l.starts_with("//"),
+        "haml" => l.starts_with("-#") || l.starts_with('/'),
+        "slim" => l.starts_with('/'),
+        _ => false,
+    };
+    let mut under: Option<usize> = None;
     text.lines()
-        .filter(|l| {
-            let l = l.trim_start();
+        .filter(|line| {
+            let l = line.trim_start();
+            let depth = line.len() - l.len();
+            if let Some(d) = under {
+                if l.is_empty() || depth > d {
+                    return false;
+                }
+                under = None;
+            }
+            if indented(l) {
+                under = Some(depth);
+                return false;
+            }
             !(slash && l.starts_with("//") || hash && l.starts_with('#'))
         })
         .collect::<Vec<_>>()

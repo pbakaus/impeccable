@@ -18,6 +18,7 @@ pub mod http;
 pub mod oauth;
 pub mod plans;
 pub mod prototypes;
+pub mod receipt;
 pub mod pro;
 pub mod session;
 pub mod setup;

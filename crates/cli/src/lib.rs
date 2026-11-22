@@ -13,6 +13,7 @@ pub mod capture_service;
 pub mod reviewed_entry;
 
 mod first_viewport;
+mod critique_frames;
 mod shot;
 mod font_render;
 mod foundations;
@@ -21,6 +22,7 @@ pub use router::{is_scan, run, InstalledPack};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 mod loop_connect;
+mod codex_trust;
 mod loop_install;
 mod agent_block;
 mod switch_sync;

@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/visual-contrast-sampling.html\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  [low-contrast] 2.2:1 (need 4.5:1) — text #b0b0b0 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n\n3 anti-patterns found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/visual-contrast-sampling.html\n  line 232: [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n  line 242: [low-contrast] 2.2:1 (need 4.5:1) — text #b0b0b0 on #ffffff\n    → Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\n  [gradient-text] background-clip: text + gradient\n    → Gradient text is decorative rather than meaningful — a common AI tell, especially on headings and metrics. Use solid colors for text.\n\n3 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

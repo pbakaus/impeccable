@@ -94,6 +94,9 @@ const claudeStopHook = (ws, rel) => write(
   }) + '\n',
 );
 
+// The design hook's session cache with one session last updated at `at`.
+const hookCache = (ws, at) => write(ws, '.impeccable/hook.cache.json', JSON.stringify({ version: 1, sessions: { s: { updatedAt: at, files: {} } } }) + '\n');
+
 // A user-scope Codex Stop hook as `update --user` writes it into
 // `<dir>/hooks.json` (the absolute launcher, guarded).
 const codexUserHook = (ws, dir) => write(
@@ -457,6 +460,13 @@ const cases = [
   // surface: the plugin ships its own hooks, so there is nothing to install
   // and no finding.
   { id: 'context-hook-not-installed-plugin', verb: 'context', workspace: 'ctx-product-only', env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }), files: IMPECCABLE_FILES },
+  // A plugin or app-bundled hook leaves no manifest, only its sessions in
+  // `.impeccable/hook.cache.json`. One updated this week counts as installed:
+  // no `hook-not-installed`, no MANUAL_DETECTOR_REQUIRED (#1392). An older one
+  // does not. No `files`: the cache carries the setup's clock.
+  { id: 'context-hook-recent-cache-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.agents/skills/impeccable/SKILL.md', ''); hookCache(ws, Date.now()); }, env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
+  { id: 'context-hook-expired-cache-codex', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => { write(ws, '.agents/skills/impeccable/SKILL.md', ''); hookCache(ws, Date.now() - 8 * 24 * 60 * 60 * 1000); }, env: env({ IMPECCABLE_PROVIDER_ID: 'codex' }) },
+  { id: 'context-hook-recent-cache-plugin', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => hookCache(ws, Date.now()), env: env({ IMPECCABLE_SKILL_DIR: '<REPO>/plugin/skills/impeccable' }) },
 
   // ======================================================================
   // doctor
@@ -538,6 +548,7 @@ const cases = [
   // folder in the directory it runs in, so the fix names that directory.
   { id: 'doctor-hook-not-installed-skill-above-cwd', verb: 'doctor', workspace: 'ctx-product-only', cwd: 'web', setup: (ws) => { gitBoundary(ws, '.'); write(ws, '.claude/skills/impeccable/SKILL.md', ''); write(ws, 'web/package.json', JSON.stringify({ name: 'web' }) + '\n'); }, args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'claude-code' }) },
   { id: 'doctor-hook-not-installed-json', verb: 'doctor', workspace: 'ctx-product-only', args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
+  { id: 'doctor-hook-recent-cache-json', verb: 'doctor', workspace: 'ctx-product-only', setup: (ws) => hookCache(ws, Date.now()), args: ['--json'], env: env({ IMPECCABLE_PROVIDER_ID: 'cursor' }) },
   {
     // What DESIGN.md contradicts (REN-2129): a component it names that is gone, a colour its token file lost.
     id: 'doctor-design-drift', verb: 'doctor', workspace: 'ctx-signals',
@@ -952,6 +963,13 @@ const cases = [
   { id: 'question-wait-flip', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.impeccable/questions/k1.flip.json', JSON.stringify({ buildPath: 'comp' })); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
   { id: 'question-wait-page-closed', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: 1000 })), args: ['--wait', '--key', 'k1', '--poll', '2'], env: env(), files: ['.impeccable/questions/**'] },
   { id: 'question-wait-hidden-tab-beat', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now() - 30000 })), args: ['--wait', '--key', 'k1', '--poll', '2'], env: env() },
+  // #1566: one hand unanswered past 30 minutes stops asking for reruns (exit 5); a younger hand still waits (exit 3).
+  { id: 'question-wait-pending-budget', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now() })); write(ws, '.impeccable/questions/k1.hand.json', JSON.stringify({ digest: '0000000000000000', comps: [], pre: {}, startedAt: Date.now() - 31 * 60 * 1000 })); }, args: ['--wait', '--key', 'k1', '--poll', '0'], env: env() },
+  { id: 'question-wait-within-budget', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now() })); write(ws, '.impeccable/questions/k1.hand.json', JSON.stringify({ digest: '0000000000000000', comps: [], pre: {}, startedAt: Date.now() - 29 * 60 * 1000 })); }, args: ['--wait', '--key', 'k1', '--poll', '0'], env: env() },
+  // A server restarted on the same hand (the server-gone path) restarts the clock.
+  { id: 'question-wait-restarted-server-budget', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now(), startedAt: Date.now() - 60 * 1000 })); write(ws, '.impeccable/questions/k1.hand.json', JSON.stringify({ digest: '0000000000000000', comps: [], pre: {}, startedAt: Date.now() - 31 * 60 * 1000 })); }, args: ['--wait', '--key', 'k1', '--poll', '0'], env: env() },
+  // A re-roll (fresh hand) on a server past the budget restarts the clock too.
+  { id: 'question-wait-rerolled-hand-budget', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, '.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/', lastBeat: Date.now(), startedAt: Date.now() - 31 * 60 * 1000 })); write(ws, '.impeccable/questions/k1.hand.json', JSON.stringify({ digest: '0000000000000000', comps: [], pre: {}, startedAt: Date.now() - 60 * 1000 })); }, args: ['--wait', '--key', 'k1', '--poll', '0'], env: env() },
   // --start ran in proj/ and recorded that root under the (isolated) home, so --wait from the workspace root still reaches the live round.
   { id: 'question-wait-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 1, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--wait', '--key', 'k1', '--poll', '2'], env: env() },
   { id: 'question-stop-recorded-root', verb: 'serve-question', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'proj/.impeccable/questions/k1.state.json', JSON.stringify({ pid: 2147483000, port: 1, url: 'http://127.0.0.1:1/' })); write(ws, '.oracle-home/.impeccable/questions/k1.root.json', JSON.stringify({ root: path.join(ws, 'proj') })); }, args: ['--stop', '--key', 'k1'], env: env(), files: ['proj/.impeccable/questions/**', '.oracle-home/.impeccable/questions/**'] },

@@ -36,14 +36,13 @@ const DETECTOR_CONFIG_KEYS: &[&str] = &[
 
 /// The guarded absolute-launcher command a user-scope install writes into
 /// `~/.claude/settings.json` (the `update --user` form): POSIX single quotes,
-/// double quotes on Windows.
+/// the Git Bash form on Windows.
 fn user_claude_hook_command(skill_root: &str, win32: bool) -> String {
     let launcher = jsp::join(&[skill_root, "scripts", "impeccable"]);
-    let q = if win32 {
-        serde_json::to_string(&launcher).unwrap_or_default()
-    } else {
-        format!("'{}'", launcher.replace('\'', "'\\''"))
-    };
+    if win32 {
+        return impeccable_context::hook_markers::git_bash_launcher_hook_command(&launcher, "hook");
+    }
+    let q = format!("'{}'", launcher.replace('\'', "'\\''"));
     format!("[ ! -f {q} ] || {q} hook")
 }
 
@@ -737,6 +736,9 @@ fn merge_hook_manifests(existing: &Value, fresh: &Value) -> Value {
     }
     if let Some(d) = fresh_object.get("description") {
         merged.insert("description".into(), d.clone());
+    } else if merged.get("description").and_then(Value::as_str) == Some(impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION) {
+        // `hooks on` gave Grok manifests Claude's description before #1307.
+        merged.shift_remove("description");
     }
     let mut events: Vec<String> = existing_hooks.keys().cloned().collect();
     for k in fresh_hooks.keys() {
@@ -1290,5 +1292,16 @@ pub fn run(rt: &Runtime, args: &[String], io: &mut impeccable_common::Io) -> i32
             io.err(&format!("Error: {message}\n"));
             1
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn windows_user_claude_hook_command_uses_forward_slashes() {
+        assert_eq!(
+            super::user_claude_hook_command(r"C:\Users\a b\.claude\skills\impeccable", true),
+            r#"[ ! -f "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" ] || "C:/Users/a b/.claude/skills/impeccable/scripts/impeccable" hook"#
+        );
     }
 }

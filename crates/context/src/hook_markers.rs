@@ -93,6 +93,37 @@ pub fn windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
     format!("cmd /c if exist {shim} {shim} {verb}")
 }
 
+/// The POSIX twin of `guardedLauncher` in `transformers/hooks.js` (#399), for
+/// an already-quoted launcher: `[ ! -f X ] || X verb`, not `|| true`, so a
+/// missing launcher exits 0 and a present one's exit code reaches the harness.
+pub fn guarded_launcher_hook_command(quoted: &str, verb: &str) -> String {
+    format!("[ ! -f {quoted} ] || {quoted} {verb}")
+}
+
+/// The guarded launcher hook string for Claude Code on Windows, which runs
+/// hooks through Git Bash: double quotes, `/` separators (#1462). A UNC
+/// `\\server\share` becomes `//server/share`, which Git Bash accepts. Built
+/// here so install and `hooks on` write one string.
+pub fn git_bash_launcher_hook_command(launcher: &str, verb: &str) -> String {
+    let q = serde_json::to_string(&launcher.replace('\\', "/")).unwrap_or_default();
+    guarded_launcher_hook_command(&q, verb)
+}
+
+/// The guarded launcher hook string for Gemini CLI on Windows, which runs
+/// hooks through PowerShell with no per-OS field, so the `.cmd` shim goes
+/// behind a `Test-Path` guard. PowerShell reads `$env:GEMINI_PROJECT_DIR`,
+/// which Gemini's textual substitution leaves alone. Built here so install
+/// and `hooks on` write one string.
+pub fn gemini_windows_launcher_hook_command(launcher: &str, verb: &str) -> String {
+    let cmd = format!("{launcher}.cmd");
+    let q = if launcher.starts_with("$GEMINI_PROJECT_DIR") {
+        format!("\"{}\"", cmd.replacen("$GEMINI_PROJECT_DIR", "$env:GEMINI_PROJECT_DIR", 1))
+    } else {
+        format!("'{}'", cmd.replace('\'', "''"))
+    };
+    format!("if (Test-Path -LiteralPath {q}) {{ & {q} {verb} }}")
+}
+
 /// The launcher-era markers `context` and `doctor` treat as the design hook
 /// proper (the per-edit hook and Cursor's before-edit gate). Legacy siblings
 /// like `hook-probe` are admin-only and do not count as an installed hook.

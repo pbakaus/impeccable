@@ -76,7 +76,7 @@ impl Client {
         };
         // ureq 2 gives timeout_connect precedence over its overall timeout.
         // DNS remains synchronous and unbounded in ureq; this cap bounds the
-        // connect operation, not resolution. Never move an upload to a detached
+        // connect operation, not resolution. Never move a report upload to a detached
         // worker: it could transmit after the caller's timeout or opt-out.
         let agent = builder
             .timeout_connect(deadline.min(Duration::from_secs(10)))
@@ -179,6 +179,21 @@ impl Client {
         self.checked(url)?;
         let req = self.agent.put(url).set("accept", "application/json").set("content-type", content_type);
         json_body(req.send_bytes(body))
+    }
+
+    /// The account service's origin every request stays on.
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+
+    /// Critique frame upload: authenticated, same-origin, exact byte length.
+    pub fn post_capture(&self, url: &str, bearer: &str, body: &[u8]) -> Result<serde_json::Value, ApiError> {
+        self.checked(url)?;
+        json_body(self.agent.post(url)
+            .set("authorization", &bearer_header(bearer)?)
+            .set("content-type", "image/webp")
+            .set("content-length", &body.len().to_string())
+            .send_bytes(body))
     }
 
     /// GET returning the raw body (at most `max` bytes) and one named header.

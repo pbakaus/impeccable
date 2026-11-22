@@ -67,6 +67,7 @@ impl Gate {
 #[derive(Default)]
 pub struct Record {
     pub hits: HashMap<String, usize>,
+    pub taste_calls: Vec<serde_json::Value>,
     pub taste_reads: Vec<(String, Option<String>)>,
     pub revoked: Vec<String>,
     /// The `scope` of each authorize request.
@@ -75,6 +76,8 @@ pub struct Record {
     pub scans: Vec<serde_json::Value>,
     pub foundations: Vec<serde_json::Value>,
     pub critiques: Vec<serde_json::Value>,
+    pub captures: Vec<serde_json::Value>,
+    capture_reservations: HashMap<String, (String, usize, bool)>,
     /// Each prototype record, as `POST /cli/v1/prototypes` parsed it.
     pub prototypes: Vec<serde_json::Value>,
     /// Each body the service refused, with why.
@@ -303,6 +306,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
     if path == "/cli/v1/taste" {
         record.lock().unwrap().taste_reads.push((query.to_string(), headers.get("if-none-match").cloned()));
     }
+    if path == "/cli/v1/taste/calls" {
+        record.lock().unwrap().taste_calls.push(serde_json::from_slice(&body).unwrap());
+    }
     let q: HashMap<String, String> = url::form_urlencoded::parse(query.as_bytes())
         .into_owned()
         .collect();
@@ -312,12 +318,11 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         .and_then(|a| a.strip_prefix("Bearer "))
         .map(str::to_string);
 
-    let custom = knobs
-        .lock()
-        .unwrap()
-        .routes
-        .get(&(method.clone(), path.to_string()))
-        .cloned();
+    let custom = {
+        let k = knobs.lock().unwrap();
+        k.routes.get(&(method.clone(), target.to_string()))
+            .or_else(|| k.routes.get(&(method.clone(), path.to_string()))).cloned()
+    };
     if method == "GET" && path == "/cli/v1/setup" {
         record.lock().unwrap().setup_projects.push(headers.get("impeccable-project").cloned());
     }
@@ -332,6 +337,69 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         }
     } else {
         match (method.as_str(), path) {
+            ("POST", _) if path.starts_with("/cli/v1/critiques/") && path.contains("/captures") => {
+                let (enabled, denied) = {
+                    let k = knobs.lock().unwrap();
+                    (k.critiques, k.critiques_denied)
+                };
+                let mut r = record.lock().unwrap();
+                if !enabled {
+                    (404, vec![], vec![])
+                } else if !bearer.as_ref().is_some_and(|t| r.access.contains(t)) {
+                    (401, vec![], vec![])
+                } else if denied || !r.has_scope(bearer.as_deref(), "critiques:write") {
+                    (403, vec![], vec![])
+                } else if method == "POST" && path == "/cli/v1/critiques/captures" {
+                    let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(v.as_object().unwrap().len(), 3);
+                    assert_eq!(v["contentType"], "image/webp");
+                    let hash = v["sha256"].as_str().unwrap();
+                    assert!(hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)));
+                    let bytes = v["bytes"].as_u64().unwrap() as usize;
+                    assert!((12..=300 * 1024).contains(&bytes));
+                    let held = r.capture_reservations.iter().find(|(_, (h, _, done))| h == hash && *done).map(|(k, _)| k.clone());
+                    if let Some(key) = held {
+                        json(200, serde_json::json!({"key": key}))
+                    } else {
+                        let key = format!("frame-{}", r.capture_reservations.len());
+                        r.capture_reservations.insert(key.clone(), (hash.to_string(), bytes, false));
+                        json(200, serde_json::json!({"key": key, "uploadUrl": format!("{issuer}/cli/v1/critiques/captures/{key}")}))
+                    }
+                } else if path.starts_with("/cli/v1/critiques/captures/") {
+                    let key = path.strip_prefix("/cli/v1/critiques/captures/").unwrap();
+                    let (hash, size, done) = r.capture_reservations.get_mut(key).expect("reserved key");
+                    assert_eq!(headers.get("content-type").map(String::as_str), Some("image/webp"));
+                    assert_eq!(headers["content-length"].parse::<usize>().unwrap(), body.len());
+                    assert_eq!(*size, body.len());
+                    assert!(body.len() <= 300 * 1024 && body.len() >= 12);
+                    assert_eq!(&body[..4], b"RIFF");
+                    assert_eq!(&body[8..12], b"WEBP");
+                    assert_eq!(*hash, sha256_hex(&body));
+                    *done = true;
+                    json(200, serde_json::json!({"key": key}))
+                } else {
+                    let id = path.strip_prefix("/cli/v1/critiques/").unwrap().strip_suffix("/captures").unwrap();
+                    if !r.critiques.iter().any(|c| c["critiqueId"] == id) {
+                        json(404, serde_json::json!({}))
+                    } else {
+                        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                        assert_eq!(v.as_object().unwrap().len(), 1);
+                        let captures = v["captures"].as_array().unwrap();
+                        assert!((1..=8).contains(&captures.len()));
+                        for c in captures {
+                            assert!(c.as_object().unwrap().keys().all(|k| ["key", "viewport", "width", "height", "label"].contains(&k.as_str())));
+                            assert!(r.capture_reservations.get(c["key"].as_str().unwrap()).is_some_and(|(_, _, done)| *done));
+                            assert!(matches!(c["viewport"].as_str(), Some("desktop" | "phone")));
+                            assert!(c["width"].as_u64().is_some_and(|n| n > 0));
+                            assert!(c["height"].as_u64().is_some_and(|n| n > 0));
+                            if let Some(label) = c.get("label") { assert!(label.as_str().is_some_and(|s| !s.is_empty())); }
+                            r.captures.push(c.clone());
+                        }
+                        json(200, serde_json::json!({"attached": captures.len()}))
+                    }
+                }
+            }
+
             ("GET", "/.well-known/oauth-authorization-server") => json(
                 200,
                 serde_json::json!({
@@ -510,11 +578,11 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     ]
                     .into();
                     assert!(
-                        keys.is_superset(&required) && keys.len() <= required.len() + 1,
+                        keys.is_superset(&required) && keys.len() <= required.len() + 2,
                         "{keys:?}"
                     );
                     assert!(
-                        keys.iter().all(|k| required.contains(k) || *k == "label"),
+                        keys.iter().all(|k| required.contains(k) || ["label", "place"].contains(k)),
                         "{keys:?}"
                     );
                     assert_eq!(v["version"], 1);
@@ -522,6 +590,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert!(v["productType"].is_null());
                     assert!(v["scannedAt"].as_str().unwrap().ends_with('Z'));
+                    assert!(parse_label(v.get("label")).is_ok() && parse_place(v.get("place")).is_ok(), "{v}");
                     // The service refuses the whole upload over one unknown id.
                     for (id, state) in v["items"].as_object().unwrap() {
                         assert!(FOUNDATION_IDS.contains(&id.as_str()), "{id}");
@@ -562,14 +631,18 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "changedAt",
                         "text",
                         "sidecar",
-                        "label"
+                        "label",
+                        "place"
                     ]
                     .contains(&k.as_str())));
                     assert_eq!(v["version"], 1);
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
                     assert_eq!(v["changedAt"].as_str().unwrap().len(), 24);
-                    if parse_label(v.get("label")).is_err() {
+                    if let Err(field) = parse_place(v.get("place")) {
+                        record.lock().unwrap().refused.push((field.into(), v));
+                        json(400, serde_json::json!({"error":"invalid_request", "field":field}))
+                    } else if parse_label(v.get("label")).is_err() {
                         record.lock().unwrap().refused.push(("label".into(), v));
                         json(
                             400,
@@ -626,8 +699,13 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "critiqueId",
                         "createdAt",
                         "target",
+                        "title",
                         "repoKey",
                         "label",
+                        "place",
+                        "branch",
+                        "headSha",
+                        "pr",
                         "score",
                         "na",
                         "heuristics",
@@ -945,6 +1023,20 @@ fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
     {
         return Err("label");
     }
+    // Where a local critique ran (REN-2377): each refused by its own name, each only with repoKey.
+    let keyed = body.get("repoKey").is_some_and(|v| !v.is_null());
+    if let Some(b) = body.get("branch") {
+        let ok = b.as_str().is_some_and(|b| (1..=255).contains(&b.chars().count()) && !b.chars().any(char::is_control));
+        if !ok || !keyed { return Err("branch"); }
+    }
+    if let Some(h) = body.get("headSha") {
+        let ok = h.as_str().is_some_and(|h| matches!(h.len(), 40 | 64) && h.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
+        if !ok || !keyed { return Err("headSha"); }
+    }
+    if let Some(n) = body.get("pr") {
+        if !n.as_u64().is_some_and(|n| n >= 1) || !keyed { return Err("pr"); }
+    }
+    parse_place(body.get("place"))?;
     Ok(())
 }
 
@@ -977,6 +1069,7 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         "fingerprints",
         "truncated",
         "label",
+        "place",
     ];
     if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
         return Err("unknown field");
@@ -1030,10 +1123,20 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         }
     }
     parse_label(b.get("label"))?;
+    parse_place(b.get("place"))?;
     if serde_json::to_vec(b).unwrap().len() > 256 * 1024 {
         return Err("too_large");
     }
     Ok(())
+}
+
+/// A repository's place (REN-2313): a label of at most 60 characters.
+pub fn parse_place(value: Option<&serde_json::Value>) -> Result<Option<String>, &'static str> {
+    match parse_label(value) {
+        Ok(Some(p)) if p.chars().count() > 60 => Err("place"),
+        Ok(p) => Ok(p),
+        Err(_) => Err("place"),
+    }
 }
 
 /// The service's shared parseLabel (pristine#4721): reject forbidden characters

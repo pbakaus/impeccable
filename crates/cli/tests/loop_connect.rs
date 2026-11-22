@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const URL: &str = "https://api.impeccable.style/mcp";
-const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 
 struct Box {
     root: PathBuf,
@@ -895,7 +895,7 @@ fn connect_over_an_older_loops_hooks_replaces_them() {
             .as_array()
             .unwrap()
             .iter()
-            .all(|a| a["hooks"] == true),
+            .all(|a| a["detected"] != true || a["hooks"] == true),
         "{v}"
     );
     assert!(b.run(&["loop", "disconnect"]).status.success());
@@ -935,6 +935,13 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     assert_eq!(before["loop"]["installed"], true);
     assert_eq!(before["loop"]["version"], "0.1.1");
     for a in before["agents"].as_array().unwrap() {
+        if a["agent"] == "cursor" || a["agent"] == "copilot" || a["agent"] == "opencode" {
+            assert_eq!(
+                a["detected"], false,
+                "the fixture installs only Claude and Codex"
+            );
+            continue;
+        }
         assert_eq!(
             (
                 a["detected"].clone(),
@@ -981,8 +988,9 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
         "absent",
         "only the agent asked for was connected"
     );
+    assert_eq!(row("codex")["hooksRequired"], true, "older Loop still requires Codex base hooks");
     // An unknown agent is a JSON failure, never a prompt.
-    let out = b.run(&["loop", "connect", "--agent", "cursor", "--json"]);
+    let out = b.run(&["loop", "connect", "--agent", "unknown-agent", "--json"]);
     assert!(!out.status.success());
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
@@ -1188,7 +1196,7 @@ const TASTE_END: &str = "<!-- /impeccable:taste -->";
 /// The one Impeccable block (REN-2056) and the taste switch's line in it.
 const START: &str = "<!-- impeccable start -->";
 const END: &str = "<!-- impeccable end -->";
-const TASTE_LINE: &str = "Impeccable Taste: before design or UI work";
+const TASTE_LINE: &str = "Before UI work: taste.get with focus";
 
 fn read(p: &Path) -> String {
     fs::read_to_string(p).unwrap_or_default()
@@ -1505,4 +1513,390 @@ fn a_symlinked_rule_file_stays_a_link_and_its_target_comes_back_exact() {
     assert!(b.run(&["loop", "disconnect"]).status.success());
     assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
     assert_eq!(read(&target), "# from my dotfiles\n");
+}
+
+fn cursor_box(name: &str) -> Box {
+    let b = Box::new(name);
+    script(
+        &b.root.join("bin/cursor-agent"),
+        r#"#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/cursor-calls"
+[ "$*" = 'mcp enable impeccable' ]
+"#,
+    );
+    b
+}
+
+#[test]
+fn cursor_connect_roundtrip_merges_and_gates_hooks() {
+    for (name, version, wake) in [
+        ("cursor-new", "0.2.0", true),
+        ("cursor-old", "0.1.4", false),
+    ] {
+        let b = cursor_box(name);
+        b.install_loop_version(version);
+        let root = b.home().join(".cursor");
+        fs::create_dir_all(&root).unwrap();
+        let originals = [
+            (
+                "mcp.json",
+                "{\"mcpServers\":{\"other\":{\"url\":\"https://other\"}}}\n",
+            ),
+            (
+                "cli-config.json",
+                "{\"permissions\":{\"allow\":[\"Shell(ls)\"]},\"theme\":\"dark\"}\n",
+            ),
+            (
+                "hooks.json",
+                "{\"version\":1,\"hooks\":{\"stop\":[{\"command\":\"mine\"}]}}\n",
+            ),
+        ];
+        for (file, contents) in originals {
+            fs::write(root.join(file), contents).unwrap();
+        }
+        let args = ["loop", "connect", "--agent", "cursor", "--taste", "--json"];
+        let out = b.run(&args);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(report["agents"][0]["signIn"]
+            .as_str()
+            .unwrap()
+            .contains("cursor-agent mcp login impeccable"));
+        let read = |file: &str| -> serde_json::Value {
+            serde_json::from_slice(&fs::read(root.join(file)).unwrap()).unwrap()
+        };
+        assert_eq!(
+            read("mcp.json")["mcpServers"]["impeccable"],
+            serde_json::json!({"url":URL})
+        );
+        assert_eq!(
+            read("mcp.json")["mcpServers"]["other"]["url"],
+            "https://other"
+        );
+        assert_eq!(
+            read("cli-config.json")["permissions"]["allow"],
+            serde_json::json!(["Shell(ls)", "Mcp(impeccable:*)"])
+        );
+        let hooks = read("hooks.json");
+        if wake {
+            let h = &hooks["hooks"];
+            assert_eq!(h.as_object().unwrap().len(), 3);
+            for (event, kind, timeout) in [
+                ("sessionStart", "lifecycle", 10),
+                ("afterMCPExecution", "register", 10),
+                ("stop", "lifecycle", 3600),
+            ] {
+                let entries = h[event].as_array().unwrap();
+                let entry = entries
+                    .iter()
+                    .find(|e| e["command"].as_str().unwrap().contains("loop-hook"))
+                    .unwrap();
+                assert!(entry["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("cursor {kind}")));
+                assert!(entry["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains("/usr/bin/xattr"));
+                assert_eq!(entry["timeout"], timeout);
+                if event == "stop" {
+                    assert_eq!(entry.get("loop_limit"), Some(&serde_json::Value::Null));
+                }
+                assert!(entry.get("hooks").is_none());
+            }
+        } else {
+            assert_eq!(
+                fs::read_to_string(root.join("hooks.json")).unwrap(),
+                originals[2].1
+            );
+        }
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(b.support().join("cursor-install.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            record,
+            serde_json::json!({"enabled":true,"harness":"cursor","executable":b.root.join("bin/cursor-agent").display().to_string()})
+        );
+        let rules = fs::read_to_string(root.join("rules/impeccable.mdc")).unwrap();
+        assert!(rules.starts_with("---\nalwaysApply: true\n---\n"));
+        assert!(rules.contains(INSTRUCTION));
+        assert!(rules.contains(TASTE_LINE));
+        assert_eq!(
+            fs::read_to_string(b.home().join("cursor-calls")).unwrap(),
+            "mcp enable impeccable\n"
+        );
+        let status = b.run(&["loop", "status", "--json"]);
+        assert!(status.status.success(), "{}", text(&status));
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let cursor = status["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["agent"] == "cursor")
+            .unwrap();
+        assert_eq!(cursor["hooks"], wake);
+        assert_eq!(cursor["connected"], true);
+        let again = b.run(&args);
+        assert!(again.status.success(), "{}", text(&again));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        for (file, contents) in originals {
+            assert_eq!(fs::read_to_string(root.join(file)).unwrap(), contents);
+        }
+        assert!(!root.join("rules").exists());
+    }
+}
+
+#[test]
+fn cursor_preserves_preexisting_server_and_rules_and_removes_created_configs() {
+    for preexisting in [false, true] {
+        let b = cursor_box(if preexisting {
+            "cursor-existing"
+        } else {
+            "cursor-empty"
+        });
+        b.install_loop_version("0.2.0");
+        let root = b.home().join(".cursor");
+        fs::create_dir_all(root.join("rules")).unwrap();
+        let rules = if preexisting { "" } else { "---\nalwaysApply: true\n---\n\nMy own rule.\n" };
+        fs::write(root.join("rules/impeccable.mdc"), rules).unwrap();
+        let mcp = format!("{{\"mcpServers\":{{\"impeccable\":{{\"url\":\"{URL}\"}}}}}}\n");
+        if preexisting {
+            fs::write(root.join("mcp.json"), &mcp).unwrap();
+        }
+        let out = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert!(!root.join("cli-config.json").exists());
+        assert!(!root.join("hooks.json").exists());
+        assert_eq!(
+            fs::read_to_string(root.join("rules/impeccable.mdc")).unwrap(),
+            rules
+        );
+        if preexisting {
+            assert_eq!(fs::read_to_string(root.join("mcp.json")).unwrap(), mcp);
+        } else {
+            assert!(!root.join("mcp.json").exists());
+        }
+    }
+}
+
+#[test]
+fn copilot_connect_roundtrip_merges_and_gates_hooks() {
+    const FOLLOW_UP: &str = "In each repo, answer \"Yes, and don't ask again\" for Impeccable's tools once; then Copilot wakes by itself.";
+    for (name, version, wake) in [("copilot-new", "0.2.0", true), ("copilot-old", "0.1.4", false)] {
+        let mut b = Box::new(name);
+        script(&b.root.join("bin/copilot"), "#!/bin/sh\nexit 99\n"); // Connect never runs it.
+        b.install_loop_version(version);
+        let root = if wake { b.root.join("copilot-custom") } else { b.home().join(".copilot") };
+        if wake { b.env.insert("COPILOT_HOME".into(), root.display().to_string()); }
+        fs::create_dir_all(&root).unwrap();
+        let mcp_before = "{\"mcpServers\":{\"other\":{\"url\":\"https://other\"}}}\n";
+        let rules_before = "My own instructions.\n";
+        fs::write(root.join("mcp-config.json"), mcp_before).unwrap();
+        fs::write(root.join("copilot-instructions.md"), rules_before).unwrap();
+        let args = ["loop", "connect", "--agent", "copilot", "--no-taste", "--json"];
+        let out = b.run(&args);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(report["agents"][0]["then"], serde_json::json!([FOLLOW_UP]));
+        assert_eq!(report["agents"][0]["signIn"], "on first use.");
+        let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp-config.json")).unwrap()).unwrap();
+        assert_eq!(mcp["mcpServers"], serde_json::json!({"other":{"url":"https://other"},"impeccable":{"type":"http","url":URL,"tools":["*"]}}));
+        if wake {
+            let hooks: serde_json::Value = serde_json::from_slice(&fs::read(root.join("hooks/impeccable-loop.json")).unwrap()).unwrap();
+            let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+            let command = |kind: &str| format!("/usr/bin/xattr -p com.apple.quarantine '{}' 2>/dev/null | /usr/bin/grep -Eq '^[0-9a-fA-F]{{2}}[0-389abAB][0-9a-fA-F];' || exec '{}' copilot {kind}", helper.display(), helper.display());
+            assert_eq!(hooks, serde_json::json!({"version":1,"hooks":{
+                "sessionStart":[{"type":"command","bash":command("lifecycle"),"timeoutSec":10}],
+                "postToolUse":[{"type":"command","bash":command("register"),"timeoutSec":10}],
+                "agentStop":[{"type":"command","bash":command("lifecycle"),"timeoutSec":3600}]
+            }}));
+        } else { assert!(!root.join("hooks").exists()); }
+        let record: serde_json::Value = serde_json::from_slice(&fs::read(b.support().join("copilot-install.json")).unwrap()).unwrap();
+        assert_eq!(record, serde_json::json!({"enabled":true,"harness":"copilot","executable":b.root.join("bin/copilot").display().to_string()}));
+        let rules = fs::read_to_string(root.join("copilot-instructions.md")).unwrap();
+        assert!(rules.starts_with(rules_before));
+        assert!(rules.contains(INSTRUCTION));
+        assert!(!root.join("cli-config.json").exists(), "no approval config");
+        let status = b.run(&["loop", "status", "--json"]);
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let copilot = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "copilot").unwrap();
+        assert_eq!(copilot["hooks"], wake);
+        assert_eq!(copilot["hooksRequired"], wake);
+        assert_eq!(copilot["connected"], true);
+        assert!(text(&b.run(&["loop", "status"])).contains(FOLLOW_UP));
+        assert!(text(&b.run(&["loop", "connect", "--agent", "copilot", "--no-taste"])).contains(FOLLOW_UP));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert_eq!(fs::read_to_string(root.join("mcp-config.json")).unwrap(), mcp_before);
+        assert_eq!(fs::read_to_string(root.join("copilot-instructions.md")).unwrap(), rules_before);
+        assert!(!root.join("hooks").exists());
+    }
+}
+
+#[test]
+fn codex_trusts_exactly_the_hooks_connect_wrote_and_disconnect_takes_it_back() {
+    // Codex runs a hook from hooks.json only once it is trusted (REN-2057). This fake
+    // app server lists hooks the way Codex 0.165 keys them (file:event:group:hook) and
+    // keeps trust in trusted.list, so the test sees exactly which keys connect wrote.
+    let b = Box::new("codex-trust");
+    b.install_loop();
+    script(
+        &b.root.join("bin/codex"),
+        r#"#!/bin/sh
+home="${CODEX_HOME:-$HOME/.codex}"
+f="$home/config.toml"
+t="$home/trusted.list"
+if [ "$1" = app-server ]; then
+  touch "$t"
+  while IFS= read -r line; do
+    id=$(printf '%s' "$line" | jq '.id // empty')
+    [ -n "$id" ] || continue
+    case $(printf '%s' "$line" | jq -r .method) in
+    hooks/list) r=$(jq -c --arg p "$home/hooks.json" --rawfile t "$t" '{data:[{hooks:[.hooks|to_entries[]|.key as $e|.value|to_entries[]|.key as $g|.value.hooks|to_entries[]|($p+":"+($e|gsub("(?<a>[a-z])(?<b>[A-Z])";"\(.a)_\(.b)")|ascii_downcase)+":"+($g|tostring)+":"+(.key|tostring)) as $k|{key:$k,sourcePath:$p,currentHash:("h-"+$k),trustStatus:(if ($t|split("\n")|index($k)) then "trusted" else "untrusted" end)}]}]}' "$home/hooks.json");;
+    config/batchWrite)
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value!=null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' >> "$t"
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value==null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' | while IFS= read -r k; do grep -vxF "$k" "$t" > "$t.n"; mv "$t.n" "$t"; done
+      r='{}';;
+    *) r='{}';;
+    esac
+    printf '{"id":%s,"result":%s}\n' "$id" "$r"
+  done
+  exit 0
+fi
+case "$2" in
+add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+esac
+exit 0
+"#,
+    );
+    // The person's own hook comes first, so Loop's sit at shifted places.
+    let codex = b.home().join(".codex");
+    fs::write(
+        codex.join("hooks.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"/bin/echo mine"}]}]}}"#,
+    )
+    .unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "codex", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("/hooks"), "trusted, so no /hooks step: {}", text(&out));
+    let trusted = fs::read_to_string(codex.join("trusted.list")).unwrap();
+    let keys: Vec<&str> = trusted.lines().collect();
+    let hooks: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(codex.join("hooks.json")).unwrap()).unwrap();
+    let loop_hooks = hooks["hooks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|g| g.as_array().unwrap())
+        .flat_map(|g| g["hooks"].as_array().unwrap())
+        .filter(|h| h["command"] != "/bin/echo mine")
+        .count();
+    assert_eq!(keys.len(), loop_hooks, "{trusted}");
+    assert!(!keys.iter().any(|k| k.ends_with(":session_start:0:0")), "the person's own hook stays theirs: {trusted}");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(fs::read_to_string(codex.join("trusted.list")).unwrap().trim(), "", "disconnect takes the trust back");
+}
+
+#[test]
+fn opencode_connect_journals_the_plugin_and_preserves_config_and_rule_fallback() {
+    for (name, version, existing_rule, jsonc, xdg) in [
+        ("opencode-quoted'\"", "0.2.0", false, false, false),
+        ("opencode-existing", "0.2.0", true, false, true),
+        ("opencode-jsonc", "0.2.0", false, true, true),
+        ("opencode-old", "0.1.4", true, false, false),
+        ("opencode-old-jsonc", "0.1.4", false, true, false),
+    ] {
+        let mut b = Box::new(name);
+        script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+        b.install_loop_version(version);
+        let config_home = if xdg { b.root.join("xdg") } else { b.home().join(".config") };
+        if xdg { b.env.insert("XDG_CONFIG_HOME".into(), config_home.display().to_string()); }
+        let root = config_home.join("opencode");
+        fs::create_dir_all(&root).unwrap();
+        let config = "{\"$schema\":\"https://opencode.ai/config.json\",\"mcp\":{\"other\":{\"type\":\"remote\",\"url\":\"https://other\"}},\"theme\":\"mine\"}\n";
+        let jsonc_contents = "// Deliberately not JSON; connect must leave it unread.\n{ /* mine */ }\n";
+        let config_file = root.join(if jsonc { "opencode.jsonc" } else { "opencode.json" });
+        let before = if jsonc { jsonc_contents } else { config };
+        fs::write(&config_file, before).unwrap();
+        let rule = root.join("AGENTS.md");
+        if existing_rule { fs::write(&rule, "My own rules.\n").unwrap(); }
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--taste", "--json"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        if jsonc {
+            assert!(report["agents"][0]["then"].as_array().unwrap().iter().any(|v| v.as_str().unwrap().contains("opencode.jsonc")));
+            assert!(!root.join("opencode.json").exists());
+            assert_eq!(fs::read_to_string(&config_file).unwrap(), before);
+        } else {
+            let config: serde_json::Value = serde_json::from_slice(&fs::read(&config_file).unwrap()).unwrap();
+            assert_eq!(config, serde_json::json!({"$schema":"https://opencode.ai/config.json","theme":"mine","mcp":{
+                "other":{"type":"remote","url":"https://other"},
+                "impeccable":{"type":"remote","url":URL,"enabled":true}
+            }}));
+        }
+        let plugin_file = root.join("plugin/impeccable-loop.ts");
+        if version == "0.2.0" {
+            let plugin = fs::read_to_string(&plugin_file).unwrap();
+            assert!(!plugin.contains("__HELPER__") && !plugin.contains("__ENV__") && !plugin.contains("__COMMAND__"));
+            let literal = plugin.lines().find_map(|l| l.strip_prefix("const COMMAND = ")).unwrap().strip_suffix(';').unwrap();
+            let command: String = serde_json::from_str(literal).unwrap();
+            let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+            let quoted = format!("'{}'", helper.display().to_string().replace('\'', "'\\''"));
+            assert_eq!(command, format!("/usr/bin/xattr -p com.apple.quarantine {quoted} 2>/dev/null | /usr/bin/grep -Eq '^[0-9a-fA-F]{{2}}[0-389abAB][0-9a-fA-F];' || exec {quoted} opencode"));
+            assert!(plugin.contains("spawn(\"/bin/sh\", [\"-c\", COMMAND + \" \" + kind]"));
+        } else { assert!(!root.join("plugin").exists()); }
+        let record: serde_json::Value = serde_json::from_slice(&fs::read(b.support().join("opencode-install.json")).unwrap()).unwrap();
+        assert_eq!(record, serde_json::json!({"enabled":true,"harness":"opencode","executable":b.root.join("bin/opencode").display().to_string()}));
+        if existing_rule {
+            let contents = fs::read_to_string(&rule).unwrap();
+            assert!(contents.starts_with("My own rules.\n"));
+            assert!(contents.contains(INSTRUCTION));
+        } else {
+            assert!(!rule.exists());
+            assert!(!b.home().join(".claude/CLAUDE.md").exists(), "fallback file stays untouched");
+        }
+        let status = b.run(&["loop", "status", "--json"]);
+        assert!(status.status.success(), "{}", text(&status));
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let row = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "opencode").unwrap();
+        assert_eq!(row["hooks"], version == "0.2.0");
+        assert_eq!(row["instructionRequired"], existing_rule);
+        if jsonc { assert!(text(&b.run(&["loop", "status"])).contains("opencode.jsonc")); }
+        let again = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(again.status.success(), "{}", text(&again));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert_eq!(fs::read_to_string(config_file).unwrap(), before);
+        assert!(!root.join("plugin").exists());
+        if existing_rule { assert_eq!(fs::read_to_string(rule).unwrap(), "My own rules.\n"); }
+        else { assert!(!rule.exists()); }
+    }
+}
+
+#[test]
+fn opencode_reconnects_with_a_linked_plugin_directory() {
+    let b = Box::new("opencode-linked-plugin");
+    script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+    b.install_loop_version("0.2.0");
+    let root = b.home().join(".config/opencode");
+    let target = b.root.join("dotfiles/opencode-plugins");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    fs::write(target.join("mine.ts"), "// My plugin\n").unwrap();
+    std::os::unix::fs::symlink(&target, root.join("plugin")).unwrap();
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(fs::symlink_metadata(root.join("plugin")).unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_to_string(target.join("mine.ts")).unwrap(), "// My plugin\n");
+    assert_eq!(fs::read_dir(target).unwrap().count(), 1);
 }

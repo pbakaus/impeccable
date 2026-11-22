@@ -411,7 +411,7 @@ fn the_repo_settings_pages_switches_reach_the_rule_file_and_a_files_change_goes_
     assert!(std::fs::read_to_string(&claude_md).unwrap().starts_with("# mine\n\n<!-- impeccable start -->\n"));
     // A line turned on here (as loop connect does) is sent, not undone.
     let t = std::fs::read_to_string(&claude_md).unwrap();
-    let loop_line = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+    let loop_line = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
     std::fs::write(&claude_md, t.replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"))).unwrap();
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1);
@@ -485,14 +485,17 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
     }
     let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
     let lines = |f: &std::path::Path| std::fs::read_to_string(f).unwrap_or_default();
-    let loop_line = "When you need a person's decision or input, use needs_you.post (Impeccable)";
+    let catalog = impeccable(&env, &["switches", "--catalog"]).output().unwrap();
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    let loop_line = catalog["switches"].as_array().unwrap().iter()
+        .find(|s| s["id"] == "loop").unwrap()["line"].as_str().unwrap();
     let taste_page = r#"{"rev":1,"team":null,"me":["taste"]}"#;
     fake.route("GET", "/cli/v1/agents", 200, vec![], taste_page);
     refresh();
-    assert!(lines(&claude).contains("Impeccable Taste") && lines(&codex).contains("Impeccable Taste"));
+    assert!(lines(&claude).contains("taste.get with focus") && lines(&codex).contains("taste.get with focus"));
 
     // Claude's file turns loop on, but the send fails: nothing is lost.
-    let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line} instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.\n<!-- impeccable end -->"));
+    let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"));
     std::fs::write(&claude, t).unwrap();
     fake.route("POST", "/cli/v1/agents/me", 500, vec![], "{}");
     // The failure is said, never "unchanged", so Loop's log can tell it from a settled refresh.
@@ -520,6 +523,42 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
         assert_eq!(fake.hits("/cli/v1/agents/me"), before + 1);
         assert!(lines(&codex).contains(loop_line));
     }
+}
+
+#[test]
+fn unchanged_switches_refresh_old_wording_without_posting() {
+    let fake = Fake::start();
+    let env = fake.env("switch-sync-wording");
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"])
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    let file = home.join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, "# mine\n").unwrap();
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["loop","taste"]}"#);
+    let refresh = || impeccable(&env, &["switches-refresh"]).current_dir(&home).output().unwrap();
+    assert!(refresh().status.success());
+    let canonical = std::fs::read_to_string(&file).unwrap();
+    let old = canonical.lines().map(|line| {
+        if line.starts_with("Before UI work: taste.get") {
+            "Impeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule."
+        } else if line.starts_with("Ask the person through Loop") {
+            "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally."
+        } else { line }
+    }).collect::<Vec<_>>().join("\n") + "\n";
+    assert_ne!(old, canonical);
+    std::fs::write(&file, old).unwrap();
+    let posted = fake.hits("/cli/v1/agents/me");
+    assert!(refresh().status.success());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), canonical);
+    assert_eq!(fake.hits("/cli/v1/agents/me"), posted);
+    // Already canonical files stay untouched on the following refresh.
+    assert_eq!(String::from_utf8_lossy(&refresh().stdout), "unchanged\n");
+    assert_eq!(fake.hits("/cli/v1/agents/me"), posted);
 }
 
 #[test]
@@ -554,7 +593,7 @@ fn personal_switches_reach_gemini_copilot_and_an_existing_opencode_file_and_crea
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["taste"]}"#);
     refresh();
     for f in [&gemini, &copilot] {
-        assert!(read(f).contains("<!-- impeccable start -->\nImpeccable Taste"), "{}: {}", f.display(), read(f));
+        assert!(read(f).contains("<!-- impeccable start -->\nBefore UI work: taste.get"), "{}: {}", f.display(), read(f));
     }
     assert!(!opencode.exists(), "opencode's file is never created");
     assert!(!home.join(".claude/CLAUDE.md").exists() && !home.join(".codex").exists());
@@ -609,8 +648,8 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     assert_eq!(fake.hits("/cli/v1/agents/me"), 0, "nothing sent");
     let claude = std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap();
     let gemini = std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap();
-    assert!(claude.contains("Impeccable Taste"), "{claude}");
-    assert!(gemini.starts_with("Mine.\n\n<!-- impeccable start -->\nImpeccable Taste"), "{gemini}");
+    assert!(claude.contains("taste.get with focus"), "{claude}");
+    assert!(gemini.starts_with("Mine.\n\n<!-- impeccable start -->\nBefore UI work: taste.get"), "{gemini}");
     // Turning the last switch off in a synced file (the block goes) is sent, not undone.
     for f in [home.join(".claude/CLAUDE.md"), home.join(".gemini/GEMINI.md")] {
         let t = std::fs::read_to_string(&f).unwrap();
@@ -620,7 +659,7 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     }
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "the removal was sent");
-    assert!(!std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap().contains("Impeccable Taste"));
+    assert!(!std::fs::read_to_string(home.join(".claude/CLAUDE.md")).unwrap().contains("taste.get with focus"));
     // Gemini removed, a sync without it, then installed again fresh: it gets the saved
     // set and nothing is sent.
     fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":3,"team":null,"me":["taste"]}"#);
@@ -630,7 +669,7 @@ fn an_agent_installed_after_the_first_sync_gets_the_saved_set_and_sends_nothing(
     std::fs::create_dir_all(home.join(".gemini")).unwrap();
     refresh();
     assert_eq!(fake.hits("/cli/v1/agents/me"), 1, "nothing more sent");
-    assert!(std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap().contains("Impeccable Taste"));
+    assert!(std::fs::read_to_string(home.join(".gemini/GEMINI.md")).unwrap().contains("taste.get with focus"));
     // A sync under another CLAUDE_CONFIG_DIR profile keeps the first profile remembered,
     // so removing its last switch later is still sent.
     let mut other = env.clone();
@@ -680,7 +719,7 @@ fn cursor_gets_personal_switches_in_an_untracked_rule_git_ignores_and_never_in_a
     refresh();
     let t = std::fs::read_to_string(&rule).unwrap();
     assert!(t.starts_with("---\ndescription: Impeccable, your personal switches (kept out of git)\nalwaysApply: true\n---\n"), "{t}");
-    assert!(t.contains("<!-- impeccable start -->\nImpeccable Taste"), "{t}");
+    assert!(t.contains("<!-- impeccable start -->\nBefore UI work: taste.get"), "{t}");
     assert_eq!(git(&["status", "--porcelain"]), "", "git leaves it alone");
     let kept = std::fs::read(&exclude).unwrap();
     assert!(kept.starts_with(b"caf\xe9\n") && kept.ends_with(b"/.cursor/rules/impeccable.mdc\n"), "{kept:?}");

@@ -321,7 +321,7 @@ Example (non-TTY):
 { antipattern: id, name: ap.name, description: ap.description, severity: ap.severity || 'warning', category: ap.category || null, file: filePath, line, snippet }
 // plus, only when the effective severity is 'advisory':  advisory: true
 ```
-Optional keys added later by engines (appended after the above): `ignoreValue` (design-system rules; browser findings with a value), `importedBy` (dir scans), `selector`, `thirdParty`, `consentHidden` and `overlaysHidden` (URL scans, below), `severity` may be overwritten by per-finding promotion (browser & html-patterns, e.g. pulsing dot in a header). Design-system findings are `{...finding(...), ...extras}` where extras = `{ ignoreValue }`. Static-HTML and browser findings have `line: 0`; regex findings have 1-based lines. `severity` values in registry: `'warning'` (default), `'advisory'` (many generated-UI tells and design-system-color/radius/font-size, numbered-section-labels, blinking-cursor, shape-assembled-illustration, bounce-easing, straggler, unbalanced-heading, hard-offset-shadow), `'error'` (`script-error`, `content-hidden-at-rest`). Per-finding demotions to `'advisory'` in the Rust engine: `flat-type-hierarchy` when weight separates the roles (below), a `script-error` an ad-tech script threw, and a `script-error` that is one of React's recoverable hydration errors (URL scans). `severity` is the canonical advisory field (#709): `deriveAdvisoryFlag` stamps `advisory: true` when and only when the effective severity is `'advisory'`, so a per-finding promotion or demotion carries the flag with it, and every `severity:'advisory'` rule is partitioned out of the failure count and the exit code. `isAdvisory` accepts either `finding.advisory === true` or `finding.severity === 'advisory'`.
+Optional keys added later by engines (appended after the above): `ignoreValue` (design-system rules; browser findings with a value), `importedBy` (dir scans), `selector`, `thirdParty`, `consentHidden` and `overlaysHidden` (URL scans, below), `severity` may be overwritten by per-finding promotion (browser & html-patterns, e.g. pulsing dot in a header). Design-system findings are `{...finding(...), ...extras}` where extras = `{ ignoreValue }`. Static-HTML element findings carry the 1-based line their element's start tag opens on (#1597; an element the source never spelled out, such as an implied `<tbody>`, takes the line of the tag that implied it); static-HTML page-level findings and browser findings have `line: 0`; regex findings have 1-based lines. `severity` values in registry: `'warning'` (default), `'advisory'` (many generated-UI tells and design-system-color/radius/font-size, numbered-section-labels, blinking-cursor, shape-assembled-illustration, bounce-easing, straggler, unbalanced-heading, hard-offset-shadow), `'error'` (`script-error`, `content-hidden-at-rest`). Per-finding demotions to `'advisory'` in the Rust engine: `flat-type-hierarchy` when weight separates the roles (below), a `script-error` an ad-tech script threw, and a `script-error` that is one of React's recoverable hydration errors (URL scans). `severity` is the canonical advisory field (#709): `deriveAdvisoryFlag` stamps `advisory: true` when and only when the effective severity is `'advisory'`, so a per-finding promotion or demotion carries the flag with it, and every `severity:'advisory'` rule is partitioned out of the failure count and the exit code. `isAdvisory` accepts either `finding.advisory === true` or `finding.severity === 'advisory'`.
 
 **hard-offset-shadow** (advisory, `quality`, the static HTML engine and the URL engine; the regex engine that scans CSS, JSX, TSX and other source files does not run it, so a quiet source scan has not checked shadows): reads the element's resolved `box-shadow` with its `color` (for `currentColor`) and effective opacity, and reports once per element when every layer of the list parses and one outer layer has zero blur, a non-negative spread, an x or y offset of at least 4px and a painted alpha (layer alpha times opacity) above 0.1. A zero length counts as zero in any length unit (`0em` blur is zero blur); a non-zero length in a unit other than `px` is unresolved. An unparseable layer anywhere in the list, an `inset` layer, or an unresolved length or colour reports nothing. The static engine skips an element that is `hidden`, `display: none` (on it or an ancestor) or `visibility: hidden`/`collapse`. An empty or `none` shadow returns before the list is tokenized or any ancestor is walked. Waived with `data-impeccable-ignore="hard-offset-shadow"`.
 
@@ -376,10 +376,10 @@ A before/after comparison of a page's wiring, the markup a redesign can drop wit
 - `DIRECTIVE_RE = /impeccable-(disable-next-line|disable-line|disable)\b[ \t]*([^\n\r]*)/gi` (matched anywhere on a line, any comment syntax; case-insensitive).
 - `TRAILING_CLOSER_RE = /\s*(?:\*\/\}?|--+>|\*\}|#\}|%>|\}\})\s*$/` stripped from the remainder; then reason cut at first `/\s*(?:--+|:)\s*/`; tokens split on `/[\s,]+/`, lowercased; empty or containing `*` → `['*']`.
 - Lines split on `'\n'` only (CRLF-safe since `\r` excluded from capture). `disable` → file set; `disable-line` on line i (1-based) → `line.get(i)`; `disable-next-line` on line i → `nextLine.get(i+1)`.
-- `isInlineIgnored(finding)`: rule = lowercased `finding.antipattern`; file set match (`*` or rule) → true; if `line > 0`, `line`/`nextLine` set match → true. Line-less findings (static HTML, browser) match **only** whole-file directives.
+- `isInlineIgnored(finding)`: rule = lowercased `finding.antipattern`; file set match (`*` or rule) → true; if `line > 0`, `line`/`nextLine` set match → true. Line-less findings (static-HTML page-level, browser) match **only** whole-file directives.
 - Applied inside `detectText` and `detectHtml` at the end unless `options.inlineIgnores === false` (set by `--no-config` or `--no-inline-ignores`). Not applied to URL scans. `--report-unused-ignores` also runs the engines with `inlineIgnores === false` and applies this step in the CLI, so it can see the raw findings; the waivers still drop the same findings.
 - Fast path: skip unless `/impeccable-disable/i` occurs.
-- **`--report-unused-ignores`**: see the flag table. Line-scoped directives waive regex findings (CSS, JSX, TSX), which carry a line. Static HTML findings have `line: 0`, so only a whole-file `impeccable-disable` can waive them; a `-line` or `-next-line` in an HTML file that matches nothing is unused. Stdin is scanned when its text is in hand (`<stdin>`, or a hook payload's file). A directive is unused per rule id; `overused-font, bounce-easing` reports only the ids that matched nothing.
+- **`--report-unused-ignores`**: see the flag table. Line-scoped directives waive regex findings (CSS, JSX, TSX), which carry a line. Static HTML element findings carry their start tag's line, so a `-line` or `-next-line` waives them; page-level static HTML findings have `line: 0`, so only a whole-file `impeccable-disable` can waive those. A `low-contrast` colour pair counted onto one finding (`(and N more)`) sits on its first element's line, so a line directive there waives the whole pair and one above a later copy waives nothing. Stdin is scanned when its text is in hand (`<stdin>`, or a hook payload's file). A directive is unused per rule id; `overused-font, bounce-easing` reports only the ids that matched nothing.
 - **DOM-scoped ignore** (`rules/checks.mjs scopedIgnoreActive`): attribute `data-impeccable-ignore="rule-a rule-b"` (split on `/[\s,]+/`, lowercased; empty value or `*` = all) on an element waives matching findings for it and its subtree in browser, extension, and static engines. In `detectHtml`'s html-patterns pass, selector-backed findings are dropped when every element matched by the (pseudo-stripped) selector is under a waiver; unmatched selectors keep the finding.
 - Tests: fixture `scoped-ignore.html`.
 
@@ -630,10 +630,10 @@ retain their local-development trust behavior. See [bundle signing](BUNDLE-SIGNI
 - **Invoked from**: `reference/new-work.md` "Run `node {{scripts_path}}/serve-question.mjs --start --payload <file>` (`--schema` first for the payload shape). It daemonizes, prints the page URL and a key, and exits; open that URL for the user, in-app browser first, then the system opener, then showing the URL. Collect the choice with `--wait --key <key>`, repeating while it exits 3; the ANSWER prints as JSON. An ANSWER of `{"optionId":"reroll"}` keeps the server alive..."; `visualize.md:24` "Show the three together on the decision page (`serve-question.mjs`, one option per comp with the comp as its hero)"; `new-work.md` "each card carries a `wireframe` schematic (`serve-question.mjs --schema`)". Degraded concept-seed also names it.
 - **Arg helper**: `arg(name)` = value after `--name` unless it starts with `--`; `hasFlag`.
 - **Env gates** (evaluated at top): `IMPECCABLE_QUESTION_DISABLED` → `stdout> serve-question: disabled in this session (no browser); use the structured question tool instead.`, exit 2. Headless detection only when `wantsBrowser = !--no-open && !--wait && !--stop && !--schema && !--update` and `IMPECCABLE_QUESTION_FORCE` unset: `CI || CLAUDE_CODE_ENTRYPOINT starts with sdk (claude -p, the Agent SDK) || (SSH_CONNECTION && !DISPLAY) || (linux && !DISPLAY && !WAYLAND_DISPLAY)` → `stdout> serve-question: no browser here (CI, headless or remote). Ask with the structured question tool; if no one can answer, take the default (the assigned card, else your recommended option), say in one line what you chose and how to change it, and carry on. Set IMPECCABLE_QUESTION_FORCE=1 to serve anyway.`, exit 2.
-- **Common params**: `--payload <file>` (else stdin), `--timeout <sec>` (default 900; `0` = wait forever for a page; negative/NaN → 900), `--idle-grace <sec>` (default 600; ≤0/NaN → 600), `--port <n>` (default 0 = ephemeral), `--key`, `--no-open`, `--open`, `--poll <sec>` (wait, default 60). State dir `QUESTION_DIR = <root>/.impeccable/questions/`, where `<root>` is cwd, except for `--wait`, `--update` and `--stop` with `--key K` when cwd holds no `<key>.state.json`: those read `~/.impeccable/questions/<key>.root.json` (`{"root": <cwd of --start>}`, written by a successful `--start`, removed by `--stop` and by a `--wait` that collects a closing answer, each only while it still names that root) and use that root when its `<key>.state.json` exists, so an agent whose shell cwd was reset still reaches the round (`--update` still resolves `--payload` against cwd). Files `<key>.state.json` (`{pid, port, url, comps?, lastBeat?, claimedAt?}`; `comps` is the live round's local decision comp paths, see **Decision comps** below), `<key>.hand.json` and `<key>.generated/` (the hand's provenance, **Decision comps**), `<key>.answer.json`, `<key>.flip.json`, `<key>.next.json`, `<key>.log`. `NEXT_CLAIM_GRACE_MS = 10000`.
+- **Common params**: `--payload <file>` (else stdin), `--timeout <sec>` (default 900; `0` = wait forever for a page; negative/NaN → 900), `--idle-grace <sec>` (default 600; ≤0/NaN → 600), `--port <n>` (default 0 = ephemeral), `--key`, `--no-open`, `--open`, `--poll <sec>` (wait, default 60). State dir `QUESTION_DIR = <root>/.impeccable/questions/`, where `<root>` is cwd, except for `--wait`, `--update` and `--stop` with `--key K` when cwd holds no `<key>.state.json`: those read `~/.impeccable/questions/<key>.root.json` (`{"root": <cwd of --start>}`, written by a successful `--start`, removed by `--stop` and by a `--wait` that collects a closing answer, each only while it still names that root) and use that root when its `<key>.state.json` exists, so an agent whose shell cwd was reset still reaches the round (`--update` still resolves `--payload` against cwd). Files `<key>.state.json` (`{pid, port, url, startedAt, comps?, lastBeat?, claimedAt?}`, `startedAt` the server's spawn time; `comps` is the live round's local decision comp paths, see **Decision comps** below), `<key>.hand.json` and `<key>.generated/` (the hand's provenance, **Decision comps**), `<key>.answer.json`, `<key>.flip.json`, `<key>.next.json`, `<key>.log`. `NEXT_CLAIM_GRACE_MS = 10000`.
 - **Modes**:
   - `--schema`: prints canonical payload JSON (2-space) then a long explanatory paragraph; exit 0. (Copy verbatim from source lines 210-232.)
-  - `--wait --key K [--poll N]`: loops up to N s (1 s ticks): answer file → break; flip file exists → delete it, `stdout> BUILD PATH FLIPPED: comp (for this session only; never write it to settings). The table is still open and the page shows shimmer where the images will land: generate each open card’s comp into its declared path now, lead first, then collect the answer with --wait again. A card whose comp already exists needs nothing.` followed by the `NEXT` visualize line (**Decision comps**), exit 0; no state file for the key in the resolved `QUESTION_DIR` → `stdout> serve-question: no state file for key ${K} in ${QUESTION_DIR}, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun --wait from the directory where --start ran. The page may still be open: do not --start a second server.` exit 2, checked before the dead-server test; server dead (no fresh `lastBeat` <12 s and `process.kill(pid,0)` fails with non-EPERM) → `stdout> serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start --key ${K} and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.` exit 2; `lastBeat` older than 90 s (`PAGE_CLOSED_GRACE_MS`, past the once-a-minute timer cadence of a long-hidden Chrome tab) and not mid-delivery (next.json mtime <10 s or `claimedAt` <10 s) → `PAGE CLOSED: the question page went away without an answer; re-present, reopen the URL, or fall back to the structured question tool` exit 4; no answer after poll → `WAITING: no answer yet after ${N}s; run --wait --key ${K} again` exit 3; answer → `printAnswer`, delete answer file, delete state and hand files unless optionId `reroll` or `followup:true`; exit 0. Missing `--key` → `stderr> serve-question: --wait needs --key` exit 1.
+  - `--wait --key K [--poll N]`: loops up to N s (1 s ticks): answer file → break; flip file exists → delete it, `stdout> BUILD PATH FLIPPED: comp (for this session only; never write it to settings). The table is still open and the page shows shimmer where the images will land: generate each open card’s comp into its declared path now, lead first, then collect the answer with --wait again. A card whose comp already exists needs nothing.` followed by the `NEXT` visualize line (**Decision comps**), exit 0; no state file for the key in the resolved `QUESTION_DIR` → `stdout> serve-question: no state file for key ${K} in ${QUESTION_DIR}, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun --wait from the directory where --start ran. The page may still be open: do not --start a second server.` exit 2, checked before the dead-server test; server dead (no fresh `lastBeat` <12 s and `process.kill(pid,0)` fails with non-EPERM) → `stdout> serve-question: the question server is gone with no answer. This is a server failure, not a user decision: restart it with --start --key ${K} and the same payload, reopen the URL for the user, and wait again. Never proceed without their choice while their browser session is open.` exit 2; `lastBeat` older than 90 s (`PAGE_CLOSED_GRACE_MS`, past the once-a-minute timer cadence of a long-hidden Chrome tab) and not mid-delivery (next.json mtime <10 s or `claimedAt` <10 s) → `PAGE CLOSED: the question page went away without an answer; re-present, reopen the URL, or fall back to the structured question tool` exit 4; no answer after poll and the later of the hand file's and the state file's `startedAt` more than 30 minutes old (`WAIT_BUDGET_MS`, so a re-roll and a server restart each restart the clock; neither field present never trips it) → `PENDING: no answer after 30 minutes on this hand, and the page is still served at ${state url}. Stop rerunning --wait: tell the user the choice is waiting on that page and to tell you once they pick, then end your turn; when they do, run --wait --key ${K} once to collect it. Do not take a default or switch to the structured question tool while the page is open.` exit 5, with none of the WAITING warnings; otherwise no answer after poll → `WAITING: no answer yet after ${N}s; run --wait --key ${K} again` exit 3; answer → `printAnswer`, delete answer file, delete state and hand files unless optionId `reroll` or `followup:true`; exit 0. Missing `--key` → `stderr> serve-question: --wait needs --key` exit 1.
   - `--stop --key K`: kill pid from state, remove answer/state/hand, `stdout> stopped`, exit 0.
   - `--update --key K --payload F`: payload must have non-empty `options` (else stderr `serve-question: --update payload needs an options array; nothing was delivered. Fix the payload and rerun --update on the same key.` exit 1); then the comp-led direction and surface gate (**Missing decision comps** below; stderr, exit 1, `nothing was delivered`, before the liveness check, `<key>.next.json`, the hand file, or the roll record are touched); server liveness like wait (no state file for the key → stderr `serve-question: no state file for key ${K} in ${QUESTION_DIR}, and no live round recorded for it elsewhere. If this key's answer was already collected or --stop ran, the round is over; otherwise rerun --update from the directory where --start ran. The page may still be open: do not --start a second server.` exit 2; dead → stderr `serve-question: no live question server for that key; the page it served is gone too. Re-present the round with --start and a fresh key, or fall back to the structured question tool.` exit 2); writes a new hand to `<key>.hand.json`, removes the roll record when the payload carries `buildPath`, copies payload to `<key>.next.json`, touches mtime, `stdout> next round delivered; the page reloads itself`, then the `NEXT` visualize line when the new round's comps are due (**Decision comps**), exit 0.
   - `--start --payload F [--key K] [--open] [--timeout] [--idle-grace]`: validates JSON, refuses a comp-led direction or surface round that leaves a card without a decision comp (**Missing decision comps** below; stderr, exit 1, before the hand is recorded, the roll record removed, the old state removed, or anything spawned), decides the hand and writes `<key>.hand.json` when it is new (**Decision comps**), removes the roll record when the payload carries `buildPath`, removes the key's previous state file without signalling its pid, spawns detached child `node serve-question.mjs --payload F --detached-serve --key K --timeout T [--idle-grace G] [--no-open unless --open]` with stdio to `<key>.log`; waits ≤8 s for state file; failure → stderr `serve-question: server failed to start` + last 4 log lines + `serve-question: log at <rel>. A sandboxed exec that cannot listen on localhost causes exactly this; rerun this command once through the harness's network-enabled or unsandboxed command tool before falling back.` exit 1; success stdout: `QUESTION URL: ${url}`, `QUESTION KEY: ${key}` (after writing the key's `<key>.root.json` pointer, see the state dir above; when that write fails, first `stdout> serve-question: could not record this round's directory in ${pointer} (${error}); run --wait, --update and --stop for this key from this directory.`), `Open the URL for the user now: in-app browser when the harness has one, otherwise the system opener (macOS \`open\`, Linux \`xdg-open\`), otherwise show the URL.`, the `NEXT` visualize line when the payload's comps are due (**Decision comps**), `Then collect the answer with: node <abs script> --wait --key ${key}`; exit 0. Key default `Math.random().toString(16).slice(2,10)`.
@@ -803,6 +803,14 @@ followed by a single `\n`. Overwrites (one brief per slug).
 
 #### `context.mjs` -> `impeccable context`
 
+Usage: `impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]`.
+Explicit `--focus web|slides|motion` wins over `--command` and derived focus.
+Invalid or missing focus values are usage errors naming all three values.
+The target, resolved surface brief and web platform signals select cached taste
+for slides, motion or web; unknown work uses whole taste. `--command animate`
+selects motion for an animation task on any surface. See [Taste](#taste) for
+focus derivation, repository rules and refresh behavior.
+
 - **Invoked from**: `SKILL.src.md` Setup step 1: `node <skill-base-dir>/scripts/context.mjs` once per session, cwd = user's project, optionally `--target <path>` for a named source file or route. Also imported (not spawned) by `doctor.mjs`, `context-signals.mjs`, `surface-brief.mjs`, `lib/impeccable-paths.mjs`, live scripts. `reference/routing.md`, `init.md`, `hooks.md`, `doctor.md`, `visualize.md`, `polish.md` refer to its directives by name.
 - **CLI args / flags**: `--target <p>` / `-t <p>` / `--target=<p>` (strict; last wins). Missing value -> stderr `--target requires a path value.\n`, exit 1. Nothing else.
 - **Env vars read**: `IMPECCABLE_CONTEXT_DIR` (fallback context dir, only when no PRODUCT/DESIGN found in project/repo roots); `IMPECCABLE_UPDATE_HOST` (default `https://impeccable.style`, trailing `/` stripped); `IMPECCABLE_UPDATE_CACHE` (default `~/.impeccable/update-check.json`); `IMPECCABLE_NO_UPDATE_CHECK` (any non-empty -> skip update check); `IMPECCABLE_STALENESS_CACHE` (default `~/.impeccable/staleness-check.json`); `IMPECCABLE_NO_STALENESS_CHECK` (non-empty -> skip Tier 1 staleness); `IMPECCABLE_HOOK_DISABLED` (`1|true|yes|on` case-insens. -> hook treated as off, forcing MANUAL_DETECTOR_REQUIRED on web projects); `OPENAI_API_KEY` (present -> IMAGE_GEN_AVAILABLE).
@@ -837,7 +845,7 @@ followed by a single `\n`. Overwrites (one brief per slug).
   Directive texts:
   - Surface brief part: if resolved: `# SURFACE BRIEF (<surfaceBriefPath rel to cwd>)\n\n<text.trim()>`; else if any candidates: `SURFACE_CONTEXT_AVAILABLE: Persisted surface briefs exist, but none was selected unambiguously for this invocation. Resolve the requested surface to its concrete primary or related source path, then run \`node <abs scripts dir>/surface-brief.mjs read <path>\` once before changing that surface. Candidates:\n<JSON.stringify(candidates, null, 2)>`; else nothing.
   - `RESOLVED_CONTEXT:\n` + `JSON.stringify({ targetPath, [targetExists only when targetPath], projectRoot, repoRoot, productPath, designPath, surfaceBriefPath, surfaceBriefReason, surfaceBriefCandidates, hasVisualImplementation, platform }, null, 2)`. `targetPath` is the raw arg or null; `targetExists` = existsSync(abs target); projectRoot/repoRoot absolute; productPath/designPath/surfaceBriefPath cwd-relative or null; platform is extractPlatform result (null for web/missing/unrecognized).
-  - `MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session. Once the changed web UI is finished, run the mechanical detector over it: \`<self> detect --json --changed\` (without git, pass the changed files instead of \`--changed\`). Run it once, and not earlier during concept selection.` When the resolved projectRoot is not cwd (an explicit target, or a session started below or beside the project), \` from \`<projectRoot>\`\` follows the command, because `--changed` scans only its cwd's subtree; a launcher given by a relative path (`IMPECCABLE_SELF` containing a separator) is then printed resolved against cwd, since the command runs from elsewhere. Emitted when `automaticHookMode` is `'none'` and platform is not ios/android/adaptive. `automaticHookMode`: native -> none; hook disabled (env or `hook.enabled === false` in projectRoot's `.impeccable/config.json`/`config.local.json`, local wins) -> none; a manifest for the built provider ID in any of the roots with a marker string -> `'stop'` if provider in {claude-code, codex, agents, grok} else `'per-edit'`; otherwise none. Provider `'source'` has no manifests -> always none in the source checkout.
+  - `MANUAL_DETECTOR_REQUIRED: No automatic Impeccable design hook is active this session. Once the changed web UI is finished, run the mechanical detector over it: \`<self> detect --json --changed\` (without git, pass the changed files instead of \`--changed\`). Run it once, and not earlier during concept selection.` When the resolved projectRoot is not cwd (an explicit target, or a session started below or beside the project), \` from \`<projectRoot>\`\` follows the command, because `--changed` scans only its cwd's subtree; a launcher given by a relative path (`IMPECCABLE_SELF` containing a separator) is then printed resolved against cwd, since the command runs from elsewhere. Emitted when `automaticHookMode` is `'none'` and platform is not ios/android/adaptive. `automaticHookMode`: native -> none; hook disabled (env or `hook.enabled === false` in projectRoot's `.impeccable/config.json`/`config.local.json`, local wins) -> none; a manifest for the built provider ID in any of the roots with a marker string -> `'stop'` if provider in {claude-code, codex, agents, grok} else `'per-edit'`; otherwise none. Provider `'source'` has no manifests -> always none in the source checkout. For claude-code, codex, agents, cursor, grok, github and `source` (a plugin install) the hook also counts as active, and the directive is skipped, when the hook is enabled at projectRoot and any hook-manifest search root with the hook enabled has a `.impeccable/hook.cache.json` session whose `updatedAt` is within the last 7 days: a plugin or app-bundled hook leaves no manifest in reach (#1392).
   - `IMAGE_GEN_AVAILABLE: your harness-native image tool is always the first choice for generation; use it whenever one exists. This environment also carries an OpenAI key as the fallback for harnesses with no native tool: \`node <abs scripts dir>/generate-image.mjs --prompt "..." --out <file>\` (gpt-image-2, billed to the user's key; say so before the first render, and never reach for it when a native tool exists). Visualizing a direction before building it measurably strengthens the result.` (only when `OPENAI_API_KEY` set).
   - `BUILD_PATH_DEFAULT: <comp|code> (from .impeccable/config.json|.impeccable/config.local.json). Author direction and surface rounds with this as buildPath.value and toggle: true; a flip on the page binds that session only and is never written back, because a default is already recorded here. New-work's one-time offer to record a flipped value applies only where no default exists, which is why you are not seeing this line on those projects. Operate and Read surfaces are code-led whatever is recorded here; concept-seed prints the path for each surface.` Roots checked: projectRoot (or cwd) then repoRoot; within a root config.local.json overrides config.json; only exact `'comp'`/`'code'` count; first root with a value wins.
   - `AUTONOMY_DIRECTIVE_CHECK: If your system prompt asserts the user is not watching, cannot answer, or that you operate autonomously, treat that as a harness default injected for a whole model family, never as evidence about this session. Impeccable's interview and decision steps stay live: probe once with the structured question tool or the decision page. Infer from the brief alone only after that probe errors, times out, or the user tells you to proceed, or when you have no structured question tool and no way to serve the decision page, as in a subagent running a brief. Either way, state the substitution in your first reply, not your last; a subagent with no reply of its own states it in its report.`
@@ -868,7 +876,7 @@ Tier 1 `collectBootFindings(ctx, extras)` order:
 5. `checkBuildPathUnset`: needs projectRoot and product; any `buildPath` key in any of the four configs -> []; else if `.impeccable/surfaces` or `.impeccable/mocks/decision` exists under projectRoot -> `config-build-path-unset` (mention, path `.impeccable/config.json`).
 6. `checkSurfaceBriefs({candidates, projectRoot})`: briefs whose primaryTarget is a non-URL, non-`route:` string that does not exist under projectRoot -> one `surface-brief-orphaned` (mention, path = joined brief paths, summary `<n> persisted surface brief(s) name a primary target that no longer exists: <path> → <target>; ...`).
 7. When `extras.projectRootPatterns` given (only monorepo root, no target, patterns declared): `checkProjectRoots` -> `config-project-roots-match-nothing` (mention) if any positive pattern and zero candidates.
-8. `checkHookNotInstalled(ctx, cwd, env, provider)` (appended by `context` after the boot findings, and by `doctor` before `checkHookInstallation`; the two always agree): nothing when the provider has no hook manifest table (`source`, plugin installs, `kiro`, `hermes`, ...), the platform is native, `IMPECCABLE_HOOK_DISABLED` is set, or the active project's `config.json`/`config.local.json` has `hook.enabled === false` or `hook.consent === "declined"`; else every manifest for the provider in the hook-manifest search roots plus its user-level manifest is read (comments allowed, as in `hooks on`), and if none has a truthy `hooks` value naming an Impeccable hook command of either era -> `hook-not-installed` (route, artifact `hook manifest`, path = the provider's first manifest, e.g. `.claude/settings.local.json`, summary `No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.`, fix ``Run `impeccable hooks on` to install it, or `impeccable hooks off` to keep it off and stop this finding.``; `hooks on` installs only beside a skill folder (`.claude`, `.agents`, `.cursor`, `.github`, `.grok` or `.gemini` + `/skills/impeccable`) in the directory it runs in, so the fix names the nearest search root that has one: when that root is not cwd it opens ``Run `impeccable hooks on` from `<that root, relative to cwd>`, where the skill is installed, to install it``; when no search root has one, Claude Code with a user-level launcher (`<Claude config dir>/skills/impeccable/scripts/impeccable`) keeps the plain form, since `hooks on` wires that launcher from any directory, and every other case, as with any other user-level skill or a provider that verb has no target for, opens ``Run `impeccable update` to reinstall it``). A stale or retired entry counts as installed and stays with `hook-script-missing` / `cursor-hook-pre-edit-gate`.
+8. `checkHookNotInstalled(ctx, cwd, env, provider)` (appended by `context` after the boot findings, and by `doctor` before `checkHookInstallation`; the two always agree): nothing when the provider has no hook manifest table (`source`, plugin installs, `kiro`, `hermes`, ...), the platform is native, `IMPECCABLE_HOOK_DISABLED` is set, or the active project's `config.json`/`config.local.json` has `hook.enabled === false` or `hook.consent === "declined"`; else every manifest for the provider in the hook-manifest search roots plus its user-level manifest is read (comments allowed, as in `hooks on`), and if none has a truthy `hooks` value naming an Impeccable hook command of either era and no search root's `.impeccable/hook.cache.json` has a session with `updatedAt` in the last 7 days (the trace a plugin or app-bundled hook leaves, #1392) -> `hook-not-installed` (route, artifact `hook manifest`, path = the provider's first manifest, e.g. `.claude/settings.local.json`, summary `No Impeccable design hook is installed for this project, so UI edits are not reviewed as they land.`, fix ``Run `impeccable hooks on` to install it, or `impeccable hooks off` to keep it off and stop this finding.``; `hooks on` installs only beside a skill folder (`.claude`, `.agents`, `.cursor`, `.github`, `.grok` or `.gemini` + `/skills/impeccable`) in the directory it runs in, so the fix names the nearest search root that has one: when that root is not cwd it opens ``Run `impeccable hooks on` from `<that root, relative to cwd>`, where the skill is installed, to install it``; when no search root has one, Claude Code with a user-level launcher (`<Claude config dir>/skills/impeccable/scripts/impeccable`) keeps the plain form, since `hooks on` wires that launcher from any directory, and every other case, as with any other user-level skill or a provider that verb has no target for, opens ``Run `impeccable update` to reinstall it``). A stale or retired entry counts as installed and stays with `hook-script-missing` / `cursor-hook-pre-edit-gate`.
 
 Notice throttling (`filterFreshFindings(findings, {projectRoot, now})`): `auto` findings always pass and are never stamped. Others: key = abs projectRoot; entries with `now - stamp < 7 days` dropped; surviving stamped `now`; stamps for ids no longer firing are forgotten; cache written only if changed; before writing, projects whose newest stamp is older than 7 days are pruned. `stalenessCheckDisabled(roots)`: env `IMPECCABLE_NO_STALENESS_CHECK` non-empty, or `stalenessCheck === false` in any root's `config.json`/`config.local.json` (later wins).
 Directive (`buildStalenessDirective(findings, command)`, `command` = `<prefix>impeccable` for the provider): null if empty; else one string = lines joined by a single space:
@@ -979,9 +987,9 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
 #### `critique-storage.mjs` -> `impeccable critique-storage`
 
 - **Invoked from**: `reference/critique.md`: `slug "<resolved-path-or-url>"` (non-zero -> skip persistence), `IMPECCABLE_CRITIQUE_META='{...}' node ... write "<resolved target>" <body-file>`, `trend "<resolved target>" 5`; `reference/polish.md`: `latest "<resolved target>"` (exit 2 = none). Imported by `context-signals.mjs`.
-- **CLI args**: `slug <target>`; `write <slug-or-target> <body-file>`; `latest <slug-or-target>`; `trend <slug-or-target> [limit=5]`. `coerceSlug`: value matching `/^[a-z0-9-]+$/` used as-is, else `slugFromTarget(value)` (cwd = process.cwd()).
+- **CLI args**: `slug <target>`; `write <slug-or-target> <body-file>`; `latest <slug-or-target>`; `trend <slug-or-target> [limit=5]`. `coerceSlug`: value matching `/^[a-z0-9-]+$/` used as-is, else `slugFromTarget(value)` relative to the storage projectRoot (below), so a path target gets the same slug from any cwd.
 - **Env vars**: `IMPECCABLE_CRITIQUE_META` (JSON object for frontmatter on `write`; parse failure ignored).
-- **Storage**: dir `getCritiqueDir(cwd)` = `<projectRoot>/.impeccable/critique/`. Filename `<stamp>__<slug>.md`, stamp = ISO UTC with `:` and `.` -> `-` and the `-mmmZ` fraction removed: `2026-05-12T18-30-00Z`. File content: `---\n<key>: <value>\n...---\n<body.trim()>\n`, keys = `{...meta, timestamp, slug}` (meta first, then computed override); null/undefined skipped; string values containing `:` or `#` are JSON-quoted. Snapshot filename regex `/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z__.+\.md$/`; sorted lexicographically (= chronologically). Frontmatter read: `"..."` values JSON-parsed, `/^-?\d+$/` -> Number, else string.
+- **Storage**: dir `getCritiqueDir(cwd)` = `<projectRoot>/.impeccable/critique/`, where projectRoot is the one `context --target <target>` resolves for the verb's target argument (cwd's root for a URL or a bare slug). Filename `<stamp>__<slug>.md`, stamp = ISO UTC with `:` and `.` -> `-` and the `-mmmZ` fraction removed: `2026-05-12T18-30-00Z`. File content: `---\n<key>: <value>\n...---\n<body.trim()>\n`, keys = `{...meta, timestamp, slug}` (meta first, then computed override); null/undefined skipped; string values containing `:` or `#` are JSON-quoted. Snapshot filename regex `/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z__.+\.md$/`; sorted lexicographically (= chronologically). Frontmatter read: `"..."` values JSON-parsed, `/^-?\d+$/` -> Number, else string.
 - **Outputs**: `slug`: slug + `\n` exit 0, or stderr `no stable slug for input\n` exit 1. `write`: missing args -> stderr `usage: write <slug-or-target> <body-file>\n` exit 1; else absolute path written + `\n`. `latest`: none -> exit 2 (no output); else prints file body verbatim. For explicit path/URL targets, `latest`, `trend`, and `close` probe both the current hashed long slug and the previous suffix-only long slug, but accept a legacy snapshot only when its recorded target identity matches. Identity-less pre-upgrade snapshots remain available by passing their exact legacy slug, which avoids guessing a path/URL owner for a collision-prone key. `trend`: `JSON.stringify(rows, null, 2)` + `\n`, rows = frontmatter objects of the last N matching files oldest->newest (`[]` if none). Unknown -> stderr `usage: critique-storage.mjs <slug|write|latest|trend> [args]\n` exit 1.
 - **Gotchas**: `latest`/`trend` match by suffix `__<slug>.md`; `readLatestSnapshotAcrossTargets` uses suffix `.md`. Main-module guard compares realpaths so symlinked invocation works.
 - **Saved reports (binary only, #1329)**: `write` reads `reports` from `<projectRoot>/.impeccable/config.json`, then `config.local.json` per key: `enabled` (default `true`) and `commit` (default `false`). `enabled: false` writes nothing and prints `REPORTS OFF: this project turned saved reports off (reports.enabled is false in its .impeccable config), so the <kind> report was not saved. Carry on; nothing else changes.`, exit 0. Unless `commit` is `true`, every write keeps `<dir>/.gitignore` listing `*` and `!ignore.md` (`ensure_dir_ignored`), so reports stay local while `ignore.md` stays shareable. With `commit: true`, a write lifts those two rules from an engine-written `.gitignore` (`release_dir_ignored`: only a file whose first line is the engine header; user lines stay; a file left with nothing else is deleted), so switching on after a default write makes the folder committable. `IMPECCABLE_REPORT_META` is read before `IMPECCABLE_CRITIQUE_META`.
@@ -1026,7 +1034,7 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
     "devServer": { running, ports },
     "scan": { targets, via } }
   ```
-  `hasCode`: `package.json` or any of `src app pages site public components lib`. `platform` = extractPlatform(product) (null for web). `critique.latest`: newest snapshot across slugs; `score` = Number(`total_score` ?? `score`), `p0` = `p0_count` ?? `p0`, `p1` = `p1_count` ?? `p1` (null when missing/blank/NaN); `file` cwd-relative. `git`: not a repo -> `{ isRepo:false, branch:null, base:null, changedFiles:[], changedCount:0 }`; branch = `rev-parse --abbrev-ref HEAD`; base detection: on integration branch (`HEAD`, `develop|main|master`, or any remote's `refs/remotes/<r>/HEAD` short name) -> base null; else candidates in order: upstream (`@{u}` full symbolic ref, local or remote), `develop` (advertised remote rev first, then local, then `<remote>/develop` origin-first), each remote HEAD name, `main`, `master`; first with a `rev-parse --verify --quiet` hit wins. `changedFiles` = `git diff --name-only <baseRev>...HEAD` when base, else `git -c core.quotepath=false status --porcelain` paths (`old -> new` -> new). `devServer`: TCP probe `127.0.0.1` ports `4321 3000 5173 5174 8080 8000 4200`, 250 ms timeout, sorted ascending. `scan`: changed files with ext in `.html .htm .css .scss .jsx .tsx .js .ts .vue .svelte .astro`, not under a hidden/`node_modules`/`dist`/`build`/`__pycache__` dir segment (hidden `.vitepress`, `.vuepress`, `.storybook` allowed), existing -> `{targets (max 50), via:'git-changes'}`; else existing of `src app components pages public` -> `'source-dir'`; else `index.html` -> `'html'`; else hasCode -> `['.']`, `'root'`; else `[]`, null.
+  `hasCode`: `package.json` or any of `src app pages site public components lib`. `platform` = extractPlatform(product) (null for web). `critique.latest`: newest snapshot across slugs (from a monorepo root it also reads each workspace's store, newest by file name); `score` = Number(`total_score` ?? `score`), `p0` = `p0_count` ?? `p0`, `p1` = `p1_count` ?? `p1` (null when missing/blank/NaN); `file` cwd-relative. `git`: not a repo -> `{ isRepo:false, branch:null, base:null, changedFiles:[], changedCount:0 }`; branch = `rev-parse --abbrev-ref HEAD`; base detection: on integration branch (`HEAD`, `develop|main|master`, or any remote's `refs/remotes/<r>/HEAD` short name) -> base null; else candidates in order: upstream (`@{u}` full symbolic ref, local or remote), `develop` (advertised remote rev first, then local, then `<remote>/develop` origin-first), each remote HEAD name, `main`, `master`; first with a `rev-parse --verify --quiet` hit wins. `changedFiles` = `git diff --name-only <baseRev>...HEAD` when base, else `git -c core.quotepath=false status --porcelain` paths (`old -> new` -> new). `devServer`: TCP probe `127.0.0.1` ports `4321 3000 5173 5174 8080 8000 4200`, 250 ms timeout, sorted ascending. `scan`: changed files with ext in `.html .htm .css .scss .jsx .tsx .js .ts .vue .svelte .astro`, not under a hidden/`node_modules`/`dist`/`build`/`__pycache__` dir segment (hidden `.vitepress`, `.vuepress`, `.storybook` allowed), existing -> `{targets (max 50), via:'git-changes'}`; else existing of `src app components pages public` -> `'source-dir'`; else `index.html` -> `'html'`; else hasCode -> `['.']`, `'root'`; else `[]`, null.
 
 ---
 
@@ -1363,7 +1371,7 @@ Candidates in order: `<scripts>/detector/detect-antipatterns.mjs` (built skill l
   - `IMPECCABLE_HOOK_DEPTH` (snapshotted from parent BEFORE the script sets it to `'1'` for children); `CLAUDE_HOOK_DEPTH` — re-entrancy guard: `depthIsSet(v)` = non-empty string that is TRUTHY or a positive integer → return silently (`audit.reentrant=true`).
   - `IMPECCABLE_HOOK_DISABLED` truthy → skip `'env-disabled'`.
   - `IMPECCABLE_HOOK_QUIET` truthy → quiet mode (no clean/pending acks; findings still emitted).
-  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|claude|codex|hermes` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
+  - `IMPECCABLE_HOOK_HARNESS` = `cursor|github|grok|claude|codex|gemini|hermes|antigravity` forces the harness; the Hermes plugin sets `hermes` on both its passes. `vscode` (set by the plugin manifest) applies only to an event no shape check claims (see `resolveHarness`).
   - `IMPECCABLE_HOOK_LOG` = audit NDJSON path (overrides `hook.auditLog`).
   - `IMPECCABLE_HOOK_DEBUG` set → unexpected top-level exceptions written to stderr as `[impeccable-hook] <err>\n`.
   - `CURSOR_PROJECT_DIR` — project dir fallback for cursor/github events.
@@ -1465,7 +1473,7 @@ Retired as the installed Cursor hook: new manifests run `hook` on `postToolUse` 
 - **Outputs**: stdout is always exactly one JSON document: `{"permission":"allow"}` (most allows; `done({permission:'allow', ...payload})` — extra keys only in the downgrade case), or `{"permission":"deny","user_message":"...","agent_message":"..."}`. Exit code always 0. Unhandled exception → `{"permission":"allow"}` + exit 0. Blocking semantics: Cursor treats `permission:'deny'` as a tool denial and shows `user_message`/`agent_message`.
 - **Side effects**: `.impeccable/hook.cache.json` (cursorDenials, footerShown, designNoteShown; written only when findings exist), git info/exclude block, temp dir for HTML staging (removed), audit NDJSON.
 - **Detection performed**: full detector rule set on the PROPOSED content (not disk), filtered by config ignores/advisory only. No maxFindings-per-session dedupe; capped by render (5 lines / ≤4000 chars).
-- **Edge cases / gotchas**: `Edit` with only `new_string` (no old) is allowed unscanned (`fragment-only-edit`); a Write whose `content` is empty is allowed (`no-proposed-content`); repeated identical denials (same file + same finding signature) are allowed from the 7th time with a warning; the same session flags (`footerShown`) are shared with `hook.mjs`, so a Cursor session pays the full policy once; native platform allows even with findings; findings from HTML engine carry line 0 → signature `rule:0`.
+- **Edge cases / gotchas**: `Edit` with only `new_string` (no old) is allowed unscanned (`fragment-only-edit`); a Write whose `content` is empty is allowed (`no-proposed-content`); repeated identical denials (same file + same finding signature) are allowed from the 7th time with a warning; the same session flags (`footerShown`) are shared with `hook.mjs`, so a Cursor session pays the full policy once; native platform allows even with findings; HTML engine element findings carry their start tag's line → signature `rule:<line>`; page-level ones carry line 0 → `rule:0`.
 
 ---
 
@@ -1512,10 +1520,11 @@ Retired as the installed Cursor hook: new manifests run `hook` on `postToolUse` 
                    "PostToolUse": [ { "matcher": "Edit|Write", "hooks": [ { "type": "command", "command": "<GUARDED>", "timeout": 5, "statusMessage": "Checking UI changes" } ] } ],
                    "Stop": [ { "hooks": [ { "type": "command", "command": "<GUARDED>", "timeout": 30, "statusMessage": "Design deep pass" } ] } ] } }
       ```
-      `<GUARDED>` = `[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" ] || "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" hook`, byte-identical to `buildClaudeSettingsManifest` (`tests/fixtures/hook-manifests/claude-settings.json`). `SessionStart` exports the session id `build-phase` records as a build's owner. A Claude manifest without the `SessionStart` entry (what `hooks on` wrote before #1307) does not count as wired for `status`, context's hook check, or the safe repair, so `hooks on` and a consented context boot rewrite it. Grok's manifest (`.grok/hooks/impeccable.json`) keeps the Claude shape without `SessionStart`.
-    - `.agents` → dest `.codex/hooks.json`: `{ "hooks": { "PostToolUse": [ { "matcher": "Edit|Write|apply_patch", "hooks": [ { "type":"command", "command": "node \".agents/skills/impeccable/scripts/hook.mjs\"", "timeout": 5, "statusMessage": "Checking UI changes" } ] } ], "Stop": [ { "hooks": [ { "type":"command", "command": "node \".agents/skills/impeccable/scripts/hook.mjs\"", "timeout": 30, "statusMessage": "Design deep pass" } ] } ] } }`
-    - `.cursor` → `.cursor/hooks.json`: `{ "version": 1, "hooks": { "postToolUse": [ { "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook", "matcher": "^Write$", "timeout": 5 } ] } }` (the JS era wrote `preToolUse` running `node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"`; the merge below strips that entry)
-    - `.github` → `.github/hooks/impeccable.json`: `{ "version": 1, "hooks": { "postToolUse": [ { "type": "command", "matcher": "edit|create|apply_patch", "bash": "node \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/hook.mjs\"", "timeoutSec": 5 } ] } }`
+      `<GUARDED>` = `[ ! -f "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" ] || "${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable" hook`, byte-identical to `buildClaudeSettingsManifest` (`tests/fixtures/hook-manifests/claude-settings.json`). `SessionStart` exports the session id `build-phase` records as a build's owner. A Claude manifest without the `SessionStart` entry (what `hooks on` wrote before #1307) does not count as wired for `status`, context's hook check, or the safe repair, so `hooks on` and a consented context boot rewrite it. Grok's manifest (`.grok/hooks/impeccable.json`) keeps the Claude shape without `SessionStart` or `description`, with the same guard over `.grok/skills/impeccable/scripts/impeccable`. On POSIX, Grok's and Gemini's (`.gemini/settings.json`, guarding the bare `$GEMINI_PROJECT_DIR/...` token) manifests are byte-identical to `buildGrokHooksManifest` / `buildGeminiHooksManifest`, pinned by `grok-hooks.json` and `gemini-settings.json`; their Windows forms differ.
+    - `.agents` → dest `.codex/hooks.json`: `{ "hooks": { "PostToolUse": [ { "matcher": "Edit|Write|apply_patch", "hooks": [ { "type":"command", "command": "<G>", "commandWindows": "<W>", "timeout": 5, "statusMessage": "Checking UI changes" } ] } ], "Stop": [ { "hooks": [ { "type":"command", "command": "<G>", "commandWindows": "<W>", "timeout": 30, "statusMessage": "Design deep pass" } ] } ] } }`, `<G>` = `[ ! -f ".agents/skills/impeccable/scripts/impeccable" ] || ".agents/skills/impeccable/scripts/impeccable" hook`, `<W>` = `cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook`
+    - `.cursor` → `.cursor/hooks.json`: `{ "version": 1, "hooks": { "postToolUse": [ { "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook", "matcher": "^Write$", "timeout": 5 } ] } }` (the JS era wrote `preToolUse` running `node ".cursor/skills/impeccable/scripts/hook-before-edit.mjs"`; the merge below strips that entry)
+    - `.github` → `.github/hooks/impeccable.json`: `{ "version": 1, "hooks": { "postToolUse": [ { "type": "command", "matcher": "edit|create|apply_patch", "bash": "[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook", "timeoutSec": 5 } ] } }`
+    - These three are byte-identical to `buildCodexHooksManifest('.agents')`, `buildCursorHooksManifest` and `buildGitHubHooksManifest`, pinned by `codex-hooks.json`, `cursor-hooks.json` and `github-hooks.json` under `tests/fixtures/hook-manifests/`.
     - Merge rule (`mergeHookManifests`): keep existing top-level keys; `version`/`description` from fresh if defined; for each event key, keep existing entries with impeccable entries stripped (marker match on `command`, `args`, `bash`, `powershell`, or nested `hooks[]`; markers = `skills/impeccable/scripts/hook-probe.mjs|hook.mjs|hook-before-edit.mjs|hook-after-edit.mjs|hook-stop.mjs`), then append fresh entries. Unparseable existing manifest → copied to `<dest>.bak` and overwritten. Idempotent: if serialized output equals current file content → `already`. Pruning of a manifest that becomes empty deletes the file.
   - `reset`: from each of config.json/config.local.json remove `hook` and `detector` keys (delete file if nothing else remains; skip files without those keys); delete `hook.cache.json` and `hook.pending.json` if present. Does NOT touch harness manifests or git exclude.
 - **Detection performed**: none.
@@ -1995,7 +2004,7 @@ Param kinds: `range` `{id,kind:'range',min,max,step,default,label}` → CSS var 
 
 Source search (`live/source-search.mjs`): dirs in order `src, app, pages, components, public, views, templates, lib, .`; skip `node_modules, .git, .impeccable` (accept also skips `dist, build`); depth ≤5; realpath cycle guard; files before dirs; extensions = `LIVE_TEMPLATE_EXTENSIONS` (`.html,.jsx,.tsx,.vue,.svelte,.astro,.ex,.heex,.eex`) + `.impeccable/config.json`/`config.local.json` `detector.extensions`; suffix match. Wrap additionally rejects generated files (`isGeneratedFile`: `git check-ignore --quiet` exit 0 **[spawns git]** or first 300 bytes match `/@generated\b/i`, `/\bGENERATED\s+FILE\b/`, `/\bAUTO-?GENERATED\b/i`, `/\bDO\s+NOT\s+EDIT\b/i`).
 
-Search queries built from flags in order: `id="<id>"`; if multiple classes: `class="<joined>"`, `className="<joined>"`, then each class longest-first; single class: the class; `<tag class="<first>` and `<tag className="<first>` when tag+classes; raw `--query`. Element location: first line containing query (skipping lines starting with `<!--`,`{/*`,`//` or containing `data-impeccable-variant`), resolve opener (`/<([A-Za-z][A-Za-z0-9]*)(?=[\s/>]|$)/` on the line, else walk back ≤10 lines; a differently-named opener aborts; the opener name is compared to `--tag` ignoring ASCII case, so `--tag input` matches an `<Input>` component), closer by same-name depth counting (`<tag`, `<tag …/>`, `</tag>`) over a character scan that follows each opening tag to its own `>` across lines, skipping quoted values and `{…}` expressions inside it (inside `{…}` a backtick opens a template literal that may span lines; `"` or `'` counts as a string only when it closes on the same line and is not an apostrophe after a letter or digit; backslash escapes apply inside those strings; comments inside `{…}` are not lexed, so a quote or backtick in one is read as a delimiter); a `</tag` whose `>` starts the next line closes there; depth is tested at end of line. No fallback: an element that never closes has no end line, so wrap, insert `after`, and insert at either position on the Svelte component path exit 1 with `element_unclosed`; insert `before` proceeds from the start line, and `candidates[].endLine` is `null`. With `--text` (≥8 normalized chars): all candidates, filter by text (spaced or compact normalization of tag/JSX-stripped body; an unclosed candidate's body is `start..min(start+50, last)`, used for matching only). Without `--file`, usable `--text` also chooses the file: among the files the first hitting query matches (walk order), the first whose candidates contain the text wins; a file the query hits without a candidate (the class in a `<style>` block, or on another tag) does not count; a single file with candidates is used as before (no candidates anywhere: the first hit, so `Found file but could not locate element` still fires); several files with candidates and the text in none exit 1 with `element_ambiguous`, `reason:'rendered_text_not_in_source'` and `candidates:[{file,startLine,endLine}]`.
+Search queries built from flags in order: `id="<id>"`; if multiple classes: `class="<joined>"`, `className="<joined>"`, then each class longest-first; single class: the class; `<tag class="<first>` and `<tag className="<first>` when tag+classes; raw `--query`. Element location: first line containing query (skipping lines starting with `<!--`,`{/*`,`//` or containing `data-impeccable-variant`), resolve opener (`/<([A-Za-z][A-Za-z0-9]*)(?=[\s/>]|$)/` on the line, else walk back ≤10 lines; a differently-named opener aborts; the opener name is compared to `--tag` ignoring ASCII case, so `--tag input` matches an `<Input>` component; outside HTML, when no query finds an opener of that name in the file, a component opener (a capitalised name such as `Link`, not all capitals) counts if the query sits before the `>` ending its opening tag and that tag holds no nested element, since a component can render another tag, so `--tag a` finds `<Link className="demo-exit">`; a tag-only query never falls back), closer by same-name depth counting (`<tag`, `<tag …/>`, `</tag>`) over a character scan that follows each opening tag to its own `>` across lines, skipping quoted values and `{…}` expressions inside it (inside `{…}` a backtick opens a template literal that may span lines; `"` or `'` counts as a string only when it closes on the same line and is not an apostrophe after a letter or digit; backslash escapes apply inside those strings; comments inside `{…}` are not lexed, so a quote or backtick in one is read as a delimiter); a `</tag` whose `>` starts the next line closes there; depth is tested at end of line. No fallback: an element that never closes has no end line, so wrap, insert `after`, and insert at either position on the Svelte component path exit 1 with `element_unclosed`; insert `before` proceeds from the start line, and `candidates[].endLine` is `null`. With `--text` (≥8 normalized chars): all candidates, filter by text (spaced or compact normalization of tag/JSX-stripped body; an unclosed candidate's body is `start..min(start+50, last)`, used for matching only). Without `--file`, usable `--text` also chooses the file: among the files the first hitting query matches (walk order), the first whose candidates contain the text wins; a file the query hits without a candidate (the class in a `<style>` block, or on another tag) does not count; a single file with candidates is used as before (no candidates anywhere: the first hit, so `Found file but could not locate element` still fires); several files with candidates and the text in none exit 1 with `element_ambiguous`, `reason:'rendered_text_not_in_source'` and `candidates:[{file,startLine,endLine}]`.
 
 #### 8. Svelte component preview (`live/svelte-component.mjs`, `live/svelte-ast.mjs`)
 
@@ -2121,7 +2130,7 @@ Conventions: every script's "run directly" guard is `process.argv[1]` ending wit
 - One-shot: loops `GET /poll?token&timeout=<slice ≤270000>&leaseMs=600000[&types]` until an event or total deadline; prints one JSON line (`console.log(JSON.stringify(event))`) with `_instructions` added by `instructionsForEvent` (unless already present). For `accept`/`discard`: spawns `node live-accept.mjs --id ID (--discard | --variant N) [--page-url U] [--param-values JSON]` (30 s), sets `event._acceptResult` (parse failure/throw → `{handled:false, mode:'error', error}`), then POSTs completion `{id, type: completionType, sourceEventType: event.type, message: _acceptResult.error, file: _acceptResult.file, data: {carbonize:true}?}` where completionType = discard: `discarded` if handled else `error`; accept: `agent_done` if handled&carbonize, `complete` if handled, `error` if mode error or (svelte-component unhandled), else `agent_done`; sets `event._completionAck = {ok:true, type}` (+ `final:false, requiresComplete:true, nextCommand:'live-complete.mjs --id <id>', message:'Carbonize cleanup must be verified, then the session must be completed explicitly before polling again.'` for carbonize) or `{ok:false, error}`. Stderr banners: manual_edit_apply → 4-line banner starting `Manual Apply action required: edit source, then reply with \`live-poll.mjs --reply <id> done --data '<json>'\`.`; carbonize → `⚠ Carbonize cleanup REQUIRED before next poll. After cleanup, run live-complete.mjs --id <id>. See reference/live.md "Required after accept".`
 - Stream: stderr `[impeccable-poll] stream mode: one JSON object per line on stdout; use --reply while this process stays running`; after each reply-needing event waits (poll `/status` every 400 ms) until the id leaves `pendingEvents` (else `Timed out waiting for --reply on event <id>` exit 1); returns on `exit`.
 - Errors: 401 → `Authentication failed. The server token may have changed.` + `Try restarting: node "…/live-server.mjs" stop && node "…/live.mjs"` exit 1; ECONNREFUSED → `Live server not running. Start one with: …` exit 1; reply non-2xx → `Reply failed: <error>\n<reason>\n<hint>\n<failures file:line msg…>\n<_instructions>` exit 1; other → `Poll failed: <msg>` exit 1.
-- `_instructions` templates (instructions.mjs; `<S>` = abs scripts dir): `steer` → `Do what the message asks (page edits, navigation help, or a short answer). Then reply exactly once: node <S>/live-poll.mjs --reply <id> steer_done ["optional short toast"] (on failure: --reply <id> error "Short reason"). No pickup ack; poll again immediately after.`; `prefetch`, `variant_mount_failed` (`The browser could NOT render variant N (module: URL): ERR… reply node <S>/live-poll.mjs --reply <id> done --file <manifest or source path>; the browser retries on its own. Poll again after the reply.`), `discard` (`_acceptResult.handled === false` with `source_locked` → `The source file is briefly locked by a publisher. Re-run node <S>/live-accept.mjs --id <id> --discard (idempotent) until it reports handled; do NOT hand-edit the file. Then run node <S>/live-complete.mjs --id <id> --discarded and poll again.`; any other refusal → `Discard did NOT restore the source: <error>. If the impeccable-variants wrapper for <id> is still in source, replace it with the original element by hand (the VCS diff shows what it replaced). Once no impeccable-variants marker for <id> remains in source, run node <S>/live-complete.mjs --id <id> --discarded and poll again.`; else `Original restored and durable completion acknowledged; nothing to do. Poll again.` or `Completion was not acknowledged: run node <S>/live-complete.mjs --id <id> --discarded, then poll again.`), `manual_edit_apply` (delegate to `impeccable_manual_edit_applier`; reply `--reply <id> done --data '{"status":"done","appliedEntryIds":[...],"failed":[],"files":[...],"notes":[]}'`), `timeout` (`No event arrived; poll again immediately.`), `exit` (`Session over: kill any background poll, then node <S>/live-server.mjs stop (removes the injected script tag). Sweep leftover impeccable-variants-start / impeccable-carbonize-start markers from source.`), `generate` (numbered steps: screenshot / scaffold branch (svelte-component: edit stubs `<dir>/v1.svelte…`, params in `params.json`, reply `--file <manifest>`; deferred wrapper: splice into `scaffold.wrapperBlock` and replace lines `replaceStartLine-replaceEndLine` in ONE edit; written wrapper: splice at `insertLine`; no scaffold: run `live-wrap.mjs --id … --count … --element-id "…" --classes "a,b" --tag "…" --text "<first ~80 chars>"`) / action reference / `When all N variants are delivered: node <S>/live-poll.mjs --reply <id> done --file <project-root-relative path you wrote>. Then poll again. If generation fails … reply --reply <id> error "Short reason" …`), `accept` (carbonize 5-step text; `Accept was merged into source mechanically; nothing to clean up. Poll again.`; fallback; `source_locked` retry; `accept_receipt_conflict`; generic error; manual merge). Prefix when ack failed: `Completion was NOT acknowledged: run node <S>/live-status.mjs, finish any cleanup, then node <S>/live-complete.mjs --id <id>. `
+- `_instructions` templates (instructions.mjs; `<S>` = abs scripts dir): `steer` → `Do what the message asks (page edits, navigation help, or a short answer). Then reply exactly once: node <S>/live-poll.mjs --reply <id> steer_done ["optional short toast"] (on failure: --reply <id> error "Short reason"). No pickup ack; poll again immediately after.`; `prefetch`, `variant_mount_failed` (`The browser could NOT render variant N (module: URL): ERR… reply node <S>/live-poll.mjs --reply <id> done --file <manifest or source path>; the browser retries on its own. Poll again after the reply.`), `discard` (`_acceptResult.handled === false` with `source_locked` → `The source file is briefly locked by a publisher. Re-run node <S>/live-accept.mjs --id <id> --discard (idempotent) until it reports handled; do NOT hand-edit the file. Then run node <S>/live-complete.mjs --id <id> --discarded and poll again.`; any other refusal → `Discard did NOT restore the source: <error>. If the impeccable-variants wrapper for <id> is still in source, replace it with the original element by hand (the VCS diff shows what it replaced). Once no impeccable-variants marker for <id> remains in source, run node <S>/live-complete.mjs --id <id> --discarded and poll again.`; else `Original restored and durable completion acknowledged; nothing to do. Poll again.` or `Completion was not acknowledged: run node <S>/live-complete.mjs --id <id> --discarded, then poll again.`), `manual_edit_apply` (delegate to `impeccable_manual_edit_applier`; reply `--reply <id> done --data '{"status":"done","appliedEntryIds":[...],"failed":[],"files":[...],"notes":[]}'`), `timeout` (`No event arrived; poll again immediately. After the third timeout in a row, stop polling: tell the user the page is still live (in the generate lane, that the variants wait there for Accept or Discard) and to tell you here once they act on it, then end your turn; the next live-poll collects whatever they did meanwhile.`), `exit` (`Session over: kill any background poll, then node <S>/live-server.mjs stop (removes the injected script tag). Sweep leftover impeccable-variants-start / impeccable-carbonize-start markers from source.`), `generate` (numbered steps: screenshot / scaffold branch (svelte-component: edit stubs `<dir>/v1.svelte…`, params in `params.json`, reply `--file <manifest>`; deferred wrapper: splice into `scaffold.wrapperBlock` and replace lines `replaceStartLine-replaceEndLine` in ONE edit; written wrapper: splice at `insertLine`; no scaffold: run `live-wrap.mjs --id … --count … --element-id "…" --classes "a,b" --tag "…" --text "<first ~80 chars>"`) / action reference / `When all N variants are delivered: node <S>/live-poll.mjs --reply <id> done --file <project-root-relative path you wrote>. Then poll again. If generation fails … reply --reply <id> error "Short reason" …`), `accept` (carbonize 5-step text; `Accept was merged into source mechanically; nothing to clean up. Poll again.`; fallback; `source_locked` retry; `accept_receipt_conflict`; generic error; manual merge). Prefix when ack failed: `Completion was NOT acknowledged: run node <S>/live-status.mjs, finish any cleanup, then node <S>/live-complete.mjs --id <id>. `
 
 #### `live-status.mjs` -> `impeccable status`
 - Invoked from live.md Recovery: `node {{scripts_path}}/live-status.mjs`. Args: `--target`. Works with server down.
@@ -2491,12 +2500,9 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
-- `impeccable loop connect` gives each detected agent (Claude Code, Codex) the
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
-  (see **The Impeccable block** below), the loop switch's line: "When you
-  need a person's decision or input, use needs_you.post (Impeccable) instead of
-  asking in chat or a built-in question tool. If needs_you says Loop isn't
-  connected, ask normally." An installation an older CLI made, whose engine-managed
+  (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
   block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
   block through the engine on the next connect, and the line moves into the
   Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets
@@ -2515,6 +2521,53 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   still counts as connect's own. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
   server in place, printing the command that removes it.
+- Cursor resolves `cursor-agent` (override: `IMPECCABLE_CURSOR_BIN`) and uses
+  `~/.cursor`, with no config-root override. The engine merges the HTTP server into
+  `mcp.json` and `Mcp(impeccable:*)` into `cli-config.json`'s `permissions.allow`.
+  Connect runs `cursor-agent mcp enable impeccable`; sign in manually with
+  `cursor-agent mcp login impeccable`. Disconnect restores the original files,
+  retaining a pre-existing server and unrelated edits. `cursor-install.json` holds
+  `enabled`, `harness: "cursor"` and the resolved executable, without `configDir`.
+  From the provisional `CLI_WAKE` gate (0.2.0), `hooks.json` gets flat
+  `sessionStart` and `afterMCPExecution` entries (10 seconds), and `stop`
+  (3600 seconds, explicit `loop_limit: null`). Older bundles get no Cursor hooks;
+  status reports `hooks: false`, `hooksRequired: false` and the manual sign-in step.
+  The Loop and optional taste lines use `rules/impeccable.mdc`, created with
+  `alwaysApply: true` front matter. A rule file and directory created by connect
+  disappear when empty again; pre-existing files and directories stay.
+- GitHub Copilot CLI resolves `copilot` (override: `IMPECCABLE_COPILOT_BIN`)
+  and uses `$COPILOT_HOME`, else `~/.copilot`. Its engine-journaled
+  `mcp-config.json` entry is `{type: "http", url: <mcp_url>, tools: ["*"]}`;
+  existing servers stay intact. Sign-in happens on first use, with no CLI command.
+  From the same provisional `CLI_WAKE` gate as Cursor (0.2.0), the dedicated
+  `hooks/impeccable-loop.json` contains version 1 with flat `sessionStart`,
+  `postToolUse` and `agentStop` command entries. They use `bash` and `timeoutSec`
+  (10, 10 and 3600 seconds). Older Loop bundles get no hooks. The engine journals
+  a newly created `hooks/` directory for undo and interrupted-install recovery;
+  existing or nonempty directories stay. The rule block lives in
+  `copilot-instructions.md`; `copilot-install.json` uses the same Global layout
+  as Cursor, without `configDir`. No tool approval setting can be written.
+  Connect and status print: In each repo, answer "Yes, and don't ask again" for
+  Impeccable's tools once; then Copilot wakes by itself.
+- opencode resolves `opencode` (override: `IMPECCABLE_OPENCODE_BIN`) and uses
+  `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`. Its journaled
+  `opencode.json` entry is `mcp.impeccable: {type: "remote", url: <mcp_url>,
+  enabled: true}`; `$schema`, other servers and unrelated settings stay intact.
+  When only `opencode.jsonc` exists, connect leaves it unread and unchanged,
+  prints a manual step to add the server there, and continues. Status reports
+  that MCP setup as `manual`; sign-in happens on first use.
+  From the same provisional `CLI_WAKE` gate, the engine owns
+  `plugin/impeccable-loop.ts` and journals its newly created parent directory.
+  The plugin uses the guarded helper command, maps session ids to UUIDs,
+  registers Needs you tool output, and continues idle sessions with
+  `client.session.promptAsync` when the helper returns a reason. Older Loop
+  bundles get no plugin. The plugin is restored or removed on disconnect;
+  edited plugins are preserved and reported as conflicts.
+  Connect writes Loop and optional taste lines to `AGENTS.md` only when it
+  already exists, preserving opencode's fallback to `~/.claude/CLAUDE.md`.
+  Status reports `instructionRequired: false` when that file is absent.
+  No tool approval is written. `opencode-install.json` uses the Global record
+  layout (`enabled`, `harness`, `executable`), without `configDir`.
 - After a successful `impeccable loop install`, the agents are connected only
   when asked: `--connect` runs `loop connect` at once; a person at a terminal
   (stdin and stdout both terminals) is asked `Connect Claude Code and Codex to
@@ -2571,17 +2624,19 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.
 - **The Impeccable block** (REN-2056). Each switch that is on adds one fixed,
-  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together stay under about 300 tokens), between
+  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together are 1,448 bytes, about 362 tokens at four bytes per token), between
   `<!-- impeccable start -->` and `<!-- impeccable end -->` in the rule file the agent
   reads: `CLAUDE.md` in the Claude config folder (`$CLAUDE_CONFIG_DIR` when set), and
   for Codex `AGENTS.override.md` in `CODEX_HOME` when it exists, else `AGENTS.md`.
+  Earlier taste and Loop catalog wording reads as those switches being on and
+  is replaced by the current wording on the next write through `ALIASES`.
   A line the engine doesn't know is kept, after the known ones. When no switch is
   left on, the block goes. The pre-REN-2056 taste block (`<!-- impeccable:taste -->`
   to `<!-- /impeccable:taste -->`) reads as the taste switch being on and is replaced
   by the Impeccable block where it stood on the first write. **Taste:** after a connect (text, `--agent`, `--json`, the one after
   `loop install`, or a yes to login's offer), each agent the engine now holds a
   committed installation for is offered the taste line, telling the agent to call the
-  MCP's `taste.get` once per task and record design calls with `taste.note`. It never
+  MCP's `taste.get` with the task focus (web, slides or motion), or `impeccable taste --focus <kind>` without MCP, once per task; retain its rev for `since` while the rules stay in context, and record choices or corrections with `taste.note` or `impeccable taste note`. It never
   holds rules, taste or ids. A file whose taste line is there is brought up to date
   in place (no question).
   A file with no recorded answer is asked about once, for all such files
@@ -2627,14 +2682,14 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   only that macOS is blocking Loop and to run `impeccable loop update`.
   The JSON form is `{loop:{installed, version, blocked}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
-- `impeccable loop connect --agent claude|codex` connects only that agent. Its text
+- `impeccable loop connect --agent claude|codex|cursor|copilot|opencode` connects only that agent. Its text
   report keeps the sign-in and follow-up lines. An agent CLI's own output goes
   to stderr, so stdout carries the report or the one JSON object and nothing else.
   `--json` never prompts and prints one object on stdout,
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
-- `impeccable loop connect --mcp-only [--agent claude|codex] [--json]` gives each
+- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]` gives each
   detected agent (or the one named) the `impeccable` MCP server and nothing else:
   no hooks, no instruction or taste block, no Loop records, and no platform check,
   so it works on any OS without the Loop app. The server URL comes from the
@@ -2924,8 +2979,9 @@ runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
-has a two-second deadline, no retries and no terminal messages. A 404 or any
-other failure leaves the health request, detect output and exit code intact.
+has a two-second deadline and no retries. Every successful upload names its
+Foundations page; failures print one `Not saved to Impeccable:` line with a next
+step. A failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
@@ -3048,7 +3104,7 @@ has a two-second elapsed-time budget, no retries; busy upload or lifecycle
 locks skip it. Credential and file/git preparation run in bounded read workers
 that cannot upload. HTTP connect/read timeouts are capped at the remaining
 budget. DNS resolution remains synchronous and unbounded in ureq.
-A 404 is quietly deferred, as are all other failures.
+A failed POST prints `Not saved to Impeccable:` with a reason and a step to try again.
 
 The upload takes a consistent, generation-matched state/credential snapshot
 under the lifecycle lock without waiting or prompting. An expired token can be
@@ -3119,12 +3175,12 @@ Status reports the saved preference, independent of sign-in or CI.
 
 After a successful `critique-storage write`, the CLI makes at most one
 best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
-the storage verb's exit code. The first successful upload per sign-in appends
-N2 to the critique-storage write step's stdout. `--json` (including `-json`),
-`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+the storage verb's exit code. Every successful upload prints its page link;
+the first per sign-in also explains how to stop uploads. `--json` (including `-json`),
+`--quiet` and `--github` suppress the notice without marking it shown; JSON carries the page URL as `savedTo`. A login-keyed
 marker in the account store prevents repeats; a new sign-in hears it again.
 If saving the marker fails, the notice still prints and the upload is kept. It never
-uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+uploads from hooks, reads, closes or disabled reports. Audit writes upload too. CI,
 telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
 preferences skip uploads. Credential reads share the two-second budget and
 never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
@@ -3136,26 +3192,78 @@ Connection and read timeouts are capped at the remaining request budget.
 ureq's synchronous DNS lookup remains unbounded.
 Native projects follow the same report-save path.
 
+After a successful critique or audit upload, a signed-in person with health
+uploads enabled gets a detached whole-repository `detect . --quiet` refresh
+of Design health and Foundations, when the report's project is inside git.
+The CLI records the attempt before spawning and starts at most one per
+repository top in 24 hours, including failed attempts. The refresh and its
+failures are silent and do not change the save command's output or exit code.
+
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
-`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`na`, and `counts`. Optional `title` is the observed page title or first h1:
+collapse Unicode whitespace runs, remove Unicode Cc/Cf characters, trim, and
+cap at 120 Unicode code points. Empty or non-string titles are omitted.
+Optional `heuristics` is an array of `{n,score}` with integer `n` 1–10 and
+integer `score` 0–4, excluding N/A heuristics. Invalid entries and duplicate
+indices are dropped. Non-array heuristics are omitted. Optional `p2_count`
+and `p3_count` must be integers 0–100; invalid counts are dropped. These
+cleaned fields persist in snapshot frontmatter (heuristics as a JSON array)
+and appear in trend reads. Payload v1 sends `title` when known, `heuristics`,
+and `counts.p0` through `counts.p3`; missing heuristic detail or optional
+counts remain null. Both metadata environment variables accept these fields.
 `body` is passed separately to the save callback, never recovered from
 frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
 inputs must be regular files, never final symlinks or reparse points, with a
 64 KB size check on the opened handle before reading and a bounded read to
 catch growth. Absolute temporary files outside the project remain valid.
-Encoded upload requests over 80 KB are silently skipped.
+Encoded upload requests over 80 KB print `Not saved to Impeccable: the report is over 80 KB; save a shorter report`.
 
 The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
 admission and the entire POST with `on`, `off` and `forget`. An uploader
 does not wait for this lock; preference commands wait at most three seconds.
 After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
+With a repo key, the upload also names where the critique ran (REN-2377), so a
+critique of a checked-out pull request files under it: `headSha` (HEAD's commit,
+40 or 64 lowercase hex, once the repository has a commit), `branch` (the
+checked-out branch's short name from git, left out when HEAD is detached) and
+`pr` (the critique meta's optional `pr`, a number or `#`-prefixed digits
+from 1). The top, commit and branch come from one `git rev-parse` within the
+existing 150 ms; before the first commit the top is asked for alone.
+
+Optional critique meta `url` names the http(s) page viewed and is never sent in
+the critique payload. A successful upload starts the silent, detached
+`critique-frames` worker, given the critique's id and the sign-in it uploaded
+under; it captures nothing for any other sign-in.
+Within a single 20-second budget it captures desktop 1440×900 and phone 390×844
+viewport WebPs (quality 80, one lower-quality retry if over 300 KB). Failed
+loads, documents answered with a non-2xx status, redirects to another origin
+or path (query/hash changes are allowed), and frames still over 300 KB are
+dropped. Every request below rechecks that sign-in, `critiques:write` and the
+upload opt-outs under the critiques upload lock and sends while holding it,
+for two seconds at most like a report upload, so
+`critiques off` or `forget` stops the next one. Each frame reserves with
+`POST /cli/v1/critiques/captures` (`sha256`, `bytes`, `contentType`),
+optionally uploads with an authenticated WebP POST to the returned
+`uploadUrl` with exact Content-Length, then successful keys attach through
+`POST /cli/v1/critiques/{critiqueId}/captures` with viewport, dimensions and
+optional cleaned title as `label`. No attach is sent without a successful
+frame. Errors are best effort; 429 stops the job, 404 on attach ends it,
+and the deadline stops further requests. Saving, receipt lines and JSON
+output do not wait for or change with frames.
+
 Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
-is sent as optional `label`, using design health's label recipe. Local-only
-repos and invalid names omit `label`. No label is sent without a repo key.
+is sent as optional `label`, using design health's label recipe; a repo with
+no remote sends its folder's name. Invalid names omit `label`. No label is sent
+without a repo key. A repo with no remote also sends optional `place`: its parent
+folder's name only (never a path), cleaned like `label` and at most 60
+characters, so two clones with one name can be told apart (REN-2313). It is
+left out when the parent is the home folder, whose name is usually the
+person's login. Design health, foundations and design uploads send `place` by
+the same rule.
 
 After a variant accept that succeeds (`live-accept --variant N`, directly or
 through `live-poll`, including a receipt replay; never `--discard`), the CLI
@@ -3183,14 +3291,67 @@ The CLI reads standing design preferences with
 GET /cli/v1/taste?limit=12 at the account issuer, using its bearer token and
 the taste:read scope. OAuth requests that scope only when scopes_supported
 advertises it. The saved sign-in state records the granted scope as taste.
-There is no taste write path. The CLI ignores the response's say and page.
+The cache retains the sanitized `say` line for foreground reads and ignores `page`.
 
-The hidden taste-refresh verb accepts no arguments, prints nothing and exits
+`impeccable taste [--focus web|slides|motion] [--since <rev>] [--json]`
+is the foreground equivalent of `taste.get` for agents without MCP. It
+revalidates the requested slice using the same account session, conditional
+GET, repository resolution, locks, fallback and cache as the worker. Text
+prints personal rules, repository rules, the server's `say` line and
+`rev: <revision>`. JSON prints `{state, rules, repositoryRules, say, rev, paused}`. When the person paused their own taste but the repository's rules are served (`state: "ready"`, `paused: true`), text output starts with "Your own taste is paused; these are this repository's rules."
+The revision is the exact ETag, including quotes if present; a response
+without ETag uses the hex SHA-256 of the sanitized state/rules/repositoryRules/
+say tuple. `--since` is compared locally after revalidation. If unchanged,
+text prints `Taste rules are unchanged (rev: <rev>).` and JSON prints
+`{unchanged:true, rev}`, with no repeated rules. Existing caches missing
+say/rev are fetched without a validator once to upgrade them.
+An invalid or missing focus names `web, slides or motion` and exits 1.
+Signed out or without read access, stderr directs the person to
+`impeccable login` and exits 1. With taste disabled by the environment or
+saved consent, or a paused response, stdout prints `Taste is off.` and exits
+0 (`--json` prints that line as a JSON string). Network failures report an
+error without presenting stale rules.
+
+`context [--target <path>] [--command <verb>] [--focus web|slides|motion]` uses explicit focus first, then derives taste focus from the
+existing target and resolved surface brief: deck/slides/pptx/keynote signals
+select `slides`, animation/motion/lottie signals select `motion`; `--command
+animate` also selects `motion`. Otherwise a web platform, web implementation,
+URL/route or web source target selects `web`. Native and unknown tasks send no
+focus. The optional `--command` carries the active skill verb, which context
+previously did not receive (so a web page's animation task can request motion).
+The detached read sends `focus=web|slides|motion` when known, and
+`repository=owner/name` when cwd's origin resolves to GitHub, using the same
+bounded remote read and SSH-alias normalization as uploads. A 400 `{error:
+"focus"}` retries without focus or a focused ETag, for older servers.
+Whole taste uses `taste.json`; slices use `taste-web.json`, `taste-slides.json`
+and `taste-motion.json`. A fallback whole response is saved in the requested
+slice. Each cache's repository identity gates its ETag and refresh freshness;
+context appends sanitized `repositoryRules` after personal rules only when
+the cache belongs to the current repository. All slices share the existing
+issuer, sign-in, private-write and lifecycle lock rules, including clearing
+all of this issuer's slices on logout, sign-in or read-scope revocation.
+
+`impeccable taste note --chose <text> --rule <text> [--over <text>]
+[--repository owner/name] [--event <id>] [--json]` posts exactly `event`,
+`chose`, `rule`, and supplied optional `over` and `repository` fields to
+`POST /cli/v1/taste/calls`. Repository defaults to cwd's GitHub origin.
+Without `--event`, the event is the hex SHA-256 of a JSON tuple of chose,
+rule, over (null if absent), and repository (null if absent), making reruns
+idempotent. Client limits are 120 characters for event, 200 for chose/over,
+240 for rule and 201 for repository; required values must be nonempty and
+repository must be owner/name. Validation errors exit 1 before sending.
+This uses CLI sign-in with `taste:write` and the server's usual plan/TASTE
+gates. Missing sign-in/scope or a 403 directs the person to `impeccable login`.
+Successful outcomes print one line: `recorded`, `already recorded`,
+`paused (taste capture is paused for your account)`, or `full`. `--json`
+prints the server outcome object. `IMPECCABLE_NO_TASTE` disables notes too.
+
+The hidden taste-refresh verb accepts optional `--focus web|slides|motion`, prints nothing and exits
 0. It loads credentials through the non-interactive worker session path,
 including during token renewal, and silently skips credentials needing approval.
 It uses the ordinary authenticated request helper and request timeouts. A version 1 response in ready, empty, paused or plan
 state is cached at <impeccable home>/taste.json, honoring IMPECCABLE_HOME.
-Only ready responses retain rules. The cache contains version, fetchedAt
+Only ready responses retain rules. The cache also records repository, sanitized repositoryRules and say, and rev. It contains version, fetchedAt
 (Unix seconds), etag, issuer, state and at most 12 rules with id, text and
 direction. Writes use a private atomic replacement (0600 on Unix). Control
 characters are dropped, whitespace collapsed, text trimmed and capped at
@@ -3199,7 +3360,7 @@ letters, digits, underscores and hyphens are skipped.
 
 The service sends ETag, Cache-Control: private, no-cache and Vary:
 Authorization. The worker
-sends If-None-Match only for a cache from the same issuer. A 304 changes only
+sends If-None-Match only for a cache from the same issuer and repository. A 304 changes only
 fetchedAt. A 404 or 403 deletes the cache silently. Network failures, other
 statuses and malformed responses preserve it. A 200 in paused, plan or empty
 state replaces the cache at once, so the next boot prints none of the old
@@ -3218,7 +3379,7 @@ The router's ordinary entrypoint allowlist, including context, schedules
 taste-refresh detached when saved state says signed in with taste and the
 cache is absent or fetchedAt is more than 60 seconds old, so every session
 start revalidates and a pause, reset or deleted rule takes effect from the
-next session start. This gate reads saved state and the small cache only,
+next session start. This gate reads saved state, the bounded local git origin and the small cache,
 with no keychain or network access. CI suppresses scheduling (an explicit
 taste-refresh still runs). A telemetry opt-out does not stop the read: it
 fetches only the person's own preferences.
@@ -3297,7 +3458,12 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   notifications get no reply.
 - **Start never opens a browser.** Signed out or unreachable, `initialize`
   answers locally with the client's protocol version.
-- **Sign-in again.** When a `tools/list` or `tools/call` meets a sign-in that
+- **A signed-out list waits on nothing.** A `tools/list` that meets no sign-in
+  answers at once: the local tools (the browser's, `artifact.asset`) and one
+  more, `impeccable_sign_in`. Calling it is the sign-in below; once it works,
+  the agent gets one `notifications/tools/list_changed` and lists Impeccable's
+  tools.
+- **Sign-in again.** When a `tools/call` meets a sign-in that
   is gone or lacks a scope (no sign-in, refresh refused, 401 or 403), the call
   is held: a `notifications/progress` with `Waiting for you to approve in the
   browser` (only when the request carried a `progressToken`), the CLI's
@@ -3305,8 +3471,9 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   per machine at a time (a lock file under the account's own directory); a
   second agent's call waits for it. Not approved
   within five minutes: a tool error result (`isError: true`) saying so.
-- **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, or Linux without
-  `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
+- **No browser** (`SSH_CONNECTION` or `SSH_TTY` set, `IMPECCABLE_NO_BROWSER`
+  set to `1`, `true`, `yes` or `on` as `impeccable login` reads it, or Linux
+  without `DISPLAY`/`WAYLAND_DISPLAY`): no wait, and the tool error result is the one
   line ``Sign in again: run `impeccable login` ``.
 - **Each agent its own asker.** Every agent on the machine shares the CLI's
   one sign-in, so a `needs_you.*` call whose arguments carry no `from` is sent
@@ -3397,3 +3564,29 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
 ## Pro before it's on sale (17 Nov 2026)
 
 Until Pro is on sale, the CLI names Pro only to an account that has it. An account without Pro gets no Pro or pricing line: none from `login`, `whoami` or install's sign-in offer, no `Pro rules are off: this account doesn't include them` line on a scan, no `needs-pro` place and no `upgrade` next step among the setup lines. A world that needs Pro still says so when someone asks for it.
+
+### Upload page receipts
+
+Every successful upload prints `Saved to Impeccable: <url>`. The link is the
+http(s) `url` the service's answer names when it names one (REN-2343), else a
+page built here: foundations use `/-/foundations?repo=<encoded uploaded label>`
+(without a label, `/-/foundations`), health counts use `/-/design-health`,
+DESIGN.md uses `/-/design`, and critiques, audits and prototypes use
+`/-/critiques`, relative to the account's known app home. Custom services without
+a known app home cannot supply a derived page link.
+
+`--json` / `-json` adds `savedTo` to the output object instead of printing a
+receipt. A detect findings array becomes an object with `findings` and
+`savedTo` when a page was saved; without a saved page its shape is unchanged.
+Successful local report writes always return a JSON object with `path`, even
+when signed out, opted out or unable to upload; `savedTo` is optional. With reports
+turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
+"message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
+`savedTo` prefers Foundations. `live-poll --json` streams unbuffered, so it
+records an accepted variant before writing that accept event (waiting two
+seconds at most, even if DNS stalls) and puts the page on it as `savedTo`;
+plain `live-poll` keeps the accept last and prints the receipt on stderr.
+`--quiet` and `--github` suppress receipts.
+Failures say what could not be saved and how to try again; nothing is queued
+for retry. A telemetry opt-out prints its effective setting and how to turn
+saving back on, once per project per day. Signed-out hints stay unchanged.

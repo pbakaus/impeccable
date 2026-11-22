@@ -205,16 +205,16 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
 }
 
 #[test]
-fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
-    // Catches: nagging on every scan when the scope was declined, and a forgotten trend restarting on the next scan.
+fn a_denied_scan_reports_each_failure_and_forget_turns_sync_off() {
+    // Each failed upload says why it did not land; forget must still stop future uploads.
     let (fake, env) = signed_in("health-forget");
     let root = repo(&env, None);
     fake.knobs.lock().unwrap().health_denied = true;
     let first = run(&env, &root, &["detect", "."]);
     let second = run(&env, &root, &["detect", "."]);
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
+    let hint = "Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.";
     assert!(String::from_utf8_lossy(&first.stderr).contains(hint));
-    assert!(!String::from_utf8_lossy(&second.stderr).contains(hint));
+    assert!(String::from_utf8_lossy(&second.stderr).contains(hint));
     // A repo without a remote keeps a random id outside the work tree:
     // nothing is written into the repo, whose files it controls (review F4).
     assert!(!root.join(".impeccable").exists());
@@ -305,7 +305,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     assert!(String::from_utf8_lossy(&loud.stderr).contains(notice));
 
     fake.knobs.lock().unwrap().health_denied = true;
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
+    let hint = "Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(hint));
     let loud = run(&env, &root, &["detect", "."]);

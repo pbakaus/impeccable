@@ -35,6 +35,42 @@ describe('agent host', () => {
   });
 });
 
+// The decider, 15 Nov: the person's own agent may use our staging app, but never its pages that sign in, consent,
+// mint or revoke a credential, hold the account or billing, or answer Needs you; never production; never for a persona.
+describe('agent on our staging app', async () => {
+  const { isOwnPage, verdict } = await import('../extension/walks/guard.js');
+  const STAGING = 'https://app.staging.impeccable.style';
+  it('opens the staging app for an agent, and none of its sensitive pages, however the path is written', () => {
+    for (const path of ['/app/acme', '/app/acme/runs/r1', '/app/-/worlds', '/app/acme/personas/mira', '/app/-/me', '/app/acme/apps/web']) assert.equal(isOwnPage(`${STAGING}${path}`, true), false, path);
+    for (const path of ['/app/login', '/app/logout', '/app/oauth/authorize', '/app/cli/authorize', '/app/-/account', '/app/-/account/grants', '/app/acme/account', '/app/-/billing/checkout',
+      '/app/acme/setup', '/app/-/setup', '/app/acme/needs-you', '/app/-/needs-you', '/app/acme/api/setup-token', '/app/acme/api/needs-you/answer', '/app/-/api/needs-you/answer',
+      '/app/-/me/agent', '/app/-/me/trial', '/billing/portal/1', '/app/ACME/Account', '/app/acme//account', '/app/%61cme/%61ccount', '/app/acme/account/', '/join',
+      '/app/-/team', '/app/-/team/invite', '/app/-/team/seat', '/app/-/invites/accept', '/app/-/join', '/app/-/connect', '/app/discord/connect', '/app/-/terms/accept', '/app/acme/api/terms/accept',
+      '/app/acme/api/account/identity', '/app/acme/api/repos/web/preview-auth/basic', '/app/acme/api/repos/web/before-sign-in', '/app/acme/-/rpc/account', '/pro/welcome', '/cli/v1/x', '/mcp']) {
+      assert.equal(isOwnPage(`${STAGING}${path}`, true), true, path);
+    }
+  });
+  it('refuses a write to a refused page from an allowed one, and lets the app’s own work through', () => {
+    const write = (path) => verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}${path}`, method: 'POST' } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([write('/app/acme/api/needs-you/answer'), write('/app/acme/api/setup-token'), write('/app/acme/api/attention/put-off')], ['refuse', 'refuse', 'continue']);
+    // A refused page is refused to a script's or a frame's GET too (some act: sign out, a billing portal), and blocked as the page.
+    const ask = (path, resourceType, method = 'GET', frameId = 'main') => verdict({ resourceType, frameId, request: { url: `${STAGING}${path}`, method } }, 'main', [STAGING], [STAGING], true);
+    assert.deepEqual([ask('/app/logout', 'Fetch'), ask('/billing/portal/1', 'Document', 'GET', 'sub'), ask('/app/acme/-/rpc/account', 'XHR'), ask('/app/-/account', 'Document'), ask('/app/acme/runs', 'Fetch')],
+      ['refuse', 'refuse', 'refuse', 'block', 'continue']);
+    // Pages the agent may look at, never write to: an app's credentials and test accounts (form actions in the query),
+    // a repository taken out, the person's notifications, support and Home.
+    assert.deepEqual([ask('/app/acme/apps/web?/accountEdit', 'Document', 'POST'), ask('/app/acme/apps/web/site?/lock', 'Fetch', 'POST'), ask('/app/acme/repos?/remove', 'Fetch', 'POST'),
+      ask('/app/-/notifications', 'Fetch', 'POST'), ask('/app/-/support', 'Fetch', 'POST'), ask('/app/acme/apps/web', 'Document'), ask('/app/-/me', 'Document')], ['block', 'refuse', 'refuse', 'refuse', 'refuse', 'continue', 'continue']);
+    // A persona walk's reads are as they were.
+    assert.equal(verdict({ resourceType: 'Fetch', frameId: 'main', request: { url: `${STAGING}/app/logout`, method: 'GET' } }, 'main', ['http://localhost:3000'], ['http://localhost:3000']), 'continue');
+  });
+  it('keeps production, the API and admin hosts, http and other ports, and every persona walk refused', () => {
+    for (const url of ['https://app.impeccable.style/app/acme', 'https://api.staging.impeccable.style/mcp', 'https://admin.staging.impeccable.style/admin/today', 'https://staging.impeccable.reviews/app/acme',
+      'http://app.staging.impeccable.style/app/acme', 'https://app.staging.impeccable.style:8443/app/acme']) assert.equal(isOwnPage(url, true), true, url);
+    assert.equal(isOwnPage(`${STAGING}/app/acme`), true, 'a persona walk');
+  });
+});
+
 describe('agent session', () => {
   const listeners = {};
   const event = (name) => ({ addListener(callback) { (listeners[name] ??= []).push(callback); } });
@@ -83,6 +119,8 @@ describe('agent session', () => {
   globalThis.createImageBitmap = async () => ({ close() {} });
   globalThis.OffscreenCanvas = class { getContext() { return { drawImage() {} }; } async convertToBlob() { return new Blob(['x']); } };
   const tabs = { created: 0, removed: [] };
+  /** What Chrome shows outside the panel: the toolbar badge and the notices. */
+  const shown = { badge: '', notices: new Map() };
   const panel = { windows: [], opened: [], closed: [] };
   globalThis.chrome = {
     runtime: {
@@ -102,7 +140,8 @@ describe('agent session', () => {
       },
     },
     alarms: { create() {}, onAlarm: event('alarm') },
-    action: { async setPopup() {}, async setBadgeText() {}, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    action: { async setPopup() {}, async setBadgeText({ text }) { shown.badge = text; }, async setBadgeBackgroundColor() {}, async setTitle() {} },
+    notifications: { async create(id, options) { shown.notices.set(id, options); }, async clear(id) { shown.notices.delete(id); }, onClicked: event('notice-clicked') },
     debugger: {
       onEvent: event('debugger-event'), onDetach: event('detach'), async attach() {}, async detach() {},
       async sendCommand(_target, method, params) { sent.push(method); args.push(params); return (answers[method] ?? (() => ({})))(params); },
@@ -114,7 +153,7 @@ describe('agent session', () => {
       async group() { return 5; }, async remove(id) { tabs.removed.push(id); }, async update() {},
     },
     tabGroups: { async update() {}, async get() { return { title: 'Impeccable · Claude Code' }; } },
-    windows: { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; } },
+    windows: { async get() { return { focused: true, state: 'normal', width: 800, height: 600 }; }, async getLastFocused() { return { id: 7 }; } },
     sidePanel: { async open({ windowId }) { panel.opened.push(windowId); }, async close({ windowId }) { panel.closed.push(windowId); }, async setPanelBehavior() {}, async setOptions() {} },
     webNavigation: { frames: [{ frameId: 0, parentFrameId: -1 }], async getAllFrames() { return this.frames; } },
     scripting: { async executeScript({ func }) { return ['coverSecrets', 'coverHolds', 'blankFields'].includes(func?.name) ? [{ frameId: 0, result: 0 }] : []; } },
@@ -159,10 +198,22 @@ describe('agent session', () => {
     const asked = call('browser_open', { url: 'https://linear.app/acme' });
     await until(() => current().ask?.kind === 'site', 'the question');
     assert.deepEqual([current().state, current().ask.what, current().who.name, tabs.created], ['waiting', 'linear.app', 'Claude Code', 0]);
+    // Seen while the person is elsewhere: a notice, and a mark on the icon, until it's answered.
+    assert.deepEqual([[...shown.notices.values()].map((n) => n.title), shown.badge], [['Let Claude Code use linear.app?'], '?']);
+    // A click on the notice is the person's press: the panel opens in the agent's window, the notice goes, and nothing
+    // is answered. Another notice's click does nothing here.
+    const opens = panel.opened.length;
+    for (const listener of listeners['notice-clicked']) listener('someone-else');
+    await turn();
+    assert.equal(panel.opened.length, opens);
+    for (const listener of listeners['notice-clicked']) listener('impeccable-agent-site');
+    await until(() => panel.opened.length > opens, 'the panel to open');
+    assert.deepEqual([panel.opened.at(-1), shown.notices.size, current().ask?.kind], [1, 0, 'site']);
     // A Yes isn't one of a site question's answers: nothing opens on it.
     assert.deepEqual(await press('yes'), { ok: false });
     assert.deepEqual(await press('no'), { ok: true });
     const result = await asked;
+    assert.deepEqual([shown.notices.size, shown.badge], [0, '']);
     assert.equal(result.isError, true);
     assert.match(said(result), /didn’t allow linear\.app/);
     assert.equal(tabs.created, 0);
@@ -326,6 +377,41 @@ describe('agent session', () => {
     await session();
     assert.deepEqual([panel.opened.slice(opens), panel.closed.slice(closes), current()], [[], [], empty]);
     panel.windows = [];
+    toExtension({ type: 'agent-gone' });
+  });
+
+  // Through the driver, not the guard alone: an agent's session opens our staging app, and the guard holds its
+  // refused pages there, as a held request and as a move the agent asks for.
+  it('drives our staging app through the driver, and holds its refused pages there', async () => {
+    const { current } = await loaded;
+    const opening = call('browser_open', { url: 'https://app.staging.impeccable.style/app/acme' });
+    await until(() => current().ask?.kind === 'site', 'the question');
+    assert.equal(current().ask.what, 'app.staging.impeccable.style');
+    await press('once');
+    const opened = await opening;
+    assert.equal(opened.isError, undefined, said(opened));
+    const at = sent.length;
+    const ask = (requestId, path, method = 'GET') => fire('Fetch.requestPaused', { requestId, resourceType: 'Document', frameId: 'main', request: { url: `https://app.staging.impeccable.style${path}`, method } });
+    ask('account', '/app/-/account');
+    ask('runs', '/app/acme/runs');
+    ask('lock', '/app/acme/apps/web?/lock', 'POST');
+    await until(() => sent.slice(at).filter((m) => m.startsWith('Fetch.')).length >= 3, 'all three answered');
+    const answered = Object.fromEntries(args.slice(at).map((p, i) => [p?.requestId, sent[at + i]]).filter(([id]) => id));
+    assert.deepEqual([answered.account, answered.runs, answered.lock], ['Fetch.failRequest', 'Fetch.continueRequest', 'Fetch.failRequest']);
+    const refused = await call('browser_act', { op: 'goto', url: 'https://app.staging.impeccable.style/app/-/account' });
+    assert.equal(refused.isError, true);
+    // What the Fetch hold doesn't see (a frame in its own process, a worker, a popup) meets Chrome's own rules for the
+    // same pages while the session lasts: the refused ones for every method, the look-only ones for writes.
+    const staging = () => chrome.declarativeNetRequest.rules.filter((r) => r.id >= 20550);
+    await until(() => staging().length > 0, 'the staging rules');
+    // A host written with its trailing dot is the same host: the rules hold it too.
+    assert.ok(staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test('https://app.staging.impeccable.style./app/-/account')));
+    const caught = (url, method) => staging().some((r) => new RegExp(r.condition.regexFilter, 'i').test(url) && (!r.condition.requestMethods || r.condition.requestMethods.includes(method)));
+    assert.deepEqual([caught('https://app.staging.impeccable.style/app/acme/api/setup-token', 'get'), caught('https://app.staging.impeccable.style/app/acme/runs', 'post'),
+      caught('https://app.staging.impeccable.style/app/acme/apps/web?/lock', 'post'), caught('https://app.staging.impeccable.style/app/acme/apps/web', 'get'),
+      staging().some((r) => r.condition.tabIds && r.condition.resourceTypes.includes('main_frame'))], [true, false, true, false, false]);
+    await call('browser_end');
+    await until(() => staging().length === 0, 'the staging rules to go');
     toExtension({ type: 'agent-gone' });
   });
 

@@ -12,8 +12,12 @@ use std::time::Instant;
 /// stderr when it couldn't save, since stdout is the accept's JSON.
 /// `accepted_at` is the first accept's time, so a replay records the same moment.
 pub fn after_accept(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64)) {
-    if let Some(reason) = upload(io, session_id, root, target, variants, accepted_at) {
-        io.err(&format!("Prototype not saved to Impeccable: {reason}\n"));
+    after_accept_quiet(io, session_id, root, target, variants, accepted_at, false);
+}
+
+pub fn after_accept_quiet(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64), quiet: bool) {
+    if let Some(reason) = upload(io, session_id, root, target, variants, accepted_at, quiet).filter(|_| !quiet) {
+        io.err(&format!("Not saved to Impeccable: {reason}. Run it again to save it.\n"));
     }
 }
 
@@ -47,38 +51,47 @@ fn body(session_id: &str, root: &Path, target: &str, variants: u64, (at, at_ms):
     }))
 }
 
-fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64)) -> Option<String> {
+fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u64, accepted_at: (&str, i64), quiet: bool) -> Option<String> {
     let started = Instant::now();
     let signed_in = match ready(io, Some(root)) {
         Ok(signed_in) => signed_in,
+        Err(Stop::OptOut) => {
+            if !quiet {
+                if let Some(line) = crate::critiques::opt_out_nudge(io, root) { io.err(&line); }
+            }
+            return None;
+        }
         Err(stop) => return stopped(stop),
     };
     let mut body = body(session_id, root, target, variants, accepted_at)?;
     if let Some((key, _)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
         body["repoKey"] = key.into();
     }
-    let answer = match send(io, started, &signed_in, "/cli/v1/prototypes", body, false) {
+    let answer = match send(io, started, &signed_in, "/cli/v1/prototypes", body, quiet) {
         Ok((answer, _)) => answer,
         Err(stop) => return stopped(stop),
     };
     Some(match answer {
-        Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => return None,
+        Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
+            crate::receipt::saved(io, crate::receipt::landed(&v, crate::receipt::page(&signed_in.0, "critiques", None)), quiet);
+            return None;
+        },
         Ok(_) => "the account service gave an answer this version doesn't read; update with npx impeccable update".into(),
         Err(ApiError::Status { status: 401, .. }) => format!("your sign-in expired; {RELOGIN}"),
         Err(ApiError::Status { status: 403, .. }) => format!("this sign-in can't save prototypes; {RELOGIN}"),
         Err(ApiError::Status { status: 409, .. }) => "it was made before you deleted your critique history".into(),
         Err(ApiError::Status { status: 429, .. }) => "you've reached the upload limit".into(),
         Err(ApiError::Status { status: 400 | 413, .. }) => "the account service refused it; update with npx impeccable update".into(),
-        Err(e @ ApiError::Status { .. }) => format!("the account service had a problem ({e})"),
-        Err(ApiError::Network(e)) => e,
+        Err(ApiError::Status { .. }) => "Impeccable had a problem".into(),
+        Err(ApiError::Network(_)) => "Impeccable couldn't be reached".into(),
     })
 }
 
 fn stopped(stop: Stop) -> Option<String> {
     Some(match stop {
-        Stop::Silent | Stop::SignedOut(_) => return None,
+        Stop::Silent | Stop::OptOut | Stop::SignedOut(_) => return None,
         Stop::NoAccount(e) => e,
-        Stop::Slow => "the account service took too long".into(),
+        Stop::Slow => "Impeccable took too long to answer".into(),
         Stop::Unreadable => format!("your sign-in couldn't be read; {RELOGIN}"),
         Stop::Expired => format!("your sign-in expired; {RELOGIN}"),
         Stop::Switched => "you signed in or out while it was saving".into(),

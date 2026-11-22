@@ -14,6 +14,7 @@
 // closing, `browser_end`, the agent going away, the host going away, ten minutes idle, or an hour in all.
 import { AGENT, DEVICES, ops, stopOpening, walk, hooks } from './driver.js';
 import { askSite } from './control.js';
+import { sync as rulesNow } from './net-hold.js';
 import { isConsentPage, isOwnPage, webOrigin } from './guard.js';
 import { current, dispatch, onView } from './store.js';
 import { isLive } from './view.js';
@@ -77,7 +78,9 @@ async function alwaysSites() {
 async function mayUse(origin) {
   if (session.allowed.includes(origin)) return allow(origin);
   if (!askNext && (await alwaysSites()).includes(origin)) return allow(origin);
-  const said = await askSite(new URL(origin).host);
+  const host = new URL(origin).host;
+  const stopNotice = notice(host);
+  const said = await askSite(host).finally(stopNotice);
   if (said === 'once' || said === 'always') askNext = false;
   if (said === 'always') await chrome.storage.local.set({ [SITES_KEY]: [...new Set([...(await alwaysSites()), origin])] });
   if (said !== 'once' && said !== 'always') return false;
@@ -157,7 +160,7 @@ const hostPath = (url) => { try { const u = new URL(url); return `${u.host}${u.p
 async function open(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
-  if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isOwnPage(url, true)) return refused('Impeccable’s own pages don’t open for agents.');
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (walk?.agent) return go(url);
   if (isLive(current())) return refused('A journey is using the browser right now. Try again when it has finished.');
@@ -187,6 +190,24 @@ function endWaiting() {
   leavePanel();
 }
 
+/** The notice, and the icon's mark, while a site question waits: an agent asks while the person is elsewhere. */
+const NOTICE = 'impeccable-agent-site';
+function notice(host) {
+  void Promise.resolve(chrome.notifications?.create(NOTICE, { type: 'basic', iconUrl: chrome.runtime.getURL('icons/icon-128.png'), requireInteraction: true,
+    title: COPY.yourAgent.notice(session?.name, host), message: COPY.yourAgent.noticeHow })).catch(() => undefined);
+  void Promise.resolve(chrome.action.setBadgeText({ text: '?' })).catch(() => undefined);
+  return () => {
+    void Promise.resolve(chrome.notifications?.clear(NOTICE)).catch(() => undefined);
+    void Promise.resolve(chrome.action.setBadgeText({ text: '' })).catch(() => undefined);
+  };
+}
+// The person's click on the notice is their press: the side panel opens where the agent works, with the question.
+chrome.notifications?.onClicked.addListener((id) => {
+  if (id !== NOTICE) return;
+  void chrome.windows?.getLastFocused?.().then((w) => chrome.sidePanel.open({ windowId: panelBefore?.windowId ?? w.id })).catch(() => undefined);
+  void Promise.resolve(chrome.notifications.clear(NOTICE)).catch(() => undefined);
+});
+
 /** At the session's start: was the side panel open? If not, it opens for the run (where Chrome lets it). */
 async function notePanel() {
   if (panelBefore) return;
@@ -213,9 +234,11 @@ function leavePanel() {
 async function go(url) {
   const origin = webOrigin(url);
   if (!origin) return refused('Only http and https addresses open.');
-  if (isOwnPage(url)) return refused('Impeccable’s own pages don’t open for agents.');
+  if (isOwnPage(url, true)) return refused('Impeccable’s own pages don’t open for agents.');
   if (isConsentPage(url)) return refused(CONSENT_LINE);
   if (!(await mayUse(origin))) return refused(`The person didn’t allow ${new URL(origin).host}.`);
+  // Chrome's own rules for the newly allowed site are up before the tab goes there (net-hold.js).
+  await rulesNow();
   await ops.goto({ url, waitUntil: 'load', timeout: LOAD_MS });
   logged(COPY.yourAgent.opened(hostPath(url)));
   return page();

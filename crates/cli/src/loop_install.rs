@@ -13,7 +13,7 @@ use url::Url;
 const PINS: &str = include_str!("../loop-checksums.txt");
 const BASE: &str = "https://github.com/pbakaus/impeccable/releases/download";
 const APP: &str = "Impeccable Loop.app";
-const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex] [--taste|--no-taste] [--json]\n       impeccable loop connect --mcp-only [--agent claude|codex] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
+const USAGE: &str = "Usage: impeccable loop install [--version X.Y.Z] [--no-open] [--connect|--no-connect] [--taste|--no-taste]\n       impeccable loop update [--no-open]\n       impeccable loop connect [--agent claude|codex|cursor|copilot|opencode] [--taste|--no-taste] [--json]\n       impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]\n       impeccable loop status [--json]\n       impeccable loop disconnect\n";
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -348,7 +348,7 @@ pub(crate) fn run(args: &[String], io: &mut Io) -> i32 {
     }
 }
 
-/// `loop connect --mcp-only [--agent claude|codex] [--json]`: the MCP server alone, on any
+/// `loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]`: the MCP server alone, on any
 /// OS and without the Loop app, so no platform check, no hooks and no taste offer.
 fn run_mcp_only(args: &[String], io: &mut Io) -> i32 {
     let json = args.iter().any(|a| a == "--json");
@@ -361,7 +361,7 @@ fn run_mcp_only(args: &[String], io: &mut Io) -> i32 {
         ["connect"] => None,
         ["connect", "--agent", h] => Some(*h),
         _ => {
-            let e = format!("--mcp-only goes with loop connect [--agent claude|codex] [--json], and nothing else.\n{USAGE}");
+            let e = format!("--mcp-only goes with loop connect [--agent claude|codex|cursor|copilot|opencode] [--json], and nothing else.\n{USAGE}");
             if json {
                 io.out(&format!("{}\n", serde_json::json!({ "ok": false, "error": e.trim_end() })));
             } else {
@@ -562,7 +562,7 @@ fn connect_answer(bytes_read: usize, line: &str) -> bool {
         && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
 }
 
-/// `loop status --json` and `loop connect [--agent claude|codex] --json`. `None` when
+/// `loop status --json` and `loop connect [--agent claude|codex|cursor|copilot|opencode] --json`. `None` when
 /// the arguments are not one of those, so usage errors read as usual.
 fn run_json(
     args: &[String],

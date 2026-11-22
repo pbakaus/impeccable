@@ -1,5 +1,5 @@
 {
-  "stdout": "::warning file=card.html,title=Side-tab accent border::[side-tab] border-left: 4px + border-radius: 10px%0AA bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n",
+  "stdout": "::warning file=card.html,line=1,title=Side-tab accent border::[side-tab] border-left: 4px + border-radius: 10px%0AA bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n",
   "stderr": "",
   "exit": 2,
   "signal": null,

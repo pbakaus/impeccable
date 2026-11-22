@@ -130,6 +130,9 @@ if exist "%IMPECCABLE_HOME%\bin\%version%\" goto cache_ready
 mkdir "%IMPECCABLE_HOME%\bin\%version%" >nul 2>nul
 if errorlevel 1 goto cache_directory_failed
 :cache_ready
+rem Remove staging directories killed runs left in any version's cache, once
+rem two days idle (forfiles /d counts days; a live curl's open file stays).
+forfiles /p "%IMPECCABLE_HOME%\bin" /s /m .impeccable.part.* /d -2 /c "cmd /c if @isdir==TRUE rd /s /q @path" >nul 2>nul
 rem Stage the download in a directory only this run owns, as the sh launcher
 rem does with .impeccable.part.$$: concurrent first runs (parallel hooks, two
 rem agents) must never write, hash or move each other's files. mkdir fails
@@ -191,10 +194,12 @@ exit /b 127
 set "http_status="
 set "effective_url="
 set "download_host="
-curl.exe -fsSL --retry 2 -w "%%{http_code} %%{url_effective}" -o "%part%" "%url%" >"%staging%\http.txt" 2>nul
+set "curl_error="
+curl.exe -fsSL --retry 2 -w "%%{http_code} %%{url_effective} %%{errormsg}" -o "%part%" "%url%" >"%staging%\http.txt" 2>nul
 set "fetch_result=%errorlevel%"
 for /f "usebackq tokens=1" %%a in ("%staging%\http.txt") do set "http_status=%%a"
 for /f "usebackq tokens=2" %%a in ("%staging%\http.txt") do set "effective_url=%%a"
+for /f "usebackq tokens=2,*" %%a in ("%staging%\http.txt") do set "curl_error=%%b"
 rem Token 2 is the authority after scheme://. Drop userinfo and the port.
 for /f "tokens=2 delims=/" %%h in ("%effective_url%") do set "download_host=%%h"
 for /f "tokens=1,* delims=@" %%h in ("%download_host%") do if not "%%i"=="" set "download_host=%%i"
@@ -340,7 +345,11 @@ exit /b 127
 echo impeccable: could not download engine %version%: GitHub's downloads are failing right now (HTTP %http_status% from %download_host%). This is an outage on GitHub's side, not a problem with your setup or the CLI, so updating won't help. Check https://www.githubstatus.com and run the same command again once GitHub has recovered. 1>&2
 exit /b 127
 :download_generic
-echo impeccable: could not download engine %version% from %url%; check network access and the release URL. 1>&2
+rem Delayed expansion keeps cmd metacharacters in curl's message literal.
+setlocal EnableDelayedExpansion
+if defined curl_error set "curl_error=: !curl_error!"
+echo impeccable: could not download engine %version% from !url! (curl exit %fetch_result%!curl_error!); check network access and the release URL. 1>&2
+endlocal
 
 :setup_failed
 echo Engine %version% setup needs network access and write permission to "%IMPECCABLE_HOME%\bin\%version%". 1>&2

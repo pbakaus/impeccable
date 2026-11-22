@@ -23,7 +23,9 @@
 //     to our own pages, this machine or a private network address (`askable`). Only a move soon after the walk's own
 //     click or key is asked about, each site once and only so many; there the walk only looks (driver.js `mayGo`).
 //   - reaching our own account: our app, API and sign-in pages are refused in every build (`isOwnPage`), even when
-//     the hand-off allowed them or they are on this machine.
+//     the hand-off allowed them or they are on this machine. The one exception is the person's own agent (agent.js)
+//     on our staging app, by the decider's word: its pages that sign in, consent, mint or revoke a credential, hold
+//     the account and billing, or answer Needs you stay refused there, as top document and as a write's target.
 //   - changing things elsewhere: a request that is not a GET, HEAD or OPTIONS (a form post, a fetch that writes) goes
 //     only to the walk's own origins, the hand-off's `allow`; to any other origin it fails before it leaves.
 //   - writing unapproved: even a write to its own origins is refused (a 409, or aborted for a form the top
@@ -86,13 +88,70 @@ export function isLoopback(hostname) {
 const OWN_HOSTS = [/^(.+\.)?impeccable\.reviews$/, /^.+\.impeccable\.style$/, /^(app|api)\.localhost$/];
 const OWN_PATHS = ['/app/oauth/authorize'];
 
-/** Whether an address is one of our own app's pages that a walk never opens. */
-export function isOwnPage(url) {
+/**
+ * Our staging app, which the person's own agent may use (the decider, 15 Nov: "yes, allow staging"), never a persona
+ * walk and never production, the API or the admin host. Its pages that sign in, consent, mint or revoke a credential,
+ * hold the account and its billing, or answer Needs you stay refused there, for the top document and for every write.
+ */
+export const STAGING_APP = 'app.staging.impeccable.style';
+export const STAGING_REFUSED = [
+  // The host's own sign-in, billing, admin and machine doors.
+  /^\/(login|log-in|sign-in|sign-up|join|billing|pro|admin|ops|oauth|cli|mcp|api|extension|mac|webhooks|\.well-known)(\/|$)/,
+  // Signing in and out, consent, the CLI's authorize and token, GitHub's setup return, Discord links.
+  /^\/app\/(login|logout|callback|setup|sign-in-as|oauth|cli|discord)(\/|$)/,
+  // A person's or team's account, plan, members and invites, seats, terms, setup and Needs you.
+  /^\/app\/[^/]+\/(account|setup|onboard|needs-you|billing|pro|settings|team|teams|invites|join|connect|terms)(\/|$)/,
+  // Home itself is the app's front door; its agent poll and trial start are not.
+  /^\/app\/-\/me\/(agent|trial)(\/|$)/,
+  // Their writes and reads under the APIs: credentials minted or revoked, Needs-you answers, account settings, terms,
+  // a repository's preview credentials, and the account's own RPC.
+  /^\/app\/[^/]+\/api\/(setup-token|needs-you|capture-login|walk-sign-ins|account|terms)(\/|$)/,
+  /^\/app\/[^/]+\/api\/repos\/[^/]+\/(preview-auth|before-sign-in)(\/|$)/,
+  /^\/app\/[^/]+\/-\/rpc\/(account|admit)(\/|$)/,
+  /^\/app\/-\/api(\/|$)/,
+];
+/**
+ * Pages the agent may look at but never write to: their form actions (`?/lock`, `?/accountEdit`, `?/remove`) carry
+ * a repository's preview credentials and test accounts, take a repository out or back in, or speak for the person
+ * (notifications, support, Home's own actions).
+ */
+export const STAGING_READ_ONLY = [
+  /^\/app\/[^/]+\/(apps|repos)(\/|$)/,
+  /^\/app\/-\/(notifications|support|me)(\/|$)/,
+  /^\/app\/[^/]+\/api\/repos\/[^/]+\/(preview-overrides|key-check)(\/|$)/,
+];
+/** Whether an address is on our staging app's host, where the agent's exception applies. */
+function onStagingApp(url) {
+  try { return new URL(url).hostname.toLowerCase().replace(/\.$/, '') === STAGING_APP; } catch { return false; }
+}
+
+/** Whether the agent may only look at this staging page (STAGING_READ_ONLY), as the server routes its path. */
+function readOnly(url) {
+  let route;
+  try { route = routed(new URL(url).pathname); } catch { return true; }
+  return route === null || STAGING_READ_ONLY.some((page) => page.test(route));
+}
+
+/** A path as the server routes it: decoded once, in lower case, with repeated slashes as one; null for one that won't decode. */
+function routed(pathname) {
+  try { return decodeURIComponent(pathname).toLowerCase().replace(/\/{2,}/g, '/'); } catch { return null; }
+}
+
+/**
+ * Whether an address is one of our own app's pages that a walk never opens. `agent`: the person's own agent, for
+ * which the staging app's other pages are not refused.
+ */
+export function isOwnPage(url, agent = false) {
   let parsed;
   try { parsed = new URL(url); } catch { return false; }
   const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
   const path = parsed.pathname.replace(/\/+$/, '');
-  return OWN_HOSTS.some((own) => own.test(host)) || OWN_PATHS.some((own) => path === own || path.startsWith(`${own}/`));
+  if (OWN_PATHS.some((own) => path === own || path.startsWith(`${own}/`))) return true;
+  if (agent && host === STAGING_APP && parsed.protocol === 'https:' && !parsed.port) {
+    const route = routed(parsed.pathname);
+    return route === null || STAGING_REFUSED.some((refused) => refused.test(route));
+  }
+  return OWN_HOSTS.some((own) => own.test(host));
 }
 
 /**
@@ -128,10 +187,10 @@ export function webOrigin(url) {
  * The origins a walk that starts on `url` may be on: the allow-list as given, and the address's own origin when it
  * is loopback. Throws `NotAllowed` for an address that is neither, so nothing opens.
  */
-export function admit(url, allow = []) {
+export function admit(url, allow = [], agent = false) {
   const origin = webOrigin(url);
   if (!origin) throw refuse('a journey opens http and https addresses only');
-  if (isOwnPage(url)) throw refuse(`a journey never opens ${origin}${new URL(url).pathname}`);
+  if (isOwnPage(url, agent)) throw refuse(`a journey never opens ${origin}${new URL(url).pathname}`);
   const listed = allow.filter((entry) => typeof entry === 'string' && webOrigin(entry) === entry);
   if (!listed.includes(origin) && !isLoopback(new URL(url).hostname)) throw refuse(`${origin} is not on this machine and not on the journey's allow-list`);
   return { origin, allowed: [...new Set([origin, ...listed])] };
@@ -179,11 +238,11 @@ export function siteOrigins(origin) {
 }
 
 /** Whether the top-level document may be at `url`. A blob the site made is the site's; nothing else without an origin is. */
-export function onSite(url, allowed) {
+export function onSite(url, allowed, agent = false) {
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:' && parsed.protocol !== 'blob:') return false;
-    if (isOwnPage(parsed.protocol === 'blob:' ? parsed.origin : url)) return false;
+    if (isOwnPage(parsed.protocol === 'blob:' ? parsed.origin : url, agent)) return false;
     return allowed.includes(parsed.origin);
   } catch {
     return false;
@@ -192,7 +251,7 @@ export function onSite(url, allowed) {
 
 /** Where a tab is before it has gone anywhere, or after a load failed: nowhere, so not somewhere else. */
 const NOWHERE = /^(about:blank|chrome-error:\/\/)/;
-export const stillHome = (url, allowed) => !url || NOWHERE.test(url) || onSite(url, allowed);
+export const stillHome = (url, allowed, agent = false) => !url || NOWHERE.test(url) || onSite(url, allowed, agent);
 
 const OTHER_TAB = ['tabId', 'tab', 'targetId', 'target', 'sessionId', 'windowId', 'frameId', 'contextId'];
 /** The key by which a request names a tab, a frame or a session other than the walk's own, if it has one. */
@@ -214,11 +273,14 @@ const READS = ['GET', 'HEAD', 'OPTIONS'];
  * exists to add, change and delete there. Another site the person let it go to is only looked at. A frame's documents
  * and reads are its own.
  */
-export function verdict(paused, mainFrame, allowed, writable = allowed) {
+export function verdict(paused, mainFrame, allowed, writable = allowed, agent = false) {
   const url = paused.request?.url;
-  const writes = !reads(paused) && !(writable.includes(webOrigin(url)) && !isOwnPage(url));
+  // The person's own agent on our staging app: a refused page is refused whatever asks for it and however, a read, a
+  // frame or a script's GET as much as a write (some of its GETs act: sign out, open a billing portal).
+  if (agent && onStagingApp(url) && (isOwnPage(url, true) || (!reads(paused) && readOnly(url)))) return paused.resourceType === 'Document' && paused.frameId === mainFrame ? 'block' : 'refuse';
+  const writes = !reads(paused) && !(writable.includes(webOrigin(url)) && !isOwnPage(url, agent));
   // A form sent from the top of the page is a write too.
-  if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed) && !writes ? 'continue' : 'block';
+  if (paused.resourceType === 'Document' && paused.frameId === mainFrame) return onSite(url, allowed, agent) && !writes ? 'continue' : 'block';
   return writes ? 'refuse' : 'continue';
 }
 
@@ -243,9 +305,9 @@ export async function arm(send) {
  * `holding`: writes are held, so a write is refused (a 409) even where the guard would let it go.
  * Resolves to what became of the request: `continued`, `held`, `refused` or `gone`.
  */
-export async function held(send, paused, mainFrame, allowed, writable, refused, holding = false) {
+export async function held(send, paused, mainFrame, allowed, writable, refused, holding = false, agent = false) {
   let answer = 'block';
-  try { answer = verdict(paused, mainFrame, allowed, writable); } catch { /* unreadable: refused */ }
+  try { answer = verdict(paused, mainFrame, allowed, writable, agent); } catch { /* unreadable: refused */ }
   // The write hold: a write the guard would let through is held, untold, while writes are not open.
   if (holding && answer === 'continue' && !reads(paused)) answer = 'hold';
   const pass = answer === 'continue';

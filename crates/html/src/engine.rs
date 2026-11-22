@@ -300,7 +300,7 @@ pub fn detect_html_source(
                 {
                     continue;
                 }
-                if let Some(mut f) = mk(&h.id, &h.snippet) {
+                if let Some(mut f) = try_finding(&h.id, fp, &h.snippet, el.source_line()) {
                     // A hit's own severity (a contrast ratio just under its
                     // bar) overrides the registry's.
                     if let Some(sev) = h.severity.filter(|s| !s.is_empty()) {
