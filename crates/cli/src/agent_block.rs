@@ -253,6 +253,12 @@ pub(crate) fn present(path: &Path, id: &str) -> bool {
     read(path).ok().flatten().is_some_and(|t| switches(&t).is_ok_and(|on| on.contains(&id)))
 }
 
+/// Refresh catalog wording without changing the file's switch set. Read the set
+/// under the same lock as the write, so a concurrent local edit is preserved.
+pub(crate) fn canonicalize(path: &Path) -> Result<bool> {
+    locked(path, || write_switches_unlocked(path, &switches_in(path)?))
+}
+
 /// Put exactly the switches `on` in `path` (lines it doesn't know stay), creating the
 /// file only when one is on. `Ok(false)` when nothing changed.
 pub(crate) fn write_switches(path: &Path, on: &[&str]) -> Result<bool> {

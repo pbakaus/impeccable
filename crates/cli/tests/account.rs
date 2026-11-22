@@ -485,14 +485,17 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
     }
     let refresh = || assert!(impeccable(&env, &["switches-refresh"]).current_dir(&project).status().unwrap().success());
     let lines = |f: &std::path::Path| std::fs::read_to_string(f).unwrap_or_default();
-    let loop_line = "When you need the person (a decision, approval, pick or step only they can do), post one card with needs_you.post (Impeccable)";
+    let catalog = impeccable(&env, &["switches", "--catalog"]).output().unwrap();
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    let loop_line = catalog["switches"].as_array().unwrap().iter()
+        .find(|s| s["id"] == "loop").unwrap()["line"].as_str().unwrap();
     let taste_page = r#"{"rev":1,"team":null,"me":["taste"]}"#;
     fake.route("GET", "/cli/v1/agents", 200, vec![], taste_page);
     refresh();
     assert!(lines(&claude).contains("Impeccable Taste") && lines(&codex).contains("Impeccable Taste"));
 
     // Claude's file turns loop on, but the send fails: nothing is lost.
-    let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line} instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.\n<!-- impeccable end -->"));
+    let t = lines(&claude).replace("<!-- impeccable end -->", &format!("{loop_line}\n<!-- impeccable end -->"));
     std::fs::write(&claude, t).unwrap();
     fake.route("POST", "/cli/v1/agents/me", 500, vec![], "{}");
     // The failure is said, never "unchanged", so Loop's log can tell it from a settled refresh.
@@ -520,6 +523,42 @@ fn two_agents_files_settle_on_one_set_a_failed_send_is_retried_and_an_unreadable
         assert_eq!(fake.hits("/cli/v1/agents/me"), before + 1);
         assert!(lines(&codex).contains(loop_line));
     }
+}
+
+#[test]
+fn unchanged_switches_refresh_old_wording_without_posting() {
+    let fake = Fake::start();
+    let env = fake.env("switch-sync-wording");
+    let home = std::path::PathBuf::from(&env["HOME"]);
+    let mut child = impeccable(&env, &["login", "--no-browser"])
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut url = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut url).unwrap();
+    browser(url.trim());
+    assert!(child.wait().unwrap().success());
+    let file = home.join(".claude/CLAUDE.md");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, "# mine\n").unwrap();
+    fake.route("GET", "/cli/v1/agents", 200, vec![], r#"{"rev":1,"team":null,"me":["loop","taste"]}"#);
+    let refresh = || impeccable(&env, &["switches-refresh"]).current_dir(&home).output().unwrap();
+    assert!(refresh().status.success());
+    let canonical = std::fs::read_to_string(&file).unwrap();
+    let old = canonical.lines().map(|line| {
+        if line.starts_with("Impeccable Taste:") {
+            "Impeccable Taste: before design or UI work, call the impeccable MCP's taste.get once per task (pass since: the rev it last returned, only while those rules are still in your context) and follow its rules; say \"Applied your taste: <rule>\" when one shaped a choice. When the person makes or corrects a design call, record it with taste.note and the lasting rule."
+        } else if line.starts_with("When you need the person") {
+            "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally."
+        } else { line }
+    }).collect::<Vec<_>>().join("\n") + "\n";
+    assert_ne!(old, canonical);
+    std::fs::write(&file, old).unwrap();
+    let posted = fake.hits("/cli/v1/agents/me");
+    assert!(refresh().status.success());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), canonical);
+    assert_eq!(fake.hits("/cli/v1/agents/me"), posted);
+    // Already canonical files stay untouched on the following refresh.
+    assert_eq!(String::from_utf8_lossy(&refresh().stdout), "unchanged\n");
+    assert_eq!(fake.hits("/cli/v1/agents/me"), posted);
 }
 
 #[test]

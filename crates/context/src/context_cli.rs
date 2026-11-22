@@ -880,7 +880,8 @@ pub fn run_with_hook_repair(
     args: &[String], io: &mut Io,
     repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
 ) -> i32 {
-    if args.iter().any(|a| matches!(a.as_str(), "--help" | "-h")) {
+    if args.iter().enumerate().any(|(i, a)| matches!(a.as_str(), "--help" | "-h")
+        && (i == 0 || !matches!(args[i - 1].as_str(), "--target" | "-t" | "--command" | "--focus"))) {
         io.out("Usage: impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]\nRead project context and cached taste for the surface; --command animate selects motion taste.\n");
         return 0;
     }
