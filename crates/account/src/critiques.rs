@@ -359,6 +359,8 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
         return not_saved("the report is over 80 KB; save a shorter report");
     }
+    let critique_id = body["critiqueId"].as_str().unwrap_or("").to_string();
+    let label = body["title"].as_str().unwrap_or("").to_string();
     let (answer, login) = match send(io, started, &signed_in, "/cli/v1/critiques", body, quiet) {
         Ok(sent) => sent,
         Err(stop) => return stopped(stop),
@@ -368,6 +370,14 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             if let Some(top) = &top {
                 crate::health::refresh_after_report(io, top);
+            }
+            if let Some(url) = snapshot.meta.get("url").and_then(Value::as_str).filter(|u| {
+                url::Url::parse(u).is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
+            }) {
+                impeccable_common::proc::spawn_refresh_args(
+                    io, project_root(snapshot).unwrap_or(&io.cwd), "critique-frames",
+                    &[&critique_id, url, &label],
+                );
             }
             // The first save on a sign-in also says it happens every time and how to stop.
             let first = !quiet
@@ -512,4 +522,16 @@ mod preference_tests {
         assert!(!enabled(&io));
         std::fs::remove_dir_all(home).unwrap();
     }
+}
+
+/// Credentials for the detached frame job, with the same upload opt-outs.
+/// No renewal or interactive prompt: an expired session simply drops frames.
+pub fn frame_session(io: &Io, wait: Duration) -> Option<Session> {
+    let (account, state) = ready(io, Some(&io.cwd)).ok()?;
+    let session = Session::load_for_upload(&account, wait)?;
+    if !session.matches_upload(&state)
+        || !session.state.scopes.iter().any(|s| s == crate::oauth::CRITIQUES_SCOPE)
+        || session.existing_access_token().is_none()
+    { return None; }
+    Some(session)
 }

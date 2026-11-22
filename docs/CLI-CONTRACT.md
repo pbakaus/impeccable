@@ -3225,6 +3225,23 @@ admission and the entire POST with `on`, `off` and `forget`. An uploader
 does not wait for this lock; preference commands wait at most three seconds.
 After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
+
+Optional critique meta `url` names the http(s) page viewed and is never sent in
+the critique payload. A successful upload starts the silent, detached
+`critique-frames` worker under the same sign-in, scope and upload opt-outs.
+Within a single 20-second budget it captures desktop 1440×900 and phone 390×844
+viewport WebPs (quality 80, one lower-quality retry if over 300 KB). Failed
+loads, redirects to another origin or path (query/hash changes are allowed),
+and frames still over 300 KB are dropped. Each frame reserves with
+`POST /cli/v1/critiques/captures` (`sha256`, `bytes`, `contentType`),
+optionally uploads with an authenticated WebP POST to the returned
+`uploadUrl` with exact Content-Length, then successful keys attach through
+`POST /cli/v1/critiques/{critiqueId}/captures` with viewport, dimensions and
+optional cleaned title as `label`. No attach is sent without a successful
+frame. Errors are best effort; 429 stops the job, 404 on attach ends it,
+and the deadline stops further requests. Saving, receipt lines and JSON
+output do not wait for or change with frames.
+
 Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
 is sent as optional `label`, using design health's label recipe. Local-only

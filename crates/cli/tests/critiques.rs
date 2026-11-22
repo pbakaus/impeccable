@@ -1085,3 +1085,91 @@ fn a_report_upload_refreshes_health_and_foundations_in_the_background() {
     assert_eq!(scan["repoKey"], r.critiques[0]["repoKey"]);
     assert!(r.foundations.last().is_some(), "the background refresh uploaded Foundations");
 }
+
+// The service's fake validates actual bytes, lengths, hashes and issued keys.
+fn frame_page(redirect: bool) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/page", listener.local_addr().unwrap());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let stop = Arc::new(AtomicBool::new(false));
+    let (seen, done) = (hits.clone(), stop.clone());
+    let handle = std::thread::spawn(move || {
+        while !done.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream.set_read_timeout(Some(std::time::Duration::from_secs(1))).unwrap();
+                    let mut buf = [0; 4096];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    if request.starts_with("GET /page ") {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                    }
+                    if redirect && request.starts_with("GET /page ") {
+                        let _ = write!(stream, "HTTP/1.1 302 Found\r\nLocation: /signin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    } else {
+                        let body = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>body{background:#fcfaf7;color:#222;font:24px sans-serif}</style><h1>Pricing</h1><p>Plans for everyone.</p>";
+                        let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(_) => break,
+            }
+        }
+    });
+    (url, hits, stop, handle)
+}
+
+fn check_frames(redirect: bool) {
+    use std::sync::atomic::Ordering;
+    if impeccable_browser::discovery::find_browser(&std::env::vars().collect()).is_err() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    let (fake, mut env) = setup(if redirect { "frames-redirect" } else { "frames-upload" });
+    // Browser discovery uses the same environment in the detached worker.
+    for key in ["IMPECCABLE_BROWSER", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH", "PUPPETEER_DANGEROUS_NO_SANDBOX"] {
+        if let Ok(v) = std::env::var(key) { env.insert(key.into(), v); }
+    }
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let (url, hits, stop, server) = frame_page(redirect);
+    let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+    meta["url"] = url.into();
+    let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+        .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(said(&out).contains("Saved to Impeccable:"));
+    assert!(fake.record.lock().unwrap().critiques[0].get("url").is_none());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while std::time::Instant::now() < deadline {
+        if !redirect && fake.record.lock().unwrap().captures.len() == 2 { break; }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    stop.store(true, Ordering::SeqCst);
+    server.join().unwrap();
+    assert!(hits.load(Ordering::SeqCst) >= 2, "worker navigated both viewports");
+    let record = fake.record.lock().unwrap();
+    if redirect {
+        assert!(record.captures.is_empty());
+        assert_eq!(record.hits.get("/cli/v1/critiques/captures").copied().unwrap_or(0), 0);
+    } else {
+        assert_eq!(record.captures.len(), 2);
+        for (c, viewport, width, height) in [
+            (&record.captures[0], "desktop", 1440, 900),
+            (&record.captures[1], "phone", 390, 844),
+        ] {
+            assert_eq!(c["viewport"], viewport);
+            assert_eq!(c["width"], width);
+            assert_eq!(c["height"], height);
+            assert_eq!(c["label"], "Pricing plans");
+        }
+    }
+}
+
+#[test]
+fn uploaded_critique_attaches_desktop_and_phone_frames() { check_frames(false); }
+
+#[test]
+fn a_redirect_to_another_path_drops_frames() { check_frames(true); }
