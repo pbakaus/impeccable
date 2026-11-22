@@ -687,10 +687,10 @@ for (const [label, marks, named] of [['said No at step 2', { 2: 'no', 3: 'no' },
 }
 
 // Catches (REN-2331): the delighted face on a walk whose persona didn't get through.
-for (const [finished, mood] of [[true, 'delighted'], [false, 'frustrated']]) {
-  test(`the side panel's ending shows ${mood} when the walk ${finished ? 'finished' : 'did not finish'}`, async () => {
+for (const [label, outcome, mood] of [['got through', { finished: true, issues: [] }, 'delighted'], ['with friction', { finished: true, issues: [{ n: 1 }] }, 'confused'], ['got partway', { finished: false, issues: [] }, 'confused']]) {
+  test(`the side panel's ending shows ${mood} when the persona ${label}`, async () => {
     const { reduce } = await import('../extension/walks/view.js');
-    const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome: { finished, issues: [] } }].reduce(reduce, STUBS.waiting);
+    const ended = [{ type: 'opened', name: 'Mira', tab: 7 }, { type: 'finish', outcome }].reduce(reduce, STUBS.waiting);
     const h = await sidePanel({ view: ended, status: signedIn, tab: 7 });
     assert.equal(h.app.querySelector('div.end')?.querySelector('span.face')?.attributes['data-mood'], mood);
   });
