@@ -47,13 +47,15 @@ fn cache(body: &Value, issuer: &str, etag: Option<String>) -> Option<Value> {
     // get a stable content revision, independent of fetchedAt and cache location.
     let rev = etag.clone().filter(|v| !v.is_empty()).unwrap_or_else(|| {
         use sha2::{Digest, Sha256};
-        Sha256::digest(json!([state, rules, repository_rules, say]).to_string().as_bytes())
+        Sha256::digest(json!([state, rules, repository_rules, say, state == "ready" && body["paused"] == true]).to_string().as_bytes())
             .iter().map(|b| format!("{b:02x}")).collect()
     });
     Some(json!({
         "version": 1, "fetchedAt": now(), "etag": etag.unwrap_or_default(),
         "issuer": issuer, "state": state, "rules": rules,
         "repositoryRules": repository_rules, "say": say, "rev": rev,
+        // Ready with the person's own taste paused: only the repository's rules apply.
+        "paused": state == "ready" && body["paused"] == true,
     }))
 }
 
@@ -112,7 +114,8 @@ fn refresh(focus: Option<&str>, io: &Io) -> Result<Value, String> {
     let snapshot = taste::read(&path);
     let previous = snapshot.clone().filter(|v| v["issuer"] == account.issuer && v["repository"].as_str() == repository.as_deref());
     // Upgrade pre-foreground caches with a full response so say and rev exist.
-    let etag = previous.as_ref().filter(|v| v["say"].is_string() && v["rev"].is_string())
+    // A cache written before `paused` existed fetches one full reply, so a pause isn't hidden behind 304s.
+    let etag = previous.as_ref().filter(|v| v["say"].is_string() && v["rev"].is_string() && v["paused"].is_boolean())
         .and_then(|v| v["etag"].as_str());
     let mut url = url::Url::parse(&format!("{}/cli/v1/taste?limit=12", account.issuer)).unwrap();
     if let Some(repository) = &repository { url.query_pairs_mut().append_pair("repository", repository); }
@@ -158,6 +161,14 @@ fn refresh(focus: Option<&str>, io: &Io) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_change_to_paused_alone_changes_the_revision() {
+        let body = json!({"version":1, "state":"ready", "rules":[], "say":""});
+        let mut paused = body.clone();
+        paused["paused"] = json!(true);
+        assert_ne!(cache(&body, "https://i.invalid", None).unwrap()["rev"], cache(&paused, "https://i.invalid", None).unwrap()["rev"]);
+    }
 
     #[test]
     fn cached_revisions_are_stable_and_keep_the_say_line() {
@@ -271,6 +282,8 @@ fn run_read(args: &[String], io: &mut Io) -> i32 {
                 io.out(&format!("Taste rules are unchanged (rev: {}).\n", value["rev"].as_str().unwrap_or_default()));
             } else {
                 if value["state"] != "ready" { io.out(&format!("Taste is {}.\n", value["state"].as_str().unwrap_or("off"))); }
+                // The person paused their own taste; the repository's rules still apply.
+                if value["paused"] == true { io.out("Your own taste is paused; these are this repository's rules.\n"); }
                 for rule in taste::rules(&value["rules"]).into_iter().chain(taste::rules(&value["repositoryRules"])) {
                     let label = if rule["direction"] == "prefer" { "Prefer" } else { "Avoid" };
                     io.out(&format!("- {label}: {}\n", rule["text"].as_str().unwrap_or_default()));
@@ -316,7 +329,8 @@ fn read_command(args: &[String], io: &Io) -> Result<Value, String> {
         return Ok(json!({"unchanged":true, "rev":rev}));
     }
     Ok(json!({"state":value["state"], "rules":value["rules"],
-        "repositoryRules":value["repositoryRules"], "say":value["say"], "rev":rev}))
+        "repositoryRules":value["repositoryRules"], "say":value["say"], "rev":rev,
+        "paused":value["paused"] == true}))
 }
 
 fn note_body(args: &[String], io: &Io) -> Result<Value, String> {
