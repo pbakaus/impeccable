@@ -176,7 +176,15 @@ pub fn opt_out_nudge(io: &Io, root: &std::path::Path) -> Option<String> {
     let step = if reason.starts_with("DO_NOT_TRACK") { "Unset DO_NOT_TRACK" }
         else if reason.starts_with("IMPECCABLE_NO_TELEMETRY") { "Unset IMPECCABLE_NO_TELEMETRY" }
         else { "Set telemetry to true in that file" };
-    daily_nudge(&account, Some(root), "telemetry", format!("Not saved to Impeccable: {reason}. {step} to enable saving.\n"))
+    let target = root.to_string_lossy().into_owned();
+    let boundary = impeccable_context::context::find_git_boundary_root(&target, &io.env)
+        .unwrap_or_else(|| target.clone());
+    let project = impeccable_context::context::resolve_project_root(
+        &boundary,
+        &impeccable_context::target_args::TargetOptions { target_path: Some(target) },
+        &io.env,
+    );
+    daily_nudge(&account, Some(std::path::Path::new(&project)), "telemetry", format!("Not saved to Impeccable: {reason}. {step} to enable saving.\n"))
 }
 
 /// Why an upload stopped before an answer. Each caller words its own line.

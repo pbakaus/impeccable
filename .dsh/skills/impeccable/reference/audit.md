@@ -154,4 +154,4 @@ IMPECCABLE_REPORT_META='{"target":"<user phrasing, or .>","total_score":<n>,"max
   .dsh/skills/impeccable/scripts/impeccable audit-storage write "<resolved target, or . for the whole project>" <temp-file>
 ```
 
-The helper prints the path it wrote, which you mention in one line. Pass any `Saved to Impeccable: <url>` or `Not saved to Impeccable: <reason>` line on to the person word for word; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.
+The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.

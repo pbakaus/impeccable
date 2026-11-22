@@ -282,9 +282,6 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
         Ok(_) => {
             synced.health = true;
-            if !synced.foundations {
-                crate::receipt::saved(io, crate::receipt::page(&account, "foundations", repo.label.as_deref()), quiet);
-            }
             crate::receipt::saved(io, crate::receipt::page(&account, "design-health", None), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {

@@ -84,9 +84,12 @@ fn json_receipts_are_data_and_quiet_receipts_print_nothing() {
 #[test]
 fn telemetry_explanation_is_once_per_project() {
     let root = support::fake::temp_home("receipt-opt-out");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    std::fs::create_dir_all(root.join("src/nested")).unwrap();
     let env = [("IMPECCABLE_HOME".into(), root.to_string_lossy().into_owned()), ("DO_NOT_TRACK".into(), "1".into())].into();
     let (io, _) = Io::captured("", root.clone(), env);
     assert_eq!(impeccable_account::critiques::opt_out_nudge(&io, &root).as_deref(), Some("Not saved to Impeccable: DO_NOT_TRACK is set. Unset DO_NOT_TRACK to enable saving.\n"));
+    assert!(impeccable_account::critiques::opt_out_nudge(&io, &root.join("src/nested")).is_none());
     assert!(impeccable_account::critiques::opt_out_nudge(&io, &root).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
