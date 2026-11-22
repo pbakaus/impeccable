@@ -1,7 +1,9 @@
 //! `scan_listing` as a host drives it: fetch what each pass wants until it
 //! wants nothing. (The CLI's own tests check it against a disk scan of the
 //! same checkout.)
-use impeccable_foundations_scan::{scan_listing, ListingOptions, Outcome, State};
+use impeccable_foundations_scan::{
+    scan_listing, ListingOptions, ListingScan, Outcome, State, MAX_FILE,
+};
 use std::collections::BTreeMap;
 
 fn settle(tree: &[(&str, &str)], options: ListingOptions) -> (Outcome, usize) {
@@ -133,4 +135,54 @@ fn secrets_off_reads_nothing_whole_and_claims_no_secrets_item() {
     );
     assert_eq!(without.items.get("secrets-out-of-repo"), None);
     assert_eq!(without.items, with.items);
+}
+
+#[test]
+fn streaming_scan_keeps_facts_instead_of_ui_file_text() {
+    let text = format!(
+        ".x {{ transition: opacity 1s; }}\n{}",
+        ".x { color: #123456; }\n".repeat(40)
+    );
+    let files: Vec<(String, u64)> = (0..64)
+        .map(|i| (format!("src/styles/{i}.css"), text.len() as u64))
+        .collect();
+    let contents: BTreeMap<String, String> = files
+        .iter()
+        .map(|(path, _)| (path.clone(), text.clone()))
+        .collect();
+    let mut scan = ListingScan::new(
+        &files,
+        ListingOptions {
+            secrets: false,
+            ..ListingOptions::default()
+        },
+    );
+    let mut final_out = None;
+    for _ in 0..8 {
+        let out = scan.pass();
+        if out.wanted.is_empty() {
+            final_out = Some(out);
+            break;
+        }
+        for path in out.wanted {
+            scan.add(&path, contents.get(&path).map(String::as_str));
+        }
+    }
+    let out = final_out.expect("streaming listing settles");
+    assert!(out.items.contains_key("design-tokens"));
+    assert!(scan.held_bytes() < contents.values().map(String::len).sum::<usize>() / 2);
+}
+
+#[test]
+fn streaming_scan_does_not_request_oversized_content_files() {
+    let files = vec![("src/large.ts".to_string(), MAX_FILE + 1)];
+    let scan = ListingScan::new(
+        &files,
+        ListingOptions {
+            secrets: false,
+            ..ListingOptions::default()
+        },
+    );
+
+    assert!(scan.pass().wanted.is_empty());
 }

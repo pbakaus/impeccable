@@ -239,7 +239,20 @@ fn refresh(args: &[String], io: &mut Io) -> &'static str {
                 base.clone()
             }
         }
-        Step::Nothing => page.clone().or(base.clone()),
+        Step::Nothing => {
+            // Aliases can leave the IDs unchanged while the catalog wording is old.
+            // Refresh each existing block from its own set; no switch change is sent.
+            if !link.still_current() { return "skipped: not signed in"; }
+            for (file, set) in files.iter().zip(&sets) {
+                if set.is_none() || file.ends_with(".cursor/rules/impeccable.mdc") { continue; }
+                match agent_block::canonicalize(file) {
+                    Ok(true) => said = "synced",
+                    Ok(false) => {},
+                    Err(_) => return "skipped: a rule file couldn't be written",
+                }
+            }
+            page.clone().or(base.clone())
+        },
     };
     // Cursor's rule in this repository ends at the set this refresh settled on (what it
     // just sent, or the page's), whatever the step; a repository that can't take it is

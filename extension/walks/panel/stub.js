@@ -161,9 +161,8 @@ export const PRE = {
   'make-typed': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED },
   'make-making': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, making: true },
   'make-made': { personas: PERSONAS, screen: 'make', apps: APPS, made: MADE },
-  // The first time Create a persona opens: its intro. Then the box with the Disability list open, Low vision picked; and one made on a phone with it.
-  intro: { personas: PERSONAS, screen: 'intro' },
-  'make-needs': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, device: 'phone', disability: 'low-vision', needs: true },
+  // The box with a phone and Low vision picked; and one made on a phone with it.
+  'make-needs': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, device: 'phone', disability: 'low-vision' },
   'make-made-chosen': { personas: PERSONAS, screen: 'make', apps: APPS, made: { ...MADE, device: 'mobile', sees: 'older-eyes' }, device: 'phone', disability: 'low-vision' },
   'make-refused': { personas: PERSONAS, screen: 'make', apps: APPS, describe: DESCRIBED, note: COPY.make.limit(3) },
   // No app with personas of its own (none, or none with any), and the apps still coming: no "Use a persona from your app".
@@ -200,5 +199,5 @@ STUBS['tab-group'] = STUBS.idle;
 STUBS.home = STUBS.idle;
 STUBS.planning = STUBS.idle;
 STUBS.plan = STUBS.idle;
-for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'intro', 'make-needs', 'make-made-chosen', 'make-refused', 'make-no-apps', 'make-apps-loading', 'make-listening', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
+for (const name of ['loading', 'home-card-phone', 'account', 'connected', 'home-sam', 'home-app', 'listening', 'listening-quiet', 'make', 'make-typed', 'make-making', 'make-made', 'make-needs', 'make-made-chosen', 'make-refused', 'make-no-apps', 'make-apps-loading', 'make-listening', 'home-made', 'home-full', 'home-long', 'home-wide', 'make-modal', 'make-modal-app', 'home-app-used', 'history', 'history-empty', 'history-loading', 'history-failed', 'history-long', 'personas', 'personas-sure']) STUBS[name] = STUBS.idle;
 STUBS['signing-in'] = STUBS['signed-out'];

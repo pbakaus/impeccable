@@ -135,6 +135,7 @@ if (cfg.sibling) {
   ok(`${cfg.sibling} agrees`);
 }
 
+
 // Engine source guard (#813). The binary every machine downloads is built from
 // the engine-v<ENGINE_VERSION> tag, so pinning it from a tree whose engine
 // source moved on ships a binary the release tag's source no longer describes.
@@ -267,6 +268,9 @@ const headerIdx = changelogHtml.indexOf(expectedHeader);
 if (headerIdx === -1) {
   fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/changelog.astro. Add one before releasing.`);
 }
+
+// After the local checks: it reads another repository's main.
+if (component === 'extension') checkWalkHelpers();
 // Notes are the entry's bullet list. Scoping to <ul class="cf-items">
 // skips the optional lead paragraph, before/after figure, and stat row
 // that the headline release (v3.5.0) carries, so release notes stay clean.
@@ -531,4 +535,32 @@ async function releaseEngine() {
   console.log(`\n→ Next step: watch the release-engine workflow (${REPO_URL}/actions/workflows/release-engine.yml).`);
   console.log(`  It publishes the five binaries + .sha256 as ${REPO_URL}/releases/tag/${tag}.`);
   console.log('  Then publish the five @impeccable/cli-<os>-<arch> npm platform packages with `bun run release:platform-packages`, then release the CLI/skill.');
+}
+
+// The walk helpers the extension carries (extension/walks/page-helpers.js) are generated from the web app's own
+// helpers (pristine's scripts/gen-page-helpers.ts) and say their hash in every hello. Releasing helpers older than the
+// app's ships none of its fixes to the browsers that walk. Refuse unless they carry pristine main's PAGE_HELPERS_HASH,
+// read from a pristine checkout next to this one, or at PRISTINE_DIR.
+function checkWalkHelpers() {
+  step('Checking the walk helpers against pristine main');
+  const pristine = process.env.PRISTINE_DIR ?? path.resolve(repoRoot, '..', 'pristine');
+  if (!existsSync(path.join(pristine, '.git'))) fail(`No pristine checkout at ${pristine}. Set PRISTINE_DIR to one: the walk helpers are checked against its main.`);
+  try {
+    execSync('git fetch -q origin main', { cwd: pristine, stdio: 'ignore' });
+  } catch {
+    fail(`Could not fetch pristine's main in ${pristine}.`);
+  }
+  const registry = execSync('git show origin/main:src/outings/page-helpers.ts', { cwd: pristine, encoding: 'utf8' });
+  const want = /PAGE_HELPERS_HASH = '([0-9a-f]+)'/.exec(registry)?.[1];
+  if (!want) fail("pristine main's src/outings/page-helpers.ts names no PAGE_HELPERS_HASH.");
+  const file = path.join(repoRoot, 'extension', 'walks', 'page-helpers.js');
+  const have = existsSync(file) ? /export const HASH = '([0-9a-f]+)'/.exec(readFileSync(file, 'utf8'))?.[1] : undefined;
+  if (have !== want) {
+    fail(
+      `extension/walks carries walk helpers ${have ?? '(none)'}, but pristine main has ${want}. Regenerate them from a pristine ` +
+        `worktree at origin/main: bun --no-env-file --preload ./test/cloudflare-modules.preload.mjs scripts/gen-page-helpers.ts ` +
+        `${path.join(repoRoot, 'extension', 'walks')} , then commit them here.`,
+    );
+  }
+  ok(`walk helpers ${have} match pristine main`);
 }

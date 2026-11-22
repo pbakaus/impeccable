@@ -138,7 +138,7 @@ b { font-weight: 500; }
 .widths { flex: none; display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--gray); }
 .widths button { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--muted); }
 .widths button:hover { color: var(--ink); }
-.widths button[aria-pressed="true"], .needs-btn[aria-expanded="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
 .widths .ic { width: 16px; height: 16px; }
 /* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
 /*
@@ -280,7 +280,6 @@ b { font-weight: 500; }
 /* ---------- make a persona: laid out as the home, then a modal for an app's personas ---------- */
 .face.blank { background: var(--paper-deep); color: var(--mute-deep); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
 .face.blank .who { width: 62%; height: 62%; fill: currentColor; }
-.hero .ph { color: var(--mute-deep); }
 .skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 .hero .face.skel { display: inline-grid; place-items: center; border: 0; border-radius: 50%; color: var(--gray-2); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
 .skel-name { width: 150px; height: 40px; margin-top: 4px; }
@@ -354,30 +353,51 @@ b { font-weight: 500; }
 .done-mark .ic { width: 34px; height: 34px; stroke-width: 2.4; }
 .connected .task b { color: var(--ink); overflow-wrap: anywhere; }
 
-/* ---------- Create a persona's intro: her face in the ring, a headline; one picture and one headline shown ---------- */
-/* All four headlines share one grid cell, so the cell is as tall as the tallest: the face never moves between screens. */
-.intro-pics { position: relative; flex: none; width: 176px; height: 176px; margin-bottom: 18px; border-radius: 50%; overflow: hidden; background: var(--paper-deep); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold); }
-.intro-pic { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity .36s var(--ease); }
-.intro-pic.on { opacity: 1; }
-.intro-lines { display: grid; width: 100%; }
-.intro-line { grid-area: 1 / 1; font-size: 2.4rem; opacity: 0; visibility: hidden; transform: translateY(6px); transition: opacity .3s var(--ease), transform .3s var(--ease), visibility 0s .3s; }
-.intro-line.on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+/* ---------- Create a persona's intro, where the face will be: faces cross-fade, lines follow one another ---------- */
+/* At rest (reduced motion, or played through) the last face and line show; each face, line and letter plays in at its
+   own delay. The lines share one cell, so nothing below them moves. */
+.intro-pics { position: relative; flex: none; width: 150px; height: 150px; margin-bottom: 14px; border-radius: 50%; background: var(--paper-deep); }
+/* The gold arc grows round from the top while a line holds, fades just before the next comes in, and starts again;
+   after the last line it fades back in, full. The first line holds for the lead as well. */
+.intro-ring { position: absolute; inset: -10px; width: 170px; height: 170px; transform: rotate(-90deg); fill: none; stroke-width: 4; }
+.intro-ring .track { stroke: var(--gray-2); }
+/* One fill for the first line, three for the next, then full from the fifth: copy.js's five intro lines. */
+.intro-ring .arc { stroke: var(--gold); stroke-dasharray: 100;
+  animation: intro-fill calc(var(--lead) + var(--beat)) linear calc(0ms - var(--since)) both, intro-fill var(--beat) linear calc(var(--lead) + var(--beat) - var(--since)) 3, intro-full .6s ease calc(var(--lead) + 4 * var(--beat) - var(--since)) forwards; }
+@keyframes intro-fill { from { stroke-dashoffset: 100; opacity: 1; } 95% { opacity: 1; } to { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes intro-full { from { opacity: 0; } to { opacity: 1; } }
+.intro-pic { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; opacity: 0; animation: intro-beat calc(var(--beat) * 1.15) var(--ease) both; }
+.intro-pic:first-of-type { animation-duration: calc((var(--beat) + var(--lead)) * 1.15); }
+.intro-pic:last-of-type { opacity: 1; animation-name: intro-in; }
+/* All lines share one cell, as tall as the tallest, so a line that wraps in a narrow panel moves nothing below it. */
+.intro-line { display: grid; place-items: center; width: 100%; font-size: 21px; font-weight: 500; line-height: 29px; color: var(--ink); text-wrap: balance; }
+/* A line holds until the next comes in, then fades as the next one's letters rise a little and settle. */
+.intro-line > span { grid-area: 1 / 1; opacity: 0; animation: intro-out 280ms ease-in both; }
+.intro-line > span:last-child { opacity: 1; animation: none; }
+.intro-line > span > span { white-space: nowrap; }
+.intro-line > span > span > span { display: inline-block; animation: intro-settle 700ms cubic-bezier(.25, 1, .5, 1) both; }
+.intro-line > span:first-child span { animation: none; }
+@keyframes intro-out { from { opacity: 1; } }
+@keyframes intro-settle { from { opacity: 0; transform: translateY(.2em); } }
+@keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes intro-in { 0% { opacity: 0; } 15% { opacity: 1; } }
 
-/* ---------- Make a persona: the Disability tab and its list, opening upward over the face ---------- */
-.tabs .widths button.needs-btn { width: auto; display: inline-flex; align-items: center; gap: 4px; padding: 0 6px 0 8px; font-size: 13px; }
-.needs-btn .ic:last-child { width: 14px; height: 14px; }
-.needs-word { margin-right: 2px; }
-.tabs:has(.needs-menu) { position: relative; }
-.tabs .need-row::after { content: none; }
-.needs-menu { top: auto; bottom: calc(100% + 8px); width: 300px; max-width: calc(100vw - 40px); max-height: calc(100vh - 260px); overflow-y: auto; gap: 0; padding: 6px; }
-.needs-h { padding: 6px 8px 8px; font-size: 13px; color: var(--muted); }
-.need-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px; border-radius: 8px; color: var(--ink); text-align: left; }
-.need-row:hover { background: var(--paper-deep); }
-.need-row[aria-pressed="true"] { background: var(--gold-wash); }
-.need-row > .ic:last-child:not(:first-child) { color: var(--gold-deep); }
-.need-t { flex: 1; display: flex; flex-direction: column; }
-.need-t b { font-size: 14px; font-weight: 600; }
-.need-t small { font-size: 12px; color: var(--muted); }
+/* ---------- Make a persona: its device and disability above the box, every choice in sight ---------- */
+.traits-pick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.pick-h { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pick-h:not(:first-child) { margin-top: 10px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 12px; background: var(--paper-deep); }
+.seg button { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; color: var(--muted); }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.chips { position: relative; display: flex; flex-wrap: wrap; gap: 6px; }
+/* A chip's meaning: its title on hover; under the chips while it has keyboard focus. */
+.need-line { display: none; }
+.chips button:focus-visible .need-line { display: block; position: absolute; left: 0; top: calc(100% + 4px); z-index: 1; padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--paper-raised); font-size: 12px; font-weight: 400; white-space: nowrap; pointer-events: none; }
+.chips button { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 16px; background: var(--paper-deep); font-size: 13px; color: var(--text); }
+.chips button:hover { background: var(--gray); }
+.traits-pick:has(:disabled) { opacity: .7; }
+.chips button[aria-pressed="true"] { background: var(--gold-wash); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--gold-rich); }
 /* Under the persona made: its device and disability, small. */
 .traits { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .traits span { display: inline-flex; align-items: center; gap: 5px; }

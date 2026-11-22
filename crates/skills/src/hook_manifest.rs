@@ -18,7 +18,7 @@
 //! writers and the three readers can never disagree on what counts as ours.
 
 use impeccable_context::hermes;
-use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
+use impeccable_context::hook_markers::{cursor_hook_manifest, cursor_manifest_has_retired_gate, gemini_windows_launcher_hook_command, git_bash_launcher_hook_command, guarded_launcher_hook_command, is_impeccable_hook_command, is_launcher_hook_command, is_named_hook_manifest, manifest_hook_subtree, merge_named_hooks, parse_manifest_jsonc, strip_named_hooks, windows_launcher_hook_command};
 use serde_json::{Map, Value};
 
 use crate::providers::Sys;
@@ -246,7 +246,8 @@ fn quoted_github_user_launcher(skill_root: &str, win32: bool) -> QuotedPath {
 /// `commandWindows` sibling instead. Other providers installed on Windows keep
 /// the double-quoted path (cmd.exe treats `'` as literal, issue #533); the JS
 /// `node -e` existence wrapper has no launcher equivalent, so the POSIX guard
-/// stands there too (Claude Code on Windows runs hooks through Git Bash).
+/// stands there too. Claude Code on Windows runs hooks through Git Bash, so
+/// `.claude` also gets `/` separators (#1462).
 /// Grok is another exception: it has no per-OS field and runs `command` in the
 /// session shell (PowerShell by default on Windows), so a Windows Grok install
 /// takes the `windows_hook_command` form.
@@ -257,20 +258,18 @@ pub fn hook_command(quoted: &QuotedPath, provider: &str, win32: bool) -> String 
         // Antigravity runs a hook command through `cmd /c` on Windows, where
         // the POSIX guard is not a command; `hooks on` writes this same form.
         (".grok" | ".agent", true) => return windows_hook_command(quoted, provider),
+        (".claude", true) => return git_bash_launcher_hook_command(&quoted.raw, verb),
         (".agents", _) | (".github", _) | (_, false) => &quoted.posix,
         (_, true) => &quoted.win32,
     };
-    format!("[ ! -f {q} ] || {q} {verb}")
+    guarded_launcher_hook_command(q, verb)
 }
 
-/// Gemini CLI runs a hook through `bash -c` on POSIX and PowerShell on
-/// Windows, and has no per-OS command field, so a Windows install writes a
-/// PowerShell guard around the `.cmd` shim. Gemini also substitutes
+/// Gemini CLI runs a hook through `bash -c` on POSIX (PowerShell on Windows,
+/// see `gemini_windows_launcher_hook_command`). Gemini substitutes
 /// `$GEMINI_PROJECT_DIR` in the command text with an already shell-escaped
 /// path before the shell sees it, so the POSIX relative form leaves the token
-/// bare (double quotes would keep the escaping as literal characters), and
-/// the PowerShell form reads `$env:GEMINI_PROJECT_DIR`, which that
-/// substitution does not touch.
+/// bare (double quotes would keep the escaping as literal characters).
 fn gemini_hook_command(quoted: &QuotedPath, verb: &str, win32: bool) -> String {
     let path = quoted.raw.clone();
     let relative = path.starts_with("$GEMINI_PROJECT_DIR");
@@ -278,13 +277,7 @@ fn gemini_hook_command(quoted: &QuotedPath, verb: &str, win32: bool) -> String {
         let q = if relative { path } else { quoted.posix.clone() };
         return format!("[ ! -f {q} ] || {q} {verb}");
     }
-    let cmd = format!("{path}.cmd");
-    let q = if relative {
-        format!("\"{}\"", cmd.replacen("$GEMINI_PROJECT_DIR", "$env:GEMINI_PROJECT_DIR", 1))
-    } else {
-        format!("'{}'", cmd.replace('\'', "''"))
-    };
-    format!("if (Test-Path -LiteralPath {q}) {{ & {q} {verb} }}")
+    gemini_windows_launcher_hook_command(&path, verb)
 }
 
 /// JS: windowsHookCommand(quotedPath), launcher edition (`transformers/hooks.js`

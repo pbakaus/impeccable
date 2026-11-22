@@ -425,6 +425,63 @@ describe('walk page helpers', () => {
       assert.equal(signed('123') !== signed('456'), changes);
     });
   }
+
+  // What an agent finds on a page carries labels only: never a field's value, a textarea's text, a list's choices, an
+  // editable region's text or a password, however the field is wrapped.
+  it('lists what an agent can use without any field contents', async () => {
+    const { helpers } = await import('../extension/walks/page-helpers.js');
+    const one = (sel, el) => sel.split(/,\s*/).some((part) => {
+      const m = /^([a-z0-9]*)((?:\[[^\]]+\])*)(?::not\(\[(\w+)=(\w+)\]\))?$/.exec(part.trim());
+      if (!m) return false;
+      const [, tag, attrs, notName, notValue] = m;
+      if (tag && el.tagName.toLowerCase() !== tag) return false;
+      if (notName && el.attrs[notName] === notValue) return false;
+      return [...attrs.matchAll(/\[([\w-]+)(?:=("?)([^\]"]*)\2)?\]/g)].every(([, name, , value]) => name in el.attrs && (value === undefined || el.attrs[name] === value));
+    });
+    let y = 0;
+    const all = [];
+    const make = (tag, attrs = {}, kids = [], props = {}) => {
+      const el = { nodeType: 1, tagName: tag.toUpperCase(), attrs, parentElement: null, box: { left: 0, top: (y += 40), width: 200, height: 30 }, ...props };
+      el.childNodes = kids.map((k) => (typeof k === 'string' ? { nodeType: 3, textContent: k, childNodes: [] } : Object.assign(k, { parentElement: el })));
+      Object.defineProperty(el, 'textContent', { get: () => el.childNodes.map((c) => c.textContent).join('') });
+      Object.assign(el, {
+        getAttribute: (n) => attrs[n] ?? null, hasAttribute: (n) => n in attrs, matches: (sel) => one(sel, el),
+        closest: (sel) => { for (let at = el; at; at = at.parentElement) if (one(sel, at)) return at; return null; },
+        contains: (o) => { for (let at = o; at; at = at.parentElement) if (at === el) return true; return false; },
+        querySelector: () => null, getBoundingClientRect: () => ({ ...el.box, right: el.box.left + el.box.width, bottom: el.box.top + el.box.height }),
+      });
+      return el;
+    };
+    const name = make('input', { id: 'n' }, [], { type: 'text', value: 'Dana Lee' });
+    const nameLabel = make('label', { for: 'n' }, ['Full name']);
+    const password = make('input', { type: 'password' }, [], { type: 'password', value: 'hunter2' });
+    const note = make('textarea', {}, ['My prefilled note']);
+    const day = make('select', {}, [make('option', {}, ['Saturday secret'])]);
+    const labels = [[name, nameLabel], [password, make('label', {}, ['Password ', password])], [note, make('label', {}, ['Note ', note])], [day, make('label', {}, ['Day ', day])]];
+    for (const [field, label] of labels) field.labels = [label];
+    // A button posing as a list shows its choice; an editor's text, even a part another control names itself by, is typed.
+    const inside = make('span', { id: 'inside' }, ['Typed inside'], { isContentEditable: true });
+    // A field by its role holds a choice too, even when another control names itself by it; a slide outside its
+    // carousel's overflow is out of sight.
+    const choice = make('div', { id: 'choice', role: 'combobox' }, ['Private selection']);
+    // A fixed overlay inside it shows against the window, its buttons too; a list's choices are its own.
+    const overlay = make('div', { fixed: '' }, [make('button', {}, ['Close'], { box: { left: 1000, top: 1000, width: 80, height: 30 } })], { box: { left: 1000, top: 1000, width: 100, height: 40 } });
+    const carousel = make('div', { overflow: '' }, [make('button', {}, ['Hidden slide'], { box: { left: 900, top: 900, width: 80, height: 30 } }), overlay], { box: { left: 0, top: 900, width: 200, height: 40 } });
+    const body = make('body', {}, [
+      make('h2', {}, [make('a', { href: '/x' }, ['Book a viewing'])]), make('p', {}, ['Call Dana on 0400 111 222']), nameLabel, name,
+      ...labels.slice(1).map(([, label]) => label), make('div', { contenteditable: 'true', role: 'article' }, ['Typed private text'], { isContentEditable: true }),
+      make('button', { role: 'combobox' }, ['Peru chosen']), make('div', { contenteditable: 'plaintext-only' }, ['Plain private words'], { isContentEditable: true }),
+      make('button', { 'aria-labelledby': 'choice' }, ['Pick']), choice, make('div', { role: 'listbox', 'aria-label': 'Sizes' }, [make('span', { role: 'option' }, ['Small'])]), carousel,
+      make('button', { 'aria-labelledby': 'inside' }, ['Go']), make('div', { contenteditable: 'true' }, [inside], { isContentEditable: true }), make('span', { pointer: '' }, ['10:00']),
+    ]);
+    const walk = (el) => { for (const c of el.childNodes) if (c.nodeType === 1) { all.push(c); walk(c); } };
+    walk(body);
+    body.querySelectorAll = () => all;
+    const style = (el) => ({ visibility: 'visible', opacity: '1', cursor: el.attrs && 'pointer' in el.attrs ? 'pointer' : 'auto', borderTopLeftRadius: '0px', overflowX: el.attrs && 'overflow' in el.attrs ? 'hidden' : 'visible', overflowY: 'visible', position: el.attrs && 'fixed' in el.attrs ? 'fixed' : 'static' });
+    const seen = JSON.parse(JSON.stringify(vm.runInNewContext(`(${helpers.agentSight})()`, { innerWidth: 1280, innerHeight: 4000, document: { body, getElementById: (id) => ({ inside, choice })[id] ?? null }, getComputedStyle: style })));
+    assert.doesNotMatch(JSON.stringify(seen), /Dana|0400|hunter2|prefilled|secret|private|Peru|Typed|Private|Hidden slide/);
+    assert.deepEqual(seen.items.filter((i) => i.name).map((i) => [i.role, i.name]), [['heading', 'Book a viewing'], ['link', 'Book a viewing'], ['textbox', 'Full name'], ['textbox', 'Password'], ['textbox', 'Note'], ['combobox', 'Day'], ['button', 'Pick'], ['listbox', 'Sizes'], ['option', 'Small'], ['button', 'Close'], ['button', 'Go'], ['generic', '10:00']]);
+  });
 });
 
 describe('walk mark on our pages', () => {

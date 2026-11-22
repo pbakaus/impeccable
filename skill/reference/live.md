@@ -26,7 +26,7 @@ Execute in order. No step skipped, no step reordered. Every tool output in live 
 Harness policy:
 - **Claude Code**: run the poll as a **background task** (no short timeout); the harness notifies you on completion. Do not block the shell.
 - **Cursor**: **one-shot** poll in a **background terminal** with notify on `"type":"(steer|generate|accept|discard|manual_edit_apply|variant_mount_failed|prefetch|exit)"`; handle, `--reply`, restart the poll. Do **not** use `--stream` on Cursor (measured ~5s pickup vs sub-second one-shot).
-- **Codex**: default one-shot poll in a **yielded foreground exec session**. No `&`, no `--stream`, never leave Live without an active foreground poll. Starting the poll is not enough: SERVICE it (keep reading the exec session until it returns an event). Never announce "waiting for the user" and idle; a yielded poll nobody reads is a dead session, and the user's Go sits unanswered.
+- **Codex**: default one-shot poll in a **yielded foreground exec session**. No `&`, no `--stream`, never leave Live without an active foreground poll, except at a Pause. Starting the poll is not enough: SERVICE it (keep reading the exec session until it returns an event). Outside a Pause, never announce "waiting for the user" and idle; a yielded poll nobody reads is a dead session, and the user's Go sits unanswered.
 - **Other harnesses**: one-shot foreground unless you know stdout reliably returns when a shell exits.
 
 Delivery policy: atomic single-edit delivery everywhere; do not switch a harness to progressive publishing unless its poll loop is known not to block on the extra calls.
@@ -47,9 +47,11 @@ LOOP:
   "prefetch"  → Handle Prefetch; LOOP
   "manual_edit_apply" → Handle Manual Edit Apply; reply done|partial|error; LOOP
   "variant_mount_failed" → Fix the variant files; reply done --file <path>; LOOP
-  "timeout"   → LOOP
+  "timeout"   → LOOP; the third in a row → Pause
   "exit"      → break → Cleanup
 ```
+
+**Pause**: three timeouts in a row mean about 30 minutes with nothing from the page, and every rerun after that costs a full turn. Stop polling: tell the user the page is still live and to tell you here once they act on it, then end your turn. Their next message resumes the loop with `live-poll`, which collects anything they did meanwhile.
 
 `variant_mount_failed` means the browser could not render what you published (`variant`, module `url`, `error`). The user sees a persistent error card, not variants. Fix the variant files, then `--reply EVENT_ID done --file <manifest or source path>`; the browser retries on its own.
 

@@ -81,9 +81,10 @@ hash_file() {
 }
 
 # This script's directory without dirname or a subshell: what dirname "$0"
-# gives, made absolute by a cd there and back.
+# gives, made absolute by a cd there and back. A backslash separates too:
+# Windows hook commands spell the launcher C:\...\scripts\impeccable (#1462).
 case $0 in
-  */*) dir=${0%/*} ;;
+  */*|*\\*) dir=${0%[/\\]*} ;;
   *) dir=. ;;
 esac
 [ -n "$dir" ] || dir=/
@@ -190,11 +191,15 @@ setup_help() {
 fetch_url() {
   http_status=""
   download_host=""
+  fetch_error=""
   if command -v curl >/dev/null 2>&1; then
     fetch_result=0
-    metadata=$(curl -fsSL --retry 2 -w '%{http_code} %{url_effective}' -o "$tmp" "$1" 2>/dev/null) || fetch_result=$?
+    metadata=$(curl -fsSL --retry 2 -w '%{http_code} %{url_effective} %{errormsg}' -o "$tmp" "$1" 2>/dev/null) || fetch_result=$?
     http_status=${metadata%% *}
     effective_url=${metadata#* }
+    curl_msg=${effective_url#* }
+    effective_url=${effective_url%% *}
+    fetch_error="curl exit $fetch_result${curl_msg:+: $curl_msg}"
     # Only the authority is needed, never the signed storage URL's query.
     download_host=${effective_url#*://}
     download_host=${download_host%%/*}
@@ -206,10 +211,27 @@ fetch_url() {
     download_host=$(printf '%s' "$download_host" | tr '[:upper:]' '[:lower:]')
     return "$fetch_result"
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$tmp" "$1" 2>/dev/null
+    fetch_result=0
+    wget_out=$(wget -O "$tmp" "$1" 2>&1) || fetch_result=$?
+    newline='
+'
+    fetch_error="wget exit $fetch_result: ${wget_out##*$newline}"
+    return "$fetch_result"
   else
     return 1
   fi
+}
+# SIGKILL or a crash skips the traps below and strands the staging file, so
+# each download first removes parts in any version's cache that are an hour
+# idle and whose owner PID is gone (the age covers a curl outliving its
+# launcher). A cache it cannot write is reported later, never here.
+sweep_stale_parts() {
+  find "$cache_root/bin" -mindepth 2 -maxdepth 2 -type f -name '.impeccable.part.*' -mmin +60 2>/dev/null |
+    while IFS= read -r part; do
+      owner=${part##*.part.}
+      case "$owner" in ''|*[!0-9]*) continue ;; esac
+      kill -0 "$owner" 2>/dev/null || rm -f "$part" 2>/dev/null || :
+    done
 }
 check_download() {
   download_file=${1:-$tmp}
@@ -236,6 +258,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
     echo "impeccable: no checksum for engine $version ($asset) in $manifest; refusing the unverified download" >&2
     exit 127
   fi
+  sweep_stale_parts
   tmp="$cache_root/bin/$version/.impeccable.part.$$"
   # An interrupted download (Ctrl-C, a hook timeout) would otherwise leave the
   # PID-named staging file behind for good. The handlers must exit explicitly.
@@ -309,7 +332,7 @@ if [ -n "$version" ] && [ "$os" != unknown ] && [ "$arch" != unknown ]; then
       esac
       exit 127 ;;
   esac
-  echo "impeccable: could not download engine $version from $url; check network access, the release URL, and curl or wget availability." >&2
+  echo "impeccable: could not download engine $version from $url${fetch_error:+ ($fetch_error)}; check network access, the release URL, and curl or wget availability." >&2
   setup_help
   exit 127
 fi

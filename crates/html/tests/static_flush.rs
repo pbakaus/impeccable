@@ -276,6 +276,88 @@ fn a_short_label_in_the_shell_keeps_the_warning() {
     );
 }
 
+/// A box that centres a label in a minimum height insets it without padding
+/// (#1596), whether it is the bounded box's child or the bounded box itself.
+/// A height about one line tall, a label too long to stay on one line, a
+/// column stack or no centring at all leaves the text on the rule.
+#[test]
+fn a_label_centred_in_a_min_height_is_inset() {
+    let disc = |button: &str, text: &str| {
+        scan(&page(
+            &format!(
+                ".disc {{ border: 1px solid #d1d5c3; background: #fff; }}
+                 .disc > button {{ display: flex; min-height: 44px; padding: 0 12px; font-size: 14px; border: 0; background: transparent; {button} }}"
+            ),
+            &format!("<div class=\"disc\"><button type=\"button\">{text}</button></div>"),
+        ))
+    };
+    assert_eq!(disc("align-items: center;", "Instagram"), Vec::<String>::new());
+    let flush = vec!["<div> \"disc\": children flush against border on top/bottom (no inset)".to_string()];
+    assert_eq!(disc("", "Instagram"), flush);
+    assert_eq!(disc("align-items: center; min-height: 20px;", "Instagram"), flush);
+    assert_eq!(disc("align-items: center; flex-direction: column;", "Instagram"), flush);
+    assert_eq!(disc("align-items: center;", "Connect your Instagram account to share every post"), flush);
+    assert_eq!(disc("align-items: center; line-height: 22px;", "Account<br>settings"), flush);
+    assert_eq!(disc("align-items: center; transform: translateY(-14px);", "Instagram"), flush);
+    let row = |style: &str| {
+        scan(&page(
+            &format!(
+                ".chip {{ width: 24px; height: 24px; }}
+                 .row {{ display: flex; min-height: 44px; padding: 0 8px; border: 1px solid #d1d5c3; {style} }}"
+            ),
+            "<div class=\"row\"><span class=\"chip\"></span><span>Instagram</span></div>",
+        ))
+    };
+    assert_eq!(row("align-items: center;"), Vec::<String>::new());
+    let flush = vec!["<div> \"row\": children flush against border on top/bottom (no inset)".to_string()];
+    assert_eq!(row(""), flush);
+    assert_eq!(row("align-items: center; min-height: 40px; } .row .chip { height: 36px;"), flush);
+    assert_eq!(row("align-items: center; } .row span + span { font-size: 36px; line-height: 40px;"), flush);
+    assert_eq!(row("align-items: center; } .row .chip { align-self: stretch;"), flush);
+    assert_eq!(row("align-items: center; } .row .chip { height: calc(44px);"), flush);
+}
+
+/// `padding-inline-start` beside `border-inline-start` is the padding on the
+/// bordered side (#1604); without it the cell's spans sit on the rule.
+#[test]
+fn logical_padding_insets_the_side_it_lands_on() {
+    let cells = |pad: &str| {
+        scan(&page(
+            &format!(".g {{ display: grid; }} .g > div + div {{ border-inline-start: 1px solid #999; {pad} }}"),
+            "<div class=\"g\"><div><span>Asalan</span><span>Gayo, Aceh</span></div>\
+             <div><span>Disangrai</span><span>14 November 2026</span></div></div>",
+        ))
+    };
+    assert_eq!(cells("padding-inline-start: 1rem;"), Vec::<String>::new());
+    assert_eq!(cells("padding-inline: 1rem 0;"), Vec::<String>::new());
+    let flush = vec!["<div>: children flush against border-left on left (no inset)".to_string()];
+    assert_eq!(cells(""), flush);
+    assert_eq!(cells("padding-inline: 0 1rem;"), flush);
+}
+
+/// Padding this engine cannot evaluate (`clamp()`, `calc()`, directly or
+/// through a custom property) may be any length, so it is not read as zero
+/// (#1605). A zero padding still flags.
+#[test]
+fn padding_written_as_a_math_function_is_not_zero() {
+    let board = |pad: &str| {
+        scan(&page(
+            &format!(
+                ":root {{ --pad: clamp(1.5rem, 4vw, 3.5rem); }}
+                 .b {{ background: #232a28; color: #e7e9e4; border: 10px solid #4a3b2a; {pad} }}"
+            ),
+            "<div class=\"b\"><div>Hello there</div></div>",
+        ))
+    };
+    assert_eq!(board("padding: clamp(1.5rem, 4vw, 3.5rem) 2rem;"), Vec::<String>::new());
+    assert_eq!(board("padding: var(--pad);"), Vec::<String>::new());
+    assert_eq!(board("padding: calc(1rem + 2px);"), Vec::<String>::new());
+    assert_eq!(
+        board("padding: 0;"),
+        vec!["<div> \"b\": children flush against border+bg on all sides (no inset)".to_string()]
+    );
+}
+
 /// The fixture's two columns are the contract: a file scan must report every
 /// `flag-` case and nothing from the pass column. Layout is what clears the
 /// rest of the pass column, and a file scan has none, so the cases it cannot
@@ -287,8 +369,6 @@ const STATIC_ONLY_LEFTOVERS: &[&str] = &[
     "pass-table-wrap",
     // A spacer element, not a declaration, holds the text off the rule.
     "pass-tall-script",
-    // A full-height child centres its label: only layout shows the air.
-    "pass-segmented",
     // An inline trigger whose border-bottom is the underline itself.
     "pass-tooltip-underline",
     // A marquee track that scrolls its padded cards past the shell's edge.

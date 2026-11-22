@@ -1284,6 +1284,12 @@ fn cache_round_trip_and_gc() {
     let keys = finding_cache_keys(&both);
     assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
     assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
+    // a line-less page copy of a located finding is that finding (#1597)
+    let page_copy = f("gradient-text", 0.0, "G", "d", "s");
+    let keys = finding_cache_keys(&[g.clone(), page_copy.clone()]);
+    assert_eq!(keys[0], keys[1]);
+    let keys = finding_cache_keys(&[page_copy.clone(), g.clone(), f("gradient-text", 9.0, "G", "d", "s")]);
+    assert_eq!((keys[0] == keys[1], keys[1] == keys[2]), (true, false));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
@@ -2532,14 +2538,14 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 
     let codex: Value = serde_json::from_str(&t.read(".codex/hooks.json")).unwrap();
     let entry = &codex["hooks"]["PostToolUse"][0]["hooks"][0];
-    assert_eq!(entry["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(entry["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(entry["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(
         entry.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
         vec!["type", "command", "commandWindows", "timeout", "statusMessage"]
     );
     let stop = &codex["hooks"]["Stop"][0]["hooks"][0];
-    assert_eq!(stop["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(stop["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(stop["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(stop["timeout"], json!(30));
 
@@ -2547,7 +2553,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     assert_eq!(
         cursor,
         json!({"version": 1, "hooks": {"postToolUse": [{
-            "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+            "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
             "matcher": "^Write$",
             "timeout": 5,
         }]}})
@@ -2555,7 +2561,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     let github: Value = serde_json::from_str(&t.read(".github/hooks/impeccable.json")).unwrap();
     assert_eq!(
         github["hooks"]["postToolUse"][0]["bash"],
-        json!("\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
+        json!("[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
     );
 
     // A second `on` is a no-op against the manifests it just wrote.
@@ -2566,7 +2572,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 fn expected_user_claude_hook_command(home: &str) -> String {
     let launcher = jsp::join(&[home, ".claude", "skills", "impeccable", "scripts", "impeccable"]);
     let q = if cfg!(windows) {
-        serde_json::to_string(&launcher).unwrap()
+        serde_json::to_string(&launcher.replace('\\', "/")).unwrap()
     } else {
         format!("'{}'", launcher.replace('\'', "'\\''"))
     };
@@ -2766,7 +2772,7 @@ fn admin_on_moves_the_retired_cursor_gate_to_post_tool_use() {
             "preToolUse": [{"command": "./audit.sh", "matcher": "Shell"}],
             "stop": [{"command": "./notify.sh"}],
             "postToolUse": [{
-                "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+                "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
                 "matcher": "^Write$",
                 "timeout": 5,
             }],
@@ -2848,6 +2854,31 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(local["hooks"]["PostToolUse"][0]["hooks"][0]["command"], json!("echo other"));
     assert!(local["hooks"].get("Stop").is_none());
     assert_eq!(local["permissions"]["allow"], json!(["Bash(ls)"]));
+}
+
+/// A Grok manifest an earlier `hooks on` wrote carried Claude's description
+/// and no guard; a re-run leaves what a fresh install writes (#1307).
+#[test]
+fn admin_on_repairs_an_old_grok_manifest_to_the_installer_form() {
+    let t = Tmp::new();
+    let r = rt(&t.path());
+    std::fs::create_dir_all(t.0.join(".grok/skills/impeccable")).unwrap();
+    let bare = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".grok/hooks/impeccable.json", &json!({
+        "description": impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION,
+        "hooks": {
+            "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+        }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    let repaired = t.read(".grok/hooks/impeccable.json");
+    assert!(!repaired.contains("\"description\""), "{repaired}");
+    if !cfg!(windows) {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hook-manifests/grok-hooks.json");
+        assert_eq!(repaired.trim_end(), std::fs::read_to_string(fixture).unwrap().trim_end());
+    }
 }
 
 // ── Grok Build + Codex (#646, #603, upstream 35ae0733/bfe634e2/3c442af7/c9e7cd8a) ──
@@ -4113,7 +4144,7 @@ fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
         assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
         let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
         let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
-        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert!(command.contains(&account.to_str().unwrap().replace('\\', "/")), "{command}");
         assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
         assert!(!home.join(".claude/settings.json").exists());
         let (status, _, _) = admin_run(&r, &["status"]);
