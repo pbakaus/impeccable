@@ -936,6 +936,23 @@ function ease(list, was) {
 const found = () => (view.outcome ? view.outcome.issues.length : view.steps.filter((step) => step.issue).length);
 const resultsUrl = () => view.outcome?.replayUrl ?? walkUrl;
 
+/**
+ * The end screen's face, as the web's outcomes have it (REN-2331, src/app-rpc/walk-outcome.ts): got through is
+ * delighted, with friction or got partway is confused. No verdict (no boolean `finished`) is no mood.
+ */
+function mood(state) {
+  if (state === 'failed') return 'confused';
+  const ending = state === 'done' ? verdict() : null;
+  return ending === 'through' ? 'delighted' : ending ? 'confused' : 'neutral';
+}
+
+/** A finished walk's outcome, as the web names it: through, friction or partway; null with no verdict. */
+function verdict() {
+  const finished = view.outcome?.finished;
+  if (typeof finished !== 'boolean') return null;
+  return !finished ? 'partway' : view.outcome.issues.length ? 'friction' : 'through';
+}
+
 function end() {
   const state = view.state;
   const n = found();
@@ -944,7 +961,7 @@ function end() {
   const why = reason ? (typeof COPY.failed[reason] === 'function' ? COPY.failed[reason](view.site, name()) : COPY.failed[reason]) : null;
   // The first deed the person said No to (a walk with no plan): the walk's page says it in these words. `held` is not a No.
   const saidNo = view.outcome && !view.outcome.finished ? view.steps.find((step) => step.refused === 'no')?.n : undefined;
-  const head = state === 'done' ? COPY.end.done(name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
+  const head = state === 'done' ? COPY.end[verdict() ?? 'done'](name()) : state === 'stopped' ? COPY.end.stopped(name()) : COPY.end.failed;
   const label = n > 0 ? COPY.end.found(name(), n) : COPY.end.see(name());
   // No results page to open (a walk from the terminal that ended early): the way home instead.
   const results = link ? el('button', { class: 'btn btn-gold btn-big', type: 'button', 'data-act': 'results', 'data-issues': String(n),
@@ -955,7 +972,7 @@ function end() {
     // The way back to the home, in the top row as on every other screen; the results stay one press away below.
     top(view.site ?? hereUrl, { back: () => { ended = true; render(); } }),
     el('div', { class: `end${state === 'done' ? '' : ' is-still'}` },
-      face(walking(), 132, state === 'done' ? 'delighted' : state === 'failed' ? 'confused' : 'neutral'),
+      face(walking(), 132, mood(state)),
       el('h2', { class: 'hd', role: 'status', text: head }),
       why ? el('p', { class: 'err', role: 'alert', text: why }) : saidNo ? el('p', { class: 'line task', text: COPY.end.saidNo(name(), saidNo) }) : view.workflow?.goal ? el('q', { class: 'task', text: view.workflow.goal }) : null),
     el('span', { class: 'grow' }),

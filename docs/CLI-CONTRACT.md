@@ -803,6 +803,14 @@ followed by a single `\n`. Overwrites (one brief per slug).
 
 #### `context.mjs` -> `impeccable context`
 
+Usage: `impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]`.
+Explicit `--focus web|slides|motion` wins over `--command` and derived focus.
+Invalid or missing focus values are usage errors naming all three values.
+The target, resolved surface brief and web platform signals select cached taste
+for slides, motion or web; unknown work uses whole taste. `--command animate`
+selects motion for an animation task on any surface. See [Taste](#taste) for
+focus derivation, repository rules and refresh behavior.
+
 - **Invoked from**: `SKILL.src.md` Setup step 1: `node <skill-base-dir>/scripts/context.mjs` once per session, cwd = user's project, optionally `--target <path>` for a named source file or route. Also imported (not spawned) by `doctor.mjs`, `context-signals.mjs`, `surface-brief.mjs`, `lib/impeccable-paths.mjs`, live scripts. `reference/routing.md`, `init.md`, `hooks.md`, `doctor.md`, `visualize.md`, `polish.md` refer to its directives by name.
 - **CLI args / flags**: `--target <p>` / `-t <p>` / `--target=<p>` (strict; last wins). Missing value -> stderr `--target requires a path value.\n`, exit 1. Nothing else.
 - **Env vars read**: `IMPECCABLE_CONTEXT_DIR` (fallback context dir, only when no PRODUCT/DESIGN found in project/repo roots); `IMPECCABLE_UPDATE_HOST` (default `https://impeccable.style`, trailing `/` stripped); `IMPECCABLE_UPDATE_CACHE` (default `~/.impeccable/update-check.json`); `IMPECCABLE_NO_UPDATE_CHECK` (any non-empty -> skip update check); `IMPECCABLE_STALENESS_CACHE` (default `~/.impeccable/staleness-check.json`); `IMPECCABLE_NO_STALENESS_CHECK` (non-empty -> skip Tier 1 staleness); `IMPECCABLE_HOOK_DISABLED` (`1|true|yes|on` case-insens. -> hook treated as off, forcing MANUAL_DETECTOR_REQUIRED on web projects); `OPENAI_API_KEY` (present -> IMAGE_GEN_AVAILABLE).
@@ -2494,10 +2502,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
 - `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
-  (see **The Impeccable block** below), the loop switch's line: "When you
-  need a person's decision or input, use needs_you.post (Impeccable) instead of
-  asking in chat or a built-in question tool. If needs_you says Loop isn't
-  connected, ask normally." An installation an older CLI made, whose engine-managed
+  (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
   block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
   block through the engine on the next connect, and the line moves into the
   Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets
@@ -2619,17 +2624,19 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.
 - **The Impeccable block** (REN-2056). Each switch that is on adds one fixed,
-  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together stay under about 300 tokens), between
+  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together are 1,448 bytes, about 362 tokens at four bytes per token), between
   `<!-- impeccable start -->` and `<!-- impeccable end -->` in the rule file the agent
   reads: `CLAUDE.md` in the Claude config folder (`$CLAUDE_CONFIG_DIR` when set), and
   for Codex `AGENTS.override.md` in `CODEX_HOME` when it exists, else `AGENTS.md`.
+  Earlier taste and Loop catalog wording reads as those switches being on and
+  is replaced by the current wording on the next write through `ALIASES`.
   A line the engine doesn't know is kept, after the known ones. When no switch is
   left on, the block goes. The pre-REN-2056 taste block (`<!-- impeccable:taste -->`
   to `<!-- /impeccable:taste -->`) reads as the taste switch being on and is replaced
   by the Impeccable block where it stood on the first write. **Taste:** after a connect (text, `--agent`, `--json`, the one after
   `loop install`, or a yes to login's offer), each agent the engine now holds a
   committed installation for is offered the taste line, telling the agent to call the
-  MCP's `taste.get` once per task and record design calls with `taste.note`. It never
+  MCP's `taste.get` with the task focus (web, slides or motion), or `impeccable taste --focus <kind>` without MCP, once per task; retain its rev for `since` while the rules stay in context, and record choices or corrections with `taste.note` or `impeccable taste note`. It never
   holds rules, taste or ids. A file whose taste line is there is brought up to date
   in place (no question).
   A file with no recorded answer is asked about once, for all such files
@@ -3188,7 +3195,17 @@ Native projects follow the same report-save path.
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
-`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`na`, and `counts`. Optional `title` is the observed page title or first h1:
+collapse Unicode whitespace runs, remove Unicode Cc/Cf characters, trim, and
+cap at 120 Unicode code points. Empty or non-string titles are omitted.
+Optional `heuristics` is an array of `{n,score}` with integer `n` 1–10 and
+integer `score` 0–4, excluding N/A heuristics. Invalid entries and duplicate
+indices are dropped. Non-array heuristics are omitted. Optional `p2_count`
+and `p3_count` must be integers 0–100; invalid counts are dropped. These
+cleaned fields persist in snapshot frontmatter (heuristics as a JSON array)
+and appear in trend reads. Payload v1 sends `title` when known, `heuristics`,
+and `counts.p0` through `counts.p3`; missing heuristic detail or optional
+counts remain null. Both metadata environment variables accept these fields.
 `body` is passed separately to the save callback, never recovered from
 frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
 inputs must be regular files, never final symlinks or reparse points, with a
@@ -3232,14 +3249,67 @@ The CLI reads standing design preferences with
 GET /cli/v1/taste?limit=12 at the account issuer, using its bearer token and
 the taste:read scope. OAuth requests that scope only when scopes_supported
 advertises it. The saved sign-in state records the granted scope as taste.
-There is no taste write path. The CLI ignores the response's say and page.
+The cache retains the sanitized `say` line for foreground reads and ignores `page`.
 
-The hidden taste-refresh verb accepts no arguments, prints nothing and exits
+`impeccable taste [--focus web|slides|motion] [--since <rev>] [--json]`
+is the foreground equivalent of `taste.get` for agents without MCP. It
+revalidates the requested slice using the same account session, conditional
+GET, repository resolution, locks, fallback and cache as the worker. Text
+prints personal rules, repository rules, the server's `say` line and
+`rev: <revision>`. JSON prints `{state, rules, repositoryRules, say, rev, paused}`. When the person paused their own taste but the repository's rules are served (`state: "ready"`, `paused: true`), text output starts with "Your own taste is paused; these are this repository's rules."
+The revision is the exact ETag, including quotes if present; a response
+without ETag uses the hex SHA-256 of the sanitized state/rules/repositoryRules/
+say tuple. `--since` is compared locally after revalidation. If unchanged,
+text prints `Taste rules are unchanged (rev: <rev>).` and JSON prints
+`{unchanged:true, rev}`, with no repeated rules. Existing caches missing
+say/rev are fetched without a validator once to upgrade them.
+An invalid or missing focus names `web, slides or motion` and exits 1.
+Signed out or without read access, stderr directs the person to
+`impeccable login` and exits 1. With taste disabled by the environment or
+saved consent, or a paused response, stdout prints `Taste is off.` and exits
+0 (`--json` prints that line as a JSON string). Network failures report an
+error without presenting stale rules.
+
+`context [--target <path>] [--command <verb>] [--focus web|slides|motion]` uses explicit focus first, then derives taste focus from the
+existing target and resolved surface brief: deck/slides/pptx/keynote signals
+select `slides`, animation/motion/lottie signals select `motion`; `--command
+animate` also selects `motion`. Otherwise a web platform, web implementation,
+URL/route or web source target selects `web`. Native and unknown tasks send no
+focus. The optional `--command` carries the active skill verb, which context
+previously did not receive (so a web page's animation task can request motion).
+The detached read sends `focus=web|slides|motion` when known, and
+`repository=owner/name` when cwd's origin resolves to GitHub, using the same
+bounded remote read and SSH-alias normalization as uploads. A 400 `{error:
+"focus"}` retries without focus or a focused ETag, for older servers.
+Whole taste uses `taste.json`; slices use `taste-web.json`, `taste-slides.json`
+and `taste-motion.json`. A fallback whole response is saved in the requested
+slice. Each cache's repository identity gates its ETag and refresh freshness;
+context appends sanitized `repositoryRules` after personal rules only when
+the cache belongs to the current repository. All slices share the existing
+issuer, sign-in, private-write and lifecycle lock rules, including clearing
+all of this issuer's slices on logout, sign-in or read-scope revocation.
+
+`impeccable taste note --chose <text> --rule <text> [--over <text>]
+[--repository owner/name] [--event <id>] [--json]` posts exactly `event`,
+`chose`, `rule`, and supplied optional `over` and `repository` fields to
+`POST /cli/v1/taste/calls`. Repository defaults to cwd's GitHub origin.
+Without `--event`, the event is the hex SHA-256 of a JSON tuple of chose,
+rule, over (null if absent), and repository (null if absent), making reruns
+idempotent. Client limits are 120 characters for event, 200 for chose/over,
+240 for rule and 201 for repository; required values must be nonempty and
+repository must be owner/name. Validation errors exit 1 before sending.
+This uses CLI sign-in with `taste:write` and the server's usual plan/TASTE
+gates. Missing sign-in/scope or a 403 directs the person to `impeccable login`.
+Successful outcomes print one line: `recorded`, `already recorded`,
+`paused (taste capture is paused for your account)`, or `full`. `--json`
+prints the server outcome object. `IMPECCABLE_NO_TASTE` disables notes too.
+
+The hidden taste-refresh verb accepts optional `--focus web|slides|motion`, prints nothing and exits
 0. It loads credentials through the non-interactive worker session path,
 including during token renewal, and silently skips credentials needing approval.
 It uses the ordinary authenticated request helper and request timeouts. A version 1 response in ready, empty, paused or plan
 state is cached at <impeccable home>/taste.json, honoring IMPECCABLE_HOME.
-Only ready responses retain rules. The cache contains version, fetchedAt
+Only ready responses retain rules. The cache also records repository, sanitized repositoryRules and say, and rev. It contains version, fetchedAt
 (Unix seconds), etag, issuer, state and at most 12 rules with id, text and
 direction. Writes use a private atomic replacement (0600 on Unix). Control
 characters are dropped, whitespace collapsed, text trimmed and capped at
@@ -3248,7 +3318,7 @@ letters, digits, underscores and hyphens are skipped.
 
 The service sends ETag, Cache-Control: private, no-cache and Vary:
 Authorization. The worker
-sends If-None-Match only for a cache from the same issuer. A 304 changes only
+sends If-None-Match only for a cache from the same issuer and repository. A 304 changes only
 fetchedAt. A 404 or 403 deletes the cache silently. Network failures, other
 statuses and malformed responses preserve it. A 200 in paused, plan or empty
 state replaces the cache at once, so the next boot prints none of the old
@@ -3267,7 +3337,7 @@ The router's ordinary entrypoint allowlist, including context, schedules
 taste-refresh detached when saved state says signed in with taste and the
 cache is absent or fetchedAt is more than 60 seconds old, so every session
 start revalidates and a pause, reset or deleted rule takes effect from the
-next session start. This gate reads saved state and the small cache only,
+next session start. This gate reads saved state, the bounded local git origin and the small cache,
 with no keychain or network access. CI suppresses scheduling (an explicit
 taste-refresh still runs). A telemetry opt-out does not stop the read: it
 fetches only the person's own preferences.

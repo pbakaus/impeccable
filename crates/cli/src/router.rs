@@ -81,6 +81,12 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     if impeccable_mcp::browser::is_extension_origin(verb) {
         return impeccable_mcp::native_host(args, io);
     }
+    if verb == "context" {
+        if let Err(message) = impeccable_context::taste::explicit_focus(rest) {
+            io.err(&format!("{message}\n"));
+            return 1;
+        }
+    }
     // A small allowlist excludes every hook and internal verb. All I/O beyond
     // the cheap daily gate belongs to a detached process.
     if matches!(
@@ -96,7 +102,19 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             | "check"
     ) {
         crate::setup_report::schedule(io);
-        crate::setup_report::schedule_taste(io);
+        let focus = if verb == "context" {
+            impeccable_context::taste::request_focus(rest, io)
+        } else if verb == "detect" {
+            let target = rest.iter().find(|a| !a.starts_with('-'));
+            let args = target.map(|t| vec!["--target".into(), t.clone()]).unwrap_or_default();
+            impeccable_context::taste::request_focus(&args, io)
+        } else { None };
+        if let Some(repo) = impeccable_account::health::github_repository(&io.cwd.to_string_lossy()) {
+            io.env.insert("IMPECCABLE_TASTE_REPOSITORY".into(), repo);
+        } else {
+            io.env.remove("IMPECCABLE_TASTE_REPOSITORY");
+        }
+        crate::setup_report::schedule_taste(io, focus);
         if verb == "context" {
             crate::switch_sync::schedule(io);
         }
@@ -151,6 +169,7 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 format!("Impeccable lines in your agents' rule files:\n{}", crate::agent_block::listing(io))
             })
         }
+        "taste" => impeccable_account::taste::run(rest, io),
         "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
@@ -588,6 +607,7 @@ const KNOWN_VERBS: &[&str] = &[
     "health-design-refresh",
     "critiques",
     "critiques-refresh",
+    "taste",
     "taste-refresh",
     "pro-refresh",
     "agents",

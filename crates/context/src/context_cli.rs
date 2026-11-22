@@ -880,6 +880,19 @@ pub fn run_with_hook_repair(
     args: &[String], io: &mut Io,
     repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
 ) -> i32 {
+    if args.iter().enumerate().any(|(i, a)| matches!(a.as_str(), "--help" | "-h")
+        && (i == 0 || !matches!(args[i - 1].as_str(), "--target" | "-t" | "--command" | "--focus"))) {
+        io.out("Usage: impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]\nRead project context and cached taste for the surface; --command animate selects motion taste.\n");
+        return 0;
+    }
+    if let Err(message) = crate::taste::explicit_focus(args) {
+        io.err(&format!("{message}\n"));
+        return 1;
+    }
+    if args.iter().enumerate().any(|(i, a)| a == "--command" && args.get(i + 1).is_none_or(|v| v.is_empty() || v.starts_with('-')) || a == "--command=") {
+        io.err("--command requires a verb.\n");
+        return 1;
+    }
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -976,7 +989,7 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
-        append_taste(&mut parts, &env);
+        append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
         io.out(&parts.render());
         return 0;
     }
@@ -1018,7 +1031,7 @@ pub fn run_with_hook_repair(
     if let Some(u) = update_directive {
         parts.push(u);
     }
-    append_taste(&mut parts, &env);
+    append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
     io.out(&parts.render());
     0
 }
@@ -1113,8 +1126,8 @@ fn append_product(parts: &mut Parts, ctx: &Ctx) {
     parts.push(format!("# PRODUCT.md (sections; full file: {path})\n\n{text}\nFull: {path} (read a section when you need its detail)"));
 }
 
-fn append_taste(parts: &mut Parts, env: &Env) {
-    if let Some(block) = crate::taste::block(env) {
+fn append_taste(parts: &mut Parts, env: &Env, focus: Option<&str>) {
+    if let Some(block) = crate::taste::block_for(env, focus) {
         insert_taste(parts, block);
     }
 }

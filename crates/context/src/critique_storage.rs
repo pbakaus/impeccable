@@ -40,6 +40,41 @@ pub fn now_filename_stamp() -> String {
     replaced
 }
 
+/// Optional report detail is best effort: malformed fields never block a save.
+pub fn clean_report_metadata(meta: &mut Map<String, Value>) {
+    if let Some(value) = meta.remove("title") {
+        if let Some(title) = value.as_str() {
+            static UNSAFE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+                regex::Regex::new(r"[\p{Cc}\p{Cf}]").unwrap()
+            });
+            // Preserve word boundaries from whitespace controls before removing Cc/Cf.
+            let spaced = title.split_whitespace().collect::<Vec<_>>().join(" ");
+            let clean = UNSAFE.replace_all(&spaced, "");
+            let title: String = clean.split_whitespace().collect::<Vec<_>>().join(" ")
+                .chars().take(120).collect::<String>().trim().to_string();
+            if !title.is_empty() {
+                meta.insert("title".into(), title.into());
+            }
+        }
+    }
+    if let Some(value) = meta.remove("heuristics") {
+        if let Some(entries) = value.as_array() {
+            let mut seen = std::collections::HashSet::new();
+            let entries = entries.iter().filter_map(|entry| {
+                let n = entry.get("n")?.as_u64().filter(|n| (1..=10).contains(n))?;
+                let score = entry.get("score")?.as_u64().filter(|score| *score <= 4)?;
+                seen.insert(n).then(|| serde_json::json!({"n": n, "score": score}))
+            }).collect();
+            meta.insert("heuristics".into(), Value::Array(entries));
+        }
+    }
+    for key in ["p2_count", "p3_count"] {
+        if meta.get(key).is_some_and(|v| v.as_u64().filter(|n| *n <= 100).is_none()) {
+            meta.remove(key);
+        }
+    }
+}
+
 fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
     let mut lines = vec!["---".to_string()];
     for (k, v) in obj {
@@ -50,11 +85,12 @@ fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
             Value::String(s) => (s.clone(), true),
             Value::Bool(b) => (b.to_string(), false),
             Value::Number(n) => (js_number_value_string(n), false),
+            Value::Array(_) if k == "heuristics" => (v.to_string(), false),
             Value::Array(_) | Value::Object(_) => (js_string_of(v), false),
             Value::Null => unreachable!(),
         };
         let multiline = s.contains(['\n', '\r']);
-        let needs_quotes = multiline || (is_string && (s.contains(':') || s.contains('#')));
+        let needs_quotes = k == "title" || multiline || (is_string && (s.contains(':') || s.contains('#')));
         lines.push(format!(
             "{}: {}",
             k,
@@ -129,7 +165,9 @@ pub fn parse_frontmatter(text: &str) -> Map<String, Value> {
         let Some(colon) = line.find(':') else { continue };
         let key = js_trim(&line[..colon]);
         let value = js_trim(&line[colon + 1..]);
-        let v: Value = if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') && !value[1..].contains('\n') {
+        let v: Value = if key == "heuristics" && value.starts_with('[') {
+            serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()))
+        } else if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') && !value[1..].contains('\n') {
             match serde_json::from_str::<Value>(value) {
                 Ok(parsed) => parsed,
                 Err(_) => Value::String(value.to_string()),
@@ -605,6 +643,7 @@ fn write_report(
             parsed_meta = o;
         }
     }
+    clean_report_metadata(&mut parsed_meta);
     // JS #660: the helper, not caller metadata, owns the target
     // fingerprint/identity. Drop any caller-supplied copies (preserving
     // the order of the rest) and append the freshly resolved values.
@@ -1272,6 +1311,19 @@ mod tests_reports {
     use impeccable_common::Io;
     use std::collections::HashMap;
     use std::path::PathBuf;
+
+    #[test]
+    fn optional_metadata_round_trips_through_frontmatter() {
+        let mut meta = serde_json::json!({
+            "title": "  00404\u{e0001} ",
+            "heuristics": [{"n":1,"score":0},{"n":10,"score":4},{"n":2,"score":-1}],
+            "p2_count": 0, "p3_count": 100
+        }).as_object().unwrap().clone();
+        clean_report_metadata(&mut meta);
+        assert_eq!(meta["title"], "00404");
+        assert_eq!(meta["heuristics"], serde_json::json!([{"n":1,"score":0},{"n":10,"score":4}]));
+        assert_eq!(parse_frontmatter(&serialize_frontmatter(&meta)), meta);
+    }
 
     static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
