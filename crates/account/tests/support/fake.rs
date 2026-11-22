@@ -513,11 +513,11 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     ]
                     .into();
                     assert!(
-                        keys.is_superset(&required) && keys.len() <= required.len() + 1,
+                        keys.is_superset(&required) && keys.len() <= required.len() + 2,
                         "{keys:?}"
                     );
                     assert!(
-                        keys.iter().all(|k| required.contains(k) || *k == "label"),
+                        keys.iter().all(|k| required.contains(k) || ["label", "place"].contains(k)),
                         "{keys:?}"
                     );
                     assert_eq!(v["version"], 1);
@@ -565,7 +565,8 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "changedAt",
                         "text",
                         "sidecar",
-                        "label"
+                        "label",
+                        "place"
                     ]
                     .contains(&k.as_str())));
                     assert_eq!(v["version"], 1);
@@ -632,6 +633,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "title",
                         "repoKey",
                         "label",
+                        "place",
                         "score",
                         "na",
                         "heuristics",
@@ -949,6 +951,7 @@ fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
     {
         return Err("label");
     }
+    parse_place(body.get("place"))?;
     Ok(())
 }
 
@@ -981,6 +984,7 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         "fingerprints",
         "truncated",
         "label",
+        "place",
     ];
     if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
         return Err("unknown field");
@@ -1034,10 +1038,20 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         }
     }
     parse_label(b.get("label"))?;
+    parse_place(b.get("place"))?;
     if serde_json::to_vec(b).unwrap().len() > 256 * 1024 {
         return Err("too_large");
     }
     Ok(())
+}
+
+/// A repository's place (REN-2313): a label of at most 60 characters.
+pub fn parse_place(value: Option<&serde_json::Value>) -> Result<Option<String>, &'static str> {
+    match parse_label(value) {
+        Ok(Some(p)) if p.chars().count() > 60 => Err("place"),
+        Ok(p) => Ok(p),
+        Err(_) => Err("place"),
+    }
 }
 
 /// The service's shared parseLabel (pristine#4721): reject forbidden characters

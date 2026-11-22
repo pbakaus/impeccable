@@ -58,6 +58,7 @@ const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
 const MAX_FINGERPRINTS: usize = 5000;
 const MAX_LABEL: usize = 100;
+const MAX_PLACE: usize = 60;
 const SCANS: &str = "/cli/v1/health/scans";
 const FORGET: &str = "/cli/v1/health/forget";
 
@@ -244,9 +245,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             "productType": null,
             "items": scan.foundations,
         });
-        if let Some(label) = &repo.label {
-            foundation_body["label"] = label.clone().into();
-        }
+        name_body(&mut foundation_body, repo.label.as_deref(), repo.place.as_deref());
         let foundation_result = Client::with_deadline(&account, Duration::from_secs(2))
             .post_json(
                 &format!("{}/cli/v1/foundations", account.issuer),
@@ -650,6 +649,7 @@ struct Repo {
     key: String,
     stream: String,
     label: Option<String>,
+    place: Option<String>,
 }
 
 impl Repo {
@@ -676,7 +676,8 @@ impl Repo {
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
         let label = repo_name(&top, configured.is_some(), remote.as_deref());
-        Some(Repo { key, stream, label })
+        let place = configured.is_none().then(|| place(&top, env)).flatten();
+        Some(Repo { key, stream, label, place })
     }
 }
 
@@ -697,18 +698,18 @@ pub(crate) fn critique_repo(
     root: &str,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
-    critique_repo_at(root, env).map(|(_, key, label)| (key, label))
+    critique_repo_at(root, env).map(|(_, key, label, _)| (key, label))
 }
 
 /// [`critique_repo`] plus the repository top it read, so a caller needs no second git lookup.
 pub(crate) fn critique_repo_at(
     root: &str,
     env: &std::collections::HashMap<String, String>,
-) -> Option<(String, String, Option<String>)> {
+) -> Option<(String, String, Option<String>, Option<String>)> {
     let short = Duration::from_millis(150);
     let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
     let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
-    repo_identity(&top, remote, env).map(|(key, label)| (top, key, label))
+    repo_identity(&top, remote, env).map(|(key, label, place)| (top, key, label, place))
 }
 
 /// GitHub owner/name using the same bounded origin read and resolver as uploads.
@@ -738,12 +739,38 @@ fn repo_identity(
     top: &str,
     remote: Result<Option<String>, ()>,
     env: &std::collections::HashMap<String, String>,
-) -> Option<(String, Option<String>)> {
+) -> Option<(String, Option<String>, Option<String>)> {
     let configured = remote.ok()?;
     let remote = configured.as_deref().and_then(resolve_remote);
     let label = repo_name(top, configured.is_some(), remote.as_deref());
+    let place = configured.is_none().then(|| place(top, env)).flatten();
     let identity = remote.or_else(|| local_repo_id(top, env))?;
-    Some((hex(&Sha256::digest(identity.as_bytes())), label))
+    Some((hex(&Sha256::digest(identity.as_bytes())), label, place))
+}
+
+/// Where a repository with no remote lives: its parent folder's name only, so
+/// two clones with one name can be told apart (REN-2313). Never a path, and nothing
+/// when the parent is the home folder, whose name is usually the person's login.
+fn place(top: &str, env: &std::collections::HashMap<String, String>) -> Option<String> {
+    let parent = Path::new(top).parent()?;
+    let same = |home: &String| match (Path::new(home).canonicalize(), parent.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => Path::new(home) == parent,
+    };
+    if ["HOME", "USERPROFILE"].iter().filter_map(|k| env.get(*k)).any(same) {
+        return None;
+    }
+    label(parent.file_name()?.to_str()?).filter(|p| p.chars().count() <= MAX_PLACE)
+}
+
+/// A repository's name and place on an upload body, each only when known.
+pub(crate) fn name_body(body: &mut Value, label: Option<&str>, place: Option<&str>) {
+    if let Some(label) = label {
+        body["label"] = label.into();
+    }
+    if let Some(place) = place {
+        body["place"] = place.into();
+    }
 }
 
 fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
@@ -984,9 +1011,7 @@ fn payload(scan: &Scan, repo: &Repo, scan_id: &str, fingerprint_version: u32) ->
         "rules": rules.iter().map(|(id, (f, a))| (id.to_string(), json!({ "findings": f, "advisory": a }))).collect::<Map<_, _>>(),
         "fingerprints": prints,
     });
-    if let Some(label) = &repo.label {
-        body["label"] = label.clone().into();
-    }
+    name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
     if prints.len() > MAX_FINGERPRINTS || body.to_string().len() > MAX_BYTES {
         body["fingerprints"] = Value::Null;
         body["truncated"] = true.into();
@@ -1146,6 +1171,7 @@ mod tests {
             key: "a".repeat(64),
             stream: "b".repeat(64),
             label: Some("repo".into()),
+            place: None,
         }
     }
 
@@ -1241,7 +1267,7 @@ mod tests {
                 [
                     "version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage",
                     "rulesetId", "fingerprintVersion", "engineVersion", "filesScanned",
-                    "findings", "advisory", "rules", "fingerprints", "truncated", "label"
+                    "findings", "advisory", "rules", "fingerprints", "truncated", "label", "place"
                 ]
                 .contains(k),
                 "{k}"
@@ -1447,6 +1473,12 @@ mod repo_identity_tests {
         let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
         assert_ne!(remote.0, local.0);
         assert!(remote.1.is_some());
+        // Only a remote-less repo names its place: the parent folder, never the home folder (REN-2313).
+        assert_eq!(local.2, home.file_name().and_then(|n| n.to_str()).map(String::from));
+        assert_eq!(remote.2, None);
+        let mut at_home = env.clone();
+        at_home.insert("HOME".into(), home.display().to_string());
+        assert_eq!(repo_identity(&top, Ok(None), &at_home).expect("local id").2, None);
         std::fs::remove_dir_all(home).unwrap();
     }
 }
