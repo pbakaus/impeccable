@@ -191,6 +191,10 @@ export const COPY = {
 
   end: {
     done: (name) => `${name || 'Your persona'}’s done.`,
+    // The web's outcome words (src/app-rpc/walk-outcome.ts), REN-2331.
+    through: (name) => `${name || 'Your persona'} got through.`,
+    friction: (name) => `${name || 'Your persona'} got through, with friction.`,
+    partway: (name) => `${name || 'Your persona'} got partway.`,
     stopped: (name) => `You stopped ${name || 'the journey'}.`,
     failed: 'The journey ended.',
     found: (name, n) => `${name || 'Your persona'} found ${issues(n)}`,
