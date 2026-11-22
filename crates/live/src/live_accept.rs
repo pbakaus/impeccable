@@ -90,7 +90,7 @@ enum AcceptOutcome {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
-    run_with_accepted(args, io, &mut |_, _| {})
+    run_with_accepted(args, io, &mut |_, _| None)
 }
 
 /// Hands a variant accept that succeeded (or replayed its receipt) to the CLI
@@ -106,7 +106,7 @@ pub fn run_with_accepted(args: &[String], io: &mut Io, accepted: &mut crate::OnA
         let id = arg_val(&argv, "--id").unwrap_or_default();
         let page_url = nonempty(arg_val(&argv, "--page-url"));
         if let Some(session) = accepted_session(io, &id, page_url.as_deref()) {
-            accepted(io, session);
+            let _ = accepted(io, session);
         }
     }
     code

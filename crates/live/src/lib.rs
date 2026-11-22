@@ -75,12 +75,14 @@ pub struct Accepted {
 
 /// Called with the caller's `Io` once an accept's result is out: after the
 /// printed JSON, and in `live-poll` after the browser has its reply.
-pub type OnAccepted<'a> = dyn FnMut(&mut Io, Accepted) + 'a;
+/// Records an accepted session; returns the page it was saved to when the
+/// caller collected it for machine output (`live-poll --json`).
+pub type OnAccepted<'a> = dyn FnMut(&mut Io, Accepted) -> Option<String> + 'a;
 
 /// Verb dispatcher for every `live*` verb. Unknown live verbs (parts 2/3
 /// until they land) report `not implemented` with exit 70.
 pub fn run(verb: &str, args: &[String], io: &mut Io) -> i32 {
-    run_with_accepted(verb, args, io, &mut |_, _| {})
+    run_with_accepted(verb, args, io, &mut |_, _| None)
 }
 
 /// `run`, handing each successful variant accept to `accepted`.

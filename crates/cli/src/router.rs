@@ -317,8 +317,27 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "hooks" | "hook-admin" => impeccable_hook::run_hook_admin(rest, io),
         // A successful variant accept records the prototyping session (REN-1917), after its result is out.
         v if v.starts_with("live") => impeccable_live::run_with_accepted(v, rest, io, &mut |io, a| {
-            let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github" | "--json" | "-json"));
-            impeccable_account::prototypes::after_accept_quiet(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), quiet)
+            let json = rest.iter().any(|a| matches!(a.as_str(), "--json" | "-json"));
+            let silent = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github"));
+            let quiet = json || silent;
+            // live-poll streams unbuffered, so its accepted event carries the page itself (REN-2403).
+            // The upload runs on its own thread: the event waits two seconds at most, even when
+            // DNS stalls (ureq leaves lookups unbounded), and a slow upload still finishes behind it.
+            if json && v.ends_with("poll") {
+                let (cwd, env) = (io.cwd.clone(), io.env.clone());
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let (mut io, _) = Io::captured("", cwd, env);
+                    let (_, urls) = impeccable_account::receipt::capture(|| {
+                        impeccable_account::prototypes::after_accept_quiet(&mut io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), true)
+                    });
+                    let _ = tx.send(urls.into_iter().next());
+                });
+                let url = rx.recv_timeout(std::time::Duration::from_secs(2)).ok().flatten();
+                return url.filter(|_| !silent);
+            }
+            impeccable_account::prototypes::after_accept_quiet(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), quiet);
+            None
         }),
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
