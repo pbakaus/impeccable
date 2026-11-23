@@ -435,9 +435,12 @@ fn a_repository_that_gains_an_origin_names_its_local_key_once() {
         k.foundations = true;
     }
     let env = fake.env("health-was");
-    login(&env);
+    // As a person starts: a repository with a commit and no remote, signed in from inside it,
+    // so login's own scan gives it its local key.
     let root = repo(&env, None);
-    run(&env, &root, &["detect", "--json", "."]);
+    git(&root, &["add", "-A"]);
+    git(&root, &["-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "init"]);
+    login_in(&env, &root);
     let local = scans(&fake)[0]["repoKey"].clone();
     assert!(scans(&fake)[0].get("was").is_none(), "no origin yet, so nothing to hand over");
 

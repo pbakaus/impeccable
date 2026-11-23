@@ -118,7 +118,9 @@ local_id="$IMPECCABLE_HOME/health/repos/$(printf '%s' "$(cd "$R2" && pwd -P)" | 
 if [ $health = 1 ] && [ -f "$local_id" ]; then
   carry="carry-$(date -u +%Y%m%d%H%M%S)-$$"
   git -C "$R2" remote add origin "https://github.com/impeccable-e2e/$carry"
-  (cd "$R2" && "$BIN" detect .) > "$H/carry.out" 2> "$H/carry.err"; rc=$?
+  # The open engine under test, not staging's Pro build (a Pro scan runs in that build,
+  # which carries `was` only once it is built from an engine that has it).
+  (cd "$R2" && IMPECCABLE_PRO=off "$BIN" detect .) > "$H/carry.out" 2> "$H/carry.err"; rc=$?
   check "carry: the pushed repository's scan runs" '[ $rc = 0 ] || [ $rc = 2 ]'
   check "carry: the service answered the scan naming its local key (saved id settled)" '[ ! -e "$local_id" ]'
   info "carry: repository label $carry"
