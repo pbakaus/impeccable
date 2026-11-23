@@ -29,7 +29,7 @@ pub fn input_scope(root: &Path, state: &Value) -> Result<String, String> {
     let config: Value = serde_json::from_str(&raw).map_err(|e| format!(".impeccable/config.json is not valid JSON ({e})"))?;
     let scope = match config.get("fingerprintScope") {
         None => return Ok(String::new()),
-        Some(Value::String(scope)) => scope.trim_end_matches('/'),
+        Some(Value::String(scope)) => scope.trim_start_matches("./").trim_end_matches('/'),
         Some(_) => return Err("fingerprintScope in .impeccable/config.json must be a folder path string".into()),
     };
     let inside = root.canonicalize().ok().zip(artifact_path(root, state)).is_some_and(|(base, entry)| entry.starts_with(scoped(&base, scope)));
@@ -228,7 +228,7 @@ mod tests {
         std::fs::create_dir_all(dir.join("apps/web")).unwrap();
         std::fs::create_dir_all(dir.join(".impeccable")).unwrap();
         std::fs::write(dir.join("apps/web/index.html"), "<main/>").unwrap();
-        std::fs::write(dir.join(".impeccable/config.json"), r#"{"fingerprintScope":"apps/web/"}"#).unwrap();
+        std::fs::write(dir.join(".impeccable/config.json"), r#"{"fingerprintScope":"./apps/web/"}"#).unwrap();
         assert_eq!(input_scope(&dir, &json!({"artifact":"apps/web/index.html"})).unwrap(), "apps/web");
         assert!(input_hash(&dir, "apps/web").is_ok());
         std::fs::remove_dir_all(dir).unwrap();
