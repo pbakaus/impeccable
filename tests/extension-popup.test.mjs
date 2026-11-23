@@ -518,17 +518,21 @@ test('the persona intro carries on through a redraw and starts over when Create 
   assert.equal(lastFace(), start);
 });
 
-// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where motion is reduced.
-for (const reduced of [false, true]) {
-  test(`Create a persona's box waits out the intro${reduced ? ', except with reduced motion' : ''}`, async (t) => {
+// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where
+// motion is reduced, from the start or from partway through.
+for (const reduced of ['never', 'from the start', 'partway']) {
+  test(`Create a persona's box waits out the intro, reduced motion ${reduced}`, async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
-    globalThis.matchMedia = (query) => ({ matches: reduced && query.includes('reduce') });
+    const motion = { matches: reduced === 'from the start', changed: [] };
+    globalThis.matchMedia = () => ({ get matches() { return motion.matches; }, addEventListener: (_, listener) => motion.changed.push(listener) });
     t.after(() => { delete globalThis.matchMedia; });
     const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
     const held = () => 'inert' in h.app.querySelector('.box').attributes;
     await h.press('make-persona');
-    t.mock.timers.tick(15000);
-    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, !reduced]);
+    t.mock.timers.tick(3000);
+    if (reduced === 'partway') { assert.equal(held(), true); motion.matches = true; for (const listener of motion.changed) listener(); }
+    t.mock.timers.tick(12000);
+    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, reduced === 'never']);
     t.mock.timers.tick(5000);
     assert.equal(held(), false, 'the intro over, the box is within reach');
   });

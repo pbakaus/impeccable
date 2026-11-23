@@ -642,6 +642,8 @@ function home() {
 
 /** Reduced motion: the bars hold a still, gentle arch, and listening still shows. */
 const still = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+// Turned on or off while Create a persona's intro plays: the box under it follows at once (see maker).
+globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.addEventListener?.('change', () => { if (screen() === 'make') render(); });
 const STILL = Array.from({ length: BARS }, (_, i) => 0.12 + 0.3 * Math.sin((Math.PI * i) / (BARS - 1)));
 
 /** The mic: press to talk; while listening the same button, selected, stops it. */
