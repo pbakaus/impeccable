@@ -255,6 +255,7 @@ export function createTransformer(config) {
     writeOpenAIMetadata = false,
     includeVersion = true,
     versionInMetadata = false,
+    skillsDirName = 'skills',
   } = config;
   const placeholderKey = placeholderProvider || provider;
 
@@ -265,7 +266,7 @@ export function createTransformer(config) {
   return function transform(skills, distDir, options = {}) {
     const { skillsVersion = '' } = options;
     const providerDir = path.join(distDir, provider);
-    const skillsDir = path.join(providerDir, `${configDir}/skills`);
+    const skillsDir = path.join(providerDir, `${configDir}/${skillsDirName}`);
 
     cleanDir(providerDir);
     ensureDir(skillsDir);
@@ -331,7 +332,7 @@ export function createTransformer(config) {
       skillBody = stripRuleMarkers(skillBody);
 
       // Replace {{scripts_path}} with provider-aware path to skill's scripts directory
-      const scriptsPath = `${configDir}/skills/${skillName}/scripts`;
+      const scriptsPath = `${configDir}/${skillsDirName}/${skillName}/scripts`;
       skillBody = skillBody.replace(/\{\{scripts_path\}\}/g, scriptsPath);
       if (bodyTransform) skillBody = bodyTransform(skillBody, skill);
 
@@ -432,7 +433,7 @@ export function createTransformer(config) {
     if (config.agentFormat) {
       const agentsDir = path.join(providerDir, `${configDir}/agents`);
       for (const skill of skills) {
-        const scriptsPath = `${configDir}/skills/${skill.name}/scripts`;
+        const scriptsPath = `${configDir}/${skillsDirName}/${skill.name}/scripts`;
         for (const agent of skill.agents || []) {
           // Agents can declare `providers: <list>` to limit which harnesses
           // they emit to. Default (no field) ships everywhere with agentFormat.

@@ -10,7 +10,7 @@ npx impeccable install
 
 Reload your coding tool, then run `/impeccable init` in your agent (`$impeccable init` on Codex).
 
-Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
+Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, Veto, and Muse. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
 
 | Without Impeccable | With Impeccable |
 |---|---|
@@ -169,6 +169,7 @@ Download the ZIP for your tool from [impeccable.style](https://impeccable.style)
 | Mistral Vibe | `.vibe/` | `~/.vibe/skills/` |
 | Trae | `.trae/` | `~/.trae/skills/` |
 | Trae China | `.trae-cn/` | `~/.trae-cn/skills/` |
+| Muse | `workspace/` | `~/workspace/custom-skills/` |
 
 For example: `mkdir -p your-project/.claude/skills && cp -r .claude/skills/impeccable your-project/.claude/skills/`.
 
@@ -179,6 +180,7 @@ Notes:
 - Cursor and Gemini CLI may need Agent Skills enabled in settings. See the [Cursor](https://cursor.com/docs/context/skills) and [Gemini CLI](https://geminicli.com/docs/cli/skills/) skills docs.
 - Restart Trae after copying.
 - `impeccable install` and `update` manage a DeepSeek Harness global copy only when `DSH_HOME` is inside your home directory.
+- Muse is user-scope only: copy `workspace/custom-skills/impeccable` into `~/workspace/custom-skills/`. Consumer Muse exposes no native lifecycle hooks or subagent files for installers to emit, so Muse installs ship the skill without the design hook or native subagents; the agent roles run inline from `reference/degraded/`. The layout's sources are community, not Meta; see the Muse note in `docs/HARNESSES.md`.
 
 </details>
 

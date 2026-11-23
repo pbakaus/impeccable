@@ -544,8 +544,8 @@ function validateClaudeCodeDescription(rootDir) {
 function validateBatchLineEndings(rootDir, distDir, { syncRootOutputs }) {
   const dirs = [distDir];
   if (syncRootOutputs) {
-    for (const { configDir } of Object.values(PROVIDERS)) {
-      dirs.push(path.join(rootDir, configDir, 'skills', 'impeccable'));
+    for (const { configDir, skillsDirName = 'skills' } of Object.values(PROVIDERS)) {
+      dirs.push(path.join(rootDir, configDir, skillsDirName, 'impeccable'));
     }
     dirs.push(path.join(rootDir, 'plugin'), path.join(rootDir, 'cursor-plugin'));
   }
@@ -654,8 +654,8 @@ async function stageEngineBinaries(rootDir, distDir) {
     return;
   }
   let copies = 0;
-  for (const { provider, configDir } of Object.values(PROVIDERS)) {
-    const scriptsDir = path.join(distDir, provider, configDir, 'skills', 'impeccable', 'scripts');
+  for (const { provider, configDir, skillsDirName = 'skills' } of Object.values(PROVIDERS)) {
+    const scriptsDir = path.join(distDir, provider, configDir, skillsDirName, 'impeccable', 'scripts');
     if (!fs.existsSync(scriptsDir)) continue;
     for (const target of present) {
       const src = path.join(binRoot, target, binaryName(target));
@@ -758,6 +758,7 @@ This folder contains skills for all supported tools:
   .vibe/      -> Mistral Vibe
   .veto/      -> Veto model-routing harness
   .qoder/     -> Qoder
+  workspace/custom-skills/ -> Muse (copy workspace/ into your Muse home)
 
 To install, copy the relevant folder(s) into your project root.
 For Codex, repo and user skill installs come from .agents/skills.
@@ -820,9 +821,9 @@ async function build() {
     // consumes that layout; keep generated Codex bundles under dist/ only.
     const syncConfigs = Object.values(PROVIDERS).filter(({ configDir }) => configDir !== '.codex');
 
-    for (const { provider, configDir } of syncConfigs) {
-      const skillsSrc = path.join(DIST_DIR, provider, configDir, 'skills');
-      const skillsDest = path.join(ROOT_DIR, configDir, 'skills');
+    for (const { provider, configDir, skillsDirName = 'skills' } of syncConfigs) {
+      const skillsSrc = path.join(DIST_DIR, provider, configDir, skillsDirName);
+      const skillsDest = path.join(ROOT_DIR, configDir, skillsDirName);
 
       if (fs.existsSync(skillsSrc)) {
         // Preserve legacy per-project script artifacts (e.g. live-mode config.json)
@@ -879,9 +880,9 @@ async function build() {
       'critique', 'delight', 'distill', 'harden', 'layout', 'optimize',
       'overdrive', 'polish', 'quieter', 'shape', 'typeset',
     ];
-    for (const { configDir } of syncConfigs) {
+    for (const { configDir, skillsDirName = 'skills' } of syncConfigs) {
       for (const name of deprecatedLocalSkills) {
-        const p = path.join(ROOT_DIR, configDir, 'skills', name);
+        const p = path.join(ROOT_DIR, configDir, skillsDirName, name);
         if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true });
       }
     }
