@@ -56,8 +56,9 @@ export const COPY = {
     sights: { normal: 'Normal eyes', older: 'Blurry, low-contrast vision', 'colour-blind': 'Colour-blind' },
     sees: { normal: 'Normal eyes: the page as it is', older: 'Blurry, low-contrast vision', 'colour-blind': 'Colour-blind: red and green look alike' },
     /**
-     * Under each choice's name on hover: how common it is in the US (panel.js `COMMON`). `share` reads "About 5 in 10";
-     * `who` is the persona's name when its card gives an age, else nothing and the figure is a general one.
+     * Under each choice's name on hover: how common it is (panel.js `COMMON`). `share` reads "About 5 in 10"; `who` is
+     * the persona's name when its card gives an age, else nothing and the figure is a general one. Colour-blind takes
+     * `men` and `women`, each as 1 in so many.
      */
     common: {
       normal: (share, who) => `${share} ${who ? `people in the US ${who}’s age` : 'adults in the US'} wear glasses or contacts.`,
