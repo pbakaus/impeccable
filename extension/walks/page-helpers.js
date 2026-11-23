@@ -164,7 +164,9 @@ function clickByText(wanted, opts) {
   const shows = (el) => ` ${norm(`${el.innerText || el.textContent || ""} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("title") ?? ""} ${el.value ?? ""}`)} `;
   const far = (el) => gap(el.getBoundingClientRect());
   const nearest = (pool) => pool.reduce((a, el) => !a || far(el) < far(a) ? el : a, null);
-  const namedBeside = nearest(buttons.filter((el) => before.some((x) => shows(el).indexOf(` ${x} `) !== -1)));
+  const naming = (el) => before.filter((x) => shows(el).indexOf(` ${x} `) !== -1).length;
+  const bestNaming = Math.max(0, ...buttons.map(naming));
+  const namedBeside = bestNaming > 0 ? nearest(buttons.filter((el) => naming(el) === bestNaming)) : null;
   const others = box ? candidates.filter((el) => el !== boxes[0] && !labelsOf(boxes[0]).includes(el) && el.getBoundingClientRect().width >= 2) : [];
   const boxSubmit = nearest(others.filter((el) => submitIn(formOf(boxes[0]), el)));
   const besideTarget = namedBeside ?? (boxSubmit && others.every((el) => el === boxSubmit || far(el) > far(boxSubmit)) ? boxSubmit : null);
@@ -2090,4 +2092,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = 'fcdeab55a0cf20ae';
+export const HASH = '10e148da916857b9';
