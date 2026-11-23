@@ -197,7 +197,7 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1, "sync off");
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health"));
     // The first upload (above) said so once; a second never does.
-    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Design health: this scan's counts were saved"));
+    assert!(String::from_utf8_lossy(&quiet.stderr).contains("Saved this scan's counts to your"));
     assert!(run(&env, &root, &["health", "on"]).status.success());
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 2);
@@ -205,16 +205,16 @@ fn ci_telemetry_opt_outs_and_sync_off_send_nothing() {
 }
 
 #[test]
-fn a_sign_in_without_the_scope_is_told_once_and_forget_turns_sync_off() {
-    // Catches: nagging on every scan when the scope was declined, and a forgotten trend restarting on the next scan.
+fn a_denied_scan_reports_each_failure_and_forget_turns_sync_off() {
+    // Each failed upload says why it did not land; forget must still stop future uploads.
     let (fake, env) = signed_in("health-forget");
     let root = repo(&env, None);
     fake.knobs.lock().unwrap().health_denied = true;
     let first = run(&env, &root, &["detect", "."]);
     let second = run(&env, &root, &["detect", "."]);
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
+    let hint = "Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.";
     assert!(String::from_utf8_lossy(&first.stderr).contains(hint));
-    assert!(!String::from_utf8_lossy(&second.stderr).contains(hint));
+    assert!(String::from_utf8_lossy(&second.stderr).contains(hint));
     // A repo without a remote keeps a random id outside the work tree:
     // nothing is written into the repo, whose files it controls (review F4).
     assert!(!root.join(".impeccable").exists());
@@ -297,7 +297,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     // Catches (review, Cursor): `detect --quiet` sending counts and using up the one notice that says so.
     let (fake, env) = signed_in("health-quiet");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(notice));
@@ -305,7 +305,7 @@ fn a_quiet_scan_leaves_the_notice_for_the_next_one() {
     assert!(String::from_utf8_lossy(&loud.stderr).contains(notice));
 
     fake.knobs.lock().unwrap().health_denied = true;
-    let hint = "Saving to your Impeccable account needs a fresh sign-in. Run npx impeccable login to turn it on.";
+    let hint = "Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.";
     let quiet = run(&env, &root, &["detect", "--quiet", "."]);
     assert!(!String::from_utf8_lossy(&quiet.stderr).contains(hint));
     let loud = run(&env, &root, &["detect", "."]);
@@ -317,7 +317,7 @@ fn each_service_gives_its_own_notice() {
     // Catches (review, Greptile): a staging upload's notice hiding production's for the same sign-in count.
     let (staging, env) = signed_in("health-two-issuers");
     let root = repo(&env, Some("https://github.com/acme/my-site"));
-    let notice = "Design health: this scan's counts were saved";
+    let notice = "Saved this scan's counts to your";
     assert!(String::from_utf8_lossy(&run(&env, &root, &["detect", "."]).stderr).contains(notice));
     assert_eq!(staging.hits("/cli/v1/health/scans"), 1);
 
@@ -600,7 +600,7 @@ fn foundations_review_json_alias_preserves_the_health_notice() {
     assert!(!String::from_utf8_lossy(&out.stderr).contains("Design health:"));
     let out = run(&env, &root, &["detect", "."]);
     assert!(String::from_utf8_lossy(&out.stderr)
-        .contains("Design health: this scan's counts were saved"));
+        .contains("Saved this scan's counts to your"));
 }
 
 #[test]
@@ -748,7 +748,9 @@ fn design_forget_fences_a_late_success_response() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-forget-race");
+    let mut env = fake.env("design-forget-race");
+    // `forget` waits 3 s for an upload holding the lock: the real budget must end first.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -898,7 +900,9 @@ fn design_has_one_two_second_response_budget() {
         k.health = true;
         k.design = true;
     }
-    let env = fake.env("design-response-budget");
+    let mut env = fake.env("design-response-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     let root = repo(&env, None);
     std::fs::write(root.join("DESIGN.md"), "# Site\n").unwrap();
@@ -926,7 +930,9 @@ fn design_refresh_can_finish_safely_after_detect_stops_waiting() {
         k.design = true;
         k.access_ttl = 0;
     }
-    let env = fake.env("design-renew-budget");
+    let mut env = fake.env("design-renew-budget");
+    // This test measures the real budget, so git keeps its real deadline.
+    env.remove("IMPECCABLE_TEST_GIT_DEADLINE_MS");
     login(&env);
     fake.knobs.lock().unwrap().access_ttl = 900;
     let root = repo(&env, None);
@@ -1115,7 +1121,7 @@ fn design_notice_is_once_after_success_and_again_after_sign_in() {
     let env = fake.env("design-notice");
     login(&env);
     let root = repo(&env, None);
-    let notice = "Uploaded your DESIGN.md to your Impeccable account. It uploads again whenever it changes. To stop: impeccable health design off\n";
+    let notice = "Saved your DESIGN.md to your account, and again whenever it changes.\nTo stop: impeccable health design off\n";
     let hook = run(&env, &root, &["hook-before-edit"]);
     assert!(!String::from_utf8_lossy(&hook.stdout).contains(notice));
     assert!(!String::from_utf8_lossy(&hook.stderr).contains(notice));
@@ -1346,7 +1352,7 @@ fn the_sign_in_scan_leaves_design_md_to_detect() {
     assert_eq!(fake.hits("/cli/v1/design"), 0);
     let out = run(&env, &root, &["detect", "."]);
     assert_eq!(fake.hits("/cli/v1/design"), 1);
-    assert!(String::from_utf8_lossy(&out.stderr).contains("Uploaded your DESIGN.md"));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("Saved your DESIGN.md"));
 }
 
 #[test]

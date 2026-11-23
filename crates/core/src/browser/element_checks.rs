@@ -114,10 +114,12 @@ pub fn is_status_context_element(dom: &dyn Dom, el: ElId) -> bool {
 
 pub const SIDES: [&str; 4] = ["Top", "Right", "Bottom", "Left"];
 
-/// JS: checks.mjs#checkElementBordersDOM(el)
+/// JS: checks.mjs#checkElementBordersDOM(el). A left or right bar is read
+/// on any tag ([`crate::checks::side_bar`]); every other border finding keeps
+/// [`check_borders`]'s tag exemptions.
 pub fn check_element_borders_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
-    if BORDER_SAFE_TAGS.contains(&tag.as_str()) {
+    if !crate::checks::side_bar::side_bar_tag(&tag) {
         return Vec::new();
     }
     let rect = dom.rect(el);
@@ -141,7 +143,7 @@ pub fn check_element_borders_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     } else {
         None
     };
-    let mut hits = check_borders(
+    let mut hits = crate::checks::side_bar::check_borders_with_side_bars(
         &tag,
         &Sides {
             top: widths[0],
@@ -409,25 +411,39 @@ re!(
     )
 );
 
-/// JS: checks.mjs#checkElementPseudoStripeDOM(el)
+/// Whether a tag and its context take the older top and bottom band
+/// reading: not a tag whose borders are its own convention, not inside a
+/// nav, quote or code block, not a tab or selected item.
+fn band_context(dom: &dyn Dom, el: ElId, tag: &str) -> bool {
+    !(BORDER_SAFE_TAGS.contains(&tag) || tag == "summary" || tag == "table")
+        && closest_or_none(dom, el, "nav, blockquote, pre").is_none()
+        && !is_tab_context_element(dom, el)
+        && !["data-state", "data-status"]
+            .iter()
+            .any(|a| dom.attr(el, a).is_some_and(|v| crate::checks::row_stripe::is_selection_state_value(&v)))
+        && !class_attr(dom, el)
+            .split_whitespace()
+            .any(|c| crate::checks::css_scan::selector_is_state_indicator(&format!(".{c}")))
+}
+
+/// Whether the element's own corners round it at all.
+fn element_rounds(dom: &dyn Dom, el: ElId, width: f64) -> bool {
+    crate::checks::side_bar::corners_round(parse_radius_corners(Some(&dom.style(el, "borderRadius")), width).as_ref())
+}
+
+/// JS: checks.mjs#checkElementPseudoStripeDOM(el). A bar down the left or
+/// right edge is read on any tag in any state ([`crate::checks::side_bar`]);
+/// a band across the top or bottom keeps the rounded-card gate.
 pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let tag = tag_lower(dom, el);
-    if BORDER_SAFE_TAGS.contains(&tag.as_str()) || tag == "summary" {
-        return Vec::new();
-    }
-    if closest_or_none(dom, el, "nav, blockquote, pre").is_some() {
-        return Vec::new();
-    }
-    if !is_rendered_for_browser_rule(dom, el) {
+    if !crate::checks::side_bar::side_bar_tag(&tag) || !is_rendered_for_browser_rule(dom, el) {
         return Vec::new();
     }
     let rect = dom.rect(el);
     if rect.width < 40.0 || rect.height < 20.0 {
         return Vec::new();
     }
-    if is_tab_context_element(dom, el) {
-        return Vec::new();
-    }
+    let bands = band_context(dom, el, &tag);
     let mut findings = Vec::new();
     for which in PSEUDOS {
         if !pseudo_present(dom, el, which) {
@@ -452,10 +468,19 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
         let top = parse_float(&pseudo_str(dom, el, which, "top"));
         let bottom = parse_float(&pseudo_str(dom, el, which, "bottom"));
         let hugs = |v: f64| v.is_finite() && v >= -2.0 && v <= 2.0;
+        let Some(bg) = parse_rgb_or_any(&pseudo_str(dom, el, which, "backgroundColor")) else {
+            continue;
+        };
+        if bg.alpha_or_one() < 0.1 {
+            continue;
+        }
 
         let mut edge: Option<&str> = None;
         let mut thickness = 0.0;
-        if w >= 3.0 && w <= 12.0 && h >= rect.height - 44.0 && h >= rect.height * 0.5 {
+        if (1.0..=crate::checks::side_bar::SIDE_BAR_MAX_PX).contains(&w)
+            && h >= rect.height - 44.0
+            && h >= rect.height * 0.5
+        {
             edge = if hugs(left) {
                 Some("left")
             } else if hugs(right) {
@@ -464,8 +489,12 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
                 None
             };
             thickness = w;
+            if edge.is_some() && !crate::checks::side_bar::side_bar_stands(w, element_rounds(dom, el, rect.width)) {
+                continue;
+            }
         }
         if edge.is_none()
+            && bands
             && h >= 3.0
             && h <= 12.0
             && w >= rect.width - 44.0
@@ -482,30 +511,15 @@ pub fn check_element_pseudo_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> 
                 };
                 thickness = h;
             }
+            // A band along the top or bottom is the card tell only on a
+            // rounded card (r6-t2-side-tab-bands), in an accent colour.
+            let side_index = if edge == Some("top") { 0 } else { 2 };
+            let corners = parse_radius_corners(Some(&dom.style(el, "borderRadius")), rect.width);
+            if edge.is_some() && (!is_rounded_away_from_side(corners.as_ref(), side_index) || spread(&bg) < 30.0) {
+                continue;
+            }
         }
         let Some(edge) = edge else { continue };
-        // A stripe painted along any edge is the card tell only on a rounded
-        // card, the same gate the border path applies (left and right by the
-        // rounded-card decision, top and bottom by r6-t2-side-tab-bands).
-        let side_index = match edge {
-            "top" => 0,
-            "right" => 1,
-            "bottom" => 2,
-            _ => 3,
-        };
-        let corners = parse_radius_corners(Some(&dom.style(el, "borderRadius")), rect.width);
-        if !is_rounded_away_from_side(corners.as_ref(), side_index) {
-            continue;
-        }
-        let Some(bg) = parse_rgb_or_any(&pseudo_str(dom, el, which, "backgroundColor")) else {
-            continue;
-        };
-        if bg.alpha_or_one() < 0.1 {
-            continue;
-        }
-        if spread(&bg) < 30.0 {
-            continue;
-        }
         findings.push(RuleHit::new(
             "side-tab",
             format!(
@@ -525,17 +539,19 @@ const ROW_OR_CELL: &str = "tr, td, th, [role=\"row\"], [role=\"cell\"], [role=\"
 
 /// A side border on a table row or cell that reads as a stripe, off the
 /// computed sides: `(thickness, edge, alone)`, `alone` when no other side is
-/// drawn. A box drawn top and bottom too is a frame, and a box off a table
-/// part rounded away from the stripe is the card tell the borders check
-/// reports.
+/// drawn. A box drawn top and bottom too is a frame. A row or cell that is
+/// not a table part (`[role=row]`, `.row`) is the borders check's.
 fn row_border_stripe(dom: &dyn Dom, el: ElId, tag: &str) -> Option<(f64, &'static str, bool)> {
-    let mut sides = [(0.0, None); 4];
+    if crate::checks::side_bar::side_bar_tag(tag) {
+        return None;
+    }
+    let mut sides = [0.0; 4];
     let mut drawn = [false; 4];
     for (i, s) in SIDES.iter().enumerate() {
         let width = style_px(dom, el, &format!("border{s}Width"));
         let style = dom.style(el, &format!("border{s}Style"));
         let colour = parse_rgb_or_any(&dom.style(el, &format!("border{s}Color")));
-        sides[i] = (width, colour);
+        sides[i] = width;
         drawn[i] = width > 0.0
             && !matches!(style.as_str(), "" | "none" | "hidden")
             && colour.is_some_and(|c| c.alpha_or_one() >= 0.1);
@@ -544,28 +560,19 @@ fn row_border_stripe(dom: &dyn Dom, el: ElId, tag: &str) -> Option<(f64, &'stati
         return None;
     }
     [(3, "left"), (1, "right")].into_iter().find_map(|(i, edge)| {
-        let (width, colour) = sides[i];
-        (drawn[i]
-            && (2.0..=6.0).contains(&width)
-            && colour.is_some_and(|c| crate::checks::row_stripe::is_row_stripe_accent(&c))
-            && (BORDER_SAFE_TAGS.contains(&tag)
-                || !is_rounded_away_from_side(
-                    parse_radius_corners(Some(&dom.style(el, "borderRadius")), dom.rect(el).width).as_ref(),
-                    i,
-                )))
-        .then(|| (width, edge, drawn.iter().filter(|&&d| d).count() == 1))
+        (drawn[i] && (2.0..=6.0).contains(&sides[i]))
+            .then(|| (sides[i], edge, drawn.iter().filter(|&&d| d).count() == 1))
     })
 }
 
 /// A side stripe painted with an inset box-shadow, read off the computed
-/// shadow: one inset layer, no blur or spread, offset along one axis only,
-/// in an accent colour. On a table row or cell it is a side tab whatever its
-/// corners (2-6px, left or right: the stylesheet scan's band for rows); on
-/// anything else it is the card tell on a card rounded away from it (3-12px,
-/// any edge), the gate every other stripe form passes. A side border on a
-/// row or cell is read the same way, unless it is the borders check's card
-/// tell. A selected or current row's stripe marks the selection and stays
-/// silent.
+/// shadow: one inset layer, no blur or spread, offset along one axis only.
+/// Down the left or right of any box it is a side bar
+/// ([`crate::checks::side_bar`]), whatever its state or colour. On a table
+/// row or cell it is read the way the stylesheet scan reads rows (2-6px,
+/// when the row styles a state or the cell paints nothing but the stripe),
+/// a side border there too. Across the top or bottom it is the card tell
+/// only in an accent on a card rounded away from it (3-12px).
 pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     let shadow = dom.style(el, "boxShadow");
     let inset = shadow.contains("inset");
@@ -573,7 +580,7 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
         return Vec::new();
     }
     // A row by class only (`.row-card`) that is rounded is a card, as the
-    // stylesheet scan leaves it to the card scans.
+    // stylesheet scan leaves it to the side bar scan.
     let row = matches_or_false(dom, el, ROW_OR_CELL)
         || (class_attr(dom, el)
             .split_whitespace()
@@ -585,12 +592,7 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
         return Vec::new();
     }
     let tag = tag_lower(dom, el);
-    if !row && (BORDER_SAFE_TAGS.contains(&tag.as_str()) || tag == "table" || tag == "summary") {
-        return Vec::new();
-    }
-    // A row's own selection is read below; an `.active` pane around a table
-    // is not a tab.
-    if closest_or_none(dom, el, "nav, blockquote, pre").is_some() || (!row && is_tab_context_element(dom, el)) {
+    if !row && !crate::checks::side_bar::side_bar_tag(&tag) {
         return Vec::new();
     }
     if !is_rendered_for_browser_rule(dom, el) {
@@ -600,76 +602,87 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     if rect.width <= 40.0 || rect.height < 16.0 {
         return Vec::new();
     }
-    // The row an element sits in, by tag, role or a row-named class, and
-    // the cells between: a cell or a cell-named wrapper does not end the walk.
-    let hosts: Vec<ElId> = {
-        let mut cells = Vec::new();
-        let mut at = dom.parent(el);
-        loop {
-            match at {
-                Some(e) if tag_lower(dom, e) == "body" => break,
-                Some(e)
-                    if matches_or_false(dom, e, "tr, [role=\"row\"]")
-                        || class_attr(dom, e)
-                            .split_whitespace()
-                            .any(crate::checks::row_stripe::class_names_only_a_row) =>
-                {
-                    cells.push(e);
-                    break;
-                }
-                Some(e) => {
-                    if matches_or_false(dom, e, ROW_OR_CELL)
-                        || class_attr(dom, e)
-                            .split_whitespace()
-                            .any(|c| crate::checks::row_stripe::is_row_or_cell_selector(&format!(".{c}")))
+    let detail = if row {
+        // The row an element sits in, by tag, role or a row-named class, and
+        // the cells between: a cell or a cell-named wrapper does not end the walk.
+        let hosts: Vec<ElId> = {
+            let mut cells = Vec::new();
+            let mut at = dom.parent(el);
+            loop {
+                match at {
+                    Some(e) if tag_lower(dom, e) == "body" => break,
+                    Some(e)
+                        if matches_or_false(dom, e, "tr, [role=\"row\"]")
+                            || class_attr(dom, e)
+                                .split_whitespace()
+                                .any(crate::checks::row_stripe::class_names_only_a_row) =>
                     {
                         cells.push(e);
+                        break;
                     }
-                    at = dom.parent(e);
+                    Some(e) => {
+                        if matches_or_false(dom, e, ROW_OR_CELL)
+                            || class_attr(dom, e)
+                                .split_whitespace()
+                                .any(|c| crate::checks::row_stripe::is_row_or_cell_selector(&format!(".{c}")))
+                        {
+                            cells.push(e);
+                        }
+                        at = dom.parent(e);
+                    }
+                    None => break,
                 }
-                None => break,
             }
-        }
-        cells
-    };
-    // A selected or current item's stripe marks the selection, on a row or
-    // a card alike.
-    let state_selects = |e: ElId| {
-        ["data-state", "data-status"]
-            .iter()
-            .any(|a| dom.attr(e, a).is_some_and(|v| crate::checks::row_stripe::is_selection_state_value(&v)))
-    };
-    let selected = |e: ElId| {
-        state_selects(e)
-            || dom.attr(e, "aria-selected").is_some_and(|v| v == "true")
-            || dom.attr(e, "aria-current").is_some_and(|v| v != "false")
-            || class_attr(dom, e)
-                .split_whitespace()
-                .any(|c| crate::checks::css_scan::selector_is_state_indicator(&format!(".{c}")))
-    };
-    if selected(el) || (row && hosts.iter().any(|&e| selected(e))) {
-        return Vec::new();
-    }
-    let detail = if row {
-        // The row's state, or a cell that paints nothing but the stripe, as
-        // the stylesheet scan asks: a shaded cell with an edge is a column.
-        let status = |e: ElId| {
-            ["data-state", "data-status"].iter().any(|a| dom.attr(e, a).is_some()) && !state_selects(e)
+            cells
+        };
+        // The row's state (a status, a selection, the current item), or a
+        // cell that paints nothing but the stripe, as the stylesheet scan
+        // asks: a shaded cell with an edge is a column.
+        let state = |e: ElId| {
+            ["data-state", "data-status"].iter().any(|a| dom.attr(e, a).is_some())
                 || dom.attr(e, "aria-invalid").is_some_and(|v| v == "true")
+                || dom.attr(e, "aria-selected").is_some_and(|v| v == "true")
+                || dom.attr(e, "aria-current").is_some_and(|v| v != "false")
                 || class_attr(dom, e).split_whitespace().any(|c| {
-                    crate::checks::row_stripe::selector_has_status_marker(&format!(".{c}"))
+                    let c = format!(".{c}");
+                    crate::checks::row_stripe::selector_has_status_marker(&c)
+                        || crate::checks::css_scan::selector_is_state_indicator(&c)
                 })
         };
         let bare = parse_rgb_or_any(&dom.style(el, "backgroundColor"))
             .map_or(true, |c| c.alpha_or_one() < 0.1)
             && matches!(dom.style(el, "backgroundImage").as_str(), "" | "none");
-        let flagged = status(el) || hosts.iter().any(|&e| status(e));
+        let flagged = state(el) || hosts.iter().any(|&e| state(e));
+        // A plain cell's edge between two cells is a column rule (`td + td`):
+        // only the row's own outer edge reads as its stripe.
+        // A whole row is its own outer edge; only a cell sits between cells.
+        let whole_row = matches_or_false(dom, el, "tr, [role=\"row\"]")
+            || class_attr(dom, el).split_whitespace().any(crate::checks::row_stripe::class_names_only_a_row);
+        let outer = |edge: &str| {
+            flagged || whole_row || {
+                // Its sibling cells, by tag, role or a cell-named class.
+                let cells: Vec<ElId> = dom
+                    .parent(el)
+                    .map(|p| dom.children(p))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|&c| {
+                        matches_or_false(dom, c, ROW_OR_CELL)
+                            || class_attr(dom, c)
+                                .split_whitespace()
+                                .any(|n| crate::checks::row_stripe::is_row_or_cell_selector(&format!(".{n}")))
+                    })
+                    .collect();
+                if edge == "left" { cells.first() == Some(&el) } else { cells.last() == Some(&el) }
+            }
+        };
         (inset && (flagged || bare))
-            .then(|| inset_stripe_detail(dom, el, &shadow, true, rect.width))
+            .then(|| row_inset_detail(dom, el, &shadow))
             .flatten()
+            .filter(|d| outer(if d.contains("(left edge)") { "left" } else { "right" }))
             .or_else(|| {
                 let (thickness, edge, _) = row_border_stripe(dom, el, &tag)
-                    .filter(|&(_, _, alone)| flagged || (bare && alone))?;
+                    .filter(|&(_, edge, alone)| flagged || (bare && alone && outer(edge)))?;
                 Some(format!(
                     "{} — border-{edge} {}px stripe on a row or cell ({edge} edge)",
                     class_selector(dom, el),
@@ -677,7 +690,7 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
                 ))
             })
     } else {
-        inset_stripe_detail(dom, el, &shadow, false, rect.width)
+        inset_stripe_detail(dom, el, &tag, &shadow, rect.width)
     };
     let Some(detail) = detail else { return Vec::new() };
     if crate::browser::painted::unpainted_text_box(dom, el).is_some() {
@@ -686,46 +699,64 @@ pub fn check_element_inset_stripe_dom(dom: &dyn Dom, el: ElId) -> Vec<RuleHit> {
     vec![RuleHit::new("side-tab", detail)]
 }
 
-/// The inset shadow layer that is a stripe, as a finding's detail: on a row
-/// 2-6px down the left or right in a row accent, elsewhere 3-12px along any
-/// edge of a box rounded away from it.
-fn inset_stripe_detail(dom: &dyn Dom, el: ElId, shadow: &str, row: bool, width: f64) -> Option<String> {
+/// The inset shadow layer that is a stripe down the left or right of a row
+/// or cell, 2-6px, as a finding's detail.
+fn row_inset_detail(dom: &dyn Dom, el: ElId, shadow: &str) -> Option<String> {
+    measures::parse_shadow_layers(shadow).into_iter().find_map(|layer| {
+        let visible = layer.color.map_or(true, |c| c.alpha_or_one() >= 0.1);
+        (layer.inset
+            && layer.blur == 0.0
+            && layer.spread == 0.0
+            && layer.y == 0.0
+            && visible
+            && (2.0..=6.0).contains(&layer.x.abs()))
+        .then(|| {
+            format!(
+                "{} — inset box-shadow {}px stripe on a row or cell ({} edge)",
+                class_selector(dom, el),
+                number_to_string(layer.x.abs()),
+                if layer.x > 0.0 { "left" } else { "right" }
+            )
+        })
+    })
+}
+
+/// The inset shadow layer that is a stripe on a box that is not a row, as a
+/// finding's detail: a side bar down the left or right, or a 3-12px band in
+/// an accent across the top or bottom of a box rounded away from it.
+fn inset_stripe_detail(dom: &dyn Dom, el: ElId, tag: &str, shadow: &str, width: f64) -> Option<String> {
     for layer in measures::parse_shadow_layers(shadow) {
         if !layer.inset || layer.blur != 0.0 || layer.spread != 0.0 {
             continue;
         }
-        let Some(colour) = layer.color else { continue };
-        if colour.alpha_or_one() < 0.1 || spread(&colour) < 30.0 {
-            continue;
-        }
-        if row && !crate::checks::row_stripe::is_row_stripe_accent(&colour) {
-            continue;
-        }
+        let visible = layer.color.map_or(true, |c| c.alpha_or_one() >= 0.1);
         let (ax, ay) = (layer.x.abs(), layer.y.abs());
-        let (thickness, edge, side) = match (ax > 0.0, ay > 0.0) {
-            (true, false) if layer.x > 0.0 => (ax, "left", 3),
-            (true, false) => (ax, "right", 1),
-            (false, true) if layer.y > 0.0 => (ay, "top", 0),
-            (false, true) => (ay, "bottom", 2),
+        let (thickness, edge) = match (ax > 0.0, ay > 0.0) {
+            (true, false) => {
+                if !visible
+                    || ax > crate::checks::side_bar::SIDE_BAR_MAX_PX
+                    || !crate::checks::side_bar::side_bar_stands(ax, element_rounds(dom, el, width))
+                {
+                    continue;
+                }
+                (ax, if layer.x > 0.0 { "left" } else { "right" })
+            }
+            (false, true) => {
+                let Some(colour) = layer.color else { continue };
+                let side = if layer.y > 0.0 { 0 } else { 2 };
+                let corners = parse_radius_corners(Some(&dom.style(el, "borderRadius")), width);
+                if colour.alpha_or_one() < 0.1
+                    || spread(&colour) < 30.0
+                    || !(3.0..=12.0).contains(&ay)
+                    || !band_context(dom, el, tag)
+                    || !is_rounded_away_from_side(corners.as_ref(), side)
+                {
+                    continue;
+                }
+                (ay, if side == 0 { "top" } else { "bottom" })
+            }
             _ => continue,
         };
-        if row {
-            if side % 2 == 0 || !(2.0..=6.0).contains(&thickness) {
-                continue;
-            }
-            return Some(format!(
-                "{} — inset box-shadow {}px stripe on a row or cell ({edge} edge)",
-                class_selector(dom, el),
-                number_to_string(thickness)
-            ));
-        }
-        if !(3.0..=12.0).contains(&thickness) {
-            continue;
-        }
-        let corners = parse_radius_corners(Some(&dom.style(el, "borderRadius")), width);
-        if !is_rounded_away_from_side(corners.as_ref(), side) {
-            continue;
-        }
         return Some(format!(
             "{} — inset box-shadow {}px stripe ({edge})",
             class_selector(dom, el),
@@ -6707,9 +6738,13 @@ mod tests {
         assert_eq!(hits.len(), 1, "{hits:?}");
         assert_eq!(hits[0].id, "side-tab");
         assert!(hits[0].snippet.contains("3px stripe on a row or cell (left edge)"), "{}", hits[0].snippet);
+        // Any colour that paints: a neutral, a slate.
+        for neutral in ["rgb(229, 231, 235) 3px 0px 0px 0px inset", "rgb(46, 61, 84) 3px 0px 0px 0px inset"] {
+            d.set_style(td, "boxShadow", neutral);
+            assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1, "{neutral}");
+        }
         for silent in [
-            "rgb(229, 231, 235) 3px 0px 0px 0px inset",
-            "rgb(46, 61, 84) 3px 0px 0px 0px inset",
+            "rgba(220, 38, 38, 0.05) 3px 0px 0px 0px inset",
             "rgb(220, 38, 38) 3px 0px 4px 0px inset",
             "rgb(220, 38, 38) 0px -3px 0px 0px inset",
             "rgb(220, 38, 38) 1px 0px 0px 0px inset",
@@ -6725,26 +6760,23 @@ mod tests {
         assert!(check_element_inset_stripe_dom(&d, td).is_empty());
         d.set_attr(tr, "class", "is-broken");
         assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1);
-        // A selected row's stripe marks the selection.
+        // A selected row's stripe is a side tab too.
         d.set_attr(tr, "aria-selected", "true");
-        assert!(check_element_inset_stripe_dom(&d, td).is_empty());
-        // Off a table, the stripe is the card tell only on a rounded card.
+        assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1);
+        // Off a table, a bar is a side tab only on a rounded box, at any
+        // width.
         let card_stripe = "rgb(99, 102, 241) 4px 0px 0px 0px inset";
         d.set_styles(card, &[("boxShadow", card_stripe), ("borderRadius", "0px")]);
         assert!(check_element_inset_stripe_dom(&d, card).is_empty());
-        d.set_style(card, "borderRadius", "12px");
-        assert_eq!(check_element_inset_stripe_dom(&d, card).len(), 1);
-        // A rounded row-like card is a card: square away from the stripe, it
-        // is silent; rounded away from it, it is the card tell.
-        d.set_attr(card, "class", "row-card is-error");
-        d.set_styles(card, &[("boxShadow", red), ("borderRadius", "12px 0px 0px 12px")]);
+        d.set_style(card, "boxShadow", "rgb(17, 24, 39) 1px 0px 0px 0px inset");
         assert!(check_element_inset_stripe_dom(&d, card).is_empty());
-        d.set_style(card, "borderRadius", "12px");
+        d.set_style(card, "borderRadius", "6px");
+        assert_eq!(check_element_inset_stripe_dom(&d, card).len(), 1);
+        // A rounded row-like card is a card, whatever its state.
+        d.set_attr(card, "class", "row-card is-selected");
+        d.set_styles(card, &[("boxShadow", red), ("borderRadius", "12px 0px 0px 12px")]);
         let hits = check_element_inset_stripe_dom(&d, card);
         assert!(hits.len() == 1 && !hits[0].snippet.contains("row or cell"), "{hits:?}");
-        // A selected rounded card's stripe marks the selection.
-        d.set_attr(card, "class", "row-card is-selected");
-        assert!(check_element_inset_stripe_dom(&d, card).is_empty());
         // A cell in a row named by class takes the row's state and selection.
         let list = d.add(Some(body), "div");
         let row = d.add(Some(list), "div");
@@ -6757,8 +6789,8 @@ mod tests {
         d.set_attr(cell, "class", "table__cell");
         d.set_styles(cell, &[("boxShadow", red), ("borderRadius", "0px"), ("backgroundColor", "rgb(248, 250, 252)")]);
         assert_eq!(check_element_inset_stripe_dom(&d, cell).len(), 1);
-        d.set_attr(row, "class", "table__row is-broken is-selected");
-        assert!(check_element_inset_stripe_dom(&d, cell).is_empty());
+        d.set_attr(row, "class", "table__row is-selected");
+        assert_eq!(check_element_inset_stripe_dom(&d, cell).len(), 1);
         // A cell's wrappers are not its row: the walk goes on to the row.
         let table = d.add(Some(body), "table");
         let tr = d.add(Some(table), "tr");
@@ -6772,7 +6804,7 @@ mod tests {
         d.set_attr(inner, "class", "cell-content");
         d.set_attr(tr, "aria-selected", "true");
         d.set_styles(inner, &[("boxShadow", red), ("borderRadius", "0px")]);
-        assert!(check_element_inset_stripe_dom(&d, inner).is_empty());
+        assert_eq!(check_element_inset_stripe_dom(&d, inner).len(), 1);
         d.set_attr(tr, "aria-selected", "false");
         d.set_attr(tr, "class", "is-error");
         d.set_style(inner, "backgroundColor", "rgb(248, 250, 252)");
@@ -6783,11 +6815,9 @@ mod tests {
         assert_eq!(check_element_inset_stripe_dom(&d, inner).len(), 1);
         d.set_attr(td, "class", "table__cell");
         assert!(check_element_inset_stripe_dom(&d, inner).is_empty());
-        // A selection named in `data-state` (Radix, shadcn) marks the
-        // selection, not a status.
+        // A selection named in `data-state` (Radix, shadcn) is a state.
         d.set_attr(tr, "data-state", "selected");
-        d.set_style(inner, "backgroundColor", "rgba(0, 0, 0, 0)");
-        assert!(check_element_inset_stripe_dom(&d, inner).is_empty());
+        assert_eq!(check_element_inset_stripe_dom(&d, inner).len(), 1);
         d.set_attr(tr, "data-state", "failed");
         d.set_style(inner, "backgroundColor", "rgb(248, 250, 252)");
         assert_eq!(check_element_inset_stripe_dom(&d, inner).len(), 1);
@@ -6827,7 +6857,7 @@ mod tests {
         let red = "rgb(194, 65, 12)";
         for (props, why) in [
             (&[("borderLeftStyle", "none")][..], "no border drawn"),
-            (&[("borderLeftColor", "rgb(156, 163, 175)")], "neutral colour"),
+            (&[("borderLeftColor", "rgba(0, 0, 0, 0)")], "transparent"),
             (
                 &[
                     ("borderTopWidth", "1px"),
@@ -6850,7 +6880,8 @@ mod tests {
         );
         assert_eq!(check_element_inset_stripe_dom(&d, td)[0].snippet, "td — border-right 3px stripe on a row or cell (right edge)");
         d.set_styles(td, &stripe);
-        // A rounded ARIA row's side border is the borders check's card tell.
+        // An ARIA row's side border is the borders check's side bar, once
+        // the row is rounded.
         let grid_row = d.add(Some(body), "div");
         visible(&mut d, grid_row);
         d.set_rect(grid_row, 0.0, 0.0, 600.0, 48.0);
@@ -6858,9 +6889,10 @@ mod tests {
         d.add_selector(grid_row, "[role=\"row\"]");
         d.set_attr(grid_row, "class", "has-error");
         d.set_styles(grid_row, &stripe);
-        assert_eq!(check_element_inset_stripe_dom(&d, grid_row).len(), 1);
-        d.set_style(grid_row, "borderRadius", "12px");
-        assert!(check_element_inset_stripe_dom(&d, grid_row).is_empty(), "rounded ARIA row");
+        assert!(check_element_inset_stripe_dom(&d, grid_row).is_empty(), "ARIA row");
+        assert!(check_element_borders_dom(&d, grid_row).is_empty(), "square ARIA row");
+        d.set_style(grid_row, "borderRadius", "6px");
+        assert_eq!(check_element_borders_dom(&d, grid_row).len(), 1, "rounded ARIA row");
         // A plain cell is a stripe only while it paints nothing else.
         let plain_row = d.add(Some(table), "tr");
         let plain = d.add(Some(plain_row), "td");
@@ -6876,11 +6908,63 @@ mod tests {
         d.set_style(plain, "backgroundImage", "linear-gradient(rgb(248, 250, 252), rgb(226, 232, 240))");
         assert!(check_element_inset_stripe_dom(&d, plain).is_empty(), "a plain cell shaded with a gradient");
         d.set_attr(tr, "aria-selected", "true");
-        assert!(check_element_inset_stripe_dom(&d, td).is_empty(), "selected row");
+        assert_eq!(check_element_inset_stripe_dom(&d, td).len(), 1, "selected row");
+    }
+
+    /// A plain cell's border between two cells is a column rule; the row's
+    /// outer edge, or a state, is a stripe.
+    #[test]
+    fn a_column_rule_between_cells_is_not_a_row_stripe() {
+        let (mut d, body) = page();
+        let table = d.add(Some(body), "table");
+        let tr = d.add(Some(table), "tr");
+        let first = d.add(Some(tr), "td");
+        let second = d.add(Some(tr), "td");
+        for (el, w) in [(table, 600.0), (tr, 600.0), (first, 200.0), (second, 200.0)] {
+            visible(&mut d, el);
+            d.set_rect(el, 0.0, 0.0, w, 48.0);
+        }
+        let rule = [
+            ("boxShadow", "none"),
+            ("borderRadius", "0px"),
+            ("borderTopWidth", "0px"),
+            ("borderRightWidth", "0px"),
+            ("borderBottomWidth", "0px"),
+            ("borderLeftWidth", "2px"),
+            ("borderLeftStyle", "solid"),
+            ("borderLeftColor", "rgb(221, 221, 221)"),
+        ];
+        d.set_styles(second, &rule);
+        assert!(check_element_inset_stripe_dom(&d, second).is_empty());
+        d.set_styles(second, &[("borderLeftWidth", "0px"), ("boxShadow", "rgb(221, 221, 221) 2px 0px 0px 0px inset")]);
+        assert!(check_element_inset_stripe_dom(&d, second).is_empty());
+        d.set_styles(first, &rule);
+        assert_eq!(check_element_inset_stripe_dom(&d, first).len(), 1);
+        d.set_attr(tr, "class", "is-error");
+        assert_eq!(check_element_inset_stripe_dom(&d, second).len(), 1);
+    }
+
+    /// A row after another row is still its own outer edge.
+    #[test]
+    fn a_row_after_another_row_keeps_its_stripe() {
+        let (mut d, body) = page();
+        let grid = d.add(Some(body), "div");
+        let first = d.add(Some(grid), "div");
+        let second = d.add(Some(grid), "div");
+        for el in [grid, first, second] {
+            visible(&mut d, el);
+            d.set_rect(el, 0.0, 0.0, 600.0, 48.0);
+        }
+        for row in [first, second] {
+            d.set_attr(row, "role", "row");
+            d.add_selector(row, "[role=\"row\"]");
+        }
+        d.set_styles(second, &[("boxShadow", "rgb(220, 38, 38) 3px 0px 0px 0px inset"), ("borderRadius", "0px")]);
+        assert_eq!(check_element_inset_stripe_dom(&d, second).len(), 1);
     }
 
     #[test]
-    fn pseudo_stripe_flags_left_stripe_and_skips_neutral() {
+    fn pseudo_stripe_flags_left_stripe_in_any_colour() {
         let (mut d, body) = page();
         let card = d.add(Some(body), "div");
         visible(&mut d, card);
@@ -6909,15 +6993,17 @@ mod tests {
             "div.card.feature::before — absolute 4px pseudo-element stripe (left)"
         );
         d.set_pseudo_style(card, "::before", "backgroundColor", "rgb(120, 120, 120)");
+        assert_eq!(check_element_pseudo_stripe_dom(&d, card).len(), 1);
+        d.set_pseudo_style(card, "::before", "backgroundColor", "rgba(0, 0, 0, 0)");
         assert!(check_element_pseudo_stripe_dom(&d, card).is_empty());
     }
 
     #[test]
-    fn pseudo_stripe_skips_a_square_host() {
+    fn pseudo_stripe_is_a_side_tab_only_on_a_rounded_host() {
         let (mut d, body) = page();
         let quote = d.add(Some(body), "div");
         visible(&mut d, quote);
-        d.set_attr(quote, "class", "pullquote");
+        d.set_attr(quote, "class", "note");
         d.set_rect(quote, 0.0, 0.0, 300.0, 120.0);
         d.set_styles(quote, &[("borderRadius", "0px")]);
         for (p, v) in [
@@ -6936,84 +7022,67 @@ mod tests {
             d.set_pseudo_style(quote, "::before", p, v);
         }
         assert!(check_element_pseudo_stripe_dom(&d, quote).is_empty());
+        d.set_style(quote, "borderRadius", "4px");
+        assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
+        d.set_pseudo_style(quote, "::before", "width", "1px");
+        assert_eq!(check_element_pseudo_stripe_dom(&d, quote).len(), 1);
     }
 
-    /// The side accent is the tell only on a rounded card, and the corners
-    /// that decide it are the two the stripe does not touch.
+    /// A side border is a side tab on any box from 2px, and at any width on
+    /// a box rounded at all.
     #[test]
-    fn side_border_needs_a_radius_away_from_the_stripe() {
+    fn side_border_is_a_side_bar_only_on_a_rounded_box() {
         let mut d = FakeDom::new();
         let (_html, body) = d.with_page();
         let card = d.add(Some(body), "div");
         d.set_rect(card, 0.0, 0.0, 300.0, 100.0);
-        let with_radius = |d: &mut FakeDom, radius: &str| {
+        let button = d.add(Some(body), "button");
+        d.set_rect(button, 0.0, 0.0, 200.0, 32.0);
+        let with_on = |d: &mut FakeDom, el: ElId, width: &str, radius: &str| {
             d.set_styles(
-                card,
+                el,
                 &[
                     ("borderTopWidth", "0px"),
                     ("borderRightWidth", "0px"),
                     ("borderBottomWidth", "0px"),
-                    ("borderLeftWidth", "4px"),
+                    ("borderLeftWidth", width),
                     ("borderTopColor", "rgb(0, 0, 0)"),
                     ("borderRightColor", "rgb(0, 0, 0)"),
                     ("borderBottomColor", "rgb(0, 0, 0)"),
-                    ("borderLeftColor", "rgb(59, 130, 246)"),
+                    ("borderLeftColor", "rgb(156, 163, 175)"),
                     ("borderRadius", radius),
                     ("backgroundColor", "rgba(0, 0, 0, 0)"),
                 ],
             );
         };
-
-        with_radius(&mut d, "0px");
-        assert!(check_element_borders_dom(&d, card).is_empty());
-
-        with_radius(&mut d, "2px");
-        assert!(check_element_borders_dom(&d, card).is_empty());
-
-        with_radius(&mut d, "10px");
-        let hits = check_element_borders_dom(&d, card);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].id, "side-tab");
-        assert_eq!(hits[0].snippet, "border-left: 4px + border-radius: 10px");
-
-        // Rounded only along the left stripe: the card still reads square.
-        with_radius(&mut d, "10px 0px 0px 10px");
-        assert!(check_element_borders_dom(&d, card).is_empty());
-
-        // Rounded away from the stripe, square where it runs: the tab shape.
-        with_radius(&mut d, "0px 10px 10px 0px");
-        let hits = check_element_borders_dom(&d, card);
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].id, "side-tab");
-        assert_eq!(hits[0].snippet, "border-left: 4px");
-
-        // walkthroughs-35 (submitmap.com 7678, 7682): a 2px stripe on a card
-        // rounded only away from it. The leading radius value is 0, and the
-        // far corners are what the stripe is read against.
-        d.set_style(card, "borderLeftWidth", "2px");
-        with_radius(&mut d, "0px 12px 12px 0px");
-        d.set_style(card, "borderLeftWidth", "2px");
-        let hits = check_element_borders_dom(&d, card);
-        assert_eq!(hits.len(), 1, "{hits:?}");
-        assert_eq!(hits[0].snippet, "border-left: 2px + border-radius: 12px");
-        // The smaller far corner is the radius, and one under the rounded
-        // card floor is square.
-        d.set_style(card, "borderRadius", "0px 12px 6px 0px");
-        assert_eq!(check_element_borders_dom(&d, card)[0].snippet, "border-left: 2px + border-radius: 6px");
-        d.set_style(card, "borderRadius", "0px 12px 2px 0px");
-        assert!(check_element_borders_dom(&d, card).is_empty());
-        // A 2px stripe on a square box stays out, as before.
-        d.set_style(card, "borderRadius", "0px");
-        assert!(check_element_borders_dom(&d, card).is_empty());
-        d.set_style(card, "borderLeftWidth", "4px");
-
-        // A radius the engine cannot read is unknown, not square: a snapshot
-        // missing the column, or a value no parser resolves, keeps the find.
+        let with = |d: &mut FakeDom, width: &str, radius: &str| with_on(d, card, width, radius);
+        let snippets_of = |d: &FakeDom, el: ElId| check_element_borders_dom(d, el).into_iter().map(|h| h.snippet).collect::<Vec<_>>();
+        let snippets = |d: &FakeDom| snippets_of(d, card);
+        for (width, radius, want) in [
+            ("4px", "10px", "border-left: 4px + border-radius: 10px"),
+            ("4px", "10px 0px 0px 10px", "border-left: 4px + border-radius: 10px"),
+            ("1px", "6px", "border-left: 1px + border-radius: 6px"),
+            ("1px", "0px 6px 6px 0px", "border-left: 1px + border-radius: 6px"),
+        ] {
+            with(&mut d, width, radius);
+            assert_eq!(snippets(&d), vec![want], "{width} {radius}");
+        }
+        // Any bar on a square box is fine.
+        for width in ["1px", "2px", "6px"] {
+            with(&mut d, width, "0px");
+            assert!(snippets(&d).is_empty(), "{width}");
+        }
+        // On a pressed, active button too, once it is rounded.
+        d.set_attr(button, "aria-pressed", "true");
+        d.set_attr(button, "class", "is-active");
+        with_on(&mut d, button, "2px", "0px");
+        assert!(snippets_of(&d, button).is_empty());
+        with_on(&mut d, button, "2px", "6px");
+        assert_eq!(snippets_of(&d, button), vec!["border-left: 2px + border-radius: 6px"]);
+        // A radius the engine cannot read is not known to round the box.
         for unreadable in ["", "calc(0.5rem)", "var(--radius)"] {
-            with_radius(&mut d, unreadable);
-            let hits = check_element_borders_dom(&d, card);
-            assert_eq!(hits.len(), 1, "radius {unreadable:?}");
-            assert_eq!(hits[0].id, "side-tab");
+            with(&mut d, "4px", unreadable);
+            assert!(snippets(&d).is_empty(), "radius {unreadable:?}");
         }
     }
 

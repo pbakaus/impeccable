@@ -202,6 +202,18 @@ impl DeclaredCorners {
         true
     }
 
+    /// Whether a declaration rounds any corner to a radius known to be above
+    /// zero. A box with no radius declaration is square, and a corner the
+    /// reader could not resolve is not known to round it.
+    pub fn rounds_any(&self) -> bool {
+        self.corners.iter().any(|c| c.is_some_and(|v| v > 0.0))
+    }
+
+    /// Whether every corner is known to be square.
+    pub fn squares_all(&self) -> bool {
+        self.corners.iter().all(|c| *c == Some(0.0))
+    }
+
     /// Whether any radius declaration was seen at all.
     pub fn declared(&self) -> bool {
         self.declared
@@ -317,7 +329,7 @@ pub const CIRCLE_MAX_ASPECT: f64 = 1.1;
 /// spinner, an orbit ring around an icon, observations-1010 row 6), not a
 /// stripe on a card. A box whose size or corners the caller could not read
 /// is not a circle.
-fn is_circle(opts: &BorderOpts) -> bool {
+pub fn is_circle(opts: &BorderOpts) -> bool {
     let (Some([w, h]), Some(c)) = (opts.box_size, opts.corners.as_ref()) else {
         return false;
     };
@@ -582,7 +594,7 @@ fn is_styled_control(opts: &ColorOpts, bg_image: &str) -> bool {
 
 /// Whether `check_colors` answers from `safe_tag_text_contrast` rather than
 /// from the full pass, which is the set of findings the per-page dedupe
-/// owns.
+/// owns. The sampled-contrast path (#560) leaves these elements to it.
 pub(crate) fn scores_safe_tag_text(opts: &ColorOpts) -> bool {
     set_has(SAFE_TAGS, opts.tag.as_str())
         && !is_styled_control(opts, opts.bg_image.as_deref().unwrap_or(""))

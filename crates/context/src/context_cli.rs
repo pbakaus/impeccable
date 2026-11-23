@@ -1,6 +1,7 @@
 //! JS: context.mjs `cli()` and its directive builders.
 
 use crate::context::*;
+use crate::design_map::{self, MAP_BUDGET};
 use crate::jsp;
 use crate::provider::Provider;
 use crate::staleness::{collect_boot_findings, design_sidecar_candidates_for, finding, BootExtras, Finding};
@@ -20,6 +21,7 @@ const OUTPUT_BUDGET_CHARS: usize = 24_000;
 
 pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
     match provider_id {
+        "antigravity" => &[".agents/hooks.json"],
         "claude-code" => &[".claude/settings.local.json", ".claude/settings.json"],
         "codex" | "agents" => &[".codex/hooks.json"],
         "cursor" => &[".cursor/hooks.json"],
@@ -34,6 +36,7 @@ pub fn hook_manifests_for(provider_id: &str) -> &'static [&'static str] {
 /// provider's manifest. `None`: that verb has no target for the provider.
 fn hooks_on_skill_folder(provider_id: &str) -> Option<&'static str> {
     let dir = match provider_id {
+        "antigravity" => ".agent",
         "claude-code" => ".claude",
         "codex" | "agents" => ".agents",
         "cursor" => ".cursor",
@@ -73,6 +76,7 @@ pub fn user_hook_manifest(provider_id: &str, cwd: &str, env: &Env) -> Option<Str
 /// already resolved home writes exactly the file the readers look up.
 pub fn user_hook_manifest_under(provider_id: &str, cwd: &str, env: &Env, home: &str) -> Option<String> {
     match provider_id {
+        "antigravity" => Some(jsp::join(&[home, ".gemini", "config", "hooks.json"])),
         "claude-code" => Some(jsp::join(&[&claude_config_dir_under(cwd, env, home), "settings.json"])),
         "codex" | "agents" => Some(match env_nonempty(env, "CODEX_HOME") {
             Some(root) => std::path::Path::new(cwd).join(root).join("hooks.json").to_string_lossy().into_owned(),
@@ -84,7 +88,7 @@ pub fn user_hook_manifest_under(provider_id: &str, cwd: &str, env: &Env, home: &
     }
 }
 
-const STOP_REVIEW_PROVIDERS: [&str; 4] = ["claude-code", "codex", "agents", "grok"];
+const STOP_REVIEW_PROVIDERS: [&str; 5] = ["antigravity", "claude-code", "codex", "agents", "grok"];
 
 // Only the launcher-era design hook counts as an active automatic hook. A
 // manifest that still names the JS-era `.mjs` script (a pre-launcher install
@@ -155,8 +159,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
         }
         for rel in manifests {
             if let Some(raw) = read_json(&jsp::join(&[&root, rel])) {
-                if let Some(h) = raw.get("hooks") {
-                    if crate::staleness::js_truthy(h) && value_has_hook_marker(h) {
+                if let Some(h) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                    if crate::staleness::js_truthy(&h) && value_has_hook_marker(&h) {
                         return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
                     }
                 }
@@ -165,8 +169,8 @@ pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider)
     }
     if let Some(path) = user_hook_manifest(&provider.id, cwd, env) {
         if let Some(raw) = read_json(&path) {
-            if let Some(hooks) = raw.get("hooks") {
-                if crate::staleness::js_truthy(hooks) && value_has_hook_marker(hooks) {
+            if let Some(hooks) = crate::hook_markers::active_manifest_hook_subtree(&raw) {
+                if crate::staleness::js_truthy(&hooks) && value_has_hook_marker(&hooks) {
                     return if STOP_REVIEW_PROVIDERS.contains(&provider.id.as_str()) { "stop" } else { "per-edit" };
                 }
             }
@@ -296,20 +300,43 @@ fn append_subagent_authorization_directive(parts: &mut Parts) {
     ].join(" "));
 }
 
+const HOOK_EVIDENCE_WINDOW_MS: f64 = 7.0 * 24.0 * 60.0 * 60.0 * 1000.0;
+
+/// A plugin or app-bundled hook leaves no manifest in reach, but every hook era
+/// records its sessions in `.impeccable/hook.cache.json`: a session updated in the
+/// last 7 days counts as an installed hook, a removed one included (#1392).
+/// The first root is the active project, whose own config turns the hook off
+/// for it even when an enclosing root's cache is recent.
+fn hook_ran_recently(roots: &[String], env: &Env) -> bool {
+    let now = now_ms();
+    roots.first().is_some_and(|active| hook_enabled_at(active, env)) && roots.iter().any(|root| {
+        hook_enabled_at(root, env)
+            && read_json(&jsp::join(&[root, ".impeccable", "hook.cache.json"])).is_some_and(|cache| {
+                cache.get("sessions").and_then(Value::as_object).is_some_and(|sessions| sessions.values().any(|session| {
+                    session.get("updatedAt").and_then(Value::as_f64).is_some_and(|at| now - at <= HOOK_EVIDENCE_WINDOW_MS)
+                }))
+            })
+    })
+}
+
 fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
     let provider_dir = match provider.id.as_str() {
         "claude-code" => ".claude", "codex" | "agents" => ".agents",
         "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
+        // A plugin install resolves to `source`, so its hook shows only in the cache.
+        "source" => return hook_ran_recently(&hook_manifest_search_roots(ctx, cwd, env), env),
         _ => return automatic_hook_mode(ctx, cwd, env, provider) != "none",
     };
     let target = crate::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == provider_dir).unwrap();
     let expected = (target.manifest)();
+    let roots = hook_manifest_search_roots(ctx, cwd, env);
     automatic_hook_mode(ctx, cwd, env, provider) != "none" &&
-        (hook_manifest_search_roots(ctx, cwd, env).iter().any(|root|
+        (roots.iter().any(|root|
             hook_enabled_at(root, env) && hook_manifests_for(&provider.id).iter().any(|rel|
                 crate::hook_wiring::manifest_is_wired(&jsp::join(&[root, rel]), &expected)))
         || user_hook_manifest(&provider.id, cwd, env).is_some_and(|path|
             crate::hook_wiring::manifest_is_wired(&path, &expected)))
+        || hook_ran_recently(&roots, env)
 }
 
 fn append_detector_fallback(parts: &mut Parts, ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) {
@@ -445,11 +472,11 @@ pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Prov
         // Gemini's settings file may carry comments, and `hooks on` reads it the same way.
         safe_read(p)
             .and_then(|text| crate::hook_markers::parse_manifest_jsonc(&text))
-            .and_then(|(raw, _)| raw.get("hooks").cloned())
+            .and_then(|(raw, _)| crate::hook_markers::active_manifest_hook_subtree(&raw))
             .map(|hooks| crate::staleness::js_truthy(&hooks) && crate::hook_markers::value_has_impeccable_hook_marker(&hooks))
             .unwrap_or(false)
     });
-    if installed {
+    if installed || hook_ran_recently(&roots, env) {
         return vec![];
     }
     // `hooks on` writes a manifest only beside a skill folder in the directory
@@ -853,6 +880,19 @@ pub fn run_with_hook_repair(
     args: &[String], io: &mut Io,
     repair: &mut dyn FnMut(&str) -> Result<Option<String>, String>,
 ) -> i32 {
+    if args.iter().enumerate().any(|(i, a)| matches!(a.as_str(), "--help" | "-h")
+        && (i == 0 || !matches!(args[i - 1].as_str(), "--target" | "-t" | "--command" | "--focus"))) {
+        io.out("Usage: impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]\nRead project context and cached taste for the surface; --command animate selects motion taste.\n");
+        return 0;
+    }
+    if let Err(message) = crate::taste::explicit_focus(args) {
+        io.err(&format!("{message}\n"));
+        return 1;
+    }
+    if args.iter().enumerate().any(|(i, a)| a == "--command" && args.get(i + 1).is_none_or(|v| v.is_empty() || v.starts_with('-')) || a == "--command=") {
+        io.err("--command requires a verb.\n");
+        return 1;
+    }
     let cwd = io.cwd.to_string_lossy().into_owned();
     let env = io.env.clone();
     let provider = crate::provider::detect(&env, &cwd);
@@ -931,7 +971,7 @@ pub fn run_with_hook_repair(
         };
         let mut parts = Parts(lines.into_iter().map(Part::Text).collect());
         if ctx.has_design {
-            parts.doc("# DESIGN.md".to_string(), ctx.design_path.as_deref().unwrap_or_default(), ctx.design.as_deref().unwrap_or_default());
+            append_design(&mut parts, &ctx, &provider, resolved_target_path.as_deref());
         }
         append_seeded_world_directive(&mut parts, &ctx);
         append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -949,14 +989,14 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
-        append_taste(&mut parts, &env);
+        append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
         io.out(&parts.render());
         return 0;
     }
     let mut parts = Parts::default();
-    parts.doc("# PRODUCT.md".to_string(), ctx.product_path.as_deref().unwrap_or_default(), ctx.product.as_deref().unwrap_or_default());
+    append_product(&mut parts, &ctx);
     if ctx.has_design {
-        parts.doc("# DESIGN.md".to_string(), ctx.design_path.as_deref().unwrap_or_default(), ctx.design.as_deref().unwrap_or_default());
+        append_design(&mut parts, &ctx, &provider, resolved_target_path.as_deref());
     }
     append_seeded_world_directive(&mut parts, &ctx);
     append_surface_brief_context(&mut parts, &ctx, &provider);
@@ -991,13 +1031,103 @@ pub fn run_with_hook_repair(
     if let Some(u) = update_directive {
         parts.push(u);
     }
-    append_taste(&mut parts, &env);
+    append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
     io.out(&parts.render());
     0
 }
 
-fn append_taste(parts: &mut Parts, env: &Env) {
-    if let Some(block) = crate::taste::block(env) {
+/// DESIGN.md as written, or past the map budget, its map with the path to the full file and the lookup that answers
+/// what the map leaves out.
+fn append_design(parts: &mut Parts, ctx: &Ctx, provider: &Provider, target: Option<&str>) {
+    let path = ctx.design_path.as_deref().unwrap_or_default();
+    let design = ctx.design.as_deref().unwrap_or_default();
+    if js_trim(design).len() <= MAP_BUDGET {
+        parts.doc("# DESIGN.md".to_string(), path, design);
+        return;
+    }
+    // The workspace `context` was given goes with it, or the lookup would read another DESIGN.md.
+    let workspace = target.map(|t| format!(" --target {}", shell_arg(t))).unwrap_or_default();
+    let lookup = format!("Lookup: `{}{workspace} <term>` prints one token, component or section, with its file.", provider.verb_cmd("design-lookup"));
+    // Already its map (`design-compact`): the body as written, within the map's own cap; mapping it again would lose
+    // its rules and the pointer to the original.
+    if let Some(at) = design.find(design_map::MAP_MARKER) {
+        let body = design[at + design_map::MAP_MARKER.len()..].trim();
+        let body: String = body.chars().take(design_map::MAP_SIZE).collect();
+        parts.push(format!("# DESIGN.md (map; {path})\n\n{body}\n{lookup}"));
+        return;
+    }
+    let root = std::path::Path::new(ctx.design_context_dir.as_deref().unwrap_or("."));
+    parts.push(format!("# DESIGN.md (map; full file: {path})\n\n{}\n{lookup}", design_map::map(design, root, path)));
+}
+
+/// PRODUCT.md as written, or past the map budget, whole sections up to it: the title and first section, then the
+/// anti-references (the guardrails a design most often breaks), then the rest in order while they fit, and the names
+/// of any that don't with the path to them.
+fn append_product(parts: &mut Parts, ctx: &Ctx) {
+    let path = ctx.product_path.as_deref().unwrap_or_default();
+    let product = js_trim(ctx.product.as_deref().unwrap_or_default());
+    if product.len() <= MAP_BUDGET {
+        parts.doc("# PRODUCT.md".to_string(), path, product);
+        return;
+    }
+    // The title (anything before the first `## `), then each `## ` section whole.
+    let mut sections: Vec<String> = vec![String::new()];
+    for line in product.lines() {
+        if line.starts_with("## ") {
+            sections.push(String::new());
+        }
+        let last = sections.last_mut().expect("one section");
+        last.push_str(line);
+        last.push('\n');
+    }
+    let name = |s: &str| s.lines().next().and_then(|l| l.strip_prefix("## ")).unwrap_or("").trim().to_string();
+    let mut order: Vec<usize> = vec![0];
+    if sections.len() > 1 {
+        order.push(1);
+    }
+    if let Some(at) = (2..sections.len()).find(|&i| name(&sections[i]).to_lowercase().contains("anti-reference")) {
+        order.push(at);
+    }
+    let later: Vec<usize> = (2..sections.len()).filter(|i| !order.contains(i)).collect();
+    order.extend(later);
+    let (mut kept, mut left, mut used) = (vec![false; sections.len()], Vec::new(), 0);
+    for (n, &i) in order.iter().enumerate() {
+        // The title and first section always go, so the file is never reduced to its name alone.
+        if n < 2 || used + sections[i].len() <= MAP_BUDGET {
+            used += sections[i].len();
+            kept[i] = true;
+        } else {
+            left.push(name(&sections[i]));
+        }
+    }
+    let mut text = js_trim(&(0..sections.len()).filter(|&i| kept[i]).map(|i| sections[i].as_str()).collect::<String>()).to_string();
+    // A title or first section that is itself long is cut at a line within the budget, so no PRODUCT.md can push the
+    // directives after it past an agent's output limit.
+    if text.len() > MAP_BUDGET * 2 {
+        let mut cut = 0;
+        for (at, _) in text.match_indices('\n') {
+            if at > MAP_BUDGET * 2 {
+                break;
+            }
+            cut = at;
+        }
+        if cut == 0 {
+            cut = MAP_BUDGET * 2;
+            while !text.is_char_boundary(cut) {
+                cut -= 1;
+            }
+        }
+        text.truncate(cut);
+        text.push_str("\n(cut here; the rest is in the full file)");
+    }
+    if !left.is_empty() {
+        text.push_str(&format!("\n\nMore sections: {}.", left.join(", ")));
+    }
+    parts.push(format!("# PRODUCT.md (sections; full file: {path})\n\n{text}\nFull: {path} (read a section when you need its detail)"));
+}
+
+fn append_taste(parts: &mut Parts, env: &Env, focus: Option<&str>) {
+    if let Some(block) = crate::taste::block_for(env, focus) {
         insert_taste(parts, block);
     }
 }
@@ -1005,7 +1135,7 @@ fn append_taste(parts: &mut Parts, env: &Env) {
 fn insert_taste(parts: &mut Parts, block: String) {
     let index = parts.0.iter().position(|p| {
         let text = p.text();
-        text.starts_with("# PRODUCT.md\n") || text.starts_with("# DESIGN.md\n")
+        text.starts_with("# PRODUCT.md") || text.starts_with("# DESIGN.md")
             || text.starts_with("# SURFACE BRIEF ")
             || text.starts_with("# NATIVE PLATFORM REFERENCE:")
     }).unwrap_or(parts.0.len());
@@ -1092,6 +1222,10 @@ mod skill_version_tests {
         parts.sized("DIRECTIVE".into(), "compact".into());
         insert_taste(&mut parts, "TASTE".into());
         assert_eq!(parts.0.iter().map(Part::text).collect::<Vec<_>>(), vec!["DIRECTIVE", "TASTE"]);
+        let mut parts = Parts::default();
+        parts.push("# DESIGN.md (map; full file: DESIGN.md)\n\nmap".into());
+        insert_taste(&mut parts, "TASTE".into());
+        assert_eq!(parts.0[0].text(), "TASTE");
     }
 
     /// Values recorded from origin/main's `parseSkillFrontmatterVersion` (#703).
@@ -1726,6 +1860,59 @@ mod hook_not_installed_tests {
     }
 
     #[test]
+    fn a_hook_session_in_the_last_week_counts_as_installed() {
+        // A plugin or app-bundled hook has no manifest in reach; its cache is the evidence (#1392).
+        let day = 24.0 * 60.0 * 60.0 * 1000.0;
+        for (age_days, installed) in [(1.0, true), (8.0, false)] {
+            let fixture = Fixture::new("codex");
+            let at = (crate::util::now_ms() - age_days * day) as u64;
+            fixture.put("project/.impeccable/hook.cache.json", &format!(r#"{{"version":1,"sessions":{{"s":{{"updatedAt":{at},"files":{{}}}}}}}}"#));
+            assert_eq!(fixture.findings().is_empty(), installed, "{age_days} days");
+            let ctx = load_context(&fixture.project, &TargetOptions::default(), &fixture.env);
+            let provider = crate::provider::detect(&fixture.env, &fixture.project);
+            let mut parts = super::Parts::default();
+            super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+            assert_eq!(!parts.render().contains("MANUAL_DETECTOR_REQUIRED"), installed, "{age_days} days");
+            // A hook turned off since still needs the manual detector.
+            fixture.put("project/.impeccable/config.local.json", r#"{"hook":{"enabled":false}}"#);
+            let mut parts = super::Parts::default();
+            super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+            assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"), "{age_days} days, disabled");
+        }
+    }
+
+    fn recent_cache() -> String {
+        format!(r#"{{"version":1,"sessions":{{"s":{{"updatedAt":{},"files":{{}}}}}}}}"#, crate::util::now_ms() as u64)
+    }
+
+    fn manual_detector_required(fixture: &Fixture, cwd: &str) -> bool {
+        let ctx = load_context(cwd, &TargetOptions::default(), &fixture.env);
+        let provider = crate::provider::detect(&fixture.env, cwd);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, cwd, &fixture.env, &provider);
+        parts.render().contains("MANUAL_DETECTOR_REQUIRED")
+    }
+
+    #[test]
+    fn a_plugin_install_counts_its_recent_cache() {
+        let fixture = Fixture::new("source");
+        assert!(manual_detector_required(&fixture, &fixture.project));
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        assert!(!manual_detector_required(&fixture, &fixture.project));
+    }
+
+    #[test]
+    fn an_enclosing_cache_does_not_cover_a_project_with_the_hook_off() {
+        let fixture = Fixture::new("codex");
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        fixture.put("project/web/package.json", r#"{"name":"web"}"#);
+        fixture.put("project/web/.impeccable/config.local.json", r#"{"hook":{"enabled":false}}"#);
+        let web = fixture.root.join("project").join("web").to_string_lossy().into_owned();
+        assert_eq!(load_context(&web, &TargetOptions::default(), &fixture.env).project_root, web);
+        assert!(manual_detector_required(&fixture, &web));
+    }
+
+    #[test]
     fn silent_when_the_hook_is_off_or_declined() {
         for config in [r#"{"hook":{"enabled":false}}"#, r#"{"hook":{"consent":"declined"}}"#] {
             let fixture = Fixture::new("claude-code");
@@ -1820,18 +2007,22 @@ mod seeded_world_tests {
     const STARTER_CSS: &str = ":root {\n  --background: #ffffff;\n  --foreground: #171717;\n  --font-mono: ui-monospace;\n}\n\nbody {\n  color: var(--foreground);\n  background: var(--background);\n}\n";
 
     fn boot(product: bool, starter: bool) -> String {
-        let root = std::env::temp_dir().join(format!("impeccable-seeded-starter-{}-{product}-{starter}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        boot_with(SEED, product.then_some("# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nA starter.\n"), starter)
+    }
+
+    fn boot_with(design: &str, product: Option<&str>, starter: bool) -> String {
+        let root = std::env::temp_dir().join(format!("impeccable-seeded-starter-{}-{}-{starter}-{}", std::process::id(), product.is_some(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let _ = std::fs::remove_dir_all(&root);
         let project = root.join("project");
         std::fs::create_dir_all(project.join(".git")).unwrap();
         std::fs::create_dir_all(project.join("app")).unwrap();
         std::fs::create_dir_all(root.join("home")).unwrap();
-        std::fs::write(project.join("DESIGN.md"), SEED).unwrap();
+        std::fs::write(project.join("DESIGN.md"), design).unwrap();
         if starter {
             std::fs::write(project.join("app/globals.css"), STARTER_CSS).unwrap();
         }
-        if product {
-            std::fs::write(project.join("PRODUCT.md"), "# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Positioning\nA starter.\n").unwrap();
+        if let Some(product) = product {
+            std::fs::write(project.join("PRODUCT.md"), product).unwrap();
         }
         assert_eq!(crate::context::has_visual_implementation(&project.to_string_lossy()), starter);
         let home = root.join("home").to_string_lossy().into_owned();
@@ -1859,6 +2050,31 @@ mod seeded_world_tests {
             // The no-PRODUCT.md boot must not also call the starter CSS the incumbent authority.
             assert!(!out.contains("code and assets are incumbent design authority"), "product={product}: {out}");
         }
+    }
+
+    #[test]
+    fn a_long_first_product_section_is_cut_within_the_budget() {
+        // Catches a PRODUCT.md whose opening section is itself huge pushing the directives past output limits.
+        let product = format!("# Big\n\n## Platform\n\n{}\n## Users\n\nsomeone\n", "A long line of product prose.\n".repeat(1000));
+        let out = boot_with(SEED, Some(&product), false);
+        let part = out.split("# PRODUCT.md (sections; full file: PRODUCT.md)").nth(1).unwrap().split("\n---\n").next().unwrap();
+        assert!(part.contains("(cut here; the rest is in the full file)"), "{part}");
+        assert!(part.len() < super::MAP_BUDGET * 2 + 300, "{}", part.len());
+    }
+
+    #[test]
+    fn a_long_design_md_arrives_as_its_map_and_a_short_one_as_written() {
+        let long = include_str!("../../../demos/landing-demo/DESIGN.md");
+        let product = include_str!("../../../demos/landing-demo/PRODUCT.md");
+        let out = boot_with(long, Some(product), false);
+        assert!(out.contains("# DESIGN.md (map; full file: DESIGN.md)\n\nName: Lumina\n"), "{out}");
+        // Whole sections up to the budget, the anti-references always among them.
+        assert!(out.contains("# PRODUCT.md (sections; full file: PRODUCT.md)\n\n# Lumina\n\n## Register\n\nbrand\n"), "{out}");
+        assert!(out.contains("## Anti-references\n"), "{out}");
+        assert!(!out.contains("DOCUMENT_NOT_INLINED"), "{out}");
+        assert!(!out.contains("Accessibility & Inclusion\n\nWCAG"), "{out}");
+        let out = boot_with(SEED, None, false);
+        assert!(out.contains(&format!("# DESIGN.md\n\n{}\n\n---", SEED.trim())), "{out}");
     }
 
     #[test]

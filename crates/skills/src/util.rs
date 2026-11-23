@@ -286,10 +286,7 @@ pub fn json_pretty(v: &serde_json::Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_else(|_| "null".into())
 }
 
-/// `str.length` in UTF-16 code units.
-pub fn utf16_len(s: &str) -> usize {
-    s.encode_utf16().count()
-}
+pub use impeccable_common::text::utf16_len;
 
 /// `str.substring(0, n)` in UTF-16 code units.
 pub fn utf16_prefix(s: &str, n: usize) -> String {

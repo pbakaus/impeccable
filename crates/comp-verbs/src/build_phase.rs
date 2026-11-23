@@ -2813,9 +2813,9 @@ fn force_allowed(reason: Option<&str>) -> bool {
     // Match a direct attribution together with its quotation. A user mention
     // elsewhere in the reason cannot authorize a different speaker's words.
     static QUOTE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?i)(?:^|[.!?]\s+)(?:the\s+)?(?:user|paul)(?:\s+(?:said|says|wrote|replied|answered|confirmed|asked)\s*[:,]?|\s*:)\s*(?:"([^"]+)"|“([^”]+)”|'([^']+)'|‘([^’]+)’)"#).unwrap());
-    static DOWNGRADE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^\s*(please\s+)?(ignore|waive|relax|skip|drop|disregard) (the )?(approved )?(comp|mockup|fidelity|plate|region)\b|^\s*(the )?(comp|mockup|fidelity|plate|region)\b[^.!?;\n]{0,40}\b(is optional|is not required|does not need to match|doesn't need to match|need not match|can differ|can be skipped)\b").unwrap());
+    static DOWNGRADE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)^\s*(please\s+)?(ignore|waive|relax|skip|drop|disregard|downgrade|retire|override|supersede) (the )?(approved )?(comp|mockup|fidelity|plate|region)\b|^\s*(the )?(comp|mockup|fidelity|plate|region)\b[^.!?;\n]{0,40}\b(is optional|is not required|does not need to match|doesn't need to match|need not match|can differ|can be skipped|is (now )?(stale|outdated|retired|obsolete|superseded)|should be considered (stale|outdated|retired|obsolete)|no longer (represents|applies|governs|is the reference)|was (only |just )?a reference\s*$)\b|^\s*(yes,?\s+)?(the )?(build|built page|page|site) (now )?(overrides?|supersedes?|replaces?) (the )?(approved )?(comp|mockup)\s*$").unwrap());
     QUOTE.captures_iter(reason.trim()).any(|capture| {
-        (1..=4).filter_map(|i| capture.get(i)).any(|q| DOWNGRADE.is_match(q.as_str()))
+        (1..=4).filter_map(|i| capture.get(i)).any(|q| q.as_str().split(['.', '!', '?']).any(|sentence| DOWNGRADE.is_match(sentence.trim())))
     })
 
 }
@@ -2883,7 +2883,7 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
         }
         let mut reasons = gate.reasons.clone();
         reasons.push(format!(
-            "--force refused: \"{}\" does not quote the user downgrading the comp. A single-file deliverable, a missing tool, or difficulty is not a reason, and a refused force is not the end of the phase: the readings above are the edits, each one a CSS value; make them, recapture, advance. Ask the user only when a reading contradicts something they said about this comp.",
+            "--force refused: \"{}\" does not quote the user downgrading the comp. Force takes the user's own words, attributed and quoted (for example: the user said: \"the comp is stale\"). A single-file deliverable, a missing tool, or difficulty is not a reason, and a refused force is not the end of the phase: the readings above are the edits, each one a CSS value; make them, recapture, advance. Ask the user only when a reading contradicts something they said about this comp.",
             reason.unwrap_or("")
         ));
         return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
@@ -2912,15 +2912,21 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     }
     // Ship compares the frontend inputs against the ones responsive closed on, passed or forced.
     if phase == "responsive" && !native_capture(io, state) {
-        let Some(inputs) = crate::completion::input_hash(&io.cwd) else {
-            if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
-                p.insert("status".into(), json!("open"));
+        let fingerprint = crate::completion::input_scope(&io.cwd, state)
+            .and_then(|scope| crate::completion::input_hash(&io.cwd, &scope).map(|inputs| (scope, inputs)));
+        let (scope, inputs) = match fingerprint {
+            Ok(fingerprint) => fingerprint,
+            Err(why) => {
+                if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
+                    p.insert("status".into(), json!("open"));
+                }
+                let mut reasons = gate.reasons.clone();
+                reasons.push(format!("Frontend inputs could not be fingerprinted during responsive verification, so responsive cannot close, not even with --force: {why}"));
+                return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
             }
-            let mut reasons = gate.reasons.clone();
-            reasons.push("Frontend inputs could not be fingerprinted during responsive verification, so responsive cannot close, not even with --force".into());
-            return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
         };
         state["responsiveInputSha256"] = json!(inputs);
+        state["responsiveInputScope"] = json!(scope);
     }
     let mut forced = false;
     if !gate.ok && force {
@@ -3724,13 +3730,16 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                 return 2;
             }
             if disposition == "ship" && !native_capture(io, &state) {
-                let current = crate::completion::input_hash(&io.cwd);
-                if current.is_none() || state["responsiveInputSha256"].as_str() != current.as_deref() {
+                let current = crate::completion::input_hash(&io.cwd, state["responsiveInputScope"].as_str().unwrap_or(""));
+                if current.is_err() || state["responsiveInputSha256"].as_str() != current.as_deref().ok() {
                     state["phase"] = json!("responsive");
                     state["phases"]["responsive"]["status"] = json!("open");
                     state["phases"]["responsive"]["closedAt"] = Value::Null;
                     save_state(io,&state);
-                    io.err("build-phase: frontend inputs changed since the responsive screenshots were checked. Recapture desktop and mobile, then advance responsive before finish; this does not reopen human review.\n");
+                    match current {
+                        Err(why) => io.err(&format!("build-phase: frontend inputs could not be fingerprinted: {why}. Responsive is open again: advance responsive again before finish; this does not reopen human review.\n")),
+                        Ok(_) => io.err("build-phase: frontend inputs changed since the responsive screenshots were checked. Recapture desktop and mobile, then advance responsive before finish; this does not reopen human review.\n"),
+                    }
                     return 2;
                 }
             }
@@ -3762,7 +3771,9 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
             let phase = state.get("phase").and_then(Value::as_str).unwrap_or("").to_string();
             state.as_object_mut().unwrap().insert("finish".into(), json!({ "disposition": disposition, "at": now(), "phaseAtFinish": phase }));
             if state["capturePolicy"] != "native-html-v1" {
-                if let Some(hash) = crate::completion::input_hash(&io.cwd) {
+                let scope = state["responsiveInputScope"].as_str().unwrap_or("").to_string();
+                if let Ok(hash) = crate::completion::input_hash(&io.cwd, &scope) {
+                    state["finish"]["artifactInputsScope"] = json!(scope);
                     state["finish"]["artifactInputsSha256"] = json!(hash);
                 }
             }

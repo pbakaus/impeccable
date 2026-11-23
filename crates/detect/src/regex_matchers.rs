@@ -10,12 +10,15 @@ use impeccable_core::checks::rules::{
     find_gray_on_color_bg, find_solid_chromatic_bg, is_near_black_neutral_class, is_radius_property,
     DeclaredCorners, NOMINAL_CARD_WIDTH_PX,
 };
-use impeccable_core::color::is_neutral_color;
+use impeccable_core::checks::row_stripe::is_row_or_cell_selector;
+use impeccable_core::checks::side_bar::side_bar_stands;
+use impeccable_core::color::{is_neutral_color, parse_any_color};
 use impeccable_core::constants::{EM_DASH_CHARS_PER_DASH, EM_DASH_FLOOR, OVERUSED_FONTS};
 use impeccable_core::findings::{finding, Finding};
 use impeccable_core::fonts::extract_google_font_families;
 use impeccable_core::js::{self, ci, math_round, number_to_string, parse_float, string_to_number};
-use impeccable_core::js_ext_a::{advance_utf16, slice_utf16_start, utf16_index, utf16_length};
+use impeccable_core::js_ext_a::{advance_utf16, slice_utf16_start, split_commas_outside_parens, utf16_index, utf16_length};
+use impeccable_core::checks::css_scan::css_length_to_px;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -307,10 +310,10 @@ fn gray_on_color_pairs(line: &str, gray_class: &str, index: usize) -> Vec<String
 }
 
 // ─── side accent scope ──────────────────────────────────────────────────────
-// `side-tab` reports a left or right accent only on a card rounded away from
-// the stripe. A matcher sees one line; the corners live in the declarations
-// around it, so the driver hands every side-tab match to
-// [`side_tab_rounded_in_scope`] with the whole block in hand.
+// `side-tab` reports a left or right border of 2px or more on any box, and a
+// thinner one on a rounded box. A matcher sees one line; the corners live in
+// the declarations around it, so the driver hands every side-tab match to
+// [`side_tab_match_stands`] with the whole block in hand.
 
 re!(TW_SIDE_TAB_WHOLE_RE, format!("^border-([lrse])-{D}+$"));
 /// The utility-class corner reader lives in core, where the static engine
@@ -1023,90 +1026,303 @@ pub fn is_stripe_child_match(m: &MatchCtx) -> bool {
         .is_some_and(|f| f.start() == 0 && f.end() == whole.len())
 }
 
-/// Whether a `side-tab` match sits on a card rounded away from its stripe.
-/// A utility class, a styled-system prop and a `style` attribute read the
+/// The corners the declarations around a `side-tab` match give its box. A
+/// utility class, a styled-system prop and a `style` attribute read the
 /// markup tag they sit in; a CSS declaration or style-object property reads
 /// the statements of its own block and of the blocks around it it passes
 /// through or names with `&`; indentation-syntax Sass follows indentation the
-/// same way.
-///
-/// The reader fails safe to reporting. A scope it read completely that
-/// declares no radius is the initial square box and stays silent, as does a
-/// literal radius under the rounded threshold. Wherever it cannot see the
-/// radius (an interpolation, an unresolved `var()`, a theme token, a mixin
-/// call, a spread, a class expression, a tag that does not close on the line)
-/// the corners are unknown and the finding stays. A radius declared on a
-/// different selector of the same element is out of this reader's reach: in
-/// stylesheet text [`side_tab_known_square_in_sheet`] reads the stylesheet
-/// before a square answer drops the finding.
-pub fn side_tab_rounded_in_scope(m: &MatchCtx, source: &SourceText, i: usize, sass: bool) -> bool {
+/// same way. A scope that declares no radius is the initial square box.
+pub fn side_tab_scope_corners(m: &MatchCtx, source: &SourceText, i: usize, sass: bool) -> DeclaredCorners {
     let whole = m.whole();
     let line = source.line(i);
-    if let Some(c) = TW_SIDE_TAB_WHOLE_RE.captures(whole) {
-        let side = if matches!(&c[1], "l" | "s") { 3 } else { 1 };
-        return markup_tag_corners(line, m.index).is_rounded_away_from_side(side);
-    }
-    let lower = js::to_lower_case(whole);
-    let side = if lower.contains("left") || lower.contains("start") {
-        3
-    } else {
-        1
-    };
-    let corners = if JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(line, m.index) {
+    if TW_SIDE_TAB_WHOLE_RE.is_match(whole) || JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(line, m.index) {
         markup_tag_corners(line, m.index)
     } else if sass {
         sass_scope_corners(source, i, DeclaredCorners::default())
     } else {
         brace_scope_corners(source, i, m.index, DeclaredCorners::default())
-    };
-    corners.is_rounded_away_from_side(side)
+    }
 }
 
-/// The second half of the gate for a declaration in stylesheet text (a `.css`,
-/// `.scss`, `.sass` or `.less` file, a `<style>` block, a CSS-in-JS template):
-/// whether a match [`side_tab_rounded_in_scope`] read as square sits on a box
-/// known to be square. Reading the declarations around the match alone cannot
-/// say so: another rule for the same element (`.card` before
-/// `.card.is-active`), or a class the element may carry, can round it.
-///
-/// Braces syntax asks the stylesheet's [`CssHostIndex`], the reading the
-/// pseudo-element and inset-shadow scans take, so one visual answers the same
-/// way however it is drawn. Indented Sass has no index: the box is known
-/// square when its scope declares both corners away from the stripe with
-/// literal values under the threshold, or when `sheet` (every radius the
-/// file's stylesheets declare, corner by corner at its largest) cannot round
-/// them. A utility class in stylesheet text is never known square.
-///
-/// `index_text` is what the index is built on, byte for byte in step with the
-/// source: the source itself, or a component file with everything outside its
-/// `<style>` blocks blanked.
-pub fn side_tab_known_square_in_sheet<'s>(
+/// Whether a `side-tab` side border match is a side tab
+/// ([`impeccable_core::checks::side_bar`]): 2px or more on any box, thinner
+/// where its box is rounded, by the declarations around it or, in stylesheet
+/// text (`index_text`), by the rules tied to its host (`.it` rounds
+/// `.it[aria-pressed]`). A declaration in a rule for a table row or cell is
+/// the row scan's: a grid line, or a status stripe it reports.
+pub fn side_tab_match_stands<'s>(
     m: &MatchCtx,
     source: &SourceText,
     i: usize,
     sass: bool,
     index: &once_cell::unsync::OnceCell<CssHostIndex<'s>>,
-    index_text: &'s str,
-    sheet: &DeclaredCorners,
+    index_text: Option<&'s str>,
+    markup_index: &once_cell::unsync::OnceCell<CssHostIndex<'s>>,
+    markup_text: Option<&'s str>,
 ) -> bool {
-    let whole = m.whole();
-    if TW_SIDE_TAB_WHOLE_RE.is_match(whole) {
+    let index = || index_text.filter(|_| !sass).map(|text| index.get_or_init(|| CssHostIndex::new(text)));
+    let pos = source.offset(i, m.index);
+    // The selectors of the rule the declaration sits in: the file's style
+    // index, or for a CSS-in-JS template outside it the selector written
+    // before the block's brace.
+    let selectors: Vec<String> = match index().and_then(|index| index.declaration_hosts(pos)) {
+        Some(hosts) => hosts,
+        None => {
+            let b = source.text().as_bytes();
+            block_bounds(b, pos)
+                .2
+                .map(|open| {
+                    let head = &source.text()[..open];
+                    let from = head.rfind(|c| matches!(c, '{' | '}' | ';' | '`')).map_or(0, |p| p + 1);
+                    vec![js::trim(&head[from..]).to_string()]
+                })
+                .unwrap_or_default()
+        }
+    };
+    let row_rule = !selectors.is_empty() && selectors.iter().all(|h| is_row_or_cell_selector(h));
+    if row_rule {
         return false;
     }
-    let lower = js::to_lower_case(whole);
-    let side = if lower.contains("left") || lower.contains("start") {
-        3
+    let whole = m.whole();
+    let line = source.line(i);
+    let markup = TW_SIDE_TAB_WHOLE_RE.is_match(whole) || JSX_SIDE_PROP_RE.is_match(whole) || in_style_attribute(line, m.index);
+    let tag = markup.then(|| complete_markup_tag(line, m.index)).flatten();
+    // The declarations the bar sits among: its rule's own scope, or the
+    // markup tag's `style` attribute or style object.
+    let statements: Vec<String> = if let Some(tag) = tag {
+        tag_style_statements(tag)
+    } else if markup {
+        Vec::new()
+    } else if sass {
+        sass_scope_statements(source, i).0.into_iter().next().unwrap_or_default()
     } else {
-        1
+        brace_scope_statements(source, i, m.index).0.into_iter().next().map(|(s, _)| s).unwrap_or_default()
     };
-    if sass {
-        return !sass_scope_corners(source, i, DeclaredCorners::unknown())
-            .is_rounded_away_from_side(side)
-            || !sheet.is_rounded_away_from_side(side);
+    let declared = |names: &[&str], test: &dyn Fn(&str) -> bool| {
+        statements.iter().any(|st| {
+            split_declaration(st).is_some_and(|(p, v)| names.contains(&js::to_lower_case(&p).as_str()) && test(&js::to_lower_case(js::trim(&v))))
+        })
+    };
+    // A box drawn as a CSS triangle (no size, transparent sides) is a caret.
+    if declared(&["width", "height"], &|v| matches!(v, "0" | "0px"))
+        || declared(&["border-top", "border-bottom", "border-right", "border-left", "border-color", "border-top-color", "border-bottom-color"], &|v| v.contains("transparent"))
+    {
+        return false;
     }
-    index
-        .get_or_init(|| CssHostIndex::new(index_text))
-        .is_declaration_known_square(source.offset(i, m.index), side, sheet)
+    let width = num(m.g(1));
+    let side = side_tab_side(whole);
+    // The widest other side the declarations draw: a bar is a side drawn
+    // alone, or 2px or more beside hairlines or sides at most half its width.
+    let other = other_side_width(&statements, side).max(tag.map_or(0.0, |t| tailwind_other_side_width(t, side)));
+    if !(other == 0.0 || (width >= 2.0 && (other <= 1.0 || width >= other * 2.0))) {
+        return false;
+    }
+    // A hairline beside a frame another rule for the same element draws.
+    if width < 2.0 && index().is_some_and(|index| index.is_declaration_framed(pos)) {
+        return false;
+    }
+    let classes = tag.map(tag_classes).unwrap_or_default();
+    let rounded = || {
+        // The stylesheet's rules for the box, once they all apply, outrank
+        // the bar's own rule: a later `border-radius: 0` squares it. An
+        // `!important` radius in the bar's own rule outranks them in turn.
+        let important_own = statements.iter().any(|st| {
+            split_declaration(st).is_some_and(|(p, v)| is_radius_property(&p) && js::to_lower_case(&v).contains("!important"))
+        });
+        if !important_own {
+            if let Some(r) = index().and_then(|index| index.declaration_rounding(pos)) {
+                return r;
+            }
+        }
+        side_tab_scope_corners(m, source, i, sass).rounds_any()
+            || tag.zip(markup_text).is_some_and(|(t, text)| {
+                // The tag's own radii apply over the stylesheet's, corner by corner.
+                // A spread may bring in any radius: `None`.
+                let inline: Vec<Option<(String, String)>> = statements
+                    .iter()
+                    .filter_map(|st| {
+                        if is_unseen_declaration_source(st) {
+                            return Some(None);
+                        }
+                        split_declaration(st).filter(|(p, _)| is_radius_property(p)).map(Some)
+                    })
+                    .collect();
+                let name = tag_name(t);
+                let tag = Some(name.as_str()).filter(|n| !n.starts_with(|c: char| c.is_ascii_uppercase()));
+                markup_index.get_or_init(|| CssHostIndex::new(text)).element_corners(tag, &classes, &inline).rounds_any()
+            })
+    };
+    side_bar_stands(width, rounded())
+}
+
+/// The stripe side of a `side-tab` match: `3` for left or start, else `1`.
+fn side_tab_side(whole: &str) -> usize {
+    if let Some(c) = TW_SIDE_TAB_WHOLE_RE.captures(whole) {
+        return if matches!(&c[1], "l" | "s") { 3 } else { 1 };
+    }
+    let lower = js::to_lower_case(whole);
+    if lower.contains("left") || lower.contains("start") { 3 } else { 1 }
+}
+
+/// A markup tag's element name (`div`, `Card`).
+fn tag_name(tag: &str) -> String {
+    tag.trim_start_matches('<').chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '.').collect()
+}
+
+/// The literal classes a markup tag carries.
+fn tag_classes(tag: &str) -> Vec<String> {
+    re!(TAG_CLASS_RE, r#"(?:^|\s)(?:class|className)\s*=\s*\{?\s*["'`]([^"'`]*)["'`]"#.to_string());
+    TAG_CLASS_RE.captures_iter(tag).flat_map(|c| c[1].split_whitespace().map(str::to_string).collect::<Vec<_>>()).collect()
+}
+
+/// The declarations of a markup tag's `style` attribute or style object, in
+/// CSS spelling (`borderLeft: '1px solid'` reads `border-left: 1px solid`).
+fn tag_style_statements(tag: &str) -> Vec<String> {
+    re!(STYLE_ATTR_RE, r#"(?i)\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)'|\{\{(.*?)\}\})"#.to_string());
+    let Some(c) = STYLE_ATTR_RE.captures(tag) else { return Vec::new() };
+    if let Some(css) = c.get(1).or_else(|| c.get(2)) {
+        return css.as_str().split(';').map(|s| js::trim(s).to_string()).filter(|s| !s.is_empty()).collect();
+    }
+    let object = c.get(3).map_or("", |m| m.as_str());
+    split_commas_outside_parens(object)
+        .into_iter()
+        .filter_map(|entry| {
+            // A spread stays, so a reader knows it may bring declarations in.
+            if js::trim(entry).starts_with("...") {
+                return Some(js::trim(entry).to_string());
+            }
+            let (key, value) = entry.split_once(':')?;
+            let key = js::trim(key).trim_matches(|c| c == '"' || c == '\'');
+            let mut prop = String::new();
+            for ch in key.chars() {
+                if ch.is_ascii_uppercase() {
+                    prop.push('-');
+                    prop.push(ch.to_ascii_lowercase());
+                } else {
+                    prop.push(ch);
+                }
+            }
+            let value = js::trim(value).trim_matches(|c| c == '"' || c == '\'' || c == '`');
+            let value = if value.chars().all(|c| c.is_ascii_digit() || c == '.') { format!("{value}px") } else { value.to_string() };
+            Some(format!("{prop}: {value}"))
+        })
+        .collect()
+}
+
+/// The widest border the declarations give a side other than `side`
+/// (`[Top, Right, Bottom, Left]` index), in px: the shorthand, the box
+/// widths, and each side's own declarations. A style of `none` or a width of
+/// `0` draws nothing; a side named with no width is `medium`.
+fn other_side_width(statements: &[String], side: usize) -> f64 {
+    let width_of = |value: &str| -> f64 {
+        let v = js::to_lower_case(js::trim(value));
+        if v.contains("none") || v.contains("hidden") {
+            return 0.0;
+        }
+        v.split_whitespace()
+            .find_map(|t| match t {
+                "thin" => Some(1.0),
+                "medium" => Some(3.0),
+                "thick" => Some(5.0),
+                "0" => Some(0.0),
+                _ => css_length_to_px(t),
+            })
+            .unwrap_or(3.0)
+    };
+    let mut sides = [0.0f64; 4];
+    // Whether each side's style draws it: a shorthand that names a width
+    // or style draws it, `border-*-style: none` turns it off again.
+    let mut drawn = [true; 4];
+    for st in statements {
+        let Some((prop, value)) = split_declaration(st) else { continue };
+        let prop = js::to_lower_case(&prop);
+        let targets: &[usize] = match prop.as_str() {
+            "border" => &[0, 1, 2, 3],
+            "border-top" | "border-block-start" => &[0],
+            "border-bottom" | "border-block-end" => &[2],
+            "border-block" => &[0, 2],
+            "border-right" | "border-inline-end" => &[1],
+            "border-left" | "border-inline-start" => &[3],
+            "border-width" => {
+                let w: Vec<f64> = value.split_whitespace().map(|t| css_length_to_px(t).unwrap_or(if t == "0" { 0.0 } else { 3.0 })).collect();
+                let at = |i: usize| match w.len() {
+                    0 => 0.0,
+                    1 => w[0],
+                    2 => w[i % 2],
+                    3 => w[if i == 3 { 1 } else { i }],
+                    _ => w[i],
+                };
+                for (i, s) in sides.iter_mut().enumerate() {
+                    *s = at(i);
+                }
+                continue;
+            }
+            "border-style" | "border-top-style" | "border-right-style" | "border-bottom-style" | "border-left-style"
+            | "border-inline-start-style" | "border-inline-end-style" => {
+                let v = js::to_lower_case(js::trim(&value));
+                let on: Vec<bool> = v.split_whitespace().map(|t| !matches!(t, "none" | "hidden")).collect();
+                let targets: Vec<usize> = match prop.as_str() {
+                    "border-style" => vec![0, 1, 2, 3],
+                    "border-top-style" => vec![0],
+                    "border-bottom-style" => vec![2],
+                    "border-right-style" | "border-inline-end-style" => vec![1],
+                    _ => vec![3],
+                };
+                for &t in &targets {
+                    let at = if prop == "border-style" {
+                        match on.len() {
+                            0 => continue,
+                            1 => 0,
+                            2 => t % 2,
+                            3 => if t == 3 { 1 } else { t },
+                            _ => t,
+                        }
+                    } else {
+                        0
+                    };
+                    drawn[t] = on.get(at).copied().unwrap_or(true);
+                }
+                continue;
+            }
+            "border-top-width" => &[0],
+            "border-bottom-width" => &[2],
+            "border-right-width" => &[1],
+            "border-left-width" => &[3],
+            _ => continue,
+        };
+        let w = width_of(&value);
+        for &t in targets {
+            sides[t] = w;
+            if !prop.ends_with("-width") {
+                drawn[t] = w > 0.0;
+            }
+        }
+    }
+    (0..4).filter(|&j| j != side && drawn[j]).map(|j| sides[j]).fold(0.0, f64::max)
+}
+
+/// The widest border a tag's utility classes draw on a side other than
+/// `side`: `border` (1px all round), `border-2`, `border-t`, `border-y-4` and
+/// the like, variants included.
+fn tailwind_other_side_width(tag: &str, side: usize) -> f64 {
+    re!(TW_BORDER_RE, r"(?:^|[\s:])border(?:-([xytrblse]))?(?:-([0-9]+))?(?:$|\s)".to_string());
+    let mut max = 0.0f64;
+    for c in TW_BORDER_RE.captures_iter(&tag.replace(['"', '\'', '`', '{', '}'], " ")) {
+        let w = c.get(2).and_then(|m| m.as_str().parse::<f64>().ok()).unwrap_or(1.0);
+        let on: &[usize] = match c.get(1).map(|m| m.as_str()) {
+            None => &[0, 1, 2, 3],
+            Some("x") => &[1, 3],
+            Some("y") => &[0, 2],
+            Some("t") => &[0],
+            Some("b") => &[2],
+            Some("r") | Some("e") => &[1],
+            _ => &[3],
+        };
+        if on.iter().any(|&j| j != side) {
+            max = max.max(w);
+        }
+    }
+    max
 }
 
 /// Whether some statement declares a radius. A statement that might bring
@@ -1210,129 +1426,6 @@ impl std::ops::Deref for Scope<'_, '_> {
     }
 }
 
-re!(MARKUP_TAG_NAME_RE, r"^<([A-Za-z][-\w.:]*)".to_string());
-re!(CSS_PROP_ATTR_RE, r"(?:^|\s)css\s*=".to_string());
-
-/// The literal class names a markup tag carries, or `None` when a class
-/// attribute is an expression or a bound class the reader cannot spell out.
-fn literal_tag_classes(tag: &str) -> Option<Vec<String>> {
-    let mut classes = Vec::new();
-    for c in CLASS_ATTR_RE.captures_iter(tag) {
-        let name = &c[1];
-        let value = c.get(2).unwrap();
-        let text = if value.as_str() == "{" {
-            balanced_braces(tag, value.start()).and_then(literal_class_text)
-        } else if matches!(name, "class" | "className" | "tw") {
-            let quoted = value.as_str();
-            let inner = &quoted[1..quoted.len() - 1];
-            (!inner.contains('{')).then(|| inner.to_string())
-        } else {
-            None
-        };
-        classes.extend(text?.split_whitespace().map(str::to_string));
-    }
-    Some(classes)
-}
-
-/// Whether a markup tag squares its own corners away from `side` off: a
-/// `rounded-none` or `rounded-0` utility, or literal square radii its radius
-/// props, `style` attribute or style object declare, or, for a match inside a
-/// style object on the tag (`sx={{ ... }}`), that object. A corner nothing on
-/// the tag declares could come from a stylesheet.
-fn tag_squares_itself(m: &MatchCtx, source: &SourceText, i: usize, tag: &str, side: usize) -> bool {
-    if literal_tag_classes(tag)
-        .is_some_and(|classes| classes.iter().any(|c| c == "rounded-none" || c == "rounded-0"))
-    {
-        return true;
-    }
-    if !tag_own_corners(tag, DeclaredCorners::unknown()).is_rounded_away_from_side(side) {
-        return true;
-    }
-    let whole = m.whole();
-    let in_object = !TW_SIDE_TAB_WHOLE_RE.is_match(whole)
-        && !JSX_SIDE_PROP_RE.is_match(whole)
-        && !in_style_attribute(source.line(i), m.index);
-    in_object
-        && !brace_scope_corners(source, i, m.index, DeclaredCorners::unknown())
-            .is_rounded_away_from_side(side)
-}
-
-/// The stripe side of a `side-tab` match: `3` for left or start, else `1`.
-fn side_tab_side(whole: &str) -> usize {
-    if let Some(c) = TW_SIDE_TAB_WHOLE_RE.captures(whole) {
-        return if matches!(&c[1], "l" | "s") { 3 } else { 1 };
-    }
-    let lower = js::to_lower_case(whole);
-    if lower.contains("left") || lower.contains("start") {
-        3
-    } else {
-        1
-    }
-}
-
-/// The second half of the gate for a markup accent (a utility class, a
-/// `style` attribute, a style object or a JSX prop inside a tag on the line)
-/// that [`side_tab_rounded_in_scope`] read as square: whether the element is
-/// known square given the file's `<style>` blocks and CSS-in-JS rules, which
-/// can round a class the tag carries. A file whose style text declares no
-/// radius leaves the tag's own reading as it was; otherwise
-/// [`CssHostIndex::is_element_known_square`] answers, over an index built on
-/// `index_text` (that style text). A tag with a `css` prop, or whose classes
-/// the reader cannot spell out, is never known square. A match that sits in
-/// no tag on the line (a template declaration, a standalone object) is not
-/// markup and is left as read.
-///
-/// A file that imports a stylesheet (`imports_stylesheet`) could round any
-/// class the tag carries, and the reader does not follow the import, so there
-/// the tag is known square only when it squares itself off
-/// ([`tag_squares_itself`]).
-pub fn side_tab_markup_known_square<'s>(
-    m: &MatchCtx,
-    source: &SourceText,
-    i: usize,
-    index: &once_cell::unsync::OnceCell<CssHostIndex<'s>>,
-    index_text: &'s str,
-    sheet: &DeclaredCorners,
-    imports_stylesheet: bool,
-) -> bool {
-    if !sheet.declared() && !imports_stylesheet {
-        return true;
-    }
-    let Some(tag) = complete_markup_tag(source.line(i), m.index) else {
-        return true;
-    };
-    if imports_stylesheet && !tag_squares_itself(m, source, i, tag, side_tab_side(m.whole())) {
-        return false;
-    }
-    if !sheet.declared() {
-        return true;
-    }
-    if CSS_PROP_ATTR_RE.is_match(tag) {
-        return false;
-    }
-    let Some(classes) = literal_tag_classes(tag) else {
-        return false;
-    };
-    let name = MARKUP_TAG_NAME_RE
-        .captures(tag)
-        .map_or(String::new(), |c| c[1].to_string());
-    let component = name.starts_with(|c: char| c.is_ascii_uppercase()) || name.contains('.');
-    let tag_type = (!component && !name.is_empty()).then(|| name.to_ascii_lowercase());
-    // A styled component the file defines takes its template's own
-    // declarations.
-    let styled_root = component
-        && Regex::new(&format!(r"\b{}\s*=\s*styled\b", regex::escape(&name)))
-            .map_or(true, |re| re.is_match(source.text()));
-    index
-        .get_or_init(|| CssHostIndex::new(index_text))
-        .is_element_known_square(
-            tag_type.as_deref(),
-            styled_root,
-            &classes,
-            side_tab_side(m.whole()),
-            sheet,
-        )
-}
 
 /// The indentation-syntax Sass reading of [`CssHostIndex::sheet_corners`]:
 /// every radius declaration in the text, corner by corner at its largest.
@@ -1403,24 +1496,6 @@ re!(BORDER_RADIUS_WORD_RE, ci("border-radius"));
 fn has_border_radius(line: &str) -> bool {
     BORDER_RADIUS_WORD_RE.is_match(line)
 }
-re!(
-    SAFE_ELEMENT_RE,
-    format!(
-        "<(?:{bq}|{nav}[{ws}>]|{pre}[{ws}>]|{code}[{ws}>]|{a}{WS}|{input}[{ws}>]|{span}[{ws}>])",
-        bq = ci("blockquote"),
-        nav = ci("nav"),
-        pre = ci("pre"),
-        code = ci("code"),
-        a = ci("a"),
-        input = ci("input"),
-        span = ci("span"),
-        ws = WS_CHARS
-    )
-);
-fn is_safe_element(line: &str) -> bool {
-    SAFE_ELEMENT_RE.is_match(line)
-}
-
 fn first_overused_google_font(text: &str) -> String {
     extract_google_font_families(text)
         .into_iter()
@@ -1536,11 +1611,13 @@ re!(
         color = ci("color")
     )
 );
-fn is_neutral_border_color(s: &str) -> bool {
-    match NEUTRAL_BORDER_RE.captures(s) {
-        Some(m) => is_neutral_authored_color(&m[1]),
-        None => false,
-    }
+/// Whether a side border declaration's colour paints nothing: a
+/// transparent keyword or a colour under 10% alpha.
+fn is_invisible_border_color(s: &str) -> bool {
+    NEUTRAL_BORDER_RE.captures(s).is_some_and(|m| {
+        let c = js::trim(&m[1]);
+        c.eq_ignore_ascii_case("transparent") || parse_any_color(Some(c)).is_some_and(|c| c.alpha_or_one() < 0.1)
+    })
 }
 
 // ─── The matchers ────────────────────────────────────────────────────────────
@@ -2483,57 +2560,37 @@ pub static REGEX_MATCHERS: Lazy<Vec<Matcher>> = Lazy::new(|| {
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_TW_RE, l),
-            test: |m, line| {
-                let n = num(m.g(1));
-                if has_rounded(line) {
-                    n >= 2.0
-                } else {
-                    n >= 4.0
-                }
-            },
+            test: |m, _| num(m.g(1)) >= 2.0,
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_CSS_RE, l),
-            test: |m, line| {
-                if is_safe_element(line) {
-                    return false;
-                }
-                if is_neutral_border_color(m.whole()) {
-                    return false;
-                }
-                let n = num(m.g(1));
-                if has_border_radius(line) {
-                    n >= 2.0
-                } else {
-                    n >= 3.0
-                }
-            },
+            test: |m, _| num(m.g(1)) >= 1.0 && !is_invisible_border_color(m.whole()),
             fmt: |m, _| TRAILING_SEMI_RE.replace(m.whole(), "").into_owned(),
         },
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_WIDTH_RE, l),
-            test: |m, line| !is_safe_element(line) && num(m.g(1)) >= 3.0,
+            test: |m, _| num(m.g(1)) >= 1.0,
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_INLINE_RE, l),
-            test: |m, line| !is_safe_element(line) && num(m.g(1)) >= 3.0,
+            test: |m, _| num(m.g(1)) >= 1.0,
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_INLINE_WIDTH_RE, l),
-            test: |m, line| !is_safe_element(line) && num(m.g(1)) >= 3.0,
+            test: |m, _| num(m.g(1)) >= 1.0,
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
             id: "side-tab",
             find_all: |l| all(&SIDE_TAB_JS_RE, l),
-            test: |m, _| num(m.g(1)) >= 3.0,
+            test: |m, _| num(m.g(1)) >= 1.0 && !is_invisible_border_color(m.whole()),
             fmt: |m, _| m.whole().to_string(),
         },
         Matcher {
@@ -3047,18 +3104,21 @@ pub const TEXT_CONTENT_ANALYZER_IDS: &[&str] = &[
     "aphoristic-cadence",
 ];
 
+/// The rule id each of [`REGEX_ANALYZERS`] reports, by index.
+pub const REGEX_ANALYZER_IDS: &[&str] = &[
+    "monotonous-spacing",
+    "em-dash-overuse",
+    "marketing-buzzword",
+    "aphoristic-cadence",
+    "dark-glow",
+    "radial-halo",
+    "marquee",
+];
+
 /// The ruleIds the JS assigns to analyzers by index (`analyzerIds[i] || analyzer-${i+1}`).
 pub fn analyzer_rule_id(i: usize) -> String {
-    const IDS: &[&str] = &[
-        "monotonous-spacing",
-        "em-dash-overuse",
-        "marketing-buzzword",
-        "aphoristic-cadence",
-        "dark-glow",
-        "radial-halo",
-        "marquee",
-    ];
-    IDS.get(i)
+    REGEX_ANALYZER_IDS
+        .get(i)
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("analyzer-{}", i + 1))
 }
@@ -3149,6 +3209,11 @@ mod tests {
         assert!(left("border-l-4 !rounded-lg"));
     }
 
+    /// Whether the scope reader rounds a left accent's box away from it.
+    fn rounded_away(m: &MatchCtx, source: &SourceText, i: usize, sass: bool) -> bool {
+        side_tab_scope_corners(m, source, i, sass).is_rounded_away_from_side(3)
+    }
+
     #[test]
     fn side_tab_scope_reads_the_enclosing_declarations() {
         let rounded = |text: &str, needle: &str, sass: bool| {
@@ -3159,7 +3224,7 @@ mod tests {
                 groups: vec![Some(needle.to_string())],
                 index,
             };
-            side_tab_rounded_in_scope(&m, &SourceText::new(&lines), i, sass)
+            rounded_away(&m, &SourceText::new(&lines), i, sass)
         };
         let accent = "border-left: 4px solid #6366f1";
         assert!(!rounded(
@@ -3233,7 +3298,7 @@ mod tests {
                 groups: vec![Some(needle.to_string())],
                 index,
             };
-            side_tab_rounded_in_scope(&m, &SourceText::new(&lines), i, false)
+            rounded_away(&m, &SourceText::new(&lines), i, false)
         };
         // `&.x`, `&:hover` and a BEM modifier style the rule's own element.
         assert!(rounded(
@@ -3286,7 +3351,7 @@ mod tests {
                 groups: vec![Some(needle.to_string())],
                 index,
             };
-            side_tab_rounded_in_scope(&m, &SourceText::new(&lines), i, sass)
+            rounded_away(&m, &SourceText::new(&lines), i, sass)
         };
         let accent = "border-left: 4px solid #6366f1";
 
@@ -3517,7 +3582,8 @@ mod tests {
             run("side-tab", ".c { border-left: 4px solid #6366f1; }"),
             vec!["border-left: 4px solid #6366f1"]
         );
-        assert!(run("side-tab", ".c { border-left: 4px solid #000; }").is_empty());
+        assert_eq!(run("side-tab", ".c { border-left: 4px solid #000; }").len(), 1);
+        assert!(run("side-tab", ".c { border-left: 4px solid transparent; }").is_empty());
         assert_eq!(run("broken-image", "<img alt=x>"), vec!["<img alt=x>"]);
         assert!(run("broken-image", "<img src=\"a.png\">").is_empty());
         assert_eq!(

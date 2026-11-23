@@ -102,6 +102,29 @@ fn raw_text_parent(ts: &[Token], token: &Token) -> Option<usize> {
     None
 }
 
+/// Whether an opening tag holds another element (`icon={<Icon />}`): a second
+/// tag the shared lexer opens. `{...}` reads as JS there, so `MouseEvent<T>`
+/// is a generic and quoted text is not markup; `opener` comes masked, and a
+/// lexer that loses its place or misses the opener (`<Foo{...p}>`) fails closed.
+fn holds_nested_element(opener: &str) -> bool {
+    let lines: Vec<String> = opener.split('\n').map(String::from).collect();
+    let mut opens = 0;
+    let clean = lex_markup(&lines, 0, Dialect::Jsx, true, false, |e| {
+        if matches!(e, Lexed::Open { .. }) { opens += 1; }
+        opens > 1
+    });
+    // The lexer opens no typed element (`<Icon<Props> />`), so refuse one
+    // where JSX can start; `go<Array<T>>()` is a type argument.
+    let typed = opener.match_indices('<').any(|(i, _)| {
+        let name = opener[i + 1..].split(|c: char| !c.is_ascii_alphanumeric() && !"._:-".contains(c)).next().unwrap_or("");
+        let before = opener[..i].trim_end();
+        let word = before.rsplit(|c: char| !c.is_alphanumeric() && c != '_' && c != '$').next().unwrap_or("");
+        name.starts_with(|c: char| c.is_ascii_alphabetic()) && opener[i + 1 + name.len()..].starts_with('<')
+            && expects_operand(before.chars().last(), word)
+    });
+    typed || opens != 1 || !clean
+}
+
 struct Candidate {
     file: usize,
     rank: usize,
@@ -110,6 +133,7 @@ struct Candidate {
     range: ElementMatch,
     shared: bool,
     safe: bool,
+    component: bool,
 }
 
 /// Only takes over when a locator candidate actually shares a boundary line.
@@ -131,8 +155,9 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
         let components = dialect != Dialect::Html;
         // Tokens are read from the masked source, whose byte offsets match
         // `source`; when the lexer cannot finish, from `source` itself.
-        let ts = match mask_source(&file.lines, dialect) {
-            Some(masked) => tokens(&masked, !components, false),
+        let masked = mask_source(&file.lines, dialect);
+        let ts = match &masked {
+            Some(masked) => tokens(masked, !components, false),
             None => tokens(&source, !components, true),
         };
         // Pair each opener with its own closer before matching inner text.
@@ -152,77 +177,88 @@ pub(super) fn resolve(files: Vec<SourceFile>, queries: &[String], tag: Option<&s
             }
             None
         }).collect();
-        let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
-            && tag.map_or(true, |tag| tag.eq_ignore_ascii_case(&n.name))
-            && matches_query(&source[n.start..n.end], q, tag)));
-        for (ti, t) in ts.iter().enumerate().filter(|(_, t)| !t.close) {
-            if tag.map_or(false, |tag| !tag.eq_ignore_ascii_case(&t.name)) { continue; }
-            if source[t.start..t.end].contains("data-impeccable-variant") { continue; }
-            let Some(end) = ends[ti] else { continue };
-            let rank = if let Some(rank) = opener_query {
-                matches_query(&source[t.start..t.end], &queries[rank], tag).then_some(rank)
-            } else {
-                queries.iter().position(|q| source[t.end..end].match_indices(q.as_str()).any(|(offset, _)| {
-                    let at = t.end + offset;
-                    !ts[ti + 1..].iter().enumerate().any(|(i, n)| !n.close
-                        && n.start < end && n.start <= at
-                        && ends[ti + 1 + i].map_or(true, |child_end| at < child_end))
-                }))
-            };
-            let Some(rank) = rank else { continue };
-            let ls = source[..t.start].rfind('\n').map_or(0, |n| n + 1);
-            let le = source[end..].find('\n').map_or(source.len(), |n| end + n);
-            let before = &source[ls..t.start];
-            let after = &source[end..le];
-            let shared = !before.trim().is_empty() || !after.trim().is_empty();
-            let mut ancestor = t.parent;
-            let mut protected = raw(&t.name.to_ascii_lowercase());
-            while let Some(p) = ancestor {
-                protected |= raw(&ts[p].name.to_ascii_lowercase());
-                ancestor = ts[p].parent;
+        // A component can render the tag (see `component_fallback`), located
+        // through its own opening tag, which must hold no nested element.
+        for components_pass in [false, true] {
+            if components_pass && !component_fallback_allowed(queries, tag, dialect) { break; }
+            // The first pass took the elements of the tag itself.
+            let accepts = |n: &Token| tag.map_or(true, |tag| renders_tag(&n.name, tag, components_pass) && !(components_pass && renders_tag(&n.name, tag, false)))
+                && !(components_pass && holds_nested_element(&masked.as_deref().unwrap_or(&source)[n.start..n.end]));
+            let opener_query = queries.iter().position(|q| ts.iter().any(|n| !n.close
+                && accepts(n)
+                && matches_query(&source[n.start..n.end], q, tag)));
+            for (ti, t) in ts.iter().enumerate().filter(|(_, t)| !t.close) {
+                if !accepts(t) { continue; }
+                if source[t.start..t.end].contains("data-impeccable-variant") { continue; }
+                let Some(end) = ends[ti] else { continue };
+                let rank = if let Some(rank) = opener_query {
+                    matches_query(&source[t.start..t.end], &queries[rank], tag).then_some(rank)
+                } else if components_pass {
+                    None
+                } else {
+                    queries.iter().position(|q| source[t.end..end].match_indices(q.as_str()).any(|(offset, _)| {
+                        let at = t.end + offset;
+                        !ts[ti + 1..].iter().enumerate().any(|(i, n)| !n.close
+                            && n.start < end && n.start <= at
+                            && ends[ti + 1 + i].map_or(true, |child_end| at < child_end))
+                    }))
+                };
+                let Some(rank) = rank else { continue };
+                let ls = source[..t.start].rfind('\n').map_or(0, |n| n + 1);
+                let le = source[end..].find('\n').map_or(source.len(), |n| end + n);
+                let before = &source[ls..t.start];
+                let after = &source[end..le];
+                let shared = !before.trim().is_empty() || !after.trim().is_empty();
+                let mut ancestor = t.parent;
+                let mut protected = raw(&t.name.to_ascii_lowercase());
+                while let Some(p) = ancestor {
+                    protected |= raw(&ts[p].name.to_ascii_lowercase());
+                    ancestor = ts[p].parent;
+                }
+                let text_before = before.rsplit('>').next().unwrap_or(before).trim();
+                let text_after = after.split('<').next().unwrap_or(after).trim();
+                let is_block = |n: &Token| if components { block(&n.name) } else { block(&n.name.to_ascii_lowercase()) };
+                // Check each inserted newline independently. A body parent alone
+                // cannot make an adjacent pair of inline siblings whitespace-safe.
+                let left_safe = before.trim().is_empty() || before.ends_with(char::is_whitespace)
+                    || (is_block(t) && ts.iter().filter(|n| n.end <= t.start && n.end > ls).last()
+                        .map_or(false, |n| is_block(n)));
+                let right_safe = after.trim().is_empty() || after.starts_with(char::is_whitespace)
+                    || (is_block(t) && ts.iter().find(|n| n.start >= end && n.start < le)
+                        .map_or(false, |n| is_block(n)));
+                // JSX drops whitespace that holds a newline, so a split is safe only
+                // where the element touches a tag or an expression container (or the
+                // line's edge): never next to text, a space, or a JS keyword such as
+                // `return`, where a newline would end the statement.
+                let jsx_left = before.trim().is_empty() || before.ends_with('>') || before.ends_with('}');
+                let jsx_right = after.trim().is_empty() || after.starts_with('<') || after.starts_with('{');
+                let safe = scaffold_supported && if jsx { !protected && jsx_left && jsx_right } else {
+                    !protected && text_before.is_empty() && text_after.is_empty()
+                        && left_safe && right_safe
+                };
+                candidates.push(Candidate { file: fi, rank, start: t.start, end,
+                    range: ElementMatch { start_line: source[..t.start].matches('\n').count(), end_line: Some(source[..end].matches('\n').count()) }, shared, safe, component: components_pass });
             }
-            let text_before = before.rsplit('>').next().unwrap_or(before).trim();
-            let text_after = after.split('<').next().unwrap_or(after).trim();
-            let is_block = |n: &Token| if components { block(&n.name) } else { block(&n.name.to_ascii_lowercase()) };
-            // Check each inserted newline independently. A body parent alone
-            // cannot make an adjacent pair of inline siblings whitespace-safe.
-            let left_safe = before.trim().is_empty() || before.ends_with(char::is_whitespace)
-                || (is_block(t) && ts.iter().filter(|n| n.end <= t.start && n.end > ls).last()
-                    .map_or(false, |n| is_block(n)));
-            let right_safe = after.trim().is_empty() || after.starts_with(char::is_whitespace)
-                || (is_block(t) && ts.iter().find(|n| n.start >= end && n.start < le)
-                    .map_or(false, |n| is_block(n)));
-            // JSX drops whitespace that holds a newline, so a split is safe only
-            // where the element touches a tag or an expression container (or the
-            // line's edge): never next to text, a space, or a JS keyword such as
-            // `return`, where a newline would end the statement.
-            let jsx_left = before.trim().is_empty() || before.ends_with('>') || before.ends_with('}');
-            let jsx_right = after.trim().is_empty() || after.starts_with('<') || after.starts_with('{');
-            let safe = scaffold_supported && if jsx { !protected && jsx_left && jsx_right } else {
-                !protected && text_before.is_empty() && text_after.is_empty()
-                    && left_safe && right_safe
-            };
-            candidates.push(Candidate { file: fi, rank, start: t.start, end,
-                range: ElementMatch { start_line: source[..t.start].matches('\n').count(), end_line: Some(source[..end].matches('\n').count()) }, shared, safe });
         }
     }
+    let text = text.filter(|t| !t.trim().is_empty());
+    let normalize = |s: &str| WS_RUN_RE.replace_all(&s.to_lowercase(), " ").trim().to_string();
+    let carries_text = |files: &[SourceFile], c: &Candidate| text.map_or(false, |text| {
+        let source = files[c.file].lines.join("\n");
+        let actual = normalize(&TAG_RE.replace_all(&source[c.start..c.end], " "));
+        let wanted = normalize(text);
+        actual == wanted || (text_disambiguates(text) && actual.contains(&wanted))
+    });
+    prefer_picked_tag(&mut candidates, |c| c.component, |c| carries_text(&files, c));
     // Locator precedence is global, before text or shared-line filtering can
     // discard a stronger hit in favour of another file's weaker locator.
     if let Some(rank) = candidates.iter().map(|c| c.rank).min() {
         candidates.retain(|c| c.rank == rank);
     }
     if !candidates.iter().any(|c| c.shared) { return Err(files); }
-    if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
-        let normalize = |s: &str| WS_RUN_RE.replace_all(&s.to_lowercase(), " ").trim().to_string();
-        let wanted = normalize(text);
-        let filtered: Vec<_> = candidates.iter().enumerate().filter_map(|(i, c)| {
-            let source = files[c.file].lines.join("\n");
-            let inner = TAG_RE.replace_all(&source[c.start..c.end], " ");
-            let actual = normalize(&inner);
-            (actual == wanted || (text_disambiguates(text) && actual.contains(&wanted))).then_some(i)
-        }).collect();
-        if !filtered.is_empty() {
-            candidates = candidates.into_iter().enumerate().filter_map(|(i, c)| filtered.contains(&i).then_some(c)).collect();
+    if text.is_some() {
+        if candidates.iter().any(|c| carries_text(&files, c)) {
+            candidates.retain(|c| carries_text(&files, c));
         } else if candidates.len() > 1 {
             if !tag_only && candidates.iter().any(|c| !c.shared) {
                 // The line resolver lands on the first hit in walk order; hand
@@ -285,5 +321,52 @@ mod tests {
         assert_eq!(ts[0].start, source.find("<main>").unwrap());
         assert_eq!(&source[ts[1].start..ts[1].end], "<h1>");
         assert_eq!(ts.last().unwrap().end, source.len());
+    }
+
+    #[test]
+    fn same_line_component_renders_the_picked_tag() {
+        let file = |path: &str, text: &str| SourceFile { isolation: None, path: path.into(), lines: vec![text.to_string()] };
+        let queries = build_search_queries(None, Some("demo-exit"), Some("a"), None);
+        // #1583: Next's `<Link>` renders `a`, on a line it shares with `<nav>`.
+        let link = r#"<nav><Link href="/journal" className="demo-exit">Leave demo</Link></nav>"#;
+        let Resolution::Match(found, m) = resolve_in_file(file("app/page.tsx", link), &queries, Some("a"), Some("Leave demo")) else { panic!() };
+        assert!(found.isolation.is_some());
+        assert_eq!(found.lines[m.start_line].trim(), r#"<Link href="/journal" className="demo-exit">Leave demo</Link>"#);
+        // An element of the picked tag on the same line wins.
+        let both = r#"<nav><a className="demo-exit">A</a><Link className="demo-exit">B</Link></nav>"#;
+        let Ok(Resolution::Match(found, m)) = resolve(vec![file("app/page.tsx", both)], &queries, Some("a"), None) else { panic!() };
+        assert_eq!(found.lines[m.start_line].trim(), r#"<a className="demo-exit">A</a>"#);
+        // Unless only the component carries the picked text, on one line or several.
+        let both = r#"<nav><a className="demo-exit">Home</a><Link className="demo-exit">Leave demo</Link></nav>"#;
+        let Resolution::Match(found, m) = resolve_in_file(file("app/page.tsx", both), &queries, Some("a"), Some("Leave demo")) else { panic!() };
+        assert_eq!(found.lines[m.start_line].trim(), r#"<Link className="demo-exit">Leave demo</Link>"#);
+        let lines = ["<nav>", r#"  <a className="demo-exit">Home</a>"#, r#"  <Link className="demo-exit">Leave demo</Link>"#, "</nav>"];
+        let split = SourceFile { isolation: None, path: "app/page.tsx".into(), lines: lines.map(String::from).to_vec() };
+        let Resolution::Match(found, m) = resolve_in_file(split, &queries, Some("a"), Some("Leave demo")) else { panic!() };
+        assert_eq!(found.lines[m.start_line], lines[2]);
+        // Or in another file.
+        let exact = r#"<nav><a href="/x" className="demo-exit">Leave demo</a></nav>"#;
+        let Ok(Resolution::Match(found, _)) = resolve(vec![file("components/Nav.tsx", link), file("app/page.tsx", exact)], &queries, Some("a"), None) else { panic!() };
+        assert_eq!(found.path, "app/page.tsx");
+        // Tag-like text in a quoted prop or a TS generic is not a nested element.
+        for quoted in [r#"<nav><Link title={'<Back'} className="demo-exit">Leave demo</Link></nav>"#,
+            r#"<nav><Link className="demo-exit" title="C:\">Leave demo</Link></nav>"#,
+            r#"<nav><Link onClick={(e: MouseEvent<HTMLAnchorElement>) => go(e)} className="demo-exit">Leave demo</Link></nav>"#,
+            r#"<nav><Link onClick={() => go<Array<string>>()} className="demo-exit">Leave demo</Link></nav>"#] {
+            assert!(matches!(resolve(vec![file("app/page.tsx", quoted)], &queries, Some("a"), None), Ok(Resolution::Match(..))), "{quoted}");
+        }
+        // A nested element after a comment holding an apostrophe is still one.
+        let commented = r#"<nav><Button icon={/* user's icon */ <Icon className="demo-exit" />}>X</Button></nav>"#;
+        assert!(resolve(vec![file("app/page.tsx", commented)], &queries, Some("a"), None).is_err());
+        // Not in HTML, not for a tag-only search, not through a nested element.
+        let tag_only = [String::from("<a")];
+        for (path, text, queries) in [
+            ("index.html", link, &queries[..]),
+            ("app/page.tsx", r#"<nav><abbr>x</abbr><Link href="/">y</Link></nav>"#, &tag_only[..]),
+            ("app/page.tsx", r#"<nav><Button icon={<Icon className="demo-exit" />}>X</Button></nav>"#, &queries[..]),
+            ("app/page.tsx", r#"<nav><Button icon={<Icon<Props> className="demo-exit" />}>X</Button></nav>"#, &queries[..]),
+        ] {
+            assert!(resolve(vec![file(path, text)], queries, Some("a"), None).is_err(), "{path}: {text}");
+        }
     }
 }

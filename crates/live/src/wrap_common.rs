@@ -280,9 +280,22 @@ fn skip_line(line: &str) -> bool {
 
 /// JS: findElement(lines, query, tag)
 pub fn find_element(lines: &[String], query: &str, tag: Option<&str>, dialect: Dialect) -> Option<ElementMatch> {
+    find_all_elements(lines, query, tag, dialect).into_iter().next()
+}
+
+/// JS: findAllElements(lines, query, tag)
+pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>, dialect: Dialect) -> Vec<ElementMatch> {
+    elements_for(lines, query, tag, dialect, false)
+}
+
+/// The elements `query` finds. With `components` (see `component_fallback`),
+/// a component opener whose own opening tag holds the locator is one too.
+fn elements_for(lines: &[String], query: &str, tag: Option<&str>, dialect: Dialect, components: bool) -> Vec<ElementMatch> {
+    let mut out = Vec::new();
+    let mut seen: Vec<usize> = Vec::new();
     // Masking only removes matches, so a file with none is never lexed.
     if !lines.iter().any(|l| matches_query(l, query, tag)) {
-        return None;
+        return out;
     }
     // Markup inside a comment or a script is no match.
     let masked = mask_markup(lines, dialect);
@@ -296,38 +309,12 @@ pub fn find_element(lines: &[String], query: &str, tag: Option<&str>, dialect: D
         if line.contains("data-impeccable-variant") {
             continue;
         }
-        let Some(opener) = find_opener_line(&masked, i, tag) else {
+        let Some(opener) = find_opener_line(&masked, i, tag, components) else {
             continue;
         };
-        return Some(ElementMatch {
-            start_line: opener,
-            end_line: find_closing_line(&masked, opener, dialect),
-        });
-    }
-    None
-}
-
-/// JS: findAllElements(lines, query, tag)
-pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>, dialect: Dialect) -> Vec<ElementMatch> {
-    let mut out = Vec::new();
-    let mut seen: Vec<usize> = Vec::new();
-    if !lines.iter().any(|l| matches_query(l, query, tag)) {
-        return out;
-    }
-    let masked = mask_markup(lines, dialect);
-    for (i, line) in lines.iter().enumerate() {
-        if !matches_query(&masked[i], query, tag) {
+        if components && !in_opening_tag(&masked, opener, i, query, dialect) {
             continue;
         }
-        if skip_line(line) {
-            continue;
-        }
-        if line.contains("data-impeccable-variant") {
-            continue;
-        }
-        let Some(opener) = find_opener_line(&masked, i, tag) else {
-            continue;
-        };
         if seen.contains(&opener) {
             continue;
         }
@@ -338,6 +325,63 @@ pub fn find_all_elements(lines: &[String], query: &str, tag: Option<&str>, diale
         });
     }
     out
+}
+
+/// A component can render another tag (Next's `<Link>` renders `a`), so
+/// when no locator finds an element of the picked tag in the file, a
+/// component carrying one is the element. A tag-only search names the tag
+/// itself, and in HTML a capitalised name is that HTML tag.
+fn component_fallback(lines: &[String], queries: &[String], tag: Option<&str>, dialect: Dialect) -> bool {
+    component_fallback_allowed(queries, tag, dialect)
+        && queries.iter().all(|q| find_all_elements(lines, q, tag, dialect).is_empty())
+}
+
+/// Among the candidates carrying the picked text (all of them when none
+/// does), an element of the picked tag beats every component.
+fn prefer_picked_tag<T>(candidates: &mut Vec<T>, component: impl Fn(&T) -> bool, carries_text: impl Fn(&T) -> bool) {
+    let carried = candidates.iter().any(&carries_text);
+    if candidates.iter().any(|c| !component(c) && (!carried || carries_text(c))) {
+        candidates.retain(|c| !component(c));
+    }
+}
+
+/// Whether `component_fallback` may apply at all, before any file is read.
+fn component_fallback_allowed(queries: &[String], tag: Option<&str>, dialect: Dialect) -> bool {
+    tag.is_some() && dialect != Dialect::Html && !is_tag_only_search(queries, tag)
+}
+
+/// Whether the first `query` on `match_line` (after the opener, on the
+/// opener's own line) comes before the `>` that ends the opening tag
+/// starting line `opener`, as `lex_markup` reads it. An opening tag holding
+/// a nested element (`icon={<Icon className="x" />}`) is refused: the
+/// lexer does not say whose tag the locator is in.
+fn in_opening_tag(lines: &[String], opener: usize, match_line: usize, query: &str, dialect: Dialect) -> bool {
+    let from = if match_line == opener {
+        let Some(name) = opener_tag(&lines[opener]) else {
+            return false;
+        };
+        lines[opener].find(&format!("<{}", name)).unwrap_or(0)
+    } else {
+        0
+    };
+    let Some(at) = lines[match_line][from..].find(query) else {
+        return false;
+    };
+    let locator = (match_line, lines[match_line][..from + at].chars().count());
+    let (mut opened, mut end) = (false, None);
+    lex_markup(lines, opener, dialect, true, false, |event| match event {
+        Lexed::Open { .. } if opened => true,
+        Lexed::Open { .. } => {
+            opened = true;
+            false
+        }
+        Lexed::OpenEnd { line, col, .. } => {
+            end = Some((line, col));
+            true
+        }
+        _ => false,
+    });
+    end.map_or(false, |end| locator < end)
 }
 
 static TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"<[^>]*>").unwrap());
@@ -415,10 +459,10 @@ fn text_disambiguates(text: &str) -> bool {
 
 /// Every element any query finds, first-found order. Stops at the first query
 /// that leaves exactly one candidate.
-fn collect_candidates(lines: &[String], queries: &[String], tag: Option<&str>, dialect: Dialect) -> Vec<ElementMatch> {
+fn collect_candidates(lines: &[String], queries: &[String], tag: Option<&str>, dialect: Dialect, components: bool) -> Vec<ElementMatch> {
     let mut candidates: Vec<ElementMatch> = Vec::new();
     for q in queries {
-        for c in find_all_elements(lines, q, tag, dialect) {
+        for c in elements_for(lines, q, tag, dialect, components) {
             if !candidates.iter().any(|x| x.start_line == c.start_line) {
                 candidates.push(c);
             }
@@ -431,14 +475,10 @@ fn collect_candidates(lines: &[String], queries: &[String], tag: Option<&str>, d
 }
 
 /// JS: findOpenerLine(lines, matchLine, tag)
-/// The browser reports the rendered tag lowercased, so a source `<Input>` matches `input`.
-pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) -> Option<usize> {
+pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>, components: bool) -> Option<usize> {
+    let accepts = |name: &str| tag.map_or(true, |want| renders_tag(name, want, components));
     if let Some(t) = opener_tag(&lines[match_line]) {
-        return match tag {
-            None => Some(match_line),
-            Some(want) if want.eq_ignore_ascii_case(&t) => Some(match_line),
-            _ => None,
-        };
+        return accepts(&t).then_some(match_line);
     }
     const MAX_BACKWALK: usize = 10;
     let floor = match_line.saturating_sub(MAX_BACKWALK);
@@ -448,13 +488,18 @@ pub fn find_opener_line(lines: &[String], match_line: usize, tag: Option<&str>) 
         let Some(t) = opener_tag(&lines[i]) else {
             continue;
         };
-        return match tag {
-            None => Some(i),
-            Some(want) if want.eq_ignore_ascii_case(&t) => Some(i),
-            _ => None,
-        };
+        return accepts(&t).then_some(i);
     }
     None
+}
+
+/// Whether a source opener named `name` can be the element the browser
+/// reported as `want`. The browser lowercases the rendered tag, so `<Input>`
+/// is `input`; with `components`, any component (`<Link>`) can be. An
+/// all-capitals name is not one: the element scan folds it like an HTML
+/// name, so its end could not be found safely.
+fn renders_tag(name: &str, want: &str, components: bool) -> bool {
+    want.eq_ignore_ascii_case(name) || (components && !folds_tag_case(name))
 }
 
 /// The line the element opened on `start` closes on. None when it never
@@ -1205,7 +1250,7 @@ fn resolve_file_lines(
     // A bare element with short text: its whole text may still single it out.
     if is_tag_only_search(queries, tag) {
         if let Some(short) = text.filter(|t| !text_disambiguates(t)) {
-            let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path));
+            let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path), false);
             let whole = filter_by_whole_text(&candidates, &file.lines, short);
             if whole.len() == 1 {
                 return Resolution::Match(file, whole[0]);
@@ -1222,9 +1267,11 @@ fn resolve_lines(
     tag: Option<&str>,
     text: Option<&str>,
 ) -> Resolution {
+    let dialect = Dialect::of(&file.path);
+    let components = component_fallback(&file.lines, queries, tag, dialect);
     let Some(text) = text else {
         if is_tag_only_search(queries, tag) {
-            let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path));
+            let candidates = collect_candidates(&file.lines, queries, tag, dialect, false);
             return match candidates.len() {
                 0 => Resolution::NotLocated(file.path),
                 1 => Resolution::Match(file, candidates[0]),
@@ -1232,15 +1279,22 @@ fn resolve_lines(
             };
         }
         for q in queries {
-            if let Some(m) = find_element(&file.lines, q, tag, Dialect::of(&file.path)) {
+            if let Some(&m) = elements_for(&file.lines, q, tag, dialect, components).first() {
                 return Resolution::Match(file, m);
             }
         }
         return Resolution::NotLocated(file.path);
     };
-    let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path));
+    let mut candidates = collect_candidates(&file.lines, queries, tag, dialect, components);
     if candidates.is_empty() {
         return Resolution::NotLocated(file.path);
+    }
+    if !components && component_fallback_allowed(queries, tag, dialect) {
+        let mut all: Vec<_> = candidates.iter().map(|&c| (c, false)).collect();
+        all.extend(collect_candidates(&file.lines, queries, tag, dialect, true).into_iter()
+            .filter(|c| !candidates.contains(c)).map(|c| (c, true)));
+        prefer_picked_tag(&mut all, |c| c.1, |c| !filter_by_text(&[c.0], &file.lines, text).is_empty());
+        candidates = all.into_iter().map(|(c, _)| c).collect();
     }
     let filtered = filter_by_text(&candidates, &file.lines, text);
     match filtered.len() {
@@ -1349,7 +1403,7 @@ fn resolve_tag_in_project(
         &filter,
         &mut |path, content| {
             let file = SourceFile::from_content(path, content);
-            let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path));
+            let candidates = collect_candidates(&file.lines, queries, tag, Dialect::of(&file.path), false);
             if !candidates.is_empty() {
                 files.push((file, candidates));
             }
@@ -2085,7 +2139,7 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         let queries = vec!["<h2".to_string()];
-        let candidates = collect_candidates(&lines, &queries, Some("h2"), Dialect::Html);
+        let candidates = collect_candidates(&lines, &queries, Some("h2"), Dialect::Html, false);
         assert_eq!(candidates.len(), 5);
         let second = filter_by_whole_text(&candidates, &lines, "Second");
         assert_eq!(second.len(), 1, "a substring match is not a whole-text match");
@@ -2469,11 +2523,67 @@ mod tests {
     #[test]
     fn find_opener_line_ignores_tag_case() {
         let one_line = lines(&[r#"<Input id="password" type="password" required />"#]);
-        assert_eq!(find_opener_line(&one_line, 0, Some("input")), Some(0));
+        assert_eq!(find_opener_line(&one_line, 0, Some("input"), false), Some(0));
         let multi_line = lines(&["<Input", r#"  id="email""#, "/>"]);
-        assert_eq!(find_opener_line(&multi_line, 1, Some("input")), Some(0));
+        assert_eq!(find_opener_line(&multi_line, 1, Some("input"), false), Some(0));
         let other = lines(&[r#"<Label id="email" />"#]);
-        assert_eq!(find_opener_line(&other, 0, Some("input")), None);
+        assert_eq!(find_opener_line(&other, 0, Some("input"), false), None);
+        assert_eq!(find_opener_line(&other, 0, Some("input"), true), Some(0));
+    }
+
+    #[test]
+    fn a_component_that_renders_another_tag_is_found_when_no_such_tag_is() {
+        let start = |src: &[&str], query: &str, tag: &str, dialect: Dialect| {
+            let (src, queries) = (lines(src), [query.to_string()]);
+            let components = component_fallback(&src, &queries, Some(tag), dialect);
+            collect_candidates(&src, &queries, Some(tag), dialect, components).iter().map(|m| m.start_line).collect::<Vec<_>>()
+        };
+        // #1583: Next's `<Link>` renders `a`, alone or over several lines.
+        let link = [r#"<Link href="/journal" className="demo-exit">Leave demo</Link>"#];
+        assert_eq!(start(&link, "demo-exit", "a", Dialect::Jsx), vec![0]);
+        let multi = ["<Link", r#"  href="/journal""#, r#"  className="demo-exit""#, ">", "  Leave demo", "</Link>"];
+        assert_eq!(start(&multi, "demo-exit", "a", Dialect::Jsx), vec![0]);
+        // An element of the picked tag still wins over the component.
+        let both = [r#"<Link className="demo-exit">One</Link>"#, r#"<a className="demo-exit">Two</a>"#];
+        assert_eq!(start(&both, "demo-exit", "a", Dialect::Jsx), vec![1]);
+        // A `>` inside a prop expression or a quoted value does not end it.
+        let arrow = [r#"<Link onClick={() => go()} title="a > b" className="demo-exit">Leave demo</Link>"#];
+        assert_eq!(start(&arrow, "demo-exit", "a", Dialect::Jsx), vec![0]);
+        // An all-capitals name is read as an HTML name, as the element scan does.
+        let caps = [r#"<STYLE className="demo-exit">"#, "  <style>{css}</style>", "  <p>Body</p>", "</STYLE>"];
+        assert!(start(&caps, "demo-exit", "div", Dialect::Jsx).is_empty());
+        // The locator must sit in the component's own opening tag.
+        for src in [
+            &[r#"<Card icon={<Icon className="demo-exit" />}>"#, "  <p>Body</p>", "</Card>"][..],
+            &[r#"<Trans><span className="demo-exit">Leave demo</span></Trans>"#][..],
+            &["<Card>", "  demo-exit", "</Card>"][..],
+        ] {
+            assert!(start(src, "demo-exit", "a", Dialect::Jsx).is_empty(), "{src:?}");
+        }
+        // Not an HTML element, not in HTML (`<Link>` is `link` there), and
+        // not for a tag-only search.
+        assert!(start(&[r#"<div className="demo-exit">x</div>"#], "demo-exit", "a", Dialect::Jsx).is_empty());
+        assert!(start(&link, "demo-exit", "a", Dialect::Html).is_empty());
+        assert!(start(&[r#"<Nav><a href="/">x</a></Nav>"#], "<a", "a", Dialect::Jsx).is_empty());
+    }
+
+    #[test]
+    fn wrap_finds_a_next_link_by_its_rendered_anchor() {
+        let source = "import Link from \"next/link\";\n\nexport default function Page() {\n  return (\n    <nav>\n      <Link href=\"/journal\" className=\"demo-exit\">Leave demo</Link>\n    </nav>\n  );\n}\n";
+        let project = TagProject::new("page.tsx", source);
+        let (code, out, err) = project.run(false, &["--tag", "a", "--classes", "demo-exit", "--text", "Leave demo", "--defer-source-write"]);
+        assert_eq!(code, 0, "{out} {err}");
+        let result: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!((result["replaceStartLine"].as_i64(), result["replaceEndLine"].as_i64()), (Some(6), Some(6)), "{out}");
+        assert_eq!(result["sourceWritten"], false);
+        assert_eq!(project.source("page.tsx"), source);
+        // A later locator's `<a>` beats an earlier locator's component.
+        let source = "export const Bar = () => (\n  <div>\n    <Button className=\"btn-primary\">Save</Button>\n    <a className={`btn ${v}`}>Go</a>\n  </div>\n);\n";
+        let project = TagProject::new("bar.tsx", source);
+        let (code, out, err) = project.run(false, &["--tag", "a", "--classes", "btn btn-primary", "--defer-source-write"]);
+        assert_eq!(code, 0, "{out} {err}");
+        let result: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(result["replaceStartLine"].as_i64(), Some(4), "{out}");
     }
 
     #[test]

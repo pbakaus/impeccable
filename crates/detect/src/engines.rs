@@ -11,6 +11,20 @@ use impeccable_core::rule_pack::RulePack;
 use crate::design_system::DesignSystem;
 use crate::profiler::DetectorProfile;
 
+/// Where the static engine's sampled-contrast path (#560) gets an image's
+/// pixels from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImageSamples {
+    /// Decode an image whose samples no cache holds, and write them to the
+    /// persistent sample cache: `detect`, and through it critique, audit,
+    /// and CI.
+    #[default]
+    Decode,
+    /// Read the persistent sample cache alone; never open or decode an
+    /// image file. The edit hook, whose budget is about 50 ms per edit.
+    CacheOnly,
+}
+
 /// The per-target scan options `detectCli` builds (`baseScanOptions` plus the
 /// target's own design system).
 #[derive(Clone, Default)]
@@ -41,6 +55,9 @@ pub struct ScanOptions {
     /// browser engine reports them as before; it only stops letting one of
     /// them stand in for another rule's finding (vanishing ink).
     pub unreported_rules: Vec<String>,
+    /// Static HTML scans only: whether the sampled-contrast path may decode
+    /// an image, or reads its persistent cache alone.
+    pub image_samples: ImageSamples,
     /// Whether `detector.ignoreFiles` waives a linked stylesheet (given its
     /// absolute path). The static HTML engine still reads it for the cascade
     /// but leaves it out of the page-level pattern scan.

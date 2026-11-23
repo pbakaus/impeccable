@@ -1,0 +1,50 @@
+/* side-tab, every side bar variant in a stylesheet: the source scan the edit
+   hook runs. Flags: a bar on a rounded box (its own rule or the rule for the
+   element a state selector styles), at any width, in any state and colour.
+   Passes: any bar on a square box, a frame, a transparent edge, a grid line,
+   a square bottom band, a square quote rule, a code line's gutter. */
+
+/* Should flag */
+.f-border-rounded { border-left: 3px solid #0d9488; border-radius: 8px; }
+.f-hairline-rounded { border-left: 1px solid #d4d4d4; border-radius: 8px; }
+.f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; border-radius: 8px; }
+.f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; border-radius: 8px; }
+.f-inset-hover { border-radius: 8px; }
+.f-inset-hover:hover { box-shadow: inset 3px 0 0 #2563eb; }
+.f-inset-focus { border-radius: 8px; }
+.f-inset-focus:focus-within { box-shadow: inset 2px 0 0 #2563eb; }
+.f-inset-selected { border-radius: 6px; }
+.f-inset-selected.is-selected { box-shadow: inset -2px 0 0 var(--text); }
+.f-before, .f-after { border-radius: 8px; }
+.f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
+.f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
+.f-hover-rounded:hover { border-radius: 8px; border-left: 3px solid #2563eb; }
+.f-split { border-radius: 6px; }
+.f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
+.f-text-colour { border-left: 2px solid var(--text); border-radius: 8px; }
+.f-quote-rounded { border-left: 3px solid #d1d5db; border-radius: 8px; }
+.it { display: grid; padding: 7px 12px; border: 0; border-radius: 6px; background: none; }
+.it:hover { background: var(--hover); }
+.it[aria-pressed='true'] { background: var(--surface-inset); box-shadow: inset 2px 0 0 var(--text); font-weight: 600; }
+
+/* Should pass */
+.p-reset-square {
+  border-radius: 8px;
+  border-left: 3px solid #0d9488;
+}
+.p-reset-square { border-radius: 0; }
+.p-border-square { border-left: 3px solid #0d9488; }
+.p-inset-square { box-shadow: inset 3px 0 0 #6366f1; }
+.p-before-square::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: #9ca3af; }
+.p-hairline-square { border-left: 1px solid #d4d4d4; }
+.p-inset-hairline-square { box-shadow: inset 1px 0 0 #d4d4d4; }
+.p-full-border { border: 2px solid #0d9488; border-radius: 8px; }
+.p-transparent { border-left: 3px solid transparent; border-radius: 8px; }
+.p-band-square { border-bottom: 3px solid #2563eb; }
+.p-focus:focus-visible { outline: 2px solid #2563eb; }
+blockquote { border-left: 4px solid #d1d5db; padding-left: 16px; }
+pre .diff-add { border-left: 3px solid #22c55e; }
+.p-grid td + td { border-left: 2px solid #e5e7eb; }
+.p-caret { width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 6px solid #333333; }
+.p-framed { border: 1px solid #d4d4d4; border-radius: 6px; }
+.p-framed.is-on { border-left: 1px solid #2563eb; }

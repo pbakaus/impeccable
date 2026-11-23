@@ -377,6 +377,24 @@ div.link:hover { color: #fafafa; }
 
 
 #[test]
+fn a_hover_underline_gradient_does_not_hide_the_hover_failure() {
+    // The hover's own 2px underline cannot cover the text either: its
+    // `no-repeat` and `100% 2px` travel into the hover style beside the
+    // image, so the tile reader does not see the resting rule's `repeat`
+    // at `auto` and take the underline for a covering gradient.
+    let findings = scan(
+        r#"<!DOCTYPE html><html><head><style>
+div.link { background: #111111; color: #ffffff; font-size: 16px; }
+div.link:hover { background: linear-gradient(#000, #000) no-repeat 0 100% / 100% 2px; color: #fafafa; }
+</style></head><body style="background:#ffffff"><div class="link">Read the full report</div></body></html>"#,
+    );
+    assert!(
+        findings.iter().any(|f| f.snippet.contains(":hover")),
+        "{findings:#?}"
+    );
+}
+
+#[test]
 fn a_full_gradient_under_an_underline_still_hides_the_page() {
     // The 2px underline is the first layer, but a full dark gradient paints
     // beneath it, so the light hover text is not scored against the white

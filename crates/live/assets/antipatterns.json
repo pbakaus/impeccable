@@ -3,7 +3,7 @@
     "id": "side-tab",
     "name": "Side-tab accent border",
     "category": "slop",
-    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely."
+    "description": "A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead."
   },
   {
     "id": "border-accent-on-rounded",

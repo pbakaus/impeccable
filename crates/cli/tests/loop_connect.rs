@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 const URL: &str = "https://api.impeccable.style/mcp";
-const INSTRUCTION: &str = "When you need a person's decision or input, use needs_you.post (Impeccable) instead of asking in chat or a built-in question tool. If needs_you says Loop isn't connected, ask normally.";
+const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 
 struct Box {
     root: PathBuf,
@@ -769,6 +769,143 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
 }
 
 #[test]
+fn codex_waits_for_an_answer_at_the_end_of_a_turn_only_with_a_loop_that_can_hold() {
+    // Catches (REN-2057): Codex has no background wake, so a blocking Stop hook holds the
+    // turn for Loop's answer; wired for an older helper, it would stall every turn's end.
+    for (version, wanted) in [("0.1.3", false), ("0.1.4", true)] {
+        let b = Box::new(&format!("stop-hold-{version}"));
+        b.install_loop_version(version);
+        let out = b.run(&["loop", "connect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let codex: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".codex/hooks.json")).unwrap()).unwrap();
+        let stop = codex["hooks"]["Stop"].as_array().cloned().unwrap_or_default();
+        let held: Vec<&serde_json::Value> = stop
+            .iter()
+            .map(|g| &g["hooks"][0])
+            .filter(|h| h["command"].as_str().is_some_and(|c| c.ends_with(" codex lifecycle")))
+            .collect();
+        assert_eq!(held.len(), usize::from(wanted), "{version}: {codex}");
+        if let Some(h) = held.first() {
+            assert_eq!(h["timeout"], 3600, "{h}");
+            assert!(h.get("async").is_none(), "it must block: {h}");
+        }
+        // Claude keeps its own background Stop wake, untouched.
+        let claude: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(b.home().join(".claude/settings.json")).unwrap()).unwrap();
+        let stops: Vec<&serde_json::Value> = claude["hooks"]["Stop"]
+            .as_array()
+            .map(|a| a.iter().map(|g| &g["hooks"][0]).collect())
+            .unwrap_or_default();
+        assert_eq!(stops.len(), 1, "{claude}");
+        assert_eq!((&stops[0]["async"], &stops[0]["asyncRewake"], &stops[0]["timeout"]), (&serde_json::json!(true), &serde_json::json!(true), &serde_json::json!(86400)), "{claude}");
+    }
+}
+
+/// Every Loop hook command connect wrote, Claude's and Codex's.
+fn loop_commands(b: &Box) -> Vec<String> {
+    [".claude/settings.json", ".codex/hooks.json"]
+        .iter()
+        .flat_map(|f| {
+            let v: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(b.home().join(f)).unwrap()).unwrap();
+            v["hooks"]
+                .as_object()
+                .unwrap()
+                .values()
+                .flat_map(|groups| groups.as_array().unwrap().clone())
+                .filter_map(|g| g["hooks"][0]["command"].as_str().map(str::to_owned))
+                .filter(|c| c.contains("loop-hook"))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn quarantine(path: &Path, flags: &str) {
+    assert!(Command::new("/usr/bin/xattr")
+        .args(["-w", "com.apple.quarantine", &format!("{flags};00000000;;")])
+        .arg(path)
+        .status()
+        .unwrap()
+        .success());
+}
+
+#[test]
+fn hooks_never_run_a_loop_macos_blocks_and_status_says_so() {
+    // Catches (REN-1865): hooks running a quarantined Loop helper, so macOS showed its
+    // "damaged" dialog at every session start and tool call; the other way, hooks going
+    // quiet for a Loop the person approved (the flag stays, with 0x40 set); and status
+    // not saying Loop is blocked.
+    let b = Box::new("blocked");
+    b.install_loop_version("0.1.3");
+    let helper = b
+        .home()
+        .join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+    script(&helper, "#!/bin/sh\ntouch \"$0.ran\"\n");
+    let ran = helper.with_extension("ran");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let commands = loop_commands(&b);
+    assert!(
+        commands.iter().any(|c| c.contains("' claude "))
+            && commands.iter().any(|c| c.contains("' codex ")),
+        "{commands:?}"
+    );
+    for (flags, runs) in [(None, true), (Some("0081"), false), (Some("00c1"), true)] {
+        if let Some(flags) = flags {
+            quarantine(&helper, flags);
+        }
+        for command in &commands {
+            let _ = fs::remove_file(&ran);
+            let out = Command::new("/bin/sh")
+                .args(["-c", command])
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{flags:?} {command}: {}", text(&out));
+            assert_eq!(text(&out), "", "{flags:?} {command}");
+            assert_eq!(ran.exists(), runs, "{flags:?} {command}");
+        }
+        let out = b.run(&["loop", "status", "--json"]);
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(v["loop"]["blocked"], !runs, "{flags:?} {v}");
+    }
+}
+
+#[test]
+fn connect_over_an_older_loops_hooks_replaces_them() {
+    // Catches (REN-1865): a reconnect after Loop learned the guarded hooks adding them
+    // beside the old unguarded ones (the dialog stays) or leaving either behind on disconnect.
+    let b = Box::new("guard-upgrade");
+    b.install_loop_version("0.1.2");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let old = loop_commands(&b);
+    assert!(old.iter().all(|c| c.starts_with('\'')), "{old:?}");
+    b.install_loop_version("0.1.3");
+    assert!(b.run(&["loop", "connect"]).status.success());
+    let new = loop_commands(&b);
+    assert_eq!(new.len(), old.len(), "{new:?}");
+    assert!(
+        new.iter().all(|c| c.starts_with("/usr/bin/xattr ")),
+        "{new:?}"
+    );
+    let out = b.run(&["loop", "status", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(
+        v["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|a| a["detected"] != true || a["hooks"] == true),
+        "{v}"
+    );
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    for f in [".claude/settings.json", ".codex/hooks.json"] {
+        let after = fs::read_to_string(b.home().join(f)).unwrap_or_default();
+        assert!(!after.contains("loop-hook"), "{f}: {after}");
+    }
+}
+
+#[test]
 fn status_answers_on_an_account_connect_refuses() {
     // Catches: status failing outright on a local or unknown account service, which also
     // silenced login's Loop offer there.
@@ -798,6 +935,13 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     assert_eq!(before["loop"]["installed"], true);
     assert_eq!(before["loop"]["version"], "0.1.1");
     for a in before["agents"].as_array().unwrap() {
+        if a["agent"] == "cursor" || a["agent"] == "copilot" || a["agent"] == "opencode" {
+            assert_eq!(
+                a["detected"], false,
+                "the fixture installs only Claude and Codex"
+            );
+            continue;
+        }
         assert_eq!(
             (
                 a["detected"].clone(),
@@ -844,8 +988,9 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
         "absent",
         "only the agent asked for was connected"
     );
+    assert_eq!(row("codex")["hooksRequired"], true, "older Loop still requires Codex base hooks");
     // An unknown agent is a JSON failure, never a prompt.
-    let out = b.run(&["loop", "connect", "--agent", "cursor", "--json"]);
+    let out = b.run(&["loop", "connect", "--agent", "unknown-agent", "--json"]);
     assert!(!out.status.success());
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["ok"], false);
@@ -961,32 +1106,76 @@ exit 0
 }
 
 #[test]
-fn an_agents_override_file_is_named_instead_of_reported_connected() {
-    // Catches: Codex reads AGENTS.override.md instead of AGENTS.md, so the instruction
-    // connect wrote never reached it while connect and status both said all was well.
+fn codex_gets_the_loop_line_in_the_override_file_it_reads() {
+    // Catches: Codex reads AGENTS.override.md instead of AGENTS.md, so a line written to
+    // AGENTS.md never reached it while connect and status both said all was well.
     let b = Box::new("codex-override");
     b.install_loop_version("0.1.1");
     fs::create_dir_all(b.home().join(".codex")).unwrap();
-    fs::write(b.home().join(".codex/AGENTS.override.md"), "Local rules.\n").unwrap();
+    let over = b.home().join(".codex/AGENTS.override.md");
+    fs::write(&over, "Local rules.\n").unwrap();
     let out = b.run(&["loop", "connect"]);
     assert!(out.status.success(), "{}", text(&out));
-    assert!(
-        text(&out).contains("AGENTS.override.md, which Codex reads instead of AGENTS.md"),
-        "{}",
-        text(&out)
-    );
+    let t = read(&over);
+    assert!(t.starts_with("Local rules.\n"), "{t}");
+    assert!(t.contains(&format!("{START}\n{INSTRUCTION}\n")), "{t}");
+    assert!(!read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION));
     let status = b.run(&["loop", "status"]);
-    assert!(
-        text(&status).contains("instruction hidden by AGENTS.override.md"),
-        "{}",
-        text(&status)
-    );
-    // Once the override carries the line, the instruction counts as present.
-    let mut rules = fs::read_to_string(b.home().join(".codex/AGENTS.override.md")).unwrap();
-    rules.push_str(INSTRUCTION);
-    fs::write(b.home().join(".codex/AGENTS.override.md"), rules).unwrap();
-    let status = b.run(&["loop", "status"]);
-    assert!(!text(&status).contains("hidden by"), "{}", text(&status));
+    assert!(text(&status).contains("Codex: connected."), "{}", text(&status));
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(read(&over), "Local rules.\n");
+    // An override that appears after the connect: the line in AGENTS.md still goes.
+    fs::remove_file(&over).unwrap();
+    assert!(b.run(&["loop", "connect"]).status.success());
+    assert!(read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION));
+    fs::write(&over, "Local rules.\n").unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(!read(&b.home().join(".codex/AGENTS.md")).contains(INSTRUCTION), "{}", read(&b.home().join(".codex/AGENTS.md")));
+}
+
+#[test]
+fn a_loop_instruction_an_older_cli_wrote_moves_into_the_one_block() {
+    // Catches (REN-2056): a machine connected by an older CLI keeping its engine-managed
+    // Loop block beside the new one (the line twice), or losing the line on reconnect.
+    let b = Box::new("old-loop-block");
+    b.install_loop();
+    let claude_md = b.home().join(".claude/CLAUDE.md");
+    fs::create_dir_all(claude_md.parent().unwrap()).unwrap();
+    fs::write(&claude_md, "# mine\n").unwrap();
+    // What an older CLI left: Loop's installation carrying its own instruction block.
+    assert!(b.run(&["loop", "connect", "--agent", "claude"]).status.success());
+    let mut old: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(claude_journal(&b)).unwrap()).unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(read(&claude_md), "# mine\n");
+    old["spec"]["instruction"] = serde_json::json!(INSTRUCTION);
+    let spec = b.root.join("old-spec.json");
+    fs::write(&spec, old["spec"].to_string()).unwrap();
+    let out = b.run(&["agents", "apply", "--spec", spec.to_str().unwrap()]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    // Until the reconnect, that installation still counts as connected.
+    let status = b.run(&["loop", "status", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    let row = v["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "claude").unwrap().clone();
+    assert_eq!(row["instruction"], true, "{v}");
+    // A rule file whose markers are broken refuses the reconnect before anything changes,
+    // so the working instruction stays.
+    let working = read(&claude_md);
+    fs::write(&claude_md, format!("{working}{START}\n")).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(read(&claude_md).contains("<!-- impeccable:impeccable-loop start -->"), "{}", read(&claude_md));
+    fs::write(&claude_md, &working).unwrap();
+
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let t = read(&claude_md);
+    assert_eq!(t.matches(INSTRUCTION).count(), 1, "{t}");
+    assert!(!t.contains("impeccable:impeccable-loop"), "{t}");
+    assert_eq!(t, format!("# mine\n\n{START}\n{INSTRUCTION}\n{END}\n"));
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert_eq!(read(&claude_md), "# mine\n");
 }
 
 #[test]
@@ -1001,15 +1190,21 @@ fn login_help_never_offers_to_connect_loop() {
     assert!(claude_entry(&b.home().join(".claude.json")).is_null(), "nothing written");
 }
 
+/// The taste block before REN-2056, which the first write folds into the one block.
 const TASTE_START: &str = "<!-- impeccable:taste -->";
 const TASTE_END: &str = "<!-- /impeccable:taste -->";
+/// The one Impeccable block (REN-2056) and the taste switch's line in it.
+const START: &str = "<!-- impeccable start -->";
+const END: &str = "<!-- impeccable end -->";
+const TASTE_LINE: &str = "Before UI work: taste.get with focus";
 
 fn read(p: &Path) -> String {
     fs::read_to_string(p).unwrap_or_default()
 }
 
+/// How many times the taste line is in `p`: 0 or 1, never 2.
 fn taste_blocks(p: &Path) -> usize {
-    read(p).matches(TASTE_START).count()
+    read(p).matches(TASTE_LINE).count()
 }
 
 #[test]
@@ -1034,9 +1229,9 @@ fn taste_is_added_once_keeps_the_file_and_goes_on_disconnect() {
     }
     for f in [&claude_md, &codex_md] {
         assert_eq!(taste_blocks(f), 1, "{}: {}", f.display(), read(f));
-        assert!(read(f).contains(TASTE_END));
-        assert!(read(f).contains("taste.get once per task"));
-        assert!(read(f).contains(INSTRUCTION), "the engine's block stays too");
+        assert_eq!(read(f).matches(START).count(), 1, "one block: {}", read(f));
+        assert!(read(f).contains(&format!("{START}\n{TASTE_LINE}")) && read(f).contains(&format!("{INSTRUCTION}\n{END}")), "taste's line, then Loop's: {}", read(f));
+        assert!(!read(f).contains(TASTE_START), "{}", read(f));
     }
     assert!(read(&claude_md).starts_with("# mine\nkeep this\n"));
     assert_eq!(
@@ -1073,8 +1268,9 @@ fn an_older_taste_block_is_replaced_where_it_stands() {
     let t = read(&claude_md);
     assert_eq!(taste_blocks(&claude_md), 1, "{t}");
     assert!(!t.contains("old wording"), "{t}");
-    assert!(t.starts_with(&format!("top\n{TASTE_START}\nImpeccable Taste:")), "{t}");
-    assert!(t.contains(&format!("{TASTE_END}\nbottom\n")), "{t}");
+    assert!(!t.contains(TASTE_START), "{t}");
+    assert!(t.starts_with(&format!("top\n{START}\n{TASTE_LINE}")) && t.contains(&format!("{INSTRUCTION}\n{END}\nbottom")), "{t}");
+    assert!(t.contains(&format!("{END}\nbottom\n")), "{t}");
 }
 
 #[test]
@@ -1108,8 +1304,8 @@ fn a_block_deleted_by_hand_is_not_put_back() {
     let claude_md = b.home().join(".claude/CLAUDE.md");
     assert!(b.run(&["loop", "connect", "--taste"]).status.success());
     let t = read(&claude_md);
-    let (a, e) = (t.find(TASTE_START).unwrap(), t.find(TASTE_END).unwrap() + TASTE_END.len());
-    fs::write(&claude_md, format!("{}{}", &t[..a], &t[e..])).unwrap();
+    let taste: String = t.lines().filter(|l| l.starts_with(TASTE_LINE)).map(|l| format!("{l}\n")).collect();
+    fs::write(&claude_md, t.replacen(&taste, "", 1)).unwrap();
     let out = b.run(&["loop", "connect"]);
     assert!(out.status.success(), "{}", text(&out));
     assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
@@ -1152,16 +1348,18 @@ fn an_empty_rule_file_the_person_had_stays_after_disconnect() {
 }
 
 #[test]
-fn json_reports_a_block_brought_up_to_date() {
+fn json_reports_nothing_for_a_block_already_up_to_date() {
+    // The old taste block is folded into the one block by the Loop line's write, so the
+    // taste step finds it current and has nothing to report.
     let b = Box::new("taste-json-updated");
     b.install_loop();
     let claude_md = b.home().join(".claude/CLAUDE.md");
     fs::write(&claude_md, format!("{TASTE_START}\nold wording\n{TASTE_END}\n")).unwrap();
     let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["taste"][0]["result"], "updated", "{v}");
-    assert_eq!(v["taste"][0]["file"], claude_md.display().to_string());
-    // Unchanged on the next run: nothing to report.
+    assert!(v.get("taste").is_none(), "{v}");
+    let t = read(&claude_md);
+    assert!(!t.contains("old wording") && taste_blocks(&claude_md) == 1, "{t}");
     let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(v.get("taste").is_none(), "{v}");
@@ -1176,20 +1374,19 @@ fn a_block_that_could_not_be_removed_is_tried_again_next_disconnect() {
     assert!(b.run(&["loop", "connect", "--agent", "claude", "--taste"]).status.success());
     let good = read(&claude_md);
     // A stray second marker makes the block ambiguous, so it is left alone.
-    fs::write(&claude_md, format!("{good}{TASTE_START}\n")).unwrap();
+    fs::write(&claude_md, format!("{good}{START}\n")).unwrap();
     let out = b.run(&["loop", "disconnect"]);
     assert!(!out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("were left in place"), "{}", text(&out));
-    assert_eq!(taste_blocks(&claude_md), 2);
+    assert_eq!(taste_blocks(&claude_md), 1);
     // Fixed by hand: the next disconnect finds the file from the kept answer.
-    let fixed = read(&claude_md).replacen(&format!("{TASTE_START}\n"), "", 2);
-    let fixed = format!("{TASTE_START}\n{fixed}");
-    fs::write(&claude_md, &fixed).unwrap();
-    assert_eq!(taste_blocks(&claude_md), 1, "{fixed}");
+    fs::write(&claude_md, &good).unwrap();
     let out = b.run(&["loop", "disconnect"]);
     assert!(out.status.success(), "{}", text(&out));
     assert!(text(&out).contains("Removed the taste lines from ~/.claude/CLAUDE.md"), "{}", text(&out));
     assert_eq!(taste_blocks(&claude_md), 0, "{}", read(&claude_md));
+    // The Loop line was kept with its hooks the first time, so this disconnect took it out.
+    assert!(!read(&claude_md).contains(INSTRUCTION), "{}", read(&claude_md));
 }
 
 #[test]
@@ -1284,7 +1481,7 @@ fn a_person_at_a_terminal_is_asked_once_naming_each_file() {
     let claude_md = b.home().join(".claude/CLAUDE.md");
     let out = connect_at_a_terminal(&b, "n\n");
     assert!(
-        out.contains("Let your agents use your Impeccable taste? This adds 3 lines to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md. [Y/n]"),
+        out.contains("Let your agents use your Impeccable taste? This adds a line to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md. [Y/n]"),
         "{out}"
     );
     assert_eq!(taste_blocks(&claude_md), 0);
@@ -1316,4 +1513,390 @@ fn a_symlinked_rule_file_stays_a_link_and_its_target_comes_back_exact() {
     assert!(b.run(&["loop", "disconnect"]).status.success());
     assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
     assert_eq!(read(&target), "# from my dotfiles\n");
+}
+
+fn cursor_box(name: &str) -> Box {
+    let b = Box::new(name);
+    script(
+        &b.root.join("bin/cursor-agent"),
+        r#"#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/cursor-calls"
+[ "$*" = 'mcp enable impeccable' ]
+"#,
+    );
+    b
+}
+
+#[test]
+fn cursor_connect_roundtrip_merges_and_gates_hooks() {
+    for (name, version, wake) in [
+        ("cursor-new", "0.2.0", true),
+        ("cursor-old", "0.1.4", false),
+    ] {
+        let b = cursor_box(name);
+        b.install_loop_version(version);
+        let root = b.home().join(".cursor");
+        fs::create_dir_all(&root).unwrap();
+        let originals = [
+            (
+                "mcp.json",
+                "{\"mcpServers\":{\"other\":{\"url\":\"https://other\"}}}\n",
+            ),
+            (
+                "cli-config.json",
+                "{\"permissions\":{\"allow\":[\"Shell(ls)\"]},\"theme\":\"dark\"}\n",
+            ),
+            (
+                "hooks.json",
+                "{\"version\":1,\"hooks\":{\"stop\":[{\"command\":\"mine\"}]}}\n",
+            ),
+        ];
+        for (file, contents) in originals {
+            fs::write(root.join(file), contents).unwrap();
+        }
+        let args = ["loop", "connect", "--agent", "cursor", "--taste", "--json"];
+        let out = b.run(&args);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(report["agents"][0]["signIn"]
+            .as_str()
+            .unwrap()
+            .contains("cursor-agent mcp login impeccable"));
+        let read = |file: &str| -> serde_json::Value {
+            serde_json::from_slice(&fs::read(root.join(file)).unwrap()).unwrap()
+        };
+        assert_eq!(
+            read("mcp.json")["mcpServers"]["impeccable"],
+            serde_json::json!({"url":URL})
+        );
+        assert_eq!(
+            read("mcp.json")["mcpServers"]["other"]["url"],
+            "https://other"
+        );
+        assert_eq!(
+            read("cli-config.json")["permissions"]["allow"],
+            serde_json::json!(["Shell(ls)", "Mcp(impeccable:*)"])
+        );
+        let hooks = read("hooks.json");
+        if wake {
+            let h = &hooks["hooks"];
+            assert_eq!(h.as_object().unwrap().len(), 3);
+            for (event, kind, timeout) in [
+                ("sessionStart", "lifecycle", 10),
+                ("afterMCPExecution", "register", 10),
+                ("stop", "lifecycle", 3600),
+            ] {
+                let entries = h[event].as_array().unwrap();
+                let entry = entries
+                    .iter()
+                    .find(|e| e["command"].as_str().unwrap().contains("loop-hook"))
+                    .unwrap();
+                assert!(entry["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("cursor {kind}")));
+                assert!(entry["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains("/usr/bin/xattr"));
+                assert_eq!(entry["timeout"], timeout);
+                if event == "stop" {
+                    assert_eq!(entry.get("loop_limit"), Some(&serde_json::Value::Null));
+                }
+                assert!(entry.get("hooks").is_none());
+            }
+        } else {
+            assert_eq!(
+                fs::read_to_string(root.join("hooks.json")).unwrap(),
+                originals[2].1
+            );
+        }
+        let record: serde_json::Value =
+            serde_json::from_slice(&fs::read(b.support().join("cursor-install.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            record,
+            serde_json::json!({"enabled":true,"harness":"cursor","executable":b.root.join("bin/cursor-agent").display().to_string()})
+        );
+        let rules = fs::read_to_string(root.join("rules/impeccable.mdc")).unwrap();
+        assert!(rules.starts_with("---\nalwaysApply: true\n---\n"));
+        assert!(rules.contains(INSTRUCTION));
+        assert!(rules.contains(TASTE_LINE));
+        assert_eq!(
+            fs::read_to_string(b.home().join("cursor-calls")).unwrap(),
+            "mcp enable impeccable\n"
+        );
+        let status = b.run(&["loop", "status", "--json"]);
+        assert!(status.status.success(), "{}", text(&status));
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let cursor = status["agents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["agent"] == "cursor")
+            .unwrap();
+        assert_eq!(cursor["hooks"], wake);
+        assert_eq!(cursor["connected"], true);
+        let again = b.run(&args);
+        assert!(again.status.success(), "{}", text(&again));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        for (file, contents) in originals {
+            assert_eq!(fs::read_to_string(root.join(file)).unwrap(), contents);
+        }
+        assert!(!root.join("rules").exists());
+    }
+}
+
+#[test]
+fn cursor_preserves_preexisting_server_and_rules_and_removes_created_configs() {
+    for preexisting in [false, true] {
+        let b = cursor_box(if preexisting {
+            "cursor-existing"
+        } else {
+            "cursor-empty"
+        });
+        b.install_loop_version("0.2.0");
+        let root = b.home().join(".cursor");
+        fs::create_dir_all(root.join("rules")).unwrap();
+        let rules = if preexisting { "" } else { "---\nalwaysApply: true\n---\n\nMy own rule.\n" };
+        fs::write(root.join("rules/impeccable.mdc"), rules).unwrap();
+        let mcp = format!("{{\"mcpServers\":{{\"impeccable\":{{\"url\":\"{URL}\"}}}}}}\n");
+        if preexisting {
+            fs::write(root.join("mcp.json"), &mcp).unwrap();
+        }
+        let out = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert!(!root.join("cli-config.json").exists());
+        assert!(!root.join("hooks.json").exists());
+        assert_eq!(
+            fs::read_to_string(root.join("rules/impeccable.mdc")).unwrap(),
+            rules
+        );
+        if preexisting {
+            assert_eq!(fs::read_to_string(root.join("mcp.json")).unwrap(), mcp);
+        } else {
+            assert!(!root.join("mcp.json").exists());
+        }
+    }
+}
+
+#[test]
+fn copilot_connect_roundtrip_merges_and_gates_hooks() {
+    const FOLLOW_UP: &str = "In each repo, answer \"Yes, and don't ask again\" for Impeccable's tools once; then Copilot wakes by itself.";
+    for (name, version, wake) in [("copilot-new", "0.2.0", true), ("copilot-old", "0.1.4", false)] {
+        let mut b = Box::new(name);
+        script(&b.root.join("bin/copilot"), "#!/bin/sh\nexit 99\n"); // Connect never runs it.
+        b.install_loop_version(version);
+        let root = if wake { b.root.join("copilot-custom") } else { b.home().join(".copilot") };
+        if wake { b.env.insert("COPILOT_HOME".into(), root.display().to_string()); }
+        fs::create_dir_all(&root).unwrap();
+        let mcp_before = "{\"mcpServers\":{\"other\":{\"url\":\"https://other\"}}}\n";
+        let rules_before = "My own instructions.\n";
+        fs::write(root.join("mcp-config.json"), mcp_before).unwrap();
+        fs::write(root.join("copilot-instructions.md"), rules_before).unwrap();
+        let args = ["loop", "connect", "--agent", "copilot", "--no-taste", "--json"];
+        let out = b.run(&args);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(report["agents"][0]["then"], serde_json::json!([FOLLOW_UP]));
+        assert_eq!(report["agents"][0]["signIn"], "on first use.");
+        let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp-config.json")).unwrap()).unwrap();
+        assert_eq!(mcp["mcpServers"], serde_json::json!({"other":{"url":"https://other"},"impeccable":{"type":"http","url":URL,"tools":["*"]}}));
+        if wake {
+            let hooks: serde_json::Value = serde_json::from_slice(&fs::read(root.join("hooks/impeccable-loop.json")).unwrap()).unwrap();
+            let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+            let command = |kind: &str| format!("/usr/bin/xattr -p com.apple.quarantine '{}' 2>/dev/null | /usr/bin/grep -Eq '^[0-9a-fA-F]{{2}}[0-389abAB][0-9a-fA-F];' || exec '{}' copilot {kind}", helper.display(), helper.display());
+            assert_eq!(hooks, serde_json::json!({"version":1,"hooks":{
+                "sessionStart":[{"type":"command","bash":command("lifecycle"),"timeoutSec":10}],
+                "postToolUse":[{"type":"command","bash":command("register"),"timeoutSec":10}],
+                "agentStop":[{"type":"command","bash":command("lifecycle"),"timeoutSec":3600}]
+            }}));
+        } else { assert!(!root.join("hooks").exists()); }
+        let record: serde_json::Value = serde_json::from_slice(&fs::read(b.support().join("copilot-install.json")).unwrap()).unwrap();
+        assert_eq!(record, serde_json::json!({"enabled":true,"harness":"copilot","executable":b.root.join("bin/copilot").display().to_string()}));
+        let rules = fs::read_to_string(root.join("copilot-instructions.md")).unwrap();
+        assert!(rules.starts_with(rules_before));
+        assert!(rules.contains(INSTRUCTION));
+        assert!(!root.join("cli-config.json").exists(), "no approval config");
+        let status = b.run(&["loop", "status", "--json"]);
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let copilot = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "copilot").unwrap();
+        assert_eq!(copilot["hooks"], wake);
+        assert_eq!(copilot["hooksRequired"], wake);
+        assert_eq!(copilot["connected"], true);
+        assert!(text(&b.run(&["loop", "status"])).contains(FOLLOW_UP));
+        assert!(text(&b.run(&["loop", "connect", "--agent", "copilot", "--no-taste"])).contains(FOLLOW_UP));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert_eq!(fs::read_to_string(root.join("mcp-config.json")).unwrap(), mcp_before);
+        assert_eq!(fs::read_to_string(root.join("copilot-instructions.md")).unwrap(), rules_before);
+        assert!(!root.join("hooks").exists());
+    }
+}
+
+#[test]
+fn codex_trusts_exactly_the_hooks_connect_wrote_and_disconnect_takes_it_back() {
+    // Codex runs a hook from hooks.json only once it is trusted (REN-2057). This fake
+    // app server lists hooks the way Codex 0.165 keys them (file:event:group:hook) and
+    // keeps trust in trusted.list, so the test sees exactly which keys connect wrote.
+    let b = Box::new("codex-trust");
+    b.install_loop();
+    script(
+        &b.root.join("bin/codex"),
+        r#"#!/bin/sh
+home="${CODEX_HOME:-$HOME/.codex}"
+f="$home/config.toml"
+t="$home/trusted.list"
+if [ "$1" = app-server ]; then
+  touch "$t"
+  while IFS= read -r line; do
+    id=$(printf '%s' "$line" | jq '.id // empty')
+    [ -n "$id" ] || continue
+    case $(printf '%s' "$line" | jq -r .method) in
+    hooks/list) r=$(jq -c --arg p "$home/hooks.json" --rawfile t "$t" '{data:[{hooks:[.hooks|to_entries[]|.key as $e|.value|to_entries[]|.key as $g|.value.hooks|to_entries[]|($p+":"+($e|gsub("(?<a>[a-z])(?<b>[A-Z])";"\(.a)_\(.b)")|ascii_downcase)+":"+($g|tostring)+":"+(.key|tostring)) as $k|{key:$k,sourcePath:$p,currentHash:("h-"+$k),trustStatus:(if ($t|split("\n")|index($k)) then "trusted" else "untrusted" end)}]}]}' "$home/hooks.json");;
+    config/batchWrite)
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value!=null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' >> "$t"
+      printf '%s' "$line" | jq -r '.params.edits[]|select(.value==null)|.keyPath|capture("hooks.state.\"(?<k>.*)\"").k' | while IFS= read -r k; do grep -vxF "$k" "$t" > "$t.n"; mv "$t.n" "$t"; done
+      r='{}';;
+    *) r='{}';;
+    esac
+    printf '{"id":%s,"result":%s}\n' "$id" "$r"
+  done
+  exit 0
+fi
+case "$2" in
+add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+esac
+exit 0
+"#,
+    );
+    // The person's own hook comes first, so Loop's sit at shifted places.
+    let codex = b.home().join(".codex");
+    fs::write(
+        codex.join("hooks.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"/bin/echo mine"}]}]}}"#,
+    )
+    .unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "codex", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(!text(&out).contains("/hooks"), "trusted, so no /hooks step: {}", text(&out));
+    let trusted = fs::read_to_string(codex.join("trusted.list")).unwrap();
+    let keys: Vec<&str> = trusted.lines().collect();
+    let hooks: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(codex.join("hooks.json")).unwrap()).unwrap();
+    let loop_hooks = hooks["hooks"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|g| g.as_array().unwrap())
+        .flat_map(|g| g["hooks"].as_array().unwrap())
+        .filter(|h| h["command"] != "/bin/echo mine")
+        .count();
+    assert_eq!(keys.len(), loop_hooks, "{trusted}");
+    assert!(!keys.iter().any(|k| k.ends_with(":session_start:0:0")), "the person's own hook stays theirs: {trusted}");
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(fs::read_to_string(codex.join("trusted.list")).unwrap().trim(), "", "disconnect takes the trust back");
+}
+
+#[test]
+fn opencode_connect_journals_the_plugin_and_preserves_config_and_rule_fallback() {
+    for (name, version, existing_rule, jsonc, xdg) in [
+        ("opencode-quoted'\"", "0.2.0", false, false, false),
+        ("opencode-existing", "0.2.0", true, false, true),
+        ("opencode-jsonc", "0.2.0", false, true, true),
+        ("opencode-old", "0.1.4", true, false, false),
+        ("opencode-old-jsonc", "0.1.4", false, true, false),
+    ] {
+        let mut b = Box::new(name);
+        script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+        b.install_loop_version(version);
+        let config_home = if xdg { b.root.join("xdg") } else { b.home().join(".config") };
+        if xdg { b.env.insert("XDG_CONFIG_HOME".into(), config_home.display().to_string()); }
+        let root = config_home.join("opencode");
+        fs::create_dir_all(&root).unwrap();
+        let config = "{\"$schema\":\"https://opencode.ai/config.json\",\"mcp\":{\"other\":{\"type\":\"remote\",\"url\":\"https://other\"}},\"theme\":\"mine\"}\n";
+        let jsonc_contents = "// Deliberately not JSON; connect must leave it unread.\n{ /* mine */ }\n";
+        let config_file = root.join(if jsonc { "opencode.jsonc" } else { "opencode.json" });
+        let before = if jsonc { jsonc_contents } else { config };
+        fs::write(&config_file, before).unwrap();
+        let rule = root.join("AGENTS.md");
+        if existing_rule { fs::write(&rule, "My own rules.\n").unwrap(); }
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--taste", "--json"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        if jsonc {
+            assert!(report["agents"][0]["then"].as_array().unwrap().iter().any(|v| v.as_str().unwrap().contains("opencode.jsonc")));
+            assert!(!root.join("opencode.json").exists());
+            assert_eq!(fs::read_to_string(&config_file).unwrap(), before);
+        } else {
+            let config: serde_json::Value = serde_json::from_slice(&fs::read(&config_file).unwrap()).unwrap();
+            assert_eq!(config, serde_json::json!({"$schema":"https://opencode.ai/config.json","theme":"mine","mcp":{
+                "other":{"type":"remote","url":"https://other"},
+                "impeccable":{"type":"remote","url":URL,"enabled":true}
+            }}));
+        }
+        let plugin_file = root.join("plugin/impeccable-loop.ts");
+        if version == "0.2.0" {
+            let plugin = fs::read_to_string(&plugin_file).unwrap();
+            assert!(!plugin.contains("__HELPER__") && !plugin.contains("__ENV__") && !plugin.contains("__COMMAND__"));
+            let literal = plugin.lines().find_map(|l| l.strip_prefix("const COMMAND = ")).unwrap().strip_suffix(';').unwrap();
+            let command: String = serde_json::from_str(literal).unwrap();
+            let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+            let quoted = format!("'{}'", helper.display().to_string().replace('\'', "'\\''"));
+            assert_eq!(command, format!("/usr/bin/xattr -p com.apple.quarantine {quoted} 2>/dev/null | /usr/bin/grep -Eq '^[0-9a-fA-F]{{2}}[0-389abAB][0-9a-fA-F];' || exec {quoted} opencode"));
+            assert!(plugin.contains("spawn(\"/bin/sh\", [\"-c\", COMMAND + \" \" + kind]"));
+        } else { assert!(!root.join("plugin").exists()); }
+        let record: serde_json::Value = serde_json::from_slice(&fs::read(b.support().join("opencode-install.json")).unwrap()).unwrap();
+        assert_eq!(record, serde_json::json!({"enabled":true,"harness":"opencode","executable":b.root.join("bin/opencode").display().to_string()}));
+        if existing_rule {
+            let contents = fs::read_to_string(&rule).unwrap();
+            assert!(contents.starts_with("My own rules.\n"));
+            assert!(contents.contains(INSTRUCTION));
+        } else {
+            assert!(!rule.exists());
+            assert!(!b.home().join(".claude/CLAUDE.md").exists(), "fallback file stays untouched");
+        }
+        let status = b.run(&["loop", "status", "--json"]);
+        assert!(status.status.success(), "{}", text(&status));
+        let status: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+        let row = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "opencode").unwrap();
+        assert_eq!(row["hooks"], version == "0.2.0");
+        assert_eq!(row["instructionRequired"], existing_rule);
+        if jsonc { assert!(text(&b.run(&["loop", "status"])).contains("opencode.jsonc")); }
+        let again = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(again.status.success(), "{}", text(&again));
+        let out = b.run(&["loop", "disconnect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        assert_eq!(fs::read_to_string(config_file).unwrap(), before);
+        assert!(!root.join("plugin").exists());
+        if existing_rule { assert_eq!(fs::read_to_string(rule).unwrap(), "My own rules.\n"); }
+        else { assert!(!rule.exists()); }
+    }
+}
+
+#[test]
+fn opencode_reconnects_with_a_linked_plugin_directory() {
+    let b = Box::new("opencode-linked-plugin");
+    script(&b.root.join("bin/opencode"), "#!/bin/sh\nexit 99\n");
+    b.install_loop_version("0.2.0");
+    let root = b.home().join(".config/opencode");
+    let target = b.root.join("dotfiles/opencode-plugins");
+    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    fs::write(target.join("mine.ts"), "// My plugin\n").unwrap();
+    std::os::unix::fs::symlink(&target, root.join("plugin")).unwrap();
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--agent", "opencode", "--no-taste"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    let out = b.run(&["loop", "disconnect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(fs::symlink_metadata(root.join("plugin")).unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_to_string(target.join("mine.ts")).unwrap(), "// My plugin\n");
+    assert_eq!(fs::read_dir(target).unwrap().count(), 1);
 }

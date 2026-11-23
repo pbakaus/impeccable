@@ -326,11 +326,17 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
         if (!fs.existsSync(resolved)) return `File not found: ${p}`;
         const stat = fs.statSync(resolved);
         if (stat.isDirectory()) return `Path is a directory: ${p}. Use list instead.`;
-        const contents = fs.readFileSync(resolved, 'utf8');
+        // A picture reaches the model as one (as a host's Read gives it), never as its bytes decoded as text, which
+        // filled the context and the token counts with noise. Read first: a file that can't be read is never loaded.
+        const mediaType = IMAGE_TYPES[path.extname(resolved).toLowerCase()];
+        const output = mediaType ? { image: fs.readFileSync(resolved).toString('base64'), mediaType } : fs.readFileSync(resolved, 'utf8');
         call.succeeded = true;
         call.loadedFiles = [p];
-        return contents;
+        return output;
       },
+      toModelOutput: ({ output }) => (typeof output === 'string'
+        ? { type: 'text', value: output }
+        : { type: 'content', value: [{ type: 'image-data', data: output.image, mediaType: output.mediaType }] }),
     }),
     write: tool({
       description: 'Write or overwrite a file in the workspace. Creates parent directories as needed.',
@@ -419,6 +425,8 @@ export function makeTools(workspace, extraEnv = {}, simulatedUser = {}, { contex
 // cap sits just under the 900s per-test timeout so a genuine slow-but-correct
 // run is never killed. The timer is unref'd (it must not keep the loop alive
 // after a healthy turn) and cleared on completion.
+/** Files the read tool hands the model as images. */
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
 const TURN_TIMEOUT_MS = Number(process.env.IMPECCABLE_SKILL_BEHAVIOR_TURN_TIMEOUT_MS) || 840_000;
 export async function runTurn({ workspace, model, userPrompt, priorMessages = [], maxSteps = 8, env = {}, simulatedUser = {}, timeoutMs = TURN_TIMEOUT_MS, contextOnlyBash = false, denyBash = false, stopAfter, additionalTools, environment = '' }) {
   const { tools, trace } = makeTools(workspace, env, simulatedUser, { contextOnlyBash, denyBash });
@@ -454,7 +462,7 @@ export async function runTurn({ workspace, model, userPrompt, priorMessages = []
         trace.textStepCalls = trace.toolCalls.length;
         saveTrace({ status: 'in-progress', lastStepMessages: step.response.messages });
       },
-      stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [() => stopAfter(trace)] : [])],
+      stopWhen: [stepCountIs(maxSteps), ...(stopAfter ? [({ steps }) => stopAfter(trace, steps)] : [])],
       // Real client-side deadline on the provider call: without it a stalled
       // stream wedges the whole sweep with no tally.
       abortSignal: controller.signal,

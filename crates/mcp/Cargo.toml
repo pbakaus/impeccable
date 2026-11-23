@@ -1,0 +1,24 @@
+[package]
+name = "impeccable-mcp"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# `impeccable mcp`: one local MCP server per agent over stdio. It proxies the
+# account service's MCP tools under the CLI's own sign-in and signs in again
+# itself when that sign-in is gone (REN-2053).
+
+[dependencies]
+impeccable-common = { path = "../common" }
+impeccable-account = { path = "../account" }
+serde_json = { workspace = true }
+sha2 = "0.10"
+
+[dev-dependencies]
+# The account service's fake (crates/account/tests/support) and what it needs.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+ring = "0.17.14"
+sha2 = "0.10"
+base64 = "0.22"
+url = "2"

@@ -1,7 +1,7 @@
 {
-  "stdout": "[\n  {\n    \"antipattern\": \"side-tab\",\n    \"name\": \"Side-tab accent border\",\n    \"description\": \"Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/side-accent-css-module.tsx\",\n    \"line\": 7,\n    \"snippet\": \"border-l-4\"\n  }\n]\n",
+  "stdout": "[]\n",
   "stderr": "",
-  "exit": 2,
+  "exit": 0,
   "signal": null,
   "files": {}
 }

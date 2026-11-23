@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "--weights takes numbers from 1 to 1000, like 400,700.\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

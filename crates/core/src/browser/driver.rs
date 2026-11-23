@@ -1190,12 +1190,23 @@ struct PatternItem {
 /// nobody sees, or (for a style-text stripe) to no card rounded away from
 /// it; otherwise the elements its selector resolves to (`None` inside when
 /// it names no selector).
-fn pattern_finding_stands(
+fn pattern_finding_stands<'s>(
     dom: &dyn Dom,
     f: &crate::checks::css_scan::PatternFinding,
+    style_text: &'s str,
+    index: &once_cell::unsync::OnceCell<crate::checks::css_scan::CssHostIndex<'s>>,
 ) -> Option<Option<Vec<ElId>>> {
     let Some(selector) = f.selector.as_deref().filter(|s| !s.is_empty()) else {
         return Some(None);
+    };
+    // A side bar in a hover or focus state paints on the elements its
+    // selector names in any state.
+    let state_free;
+    let selector = if f.id == "side-tab" {
+        state_free = crate::checks::side_bar::without_state_pseudos(selector);
+        state_free.as_str()
+    } else {
+        selector
     };
     let matches = selector_nodes_for_live_dom(dom, selector)?;
     if matches.is_empty() {
@@ -1218,17 +1229,34 @@ fn pattern_finding_stands(
     if !matches.iter().any(|&el| computed_paint_applies(dom, el, selector, &f.id, &f.snippet)) {
         return None;
     }
-    // A stripe on any edge from the style-text scans reports only
-    // on a card rounded away from it, read off the elements it paints.
+    // A side bar from the style text stands at 2px on any element it
+    // paints, and thinner on a rounded one; a band across the top or bottom
+    // only on a card rounded away from it.
     if let Some(side) = crate::checks::css_scan::side_stripe_index(f) {
-        let rounded = matches.iter().any(|&el| {
-            let corners = crate::checks::measures::parse_radius_corners(
-                Some(&dom.style(el, "borderRadius")),
-                dom.rect(el).width,
-            );
-            crate::checks::rules::is_rounded_away_from_side(corners.as_ref(), side)
-        });
-        if !rounded {
+        let corners = |el: ElId| {
+            crate::checks::measures::parse_radius_corners(Some(&dom.style(el, "borderRadius")), dom.rect(el).width)
+        };
+        let stands = if side % 2 == 1 {
+            let thickness = crate::checks::side_bar::side_bar_thickness(&f.snippet).unwrap_or(0.0);
+            matches.iter().any(|&el| {
+                crate::checks::side_bar::side_bar_stands(
+                    thickness,
+                    crate::checks::side_bar::corners_round(corners(el).as_ref()),
+                )
+            }) || (crate::checks::side_bar::is_state_side_bar(f)
+                && matches
+                    .iter()
+                    .any(|&el| !crate::checks::side_bar::inline_style_squares_box(dom.attr(el, "style").as_deref()))
+                && crate::checks::side_bar::side_bar_stands(
+                    thickness,
+                    index.get_or_init(|| crate::checks::css_scan::CssHostIndex::new(style_text)).side_bar_on_rounded_host(f),
+                ))
+        } else {
+            matches
+                .iter()
+                .any(|&el| crate::checks::rules::is_rounded_away_from_side(corners(el).as_ref(), side))
+        };
+        if !stands {
             return None;
         }
     }
@@ -1434,12 +1462,19 @@ fn html_pattern_items(
         corpora.style_text.push_str(&linked_css);
     }
     // A rule that reports one candidate reports the first that stands here.
+    let host_index = once_cell::unsync::OnceCell::new();
     let all = crate::checks::html_patterns::check_html_patterns_picking(
         &html,
         Some(&corpora),
         context,
-        &|f| pattern_finding_stands(dom, f).is_some(),
+        &|f| pattern_finding_stands(dom, f, &corpora.style_text, &host_index).is_some(),
     );
+    // Left and right side bars are read by the side bar scan, whatever state
+    // or colour; the recorded stripe scans keep the top and bottom bands.
+    let all = all
+        .into_iter()
+        .filter(|f| !crate::checks::side_bar::is_inline_side_tab(&f.id, &f.snippet))
+        .chain(crate::checks::side_bar::scan_css_text_for_side_bars_with(&corpora.style_text, true));
     let mut out = Vec::new();
     // Computed lazily: the accent check below is the only caller and it is
     // rare, so an unrelated page never pays for the sweep.
@@ -1458,7 +1493,7 @@ fn html_pattern_items(
                 continue;
             }
         }
-        let Some(resolved) = pattern_finding_stands(dom, &f) else {
+        let Some(resolved) = pattern_finding_stands(dom, &f, &corpora.style_text, &host_index) else {
             continue;
         };
         let mut item = BrowserFinding::new(f.id.clone(), f.snippet.clone());
@@ -3494,10 +3529,10 @@ mod tests {
         assert!(page_paints_stock_violet(&d), "a violet body");
     }
 
-    /// The style-text stripe scans run in the browser too; a left or right
-    /// stripe reports only on an element rounded away from it.
+    /// The style-text side bar scan runs in the browser too: a bar reports
+    /// only on a rounded element, at any width.
     #[test]
-    fn style_text_side_stripes_need_a_rounded_host() {
+    fn style_text_side_bars_read_the_elements_they_paint() {
         let mut d = FakeDom::new();
         let (_html, body) = d.with_page();
         for (selector, radius) in [
@@ -3505,9 +3540,12 @@ mod tests {
             (".rd", "12px"),
             (".sh", "0px"),
             (".rs", "12px"),
+            (".h1", "0px"),
+            (".h2", "6px"),
         ] {
             let el = d.add(Some(body), "div");
             d.add_selector(el, selector);
+            d.add_selector(el, &format!("{selector}[aria-pressed=true]"));
             d.set_rect(el, 0.0, 0.0, 300.0, 120.0);
             d.set_styles(el, &[("borderRadius", radius)]);
         }
@@ -3516,7 +3554,9 @@ mod tests {
 .rd::before{position:absolute;width:5px;left:0;top:0;bottom:0;background:#3b82f6}\
 .sh{box-shadow:inset 6px 0 0 #6366f1}\
 .rs{box-shadow:inset 7px 0 0 #6366f1}\
-</style></head><body><div class=\"sq\"></div><div class=\"rd\"></div><div class=\"sh\"></div><div class=\"rs\"></div></body></html>"
+.h1:hover{box-shadow:inset 1px 0 0 #ddd}\
+.h2[aria-pressed=true]{box-shadow:inset 1px 0 0 var(--text)}\
+</style></head><body><div class=\"sq\"></div><div class=\"rd\"></div><div class=\"sh\"></div><div class=\"rs\"></div><div class=\"h1\"></div><div class=\"h2\"></div></body></html>"
             .to_string();
         let mut details: Vec<String> = scoped_html_pattern_findings(&d)
             .into_iter()
@@ -3527,6 +3567,7 @@ mod tests {
         assert_eq!(
             details,
             vec![
+                ".h2[aria-pressed=true] — inset box-shadow 1px stripe (left)".to_string(),
                 ".rd::before — absolute 5px pseudo-element stripe (left: 0)".to_string(),
                 ".rs — inset box-shadow 7px stripe (left)".to_string(),
             ]

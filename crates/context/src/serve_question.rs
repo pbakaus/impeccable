@@ -20,6 +20,10 @@ const NEXT_CLAIM_GRACE_MS: f64 = 10000.0;
 /// Past the once-a-minute timer cadence Chrome gives a tab hidden for 5 minutes.
 const PAGE_CLOSED_GRACE_MS: f64 = 90000.0;
 
+/// How long `--wait` keeps asking for reruns on one unanswered hand. A harness
+/// that wakes the agent on every exit pays a full turn per rerun (#1566).
+const WAIT_BUDGET_MS: f64 = 30.0 * 60.0 * 1000.0;
+
 struct Args<'a> {
     argv: &'a [String],
 }
@@ -1370,6 +1374,15 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
             (comps_missing_sidecar(&cwd, &comps, hand.as_ref()), stale_comps(&cwd, &comps, hand.as_ref()), landed_decision_comps(&cwd, &comps, hand.as_ref()), comps)
         };
         if !answered() {
+            // The clock starts at the later of this hand (a re-roll) and this
+            // server (a restart that reuses the hand).
+            let state = read_state(&qdir, &key);
+            let began = [hand.as_ref().and_then(|h| num_field(h, "startedAt")), state.as_ref().and_then(|s| num_field(s, "startedAt"))].into_iter().flatten().reduce(f64::max);
+            if began.is_some_and(|b| now_ms() - b > WAIT_BUDGET_MS) {
+                let url = state.as_ref().and_then(|s| s.get("url").and_then(Value::as_str)).unwrap_or_default();
+                io.out(&format!("PENDING: no answer after {} minutes on this hand, and the page is still served at {}. Stop rerunning --wait: tell the user the choice is waiting on that page and to tell you once they pick, then end your turn; when they do, run --wait --key {} once to collect it. Do not take a default or switch to the structured question tool while the page is open.\n", WAIT_BUDGET_MS / 60000.0, url, key));
+                return 5;
+            }
             io.out(&format!("WAITING: no answer yet after {}s; run --wait --key {} again\n", crate::util::js_number_to_string(poll_sec), key));
             if !missing.is_empty() {
                 io.out(&sidecar_missing_line(&env, &cwd, &missing));
@@ -1625,7 +1638,7 @@ pub fn run(argv: &[String], io: &mut Io) -> i32 {
         let _ = std::fs::create_dir_all(&qdir);
         ignore_questions_dir(&qdir);
         let key = a.arg("key").unwrap_or_default();
-        let mut st = json!({ "pid": std::process::id(), "port": actual_port, "url": url });
+        let mut st = json!({ "pid": std::process::id(), "port": actual_port, "url": url, "startedAt": now_ms() as i64 });
         let comps = declared_comps(&state.lock().unwrap().payload);
         if !comps.is_empty() {
             st["comps"] = json!(comps);

@@ -65,7 +65,9 @@ fn create_fake_universal_bundle(root: &str, providers: &[&str]) -> String {
             &format!("{bundle_root}/.claude/settings.json"),
             &json!({
                 "description": "fresh claude hook",
-                "hooks": { "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "Stop": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
+                // Real bundles carry SessionStart (buildClaudeSettingsManifest,
+                // #811); a user hook without it is not current (#1307).
+                "hooks": { "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "PostToolUse": [{ "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }], "Stop": [{ "hooks": [{ "type": "command", "command": "node \".claude/skills/impeccable/scripts/hook.mjs\"" }] }] },
             })
             .to_string(),
         );
@@ -685,8 +687,10 @@ fn manifest_names_launcher(manifest: &str, home: &str, provider: &str) -> bool {
     }
     let p = jsp::join(&[home, provider, "skills", "impeccable", "scripts", "impeccable"]);
     let escaped = p.replace('\\', "\\\\");
+    // Claude's Windows form uses `/` separators (#1462).
+    let forward = p.replace('\\', "/");
     let value: Value = serde_json::from_str(&read(manifest)).unwrap();
-    any_string(&value, &|s: &str| s.contains(&p) || s.contains(&escaped))
+    any_string(&value, &|s: &str| s.contains(&p) || s.contains(&escaped) || s.contains(&forward))
 }
 
 #[test]

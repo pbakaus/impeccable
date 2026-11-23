@@ -52,8 +52,15 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
 
 /// One elapsed-time budget for this contents upload, separate from health.
 const UPLOAD_BUDGET: Duration = Duration::from_secs(2);
+
+/// The budget contains git's answers, so a test that raises git's deadline
+/// raises it to match (`health::test_git_deadline`, REN-2117).
+fn upload_budget() -> Duration {
+    super::test_git_deadline().map_or(UPLOAD_BUDGET, |git| git.max(UPLOAD_BUDGET))
+}
+
 fn remaining(started: std::time::Instant) -> Option<Duration> {
-    UPLOAD_BUDGET
+    upload_budget()
         .checked_sub(started.elapsed())
         .filter(|d| !d.is_zero())
 }
@@ -62,7 +69,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let started = std::time::Instant::now();
     let env = io.env.clone();
     let Some(local) =
-        crate::session::read_within(UPLOAD_BUDGET, move || Local::read(&env)).flatten()
+        crate::session::read_within(upload_budget(), move || Local::read(&env)).flatten()
     else {
         return;
     };
@@ -106,9 +113,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         "changedAt": impeccable_context::util::iso_from_ms(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as f64),
         "text": text, "sidecar": sidecar,
     });
-    if let Some(label) = &repo.label {
-        body["label"] = label.clone().into();
-    }
+    crate::health::name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
     if serde_json::to_vec(&body).map_or(true, |b| b.len() > BODY_BYTES) {
         return;
     }
@@ -222,12 +227,20 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         token,
         body,
     );
-    if !answer
-        .ok()
-        .is_some_and(|v| matches!(v["outcome"].as_str(), Some("recorded" | "repeat")))
-    {
-        return;
-    }
+    let landed = match answer {
+        Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
+            crate::receipt::landed(&v, crate::receipt::page(&account, "design", None))
+        }
+        Ok(_) => {
+            crate::receipt::failed(io, "the design document upload was not confirmed", quiet);
+            return;
+        }
+        Err(error) => {
+            crate::receipt::failed_upload(io, "DESIGN.md", &error, quiet);
+            return;
+        }
+    };
+    crate::receipt::saved(io, landed, quiet);
     crate::upload_notice::emit(
         io,
         &account,
@@ -406,6 +419,7 @@ mod identity_tests {
                 key: "00".repeat(32),
                 stream: "11".repeat(32),
                 label: None,
+                place: None,
             })
         });
         assert!(
@@ -518,7 +532,7 @@ mod notice_regressions {
         after_scan(&mut io, &scan, true);
         assert!(cap.stderr.borrow().is_empty());
         after_scan(&mut io, &scan, false);
-        assert!(String::from_utf8_lossy(&cap.stderr.borrow()).contains("Uploaded your DESIGN.md"));
+        assert!(String::from_utf8_lossy(&cap.stderr.borrow()).contains("Saved your DESIGN.md"));
         let first = cap.stderr.borrow().clone();
         after_scan(&mut io, &scan, false);
         assert_eq!(*cap.stderr.borrow(), first);

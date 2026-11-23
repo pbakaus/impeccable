@@ -209,14 +209,14 @@ Skip this step if the Setup slug was null (vague or root-level target), and say 
 
 1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions), but stop before the "Ask the User" / "Recommended Actions" sections that come later.
 
-   This is a copy of the report you already delivered above, for later commands to read. It is not delivery. If you find yourself composing the report for the first time inside this heredoc, you have skipped Deliver the Report; go back and send it.
+   Copy the delivered report for later commands to read. If you are composing it for the first time in this heredoc, you skipped Deliver the Report; go back and send it.
 
 2. **Pass the structured metadata** through `IMPECCABLE_CRITIQUE_META` (JSON), then run the write command:
    ```bash
-   IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>}' \
+   IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","title":"<page title, or empty>","url":"<http(s) URL you viewed, or empty>","pr":"<PR number checked out, or empty>","heuristics":[{"n":<1-10>,"score":<0-4>}],"total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
      "<skill-base-dir>/scripts/impeccable" critique-storage write "<resolved target>" <body-file>
    ```
-   `max_score` is the applicable maximum from the heuristic table (40 when every heuristic applied), so a later run can tell a renormalized total from a full one. For a local file target, the helper also records an exact content fingerprint so polish can distinguish the assessed bytes from later edits without relying on Git state or timestamps. The helper prints the absolute path it wrote, and sometimes one more line (`Saved to Impeccable: <link>`, `Not saved to Impeccable: <reason>` or `Keep this critique's history: impeccable login`); put that line in the close word for word. Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
+   Use the observed `<title>` or first h1 for `title`; omit N/A heuristics. `max_score` is the table’s applicable maximum (40 if all apply), distinguishing renormalized totals. For local files the helper records an exact content fingerprint, so polish detects later edits without Git or timestamps. The helper prints the absolute saved path, sometimes followed by a line (`Saved to Impeccable: <link>`, `Not saved to Impeccable: <reason>` or `Keep this critique's history: impeccable login`); put that line in the close word for word, also from detect (JSON `savedTo`: `Saved to Impeccable: <url>`). Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
 
 3. **Delete the temp body file** after the write attempt completes, whether the write succeeded or failed. If deletion fails, mention `temp-file cleanup failed: <reason>` briefly in the final output, but do not block the critique.
 

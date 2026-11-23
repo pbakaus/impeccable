@@ -23,6 +23,7 @@ use crate::background::{
 };
 use crate::cascade::{build_static_style_map, collect_static_css_text};
 use crate::dom::{StaticDocument, StaticElement};
+use crate::image_sampling::{ImageSampler, ImageSamples};
 use crate::page::{
     check_cream_palette, check_page_layout, check_repeated_container_text_from_doc,
     check_static_page_typography,
@@ -32,6 +33,10 @@ use crate::quality::{check_element_quality, check_page_quality_from_doc, pf0};
 use impeccable_core::checks::css_scan::{side_stripe_index, CssHostIndex};
 use impeccable_core::checks::html_patterns::{check_html_patterns, HtmlPatternCorpora};
 use impeccable_core::checks::row_stripe::scan_css_text_for_row_stripe;
+use impeccable_core::checks::side_bar::{
+    corners_round, is_inline_side_tab, scan_css_text_for_side_bars_with, side_bar_stands,
+    side_bar_thickness,
+};
 use impeccable_core::checks::rules::{is_rounded_away_from_side, RuleHit, SafeTagTextSeen};
 use impeccable_core::findings::{try_finding, Finding};
 use impeccable_core::inline_ignores::apply_inline_ignores;
@@ -102,6 +107,13 @@ pub struct DetectHtmlOptions<'a> {
     /// files, the way the built-in text-content analyzers do). A pack that
     /// implements both therefore never reports twice for the same file.
     pub rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
+    /// Where the sampled-contrast path (#560) gets an image's pixels:
+    /// decoded here and written to the persistent sample cache (`detect`),
+    /// or read from that cache alone, never decoding (the edit hook).
+    pub image_samples: ImageSamples,
+    /// The persistent sample cache directory; `None` is the default
+    /// (`IMPECCABLE_SAMPLE_CACHE`, else `<home>/.impeccable/sample-cache`).
+    pub sample_cache_dir: Option<&'a Path>,
 }
 
 /// Errors of the static engine.
@@ -139,6 +151,7 @@ fn run_rule(
     rule_id: &str,
     el: &StaticElement<'_>,
     tag: &str,
+    images: &ImageSampler,
     color_seen: &mut SafeTagTextSeen,
 ) -> Vec<RuleHit> {
     let style = el.style();
@@ -147,7 +160,7 @@ fn run_rule(
             let radius = resolve_border_radius_scalar_px(style, pf0(sv(style, "width")));
             check_element_borders(tag, style, radius, el)
         }
-        "color-rules" => check_element_colors(el, style, tag, None, color_seen),
+        "color-rules" => check_element_colors(el, style, tag, None, color_seen, images),
         "hover-color-rules" => check_element_hover_contrast(el, style, tag),
         "dark-glow" => {
             let base = el.parent_element().unwrap_or(*el);
@@ -230,7 +243,7 @@ pub fn detect_html_source(
         Meta::new("parse-html", "parse-document", fp),
         || StaticDocument::parse(html),
     );
-    let (css_text, pattern_css_text) = collect_static_css_text(
+    let (css, pattern_css_text) = collect_static_css_text(
         &doc,
         &file_dir,
         profile,
@@ -238,13 +251,20 @@ pub fn detect_html_source(
         options.warn,
         options.ignored_linked_stylesheet,
     );
-    build_static_style_map(&mut doc, css_text.as_str(), profile, fp);
+    build_static_style_map(&mut doc, &css, profile, fp);
+    let css_text = css.text;
     // A stylesheet the engine could not read may round any card it never saw
     // a radius for; the side-accent gate keeps those findings.
     if crate::cascade::has_unread_stylesheet(&doc, &file_dir) {
         doc.set_unread_stylesheet();
     }
     let doc = doc;
+    let images = ImageSampler::new(
+        &file_dir.to_string_lossy(),
+        options.image_samples,
+        options.sample_cache_dir,
+    );
+    images.decode_ahead(&doc);
 
     let mut findings: Vec<Finding> = Vec::new();
     let mk = |id: &str, snippet: &str| try_finding(id, fp, snippet, 0.0);
@@ -262,7 +282,7 @@ pub fn detect_html_source(
                 profile,
                 Meta::new("element", rule_id, fp),
                 |h: &RuleHit| h.id.as_str(),
-                || run_rule(rule_id, el, &tag, &mut color_seen),
+                || run_rule(rule_id, el, &tag, &images, &mut color_seen),
             );
             for h in hits {
                 if scoped_ignore_active(el, &h.id) {
@@ -280,7 +300,7 @@ pub fn detect_html_source(
                 {
                     continue;
                 }
-                if let Some(mut f) = mk(&h.id, &h.snippet) {
+                if let Some(mut f) = try_finding(&h.id, fp, &h.snippet, el.source_line()) {
                     // A hit's own severity (a contrast ratio just under its
                     // bar) overrides the registry's.
                     if let Some(sev) = h.severity.filter(|s| !s.is_empty()) {
@@ -388,9 +408,13 @@ pub fn detect_html_source(
             Meta::new("page", "html-patterns", fp),
             |f: &impeccable_core::checks::css_scan::PatternFinding| f.id.as_str(),
             || {
+                // Left and right side bars are read by the side bar scan,
+                // whatever state or colour; the recorded stripe scans keep
+                // the top and bottom bands.
                 check_html_patterns(html, Some(&corpora))
                     .into_iter()
-                    .filter(|item| item.id != "bounce-easing")
+                    .filter(|item| item.id != "bounce-easing" && !is_inline_side_tab(&item.id, &item.snippet))
+                    .chain(scan_css_text_for_side_bars_with(&corpora.style_text, true))
                     .collect()
             },
         );
@@ -415,24 +439,36 @@ pub fn detect_html_source(
                     hosts = matches;
                 }
             }
-            // A stripe on any edge from the style-text scans reports only
-            // on a card rounded away from it: read off the cascade for the
-            // elements the rule paints, else off the host rule's own
+            // A side bar from the style text stands at 2px, and thinner on
+            // a rounded box; a band across the top or bottom only on a card
+            // rounded away from it. The corners are read off the cascade for
+            // the elements the rule paints, else off the host rule's own
             // declarations when no element on the page matches.
             if let Some(side) = side_stripe_index(&f) {
-                let rounded = if hosts.is_empty() {
-                    host_index
-                        .get_or_init(|| CssHostIndex::new(&corpora.style_text))
-                        .side_stripe_on_rounded_host(&f)
-                } else {
-                    hosts.iter().any(|el| {
-                        let style = el.style();
-                        let corners =
-                            resolve_side_accent_corners(el, style, pf0(sv(style, "width")));
-                        is_rounded_away_from_side(corners.as_ref(), side)
-                    })
+                let index = || host_index.get_or_init(|| CssHostIndex::new(&corpora.style_text));
+                let corners = |el: &StaticElement<'_>| {
+                    let style = el.style();
+                    resolve_side_accent_corners(el, style, pf0(sv(style, "width")))
                 };
-                if !rounded {
+                let stands = if side % 2 == 1 {
+                    let thickness = side_bar_thickness(&f.snippet).unwrap_or(0.0);
+                    if hosts.is_empty() {
+                        side_bar_stands(thickness, index().side_bar_on_rounded_host(&f))
+                    } else {
+                        hosts.iter().any(|el| {
+                            side_bar_stands(thickness, corners_round(corners(el).as_ref()))
+                        }) || (impeccable_core::checks::side_bar::is_state_side_bar(&f)
+                            && hosts.iter().any(|el| {
+                                !impeccable_core::checks::side_bar::inline_style_squares_box(el.get_attribute("style"))
+                            })
+                            && side_bar_stands(thickness, index().side_bar_on_rounded_host(&f)))
+                    }
+                } else if hosts.is_empty() {
+                    index().side_stripe_on_rounded_host(&f)
+                } else {
+                    hosts.iter().any(|el| is_rounded_away_from_side(corners(el).as_ref(), side))
+                };
+                if !stands {
                     continue;
                 }
             }
@@ -456,8 +492,11 @@ pub fn detect_html_source(
         for f in row_hits {
             let Some(selector) = f.selector.as_deref() else { continue };
             // The selector as written when the engine reads it, so a
-            // `:not()` keeps excluding; stripped of what it cannot read
-            // otherwise.
+            // `:not()` keeps excluding, less any hover or focus state (a
+            // stripe in that state paints on those rows whatever their
+            // state); stripped of what it cannot read otherwise.
+            let state_free = impeccable_core::checks::side_bar::without_state_pseudos(selector);
+            let selector = state_free.as_str();
             let stripped = PSEUDO_STRIP_RE.replace_all(selector, "");
             let query = if doc.compile(selector).is_ok() {
                 selector
@@ -467,27 +506,9 @@ pub fn detect_html_source(
             if doc.compile(query).is_err() {
                 continue;
             }
-            // A row by class only that may be rounded (another rule's
-            // radius, or one the engine cannot see) is a card, and the card
-            // scans above report it: a table or ARIA row or cell is a row
-            // whatever its corners.
-            let hosts: Vec<_> = doc
-                .query_selector_all(query)
-                .into_iter()
-                .filter(|el| {
-                    let tag = el.tag_lower();
-                    let role = el.get_attribute("role").unwrap_or("").to_ascii_lowercase();
-                    if matches!(tag.as_str(), "tr" | "td" | "th")
-                        || matches!(role.as_str(), "row" | "cell" | "gridcell" | "rowheader")
-                    {
-                        return true;
-                    }
-                    let style = el.style();
-                    resolve_side_accent_corners(el, style, pf0(sv(style, "width"))).is_some_and(|c| {
-                        [c.top_left, c.top_right, c.bottom_right, c.bottom_left].iter().all(|r| *r <= 0.0)
-                    })
-                })
-                .collect();
+            // A row by class only rounded by another rule is a side bar all
+            // the same: the stripe reports wherever the selector paints.
+            let hosts = doc.query_selector_all(query);
             if hosts.is_empty() || hosts.iter().all(|el| scoped_ignore_active(el, &f.id)) {
                 continue;
             }
@@ -619,7 +640,7 @@ pub fn unsupported_selectors(html: &str, file_path: &Path) -> Vec<String> {
         .map(|p| p.to_path_buf())
         .unwrap_or_default();
     let mut doc = StaticDocument::parse(html);
-    let (css_text, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
-    build_static_style_map(&mut doc, &css_text, None, &file_str);
+    let (css, _) = collect_static_css_text(&doc, &file_dir, None, &file_str, None, None);
+    build_static_style_map(&mut doc, &css, None, &file_str);
     doc.unsupported_selectors()
 }

@@ -1,0 +1,7 @@
+{
+  "stdout": "[\n  {\n    \"antipattern\": \"side-tab\",\n    \"name\": \"Side-tab accent border\",\n    \"description\": \"A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/side-tab-every-variant.svelte\",\n    \"line\": 17,\n    \"snippet\": \"border-left: 1px solid var(--text)\"\n  },\n  {\n    \"antipattern\": \"side-tab\",\n    \"name\": \"Side-tab accent border\",\n    \"description\": \"A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\",\n    \"severity\": \"warning\",\n    \"category\": \"slop\",\n    \"file\": \"<REPO>/tests/fixtures/antipatterns/side-tab-every-variant.svelte\",\n    \"line\": 15,\n    \"snippet\": \".it[aria-pressed='true'] — inset box-shadow 2px stripe (left)\"\n  }\n]\n",
+  "stderr": "",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}
