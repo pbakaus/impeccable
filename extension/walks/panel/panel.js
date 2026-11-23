@@ -710,9 +710,9 @@ function widths() {
 function sights() {
   const facts = Object.fromEntries(Object.keys(SIGHTS).map((sees) => [sees, common(sees, picked())]));
   return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
-    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sights[sees], 'data-fact': facts[sees], 'aria-label': COPY.home.sights[sees], 'aria-description': facts[sees],
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'aria-label': COPY.home.sights[sees], 'aria-description': facts[sees],
     onclick: () => { pre.sees = sees; render(); },
-  }, icon(look))));
+  }, icon(look), el('span', { class: 'tip', 'aria-hidden': 'true' }, el('span', { class: 'tip-h', text: COPY.home.sights[sees] }), facts[sees]))));
 }
 
 /**

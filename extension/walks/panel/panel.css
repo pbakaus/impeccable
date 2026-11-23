@@ -173,12 +173,15 @@ b { font-weight: 500; }
  */
 .tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
   white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
-/*
- * Sees' tip is two lines: the name, darker, then how common it is (`data-fact`), wrapping within the panel. One box, so
- * the name sits on the fact however many lines it takes; the first line takes the ink colour through the clipped background.
- */
-.tabs .sights button::after { left: auto; right: 0; content: attr(data-tip) "\A" attr(data-fact); width: max-content; max-width: calc(100vw - 40px); white-space: pre-line;
-  color: transparent; background: linear-gradient(var(--ink) 0 1.4em, var(--muted) 1.4em); -webkit-background-clip: text; background-clip: text; }
+/* Sees' tip: a small card over the hovered icon, its caret pointing at it: the name, then how common it is (`.tip`). */
+.tabs .sights button { position: relative; }
+.tabs .sights .tip { position: absolute; bottom: calc(100% + 14px); right: -6px; z-index: 2; width: max-content; max-width: 60vw; padding: 6px 10px; border-radius: 8px;
+  background: var(--paper-raised); box-shadow: 0 1px 2px oklch(13% 0 0 / .12), 0 0 0 1px var(--paper-deep); font-size: 12px; line-height: 1.4; color: var(--muted);
+  text-align: left; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .sights .tip-h { display: block; font-size: 14px; color: var(--ink); }
+.tabs .sights button::before { content: ""; position: absolute; bottom: calc(100% + 10px); left: 50%; z-index: 3; width: 9px; height: 9px; background: var(--paper-raised);
+  box-shadow: 1px 1px 0 0 var(--paper-deep); transform: translateX(-50%) rotate(45deg); pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .sights button:is(:hover, :focus-visible) .tip, .tabs .sights button:is(:hover, :focus-visible)::before { opacity: 1; }
 .tabs button:hover::after, .tabs button:focus-visible::after { opacity: 1; }
 .field .row + .row { margin-top: 10px; }
 .choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
