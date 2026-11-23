@@ -1228,7 +1228,8 @@ function beforeYouStart() {
   const words = COPY.firstRun.before;
   return [
     el('div', { class: 'fr-mid' }, el('h2', { class: 'hd', text: words.title }),
-      el('ul', { class: 'fr-list' }, words.points.map(([name, fact, more]) => el('li', { class: name === 'warn' ? 'warn' : '' }, icon(name), el('span', {}, el('b', { text: fact }), ' ', more))))),
+      el('ul', { class: 'fr-list' }, words.points.map(([name, fact, more, link]) => el('li', { class: name === 'warn' ? 'warn' : '' }, icon(name),
+        el('span', {}, el('b', { text: fact }), ' ', more, link ? [' ', el('a', { href: link[1], target: '_blank', rel: 'noreferrer', text: link[0] })] : null))))),
     foot(0, 'got-it', words.next, () => { pre.screen = 'tab-group'; render(); }),
   ];
 }

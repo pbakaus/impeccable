@@ -252,13 +252,13 @@ export const COPY = {
   /** The corner of every picture on a journey whose persona sees differently (../sight.js). */
   seenAs: { older: 'As seen with older eyes', 'colour-blind': 'As seen with colour blindness' },
 
-  /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print]. */
+  /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print, a link after it: [words, url]]. */
   firstRun: {
     before: {
       title: 'Before you start',
       points: [
         ['cursor', 'It acts in your browser, signed in as you.', 'What it clicks and types counts as you.'],
-        ['camera', 'It takes screenshots of the pages it visits.', 'Keep it off private sites, like banking or health.'],
+        ['camera', 'It records the pages it visits.', 'Screenshots, video and steps go to Impeccable and its AI provider, and are kept for the replay. Keep it off private sites, like banking or health.', ['Privacy policy', 'https://impeccable.style/privacy']],
         ['warn', 'Pages can hide instructions.', 'Text you can’t see can try to steer it somewhere you didn’t ask.'],
         ['shield', 'You approve the plan first.', 'Steps that can’t be undone are marked !. Anything risky that isn’t on the plan is skipped.'],
       ],
