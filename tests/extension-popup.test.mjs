@@ -498,21 +498,45 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
-// Catches the intro starting over on a redraw (a device pressed), or carrying on from last time when the screen opens again.
+// Catches the intro starting over on a redraw (the person's apps arriving), or carrying on from last time when the screen opens again.
 test('the persona intro carries on through a redraw and starts over when Create a persona opens again', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+  const hold = {};
+  let answer;
+  hold.apps = new Promise((resolve) => { answer = resolve; });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], apps: { ok: true, apps: [] }, hold });
   // How long until the last face comes in.
   const lastFace = () => parseInt(h.app.querySelectorAll('img.intro-pic').at(-1).attributes.style.split(':')[1], 10);
   await h.press('make-persona');
   const start = lastFace();
   t.mock.timers.tick(3000);
-  await h.press('device-phone');
+  answer();
+  for (let n = 0; n < 5; n += 1) await tick();
   assert.equal(lastFace(), start - 3000);
   await h.press('back');
   await h.press('make-persona');
   assert.equal(lastFace(), start);
 });
+
+// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where
+// motion is reduced, from the start or from partway through.
+for (const reduced of ['never', 'from the start', 'partway']) {
+  test(`Create a persona's box waits out the intro, reduced motion ${reduced}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const motion = { matches: reduced === 'from the start', changed: [] };
+    globalThis.matchMedia = () => ({ get matches() { return motion.matches; }, addEventListener: (_, listener) => motion.changed.push(listener) });
+    t.after(() => { delete globalThis.matchMedia; });
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+    const held = () => 'inert' in h.app.querySelector('.box').attributes;
+    await h.press('make-persona');
+    t.mock.timers.tick(3000);
+    if (reduced === 'partway') { assert.equal(held(), true); motion.matches = true; for (const listener of motion.changed) listener(); }
+    t.mock.timers.tick(12000);
+    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, reduced === 'never']);
+    t.mock.timers.tick(5000);
+    assert.equal(held(), false, 'the intro over, the box is within reach');
+  });
+}
 
 // Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
 test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {

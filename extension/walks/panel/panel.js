@@ -462,15 +462,21 @@ function maker() {
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
   const create = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } });
+  const intro = !made && !pre.making && !ownFull() ? introHero() : null;
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }), traits())
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
-      : ownFull() ? el('div', { class: 'hero' }, blank()) : introHero();
+      : intro?.hero ?? el('div', { class: 'hero' }, blank());
+  // While the intro plays, the box is there but unseen and out of reach; it fades in as the last line settles.
+  const plays = intro && !still();
+  const wait = plays ? intro.left : 0;
+  clearTimeout(introWait);
+  introWait = wait > 0 ? setTimeout(revealBox, wait) : null;
   const parts = [
     el('div', { class: 'top' }, made || pre.making ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
       el('span', { class: 'grow' }),
       made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false, modalSite: siteOf(hereUrl) }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
     el('div', { class: 'middle' }, hero),
-    made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
+    made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: plays ? 'box waits' : 'box', inert: wait > 0, style: plays ? `animation-delay:${wait}ms` : undefined },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
         el('div', { class: 'traits-pick' }, el('p', { class: 'pick-h', id: 'device-h', text: COPY.make.device }), devices(), el('p', { class: 'pick-h', id: 'needs-h', text: COPY.make.disability }), needs()),
@@ -500,16 +506,31 @@ const due = (i) => i && LEAD + i * BEAT;
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
+  let last = 0;
   // Letters in words, so a narrow panel wraps a line between words.
   const lines = COPY.intro.map((text, i) => {
     let k = 0;
-    const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + (w + k++) * 16 - at}ms` : undefined })))]);
+    const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => {
+      last = due(i) + 160 + (w + k++) * 16;
+      return el('span', { text: ch, style: i ? `animation-delay:${last - at}ms` : undefined });
+    }))]);
     return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
   });
   // Four faces for COPY.intro's five lines: the fourth stays for the last two. panel.css's ring counts the same lines.
-  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
+  const hero = el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` })), ring()),
     el('span', { class: 'intro-line' }, lines));
+  // `left`: how long until the last line's last letter has settled (panel.css's intro-settle, 700ms).
+  return { hero, left: last + 700 - at };
+}
+
+/** The intro over, the box below it is drawn again within reach, and takes the focus the screen opened with. */
+let introWait = null;
+function revealBox() {
+  introWait = null;
+  if (screen() !== 'make') return;
+  render();
+  if (!document.activeElement || document.activeElement === document.body) app.querySelector('textarea')?.focus();
 }
 
 /** Round the intro's face: a faint track, and a gold arc on it that grows round from the top while each line holds. */
@@ -621,6 +642,8 @@ function home() {
 
 /** Reduced motion: the bars hold a still, gentle arch, and listening still shows. */
 const still = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+// Turned on or off while Create a persona's intro plays: the box under it follows at once (see maker).
+globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.addEventListener?.('change', () => { if (screen() === 'make') render(); });
 const STILL = Array.from({ length: BARS }, (_, i) => 0.12 + 0.3 * Math.sin((Math.PI * i) / (BARS - 1)));
 
 /** The mic: press to talk; while listening the same button, selected, stops it. */
