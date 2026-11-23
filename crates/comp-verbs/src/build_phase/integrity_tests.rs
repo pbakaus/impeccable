@@ -2077,22 +2077,27 @@ fn a_code_region_the_accepted_first_viewport_lacks_carries_to_desktop_width() {
 
 #[cfg(unix)]
 #[test]
-fn the_screenshot_fingerprint_covers_the_entry_package_and_names_what_it_cannot_read() {
+fn an_unfingerprintable_project_names_the_problem_until_a_fingerprint_scope_is_set() {
     let ws = menu_workspace();
     ws.write("site/index.html", b"<main>Menu</main>");
     ws.write("site/data.json", b"{\"items\":1}");
-    ws.write("site/package.json", b"{}");
     ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
     let mut state = json!({"comp":"comp.png","artifact":"site/index.html","phase":"responsive","phases":{}});
     for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
     state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
     ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
-    // Outside the entry's package a symlink (or a gigabyte of images) is not an input.
     std::fs::create_dir_all(ws.path.join("content")).unwrap();
     std::os::unix::fs::symlink("../site/index.html", ws.path.join("content/link.html")).unwrap();
     let (mut io, out) = captured(&ws);
     let reason = "The user said: \"the comp does not need to match at desktop width\"";
     let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("symlink at content/link.html") && out_err(&out).contains("\"fingerprintScope\": \"<dir>\""), "{}", out_err(&out));
+    // A scope that does not hold the entry is refused.
+    ws.write(".impeccable/config.json", br#"{"fingerprintScope":"content"}"#);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("does not contain site/index.html"), "{}", out_err(&out));
+    ws.write(".impeccable/config.json", br#"{"fingerprintScope":"site"}"#);
     assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
     assert_eq!(load_state(&io).unwrap()["responsiveInputScope"], "site");
     let ship = ["finish", "--disposition", "ship"].map(String::from);
@@ -2103,13 +2108,6 @@ fn the_screenshot_fingerprint_covers_the_entry_package_and_names_what_it_cannot_
     // Data the page reads is inside the scope, so an edit after ship voids it.
     ws.write("site/data.json", b"{\"items\":2}");
     assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "changed-after-finish");
-    // Inside it, the refusal names what could not be read instead of calling it a change.
-    std::os::unix::fs::symlink("index.html", ws.path.join("site/link.html")).unwrap();
-    assert_eq!(run(&ship, &mut io, &no_organic_scan), 2);
-    let text = out_err(&out);
-    assert!(text.contains("could not be fingerprinted (symlink at site/link.html)") && !text.contains("changed since"), "{text}");
-    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
-    assert!(out_err(&out).contains("(symlink at site/link.html), so responsive cannot close"), "{}", out_err(&out));
 }
 
 #[cfg(unix)]
@@ -2124,5 +2122,5 @@ fn a_ship_without_a_recorded_fingerprint_refuses_an_unreadable_tree() {
     std::os::unix::fs::symlink("index.html", ws.path.join("link.html")).unwrap();
     let (mut io, out) = captured(&ws);
     assert_eq!(run(&["finish", "--disposition", "ship"].map(String::from), &mut io, &no_organic_scan), 2);
-    assert!(out_err(&out).contains("could not be fingerprinted (symlink at link.html)"), "{}", out_err(&out));
+    assert!(out_err(&out).contains("could not be fingerprinted: the project cannot be checked in full: it holds a symlink at link.html"), "{}", out_err(&out));
 }

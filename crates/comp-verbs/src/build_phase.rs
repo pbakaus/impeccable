@@ -2912,15 +2912,16 @@ fn advance(io: &Io, state: &mut Value, force: bool, reason: Option<&str>, opts: 
     }
     // Ship compares the frontend inputs against the ones responsive closed on, passed or forced.
     if phase == "responsive" && !native_capture(io, state) {
-        let scope = crate::completion::input_scope(&io.cwd, state);
-        let inputs = match crate::completion::input_hash(&io.cwd, &scope) {
-            Ok(inputs) => inputs,
+        let fingerprint = crate::completion::input_scope(&io.cwd, state)
+            .and_then(|scope| crate::completion::input_hash(&io.cwd, &scope).map(|inputs| (scope, inputs)));
+        let (scope, inputs) = match fingerprint {
+            Ok(fingerprint) => fingerprint,
             Err(why) => {
                 if let Some(p) = state.pointer_mut(&format!("/phases/{phase}")).and_then(|p| p.as_object_mut()) {
                     p.insert("status".into(), json!("open"));
                 }
                 let mut reasons = gate.reasons.clone();
-                reasons.push(format!("Frontend inputs could not be fingerprinted during responsive verification ({why}), so responsive cannot close, not even with --force"));
+                reasons.push(format!("Frontend inputs could not be fingerprinted during responsive verification, so responsive cannot close, not even with --force: {why}"));
                 return AdvanceResult { ok: false, phase, next: None, reasons, worst_crops: gate.worst_crops, advisories: gate.advisories, side_by_side: gate.side_by_side, forced: false, gate_summary: gate.summary };
             }
         };
@@ -3736,7 +3737,7 @@ pub fn run_with_renderer(argv: &[String],io: &mut Io,organic_scan: OrganicScan,r
                     state["phases"]["responsive"]["closedAt"] = Value::Null;
                     save_state(io,&state);
                     match current {
-                        Err(why) => io.err(&format!("build-phase: frontend inputs could not be fingerprinted ({why}). Fix that, recapture desktop and mobile, then advance responsive before finish; this does not reopen human review.\n")),
+                        Err(why) => io.err(&format!("build-phase: frontend inputs could not be fingerprinted: {why}. Responsive is open again: advance responsive again before finish; this does not reopen human review.\n")),
                         Ok(_) => io.err("build-phase: frontend inputs changed since the responsive screenshots were checked. Recapture desktop and mobile, then advance responsive before finish; this does not reopen human review.\n"),
                     }
                     return 2;
