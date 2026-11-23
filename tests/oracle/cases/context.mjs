@@ -192,7 +192,7 @@ const CATALOG = `${REPO}/tests/fixtures/concept-catalog`;
 // time the real mode prose in skill/reference/ changes.
 const MODE_RULES_SKILL = `${REPO}/tests/fixtures/mode-rules-skill`;
 const seedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: CATALOG, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
-const degradedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
+const degradedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, ...extra });
 
 // Two dealt catalog worlds as concept-seed records them in roll.json.
 const WORLDS = [
@@ -250,6 +250,7 @@ const cases = [
     })),
   },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-telemetry-choice', verb: 'context', workspace: 'ctx-empty', env: env({ DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, CI: null, IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).
   { id: 'context-cmd-launcher-spaced-path', verb: 'context', workspace: 'ctx-empty', env: env({ IMPECCABLE_SELF: 'C:\\Users\\Oracle User\\skill\\scripts\\impeccable.cmd' }) },

@@ -65,8 +65,13 @@ pub fn user_config_path(env: &Env) -> String {
     jsp::join(&[&crate::util::homedir(env), ".impeccable", "config.json"])
 }
 
+/// A config file's `"telemetry"` choice, when it holds one.
+fn config_choice(path: &str) -> Option<bool> {
+    safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| v.get("telemetry").and_then(Value::as_bool))
+}
+
 fn config_says_off(path: &str) -> bool {
-    safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| v.get("telemetry").and_then(Value::as_bool)) == Some(false)
+    config_choice(path) == Some(false)
 }
 
 /// Why telemetry is off, or `None` when it is on: `DO_NOT_TRACK` or
@@ -115,9 +120,26 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
     opt_out_reason(env, cwd).is_some()
 }
 
-/// Sent on the roll request when telemetry is off: the roll still happens
-/// (it is the feature), and the server records nothing for it.
-pub const TELEMETRY_HEADER: &str = "X-Impeccable-Telemetry";
+/// Whether this machine holds a telemetry decision: any opt-out, or a
+/// `telemetry` choice in the user config (`impeccable telemetry on|off`).
+pub fn choice_recorded(env: &Env, cwd: &str) -> bool {
+    config_choice(&user_config_path(env)).is_some() || telemetry_disabled(env, cwd)
+}
+
+/// The short notice an install or update shows an undecided user.
+pub fn notice() -> String {
+    format!("Impeccable collects anonymous usage data: which visual directions a new design was shown and which one you picked, never your project's names, files or code. It keeps Impeccable free and in development. Thank you for helping. Details: {}\nOpting out also turns off the visual directions from the impeccable.style catalog and the daily update check.\n", PRIVACY_URL)
+}
+
+/// `context`'s ask for an undecided user, `verb` being how this install runs
+/// `impeccable telemetry`. None in CI (`1`, `true`, `yes` or `on`, as install
+/// reads it) or once a choice is recorded.
+pub fn choice_directive(env: &Env, cwd: &str, verb: &str) -> Option<String> {
+    if crate::util::truthy_env(env, "CI") || choice_recorded(env, cwd) {
+        return None;
+    }
+    Some(format!("TELEMETRY_CHOICE: No telemetry choice is recorded on this machine. In your first reply, tell the user once, in a sentence or two, what this notice says, thanking them and keeping the link: \"{}\" Ask whether to keep it on. Continue the current task without waiting. When the user answers, run `{verb} on` or `{verb} off` and tell the user what it prints. Record only an answer the user gives.", notice().trim_end().replace('\n', " ")))
+}
 
 pub fn agent(url: &str, timeout: Duration) -> ureq::Agent {
     crate::http::agent_builder(url).timeout_connect(timeout).timeout(timeout).build()
@@ -731,13 +753,13 @@ pub const PRIVACY_URL: &str = "https://impeccable.style/privacy";
 
 fn status_line(env: &Env, cwd: &str) -> String {
     match opt_out_reason(env, cwd) {
-        Some(reason) => format!("telemetry: off ({}). Rolls still work; the roll API is told not to record them, and no choice is sent.\n", reason),
+        Some(reason) => format!("telemetry: off ({}). Impeccable does not contact the roll API or check for updates: new designs get no catalog worlds, and no choice is sent.\n", reason),
         None => format!("telemetry: on. The roll request and the choice ping carry the seed key, scope, mode, round, pool revision, the card kind and catalog id that won, and the client version; never your project's names or code. Turn it off with `impeccable telemetry off`, DO_NOT_TRACK=1, or IMPECCABLE_NO_TELEMETRY=1. Details: {}\n", PRIVACY_URL),
     }
 }
 
 /// `impeccable telemetry off|on|status`: `off` records `"telemetry": false`
-/// in the user config (`user_config_path`), `on` removes it, `status` says
+/// in the user config (`user_config_path`), `on` records `"telemetry": true`, `status` says
 /// whether telemetry is on and, when off, why. Other keys in the file are
 /// kept.
 pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
@@ -773,11 +795,7 @@ pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
                     return 1;
                 }
             };
-            if cmd == "off" {
-                m.insert("telemetry".into(), Value::Bool(false));
-            } else {
-                m.remove("telemetry");
-            }
+            m.insert("telemetry".into(), Value::Bool(cmd == "on"));
             if let Err(e) = write(&m) {
                 io.err(&format!("telemetry: could not write the user config ({})\n", e));
                 return 1;
@@ -1208,6 +1226,13 @@ mod tests {
             (code, out)
         };
         assert!(call(&["status"]).1.starts_with("telemetry: on."));
+        let recorded = |pairs: &[(&str, &str)]| {
+            let mut e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+            e.extend(env(pairs));
+            choice_recorded(&e, &cwd)
+        };
+        assert!(!recorded(&[]), "no choice before the verb runs");
+        assert!(recorded(&[("DO_NOT_TRACK", "1")]), "an env opt-out is a choice");
         std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
         std::fs::write(format!("{}/.impeccable/config.json", home), r#"{"other": 1}"#).unwrap();
         let (code, out) = call(&["off"]);
@@ -1216,9 +1241,11 @@ mod tests {
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/.impeccable/config.json", home)).unwrap()).unwrap();
         assert_eq!(cfg, json!({ "other": 1, "telemetry": false }));
         assert!(call(&["status"]).1.starts_with("telemetry: off"));
+        assert!(recorded(&[]));
         assert!(call(&["on"]).1.starts_with("telemetry: on."));
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/.impeccable/config.json", home)).unwrap()).unwrap();
-        assert_eq!(cfg, json!({ "other": 1 }));
+        assert_eq!(cfg, json!({ "other": 1, "telemetry": true }));
+        assert!(recorded(&[]), "keeping it on is a choice too");
         assert_eq!(call(&["maybe"]).0, 1);
     }
 

@@ -49,6 +49,7 @@ pub(crate) fn after_install(
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
+    telemetry_notice(args, io);
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
     match end(args, terminal, io.env_truthy("CI")) {
         End::Nothing => return,
@@ -62,6 +63,39 @@ pub(crate) fn after_install(
         End::Offer => {}
     }
     offer_sign_in(io, engines, rule_pack);
+}
+
+/// Tells an undecided user about anonymous usage data after install or update: a
+/// person chooses here and the answer is recorded; an agent's run prints the notice
+/// and records nothing, so `context` asks later.
+pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
+    use impeccable_context::telemetry;
+    let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
+    let end = end(args, terminal, io.env_truthy("CI"));
+    if end == End::Nothing || telemetry::choice_recorded(&io.env, &io.cwd.to_string_lossy()) {
+        return;
+    }
+    if end == End::Hint {
+        io.err(&format!("\n{}Opt out any time: npx impeccable telemetry off\n", telemetry::notice()));
+        return;
+    }
+    let question = "Keep anonymous usage data on?";
+    let on = match impeccable_common::steps::Steps::new(io) {
+        Some(mut steps) => {
+            io.err("\n");
+            steps.details(io, &telemetry::notice().lines().map(str::to_string).collect::<Vec<_>>());
+            let options = [("Keep it on", None), ("Opt out", Some("no catalog directions, no update checks"))];
+            // A cancelled choice or an unclear answer records nothing; `context` asks later.
+            let Ok(choice) = steps.choose(io, question, &options, 0) else { return };
+            choice == 0
+        }
+        None => {
+            io.err(&format!("\n{}", telemetry::notice()));
+            let Some(on) = answer(io, question) else { return };
+            on
+        }
+    };
+    impeccable_context::run_telemetry(&[if on { "on" } else { "off" }.to_string()], io);
 }
 
 /// The offer prints after install's own "Done!", so its init step is said again,
@@ -161,6 +195,12 @@ fn no_agent_found(report: &serde_json::Value) -> bool {
 /// showed (an extra Enter at install's pickers) are dropped first, so they can't
 /// answer it: a yes here signs in or installs an app.
 fn ask(io: &mut Io, question: &str) -> bool {
+    answer(io, question) == Some(true)
+}
+
+/// The `[Y/n]` answer: `Some(true)` for Enter or yes, `Some(false)` for no, `None` for
+/// anything else or no input at all.
+fn answer(io: &mut Io, question: &str) -> Option<bool> {
     #[cfg(unix)]
     // SAFETY: tcflush on stdin's descriptor only discards unread terminal input.
     unsafe {
@@ -169,14 +209,40 @@ fn ask(io: &mut Io, question: &str) -> bool {
     io.err(&format!("{question} [Y/n] "));
     let _ = io.stderr.flush();
     let mut line = String::new();
-    std::io::stdin().read_line(&mut line).is_ok_and(|n| {
-        n > 0 && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
-    })
+    match std::io::stdin().read_line(&mut line) {
+        Ok(n) if n > 0 => match line.trim().to_ascii_lowercase().as_str() {
+            "" | "y" | "yes" => Some(true),
+            "n" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Catches an agent-run install recording a choice nobody made, or the notice
+    // reaching CI or a user who already chose.
+    #[test]
+    fn the_usage_notice_shows_only_to_an_undecided_user_and_records_nothing_unattended() {
+        let home = std::env::temp_dir().join(format!("impeccable-notice-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let run = |extra: &[(&str, &str)]| {
+            let mut env = std::collections::HashMap::from([("HOME".to_string(), home.to_string_lossy().into_owned()), ("USERPROFILE".to_string(), home.to_string_lossy().into_owned())]);
+            env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            let (mut io, cap) = Io::captured("", home.clone(), env);
+            telemetry_notice(&[], &mut io);
+            let err = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+            err
+        };
+        assert!(run(&[]).contains("Opt out any time: npx impeccable telemetry off"));
+        assert!(!home.join(".impeccable/config.json").exists(), "nothing recorded");
+        assert_eq!(run(&[("CI", "true")]), "");
+        assert_eq!(run(&[("DO_NOT_TRACK", "1")]), "");
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     // Catches the offer reaching a scripted, CI or non-terminal install, or the hint
     // missing from an install an agent ran.

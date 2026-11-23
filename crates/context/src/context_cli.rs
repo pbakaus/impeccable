@@ -805,7 +805,7 @@ pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider) -> Op
     if env.get("IMPECCABLE_NO_UPDATE_CHECK").map(|v| !v.is_empty()).unwrap_or(false) {
         return None;
     }
-    if update_check_disabled_by_config(cwd) {
+    if update_check_disabled_by_config(cwd) || crate::telemetry::telemetry_disabled(env, cwd) {
         return None;
     }
     let local = read_local_skill_version(provider)?;
@@ -942,6 +942,7 @@ pub fn run_with_hook_repair(
         }
     }
     let update_directive = compute_update_directive(&cwd, &env, &provider);
+    let telemetry_directive = crate::telemetry::choice_directive(&env, &cwd, &provider.verb_cmd("telemetry"));
     let cmd = &provider.command;
 
     if !ctx.has_product {
@@ -989,6 +990,9 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
+        if let Some(t) = telemetry_directive {
+            parts.push(t);
+        }
         append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
         io.out(&parts.render());
         return 0;
@@ -1030,6 +1034,9 @@ pub fn run_with_hook_repair(
     }
     if let Some(u) = update_directive {
         parts.push(u);
+    }
+    if let Some(t) = telemetry_directive {
+        parts.push(t);
     }
     append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
     io.out(&parts.render());
@@ -2086,5 +2093,24 @@ mod seeded_world_tests {
                 assert!(out.contains("follow the redesign flow in reference/new-work.md"), "{out}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::*;
+
+    #[test]
+    fn telemetry_off_skips_the_update_check() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id())).to_string_lossy().into_owned();
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(jsp::join(&[&tmp, "SKILL.md"]), "---\nversion: 1.0.0\n---\n").unwrap();
+        let cache = jsp::join(&[&tmp, "update-check.json"]);
+        std::fs::write(&cache, format!(r#"{{"lastCheck":{},"latestVersion":"99.0.0"}}"#, now_ms() as i64)).unwrap();
+        let env = |off: &str| Env::from([("HOME".to_string(), tmp.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), tmp.clone()), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("DO_NOT_TRACK".to_string(), off.to_string())]);
+        let directive = |off: &str| compute_update_directive(&tmp, &env(off), &crate::provider::detect(&env(off), &tmp));
+        assert_eq!(directive("1"), None);
+        assert!(directive("0").is_some_and(|d| d.starts_with("UPDATE_AVAILABLE")));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

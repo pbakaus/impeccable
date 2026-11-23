@@ -155,16 +155,11 @@ fn fetch_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, scope: &str, key: &s
     let qs: Vec<String> = params.iter().map(|(k, v)| format!("{}={}", form_encode(k), form_encode(v))).collect();
     let url = format!("{}/roll?{}", api_base(env), qs.join("&"));
     let remaining = budget.remaining();
-    if remaining.is_zero() {
+    // Opted out: the roll API is not contacted.
+    if remaining.is_zero() || telemetry::telemetry_disabled(env, cwd) {
         return None;
     }
-    let mut req = telemetry::agent(&url, remaining).get(&url).set(telemetry::CLIENT_HEADER, &telemetry::client_header(env, cwd));
-    // Opted out: the roll is still the feature, so it is requested, and the
-    // server is told to record nothing for it.
-    if telemetry::telemetry_disabled(env, cwd) {
-        req = req.set(telemetry::TELEMETRY_HEADER, "off");
-    }
-    let res = req.call().ok()?;
+    let res = telemetry::agent(&url, remaining).get(&url).set(telemetry::CLIENT_HEADER, &telemetry::client_header(env, cwd)).call().ok()?;
     if res.status() < 200 || res.status() >= 300 {
         return None;
     }
@@ -620,7 +615,12 @@ fn render_roll(env: &Env, cwd: &str, budget: &mut ApiBudget, a: &SeedArgs) -> Re
             return Ok((scope, reroll, fill(t::DEGRADED_SAFER, &pairs), true, RollMeta { worlds: vec![], api: false, pool_revision: None, hand_id: None }));
         }
         let degraded_register = if register == Some("bolder") { t::DEGRADED_BOLDER.to_string() } else { String::new() };
+        let no_challengers = match telemetry::opt_out_reason(env, cwd) {
+            Some(reason) => t::DEGRADED_OPTED_OUT.replace("@@OPTOUT@@", &reason),
+            None => t::DEGRADED_UNREACHABLE.to_string(),
+        };
         let mut pairs = common.clone();
+        pairs.push(("NOCHALLENGERS", &no_challengers));
         pairs.push(("DEGRADEDHEADER", &degraded_header));
         pairs.push(("DEGRADEDREGISTER", &degraded_register));
         pairs.push(("ASSIGNED_OR_DEALT", &assigned_or_dealt));
@@ -1377,15 +1377,15 @@ mod tests {
             assert!(out.contains("WORLD: settled (teletext-service, seeded from the catalog)."));
             assert!(!out.contains("QUALITY BAR:"));
             assert!(!out.contains("Microfiche"));
-            assert!(out.contains("COMPOSITION CHALLENGERS (identity-free;"), "{out}");
-            assert!(out.contains("Working layout"), "{out}");
-            assert!(out.contains("TELEMETRY:"), "{out}");
+            for part in ["COMPOSITION CHALLENGERS (identity-free;", "Working layout", "TELEMETRY:"] {
+                assert_eq!(out.contains(part), !off, "{out}");
+            }
+            assert_eq!(seen.lock().unwrap().len(), 1, "opted out, no request");
             let req = seen.lock().unwrap().last().unwrap().clone();
             assert_eq!(req.0, "GET");
             assert!(req.2.starts_with("impeccable/"));
-            assert_eq!(req.4, if off { "off" } else { "" });
+            assert_eq!(req.4, "");
         }
-        assert_eq!(seen.lock().unwrap().len(), 2);
         // A server that still sends worlds cannot leak them into the roll or ledger.
         let (base, _) = roll_api();
         let out = seed_api_options(&proj, &skill, &base, &["--scope", "surface", "--from", "k2"], true, false);
@@ -1502,17 +1502,15 @@ mod tests {
     }
 
     #[test]
-    fn opted_out_rolls_still_roll_and_tell_the_server_to_record_nothing() {
+    fn opted_out_rolls_never_contact_the_roll_api() {
         let (proj, skill) = fixture("opt-out", &[("mode-persuade", MODE_FILE)]);
         let (base, seen) = roll_api();
         let home = proj.join("home");
         std::fs::create_dir_all(home.join(".impeccable")).unwrap();
         std::fs::write(home.join(".impeccable/config.json"), r#"{"telemetry": false}"#).unwrap();
         let out = seed_api(&proj, &skill, &base, &["--scope", "direction", "--from", "k1"]);
-        assert!(out.contains("source: api;"), "the roll still happens: {out}");
-        let roll = seen.lock().unwrap()[0].clone();
-        assert_eq!(roll.0, "GET");
-        assert_eq!(roll.4, "off", "the server is told not to record it");
+        assert!(out.contains("telemetry is off (") && !out.contains("rerun this command once"), "{out}");
+        assert!(seen.lock().unwrap().is_empty(), "no roll request");
         // No telemetry fields are written, only the key behind the reference.
         let record: Value = serde_json::from_str(&std::fs::read_to_string(proj.join(".impeccable/questions/roll.json")).unwrap()).unwrap();
         assert!(record.get("poolRevision").is_none() && record.get("source").is_none(), "{record}");
