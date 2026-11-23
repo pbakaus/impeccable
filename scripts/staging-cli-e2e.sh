@@ -108,6 +108,26 @@ elif [ $health = 1 ]; then
   grep -q "^Added this repository" "$H/login.err" || info "setup: login said: $(grep -v '^https://' "$H/login.err" | tr '\n' ' ' | cut -c1-300)"
 fi
 
+# 1b. The same repository, pushed (REN-2047): login's scan added it under its local key. Once
+#     it has an origin, its next scan names that key as `was`, and the service's answer
+#     settles it, so the saved local id is gone afterwards. The remote is new on every run,
+#     so the service has nothing under the pushed key yet and moves the stream; its label
+#     is printed for a check of Foundations from the app.
+sha() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d" " -f1; }
+local_id="$IMPECCABLE_HOME/health/repos/$(printf '%s' "$(cd "$R2" && pwd -P)" | sha)"
+if [ $health = 1 ] && [ -f "$local_id" ]; then
+  carry="carry-$(date -u +%Y%m%d%H%M%S)-$$"
+  git -C "$R2" remote add origin "https://github.com/impeccable-e2e/$carry"
+  # --quiet still uploads, and leaves the one-time notice for step 3's check.
+  (cd "$R2" && "$BIN" detect --quiet .) > "$H/carry.out" 2> "$H/carry.err"; rc=$?
+  check "carry: the pushed repository's scan runs" '[ $rc = 0 ] || [ $rc = 2 ]'
+  check "carry: the service answered the scan naming its local key (saved id settled)" '[ ! -e "$local_id" ]'
+  info "carry: repository label $carry"
+  [ ! -e "$local_id" ] || info "carry: detect said: $(grep -E '^(Saved|Not saved|Design health|Foundations)' "$H/carry.err" | tr '\n' ' ' | cut -c1-300)"
+elif [ $health = 1 ]; then
+  fail "carry: login's scan left a local id for the repository with no remote"
+fi
+
 # 2. whoami.
 "$BIN" whoami > "$H/whoami.out" 2>&1; rc=$?
 check "whoami: exits 0" '[ $rc = 0 ]'
