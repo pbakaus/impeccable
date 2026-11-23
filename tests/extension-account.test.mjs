@@ -548,6 +548,24 @@ describe('account worker', () => {
     });
   }
 
+  // Catches a plan the side panel asks as the person pauses writing going out unmarked, so the server can't count the
+  // ones never sent; and a sent one marked as early (REN-2190).
+  it('marks a plan asked before the task was sent as early, and only that one', async () => {
+    await loaded;
+    const served = globalThis.fetch;
+    const asked = [];
+    globalThis.fetch = async (url, init = {}) => {
+      if (String(url).startsWith(`${ISSUER}/extension/v1/walks/plan`)) { asked.push(String(url)); return json(200, { plan: { id: 'plan_0123456789abcdef', steps: [{ text: 'Read it', risky: false }] } }); }
+      return served(url, init);
+    };
+    try {
+      for (const early of [true, false]) assert.equal((await ask({ account: 'plan', persona: { preset: 'ines' }, task: 'Read the top story.', tabId: 7, ...(early ? { early } : {}) }, fromPanel)).ok, true);
+      assert.deepEqual(asked, [`${ISSUER}/extension/v1/walks/plan?can=hears&early=1`, `${ISSUER}/extension/v1/walks/plan?can=hears`]);
+    } finally {
+      globalThis.fetch = served;
+    }
+  });
+
   // Making a persona: each answer the server gives, as the popup (or the side panel's empty home) hears it.
   const PERSONA = { name: 'Rosa', role: 'A night-shift nurse', slug: 'rosa', mine: true };
   const create = (description, sender = fromPopup) => ask({ account: 'create', description }, sender);

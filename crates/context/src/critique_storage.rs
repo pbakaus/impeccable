@@ -40,6 +40,41 @@ pub fn now_filename_stamp() -> String {
     replaced
 }
 
+/// Optional report detail is best effort: malformed fields never block a save.
+pub fn clean_report_metadata(meta: &mut Map<String, Value>) {
+    if let Some(value) = meta.remove("title") {
+        if let Some(title) = value.as_str() {
+            static UNSAFE: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| {
+                regex::Regex::new(r"[\p{Cc}\p{Cf}]").unwrap()
+            });
+            // Preserve word boundaries from whitespace controls before removing Cc/Cf.
+            let spaced = title.split_whitespace().collect::<Vec<_>>().join(" ");
+            let clean = UNSAFE.replace_all(&spaced, "");
+            let title: String = clean.split_whitespace().collect::<Vec<_>>().join(" ")
+                .chars().take(120).collect::<String>().trim().to_string();
+            if !title.is_empty() {
+                meta.insert("title".into(), title.into());
+            }
+        }
+    }
+    if let Some(value) = meta.remove("heuristics") {
+        if let Some(entries) = value.as_array() {
+            let mut seen = std::collections::HashSet::new();
+            let entries = entries.iter().filter_map(|entry| {
+                let n = entry.get("n")?.as_u64().filter(|n| (1..=10).contains(n))?;
+                let score = entry.get("score")?.as_u64().filter(|score| *score <= 4)?;
+                seen.insert(n).then(|| serde_json::json!({"n": n, "score": score}))
+            }).collect();
+            meta.insert("heuristics".into(), Value::Array(entries));
+        }
+    }
+    for key in ["p2_count", "p3_count"] {
+        if meta.get(key).is_some_and(|v| v.as_u64().filter(|n| *n <= 100).is_none()) {
+            meta.remove(key);
+        }
+    }
+}
+
 fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
     let mut lines = vec!["---".to_string()];
     for (k, v) in obj {
@@ -50,11 +85,12 @@ fn serialize_frontmatter(obj: &Map<String, Value>) -> String {
             Value::String(s) => (s.clone(), true),
             Value::Bool(b) => (b.to_string(), false),
             Value::Number(n) => (js_number_value_string(n), false),
+            Value::Array(_) if k == "heuristics" => (v.to_string(), false),
             Value::Array(_) | Value::Object(_) => (js_string_of(v), false),
             Value::Null => unreachable!(),
         };
         let multiline = s.contains(['\n', '\r']);
-        let needs_quotes = multiline || (is_string && (s.contains(':') || s.contains('#')));
+        let needs_quotes = k == "title" || multiline || (is_string && (s.contains(':') || s.contains('#')));
         lines.push(format!(
             "{}: {}",
             k,
@@ -129,7 +165,9 @@ pub fn parse_frontmatter(text: &str) -> Map<String, Value> {
         let Some(colon) = line.find(':') else { continue };
         let key = js_trim(&line[..colon]);
         let value = js_trim(&line[colon + 1..]);
-        let v: Value = if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') && !value[1..].contains('\n') {
+        let v: Value = if key == "heuristics" && value.starts_with('[') {
+            serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()))
+        } else if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') && !value[1..].contains('\n') {
             match serde_json::from_str::<Value>(value) {
                 Ok(parsed) => parsed,
                 Err(_) => Value::String(value.to_string()),
@@ -373,29 +411,41 @@ pub fn read_latest_snapshot(slug: &str, root: &str) -> Option<Snapshot> {
 }
 
 /// JS #660: readLatestSnapshotAcrossTargets({ cwd }).
+/// From a monorepo root it also reads each workspace's store (#1598).
 pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snapshot> {
-    let root = resolve_project_root(cwd, &TargetOptions::default(), env);
-    let snapshots: Vec<Snapshot> = list_snapshots(".md", &root).iter().filter_map(|f| read_snapshot_at(f)).collect();
-    let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for s in &snapshots {
-        if snapshot_target_identity(s).is_some() {
-            if let Some(Value::String(slug)) = s.meta.get("slug") {
-                identified_slugs.insert(slug.clone());
+    let mut roots = vec![resolve_project_root(cwd, &TargetOptions::default(), env)];
+    if let Some(sel) = crate::context::resolve_workspace_selection(cwd, &TargetOptions::default(), env) {
+        roots.extend(sel.target_candidates.iter().map(|c| jsp::join(&[&sel.repo_root, &c.path])));
+    }
+    let mut streams: Vec<(String, Snapshot)> = Vec::new();
+    for root in &roots {
+        let snapshots: Vec<Snapshot> = list_snapshots(".md", root).iter().filter_map(|f| read_snapshot_at(f)).collect();
+        let mut identified_slugs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for s in &snapshots {
+            if snapshot_target_identity(s).is_some() {
+                if let Some(Value::String(slug)) = s.meta.get("slug") {
+                    identified_slugs.insert(slug.clone());
+                }
             }
         }
+        for s in snapshots {
+            let slug = match s.meta.get("slug") {
+                Some(Value::String(v)) if !v.is_empty() => v.clone(),
+                _ => continue,
+            };
+            let target_identity = snapshot_target_identity(&s);
+            if target_identity.is_none() && identified_slugs.contains(&slug) {
+                continue;
+            }
+            // A target's identity spans stores; a bare slug is relative to its own store.
+            streams.push((target_identity.unwrap_or_else(|| format!("{}\nslug:{}", root, slug)), s));
+        }
     }
+    // Snapshot names start with the ISO stamp, so this orders by age across stores.
+    streams.sort_by_key(|(_, s)| jsp::basename(&s.path));
     // Insertion-ordered stream map: later (newer) snapshot wins per key.
     let mut latest_by_target: Vec<(String, Snapshot)> = Vec::new();
-    for s in snapshots {
-        let slug = match s.meta.get("slug") {
-            Some(Value::String(v)) if !v.is_empty() => v.clone(),
-            _ => continue,
-        };
-        let target_identity = snapshot_target_identity(&s);
-        if target_identity.is_none() && identified_slugs.contains(&slug) {
-            continue;
-        }
-        let stream_key = target_identity.unwrap_or_else(|| format!("slug:{}", slug));
+    for (stream_key, s) in streams {
         if let Some(slot) = latest_by_target.iter_mut().find(|(k, _)| *k == stream_key) {
             slot.1 = s;
         } else {
@@ -403,8 +453,7 @@ pub fn read_latest_snapshot_across_targets(cwd: &str, env: &Env) -> Option<Snaps
         }
     }
     let mut open: Vec<Snapshot> = latest_by_target.into_iter().map(|(_, s)| s).filter(|s| !meta_closed(s)).collect();
-    // JS: .sort((a, b) => a.path.localeCompare(b.path)).at(-1)
-    open.sort_by(|a, b| a.path.cmp(&b.path));
+    open.sort_by_key(|s| jsp::basename(&s.path));
     open.pop()
 }
 
@@ -594,6 +643,7 @@ fn write_report(
             parsed_meta = o;
         }
     }
+    clean_report_metadata(&mut parsed_meta);
     // JS #660: the helper, not caller metadata, owns the target
     // fingerprint/identity. Drop any caller-supplied copies (preserving
     // the order of the rest) and append the freshly resolved values.
@@ -1224,6 +1274,35 @@ mod tests_660 {
         assert_eq!(run_capture(&src, &["close", "App.tsx", name]).0, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    #[test]
+    fn monorepo_root_reads_newest_snapshot_across_workspace_stores() {
+        let root = tmp();
+        std::fs::write(jsp::join(&[&root, "package.json"]), r#"{"workspaces":["apps/*"]}"#).unwrap();
+        let mut files = Vec::new();
+        for (app, stamp) in [("web", "2026-05-12T18-30-00Z"), ("admin", "2026-05-13T09-00-00Z")] {
+            let ws = jsp::join(&[&root, "apps", app]);
+            let dir = jsp::join(&[&ws, ".impeccable", "critique"]);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(jsp::join(&[&ws, "package.json"]), format!(r#"{{"name":"{app}"}}"#)).unwrap();
+            let file = jsp::join(&[&dir, &format!("{stamp}__src-app-tsx.md")]);
+            std::fs::write(&file, format!("---\nslug: src-app-tsx\n---\n# {app}\n")).unwrap();
+            files.push((ws, file));
+        }
+        let env = HashMap::new();
+        assert_eq!(read_latest_snapshot_across_targets(&root, &env).unwrap().path, files[1].1);
+        assert_eq!(read_latest_snapshot_across_targets(&files[0].0, &env).unwrap().path, files[0].1);
+        // A newer closed report of the same target in another store ends that stream.
+        let id = "target_identity: \"url:https://x.test/\"\n";
+        let admin = std::fs::read_to_string(&files[1].1).unwrap().replacen("---\n", &format!("---\n{id}"), 1);
+        std::fs::write(&files[1].1, admin).unwrap();
+        let root_dir = jsp::join(&[&root, ".impeccable", "critique"]);
+        std::fs::create_dir_all(&root_dir).unwrap();
+        let closed = format!("---\n{id}slug: x\nclosed: true\n---\n");
+        std::fs::write(jsp::join(&[&root_dir, "2026-05-14T00-00-00Z__x.md"]), closed).unwrap();
+        assert_eq!(read_latest_snapshot_across_targets(&root, &env).unwrap().path, files[0].1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 #[cfg(test)]
@@ -1232,6 +1311,19 @@ mod tests_reports {
     use impeccable_common::Io;
     use std::collections::HashMap;
     use std::path::PathBuf;
+
+    #[test]
+    fn optional_metadata_round_trips_through_frontmatter() {
+        let mut meta = serde_json::json!({
+            "title": "  00404\u{e0001} ",
+            "heuristics": [{"n":1,"score":0},{"n":10,"score":4},{"n":2,"score":-1}],
+            "p2_count": 0, "p3_count": 100
+        }).as_object().unwrap().clone();
+        clean_report_metadata(&mut meta);
+        assert_eq!(meta["title"], "00404");
+        assert_eq!(meta["heuristics"], serde_json::json!([{"n":1,"score":0},{"n":10,"score":4}]));
+        assert_eq!(parse_frontmatter(&serialize_frontmatter(&meta)), meta);
+    }
 
     static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 

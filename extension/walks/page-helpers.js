@@ -389,11 +389,16 @@ function clickByText(wanted, opts) {
   const stood = best.el.tagName.toLowerCase() === "label" ? best.el.control : best.el;
   const over = hit?.closest?.(clickable);
   const [sb, hb, look] = [stood?.getBoundingClientRect(), over?.getBoundingClientRect(), over ? w.getComputedStyle?.(over) : undefined];
-  const standIn = !!stood?.disabled && /^(?:input|textarea)$/i.test(stood.tagName) && !!sb && !!hb && hb.width <= sb.width * 2.5 && hb.height <= sb.height * 3 && look?.visibility !== "hidden" && Number(look?.opacity ?? 1) > 0 && Math.abs(hb.left + hb.width / 2 - (sb.left + sb.width / 2)) <= hb.width / 2 && Math.abs(hb.top + hb.height / 2 - (sb.top + sb.height / 2)) <= hb.height / 2;
+  const opaque = (e) => /^(?:iframe|frame|object|embed|canvas|article|aside|blockquote|body|div|footer|h[1-6]|header|main|nav|p|section|span)$/i.test(e.tagName) || e.tagName.includes("-") || !!e.shadowRoot;
+  const plain = (e) => !!e && /^(?:button|a|input)$/i.test(e.tagName) && (e.tagName.toLowerCase() !== "input" || /^(?:button|submit)$/i.test(e.getAttribute("type") ?? "")) && !opaque(e) && !Array.prototype.slice.call(e.querySelectorAll?.("*") ?? []).some(opaque);
+  const standIn = plain(over) && (hit === over || !opaque(hit)) && !!stood?.disabled && /^(?:input|textarea)$/i.test(stood.tagName) && !!sb && !!hb && hb.width <= sb.width * 2.5 && hb.height <= sb.height * 3 && look?.visibility !== "hidden" && Number(look?.opacity ?? 1) > 0 && Math.abs(hb.left + hb.width / 2 - (sb.left + sb.width / 2)) <= hb.width / 2 && Math.abs(hb.top + hb.height / 2 - (sb.top + sb.height / 2)) <= hb.height / 2;
   if (hit && !around && !standIn && hit !== best.el && !best.el.contains?.(hit) && !labelsOf(best.el).some((owner) => inside(owner, hit))) {
     const cls = typeof hit.className === "string" ? hit.className.trim().split(/\s+/)[0] : "";
     covered = `${hit.tagName.toLowerCase()}${hit.id ? `#${hit.id}` : cls ? `.${cls}` : ""}`;
   }
+  const landed = !covered && doc.elementFromPoint ? doc.elementFromPoint(point.x, point.y) : null;
+  if (landed && (/^(?:iframe|frame|object|embed|canvas)$/i.test(landed.tagName) || landed.tagName.includes("-") || !!landed.shadowRoot))
+    covered = landed.tagName.toLowerCase();
   if (!opts?.locateOnly)
     best.el.click();
   const aria = norm(best.el.getAttribute("aria-label") ?? "");
@@ -524,7 +529,7 @@ function currentUrlOf() {
   return globalThis.location.href;
 }
 
-function fieldReads(point, noSecrets = false) {
+function fieldReads(point, noSecrets = false, typedSecrets = false) {
   const doc = globalThis.document;
   const secret = (el, narrow) => el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-")) || !narrow && (el.getAttribute("data-impeccable-secret-maybe") !== null || el.tagName === "INPUT" && !/^(?:checkbox|radio|button|submit|hidden|file|range|color|image|reset|date|datetime-local|month|time|week)$/i.test(el.getAttribute("type") ?? "") && ["name", "id", "placeholder", "aria-label"].some((a) => /passw|pwd/i.test(el.getAttribute(a) ?? "")));
   const holds = (el, narrow) => secret(el, narrow) || Array.from(el.shadowRoot?.querySelectorAll?.("*") ?? []).some((inner) => holds(inner, narrow));
@@ -535,7 +540,7 @@ function fieldReads(point, noSecrets = false) {
     if (!noSecrets || own === null)
       return own;
     const around = [...through, el];
-    return around.some((h) => holds(h, true)) ? null : around.some((h) => holds(h, false)) ? own ? "•" : "" : own;
+    return around.some((h) => holds(h, true)) ? typedSecrets ? own ? "•" : "" : null : around.some((h) => holds(h, false)) ? own ? "•" : "" : own;
   };
   const through = [];
   let at = doc.activeElement ?? null;
@@ -764,25 +769,44 @@ function typeInto(wanted, text, keys, noSecrets = false) {
     return b.width > 0 && b.height > 0 && !el.disabled && !el.matches?.(":disabled") && !el.readOnly && !el.closest?.("[inert]") && w.getComputedStyle?.(el)?.visibility !== "hidden";
   });
   const focused = doc.activeElement;
+  const secret = (el) => el.tagName === "INPUT" && (el.getAttribute("type") ?? "").toLowerCase() === "password" || el.getAttribute("data-impeccable-secret-field") !== null || (el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"));
+  const asked = norm(wanted);
+  const namedAs = (el) => asked !== "" && [
+    el.getAttribute("placeholder"),
+    el.getAttribute("aria-label"),
+    el.getAttribute("name"),
+    Array.prototype.map.call(el.labels ?? [], (l) => l.textContent ?? "").join(" ")
+  ].some((n) => norm(n ?? "") === asked);
+  const eligible = noSecrets ? fields : fields.filter((el) => !secret(el) || namedAs(el));
   let best = null;
-  let own = -1;
-  for (const el of fields) {
+  let exact = null;
+  let own = -1, ownExact = false;
+  for (const el of eligible) {
     const label = Array.prototype.map.call(el.labels ?? [], (l) => l.textContent ?? "").join(" ");
     const t = norm(`${el.getAttribute("placeholder") ?? ""} ${el.getAttribute("aria-label") ?? ""} ${el.getAttribute("name") ?? ""} ${label}`);
     let score = 0;
     for (const x of words)
       if (t.indexOf(x) !== -1)
         score += 1;
-    if (el === focused)
+    const named = namedAs(el);
+    if (el === focused) {
       own = score;
+      ownExact = named;
+    }
     if (!best || score > best.score)
       best = { el, score };
+    if (named && !exact)
+      exact = { el, score };
   }
   if (!best)
     return null;
-  if (focused && own === best.score)
+  if (focused && own === best.score && eligible.includes(focused) && (!exact || ownExact))
     best = { el: focused, score: own };
-  if (noSecrets && (best.el.tagName === "INPUT" && (best.el.getAttribute("type") ?? "").toLowerCase() === "password" || best.el.getAttribute("data-impeccable-secret-field") !== null || (best.el.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).some((t) => t === "current-password" || t === "new-password" || t === "one-time-code" || t.startsWith("cc-"))))
+  else if (exact && exact.score === best.score)
+    best = exact;
+  if (noSecrets && secret(best.el))
+    return null;
+  if (!noSecrets && secret(best.el) && eligible.some((el) => el !== best.el && !secret(el) && namedAs(el)))
     return null;
   const was = best.el.getBoundingClientRect();
   best.el.scrollIntoView({ block: "center" });
@@ -2013,4 +2037,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '5f68155114875bd8';
+export const HASH = 'ba2caf2c1df2dc0e';

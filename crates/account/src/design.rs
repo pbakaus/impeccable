@@ -113,9 +113,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         "changedAt": impeccable_context::util::iso_from_ms(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as f64),
         "text": text, "sidecar": sidecar,
     });
-    if let Some(label) = &repo.label {
-        body["label"] = label.clone().into();
-    }
+    crate::health::name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
     if serde_json::to_vec(&body).map_or(true, |b| b.len() > BODY_BYTES) {
         return;
     }
@@ -229,12 +227,20 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         token,
         body,
     );
-    if !answer
-        .ok()
-        .is_some_and(|v| matches!(v["outcome"].as_str(), Some("recorded" | "repeat")))
-    {
-        return;
-    }
+    let landed = match answer {
+        Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
+            crate::receipt::landed(&v, crate::receipt::page(&account, "design", None))
+        }
+        Ok(_) => {
+            crate::receipt::failed(io, "the design document upload was not confirmed", quiet);
+            return;
+        }
+        Err(error) => {
+            crate::receipt::failed_upload(io, "DESIGN.md", &error, quiet);
+            return;
+        }
+    };
+    crate::receipt::saved(io, landed, quiet);
     crate::upload_notice::emit(
         io,
         &account,
@@ -413,6 +419,7 @@ mod identity_tests {
                 key: "00".repeat(32),
                 stream: "11".repeat(32),
                 label: None,
+                place: None,
             })
         });
         assert!(

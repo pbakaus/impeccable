@@ -1,0 +1,7 @@
+{
+  "stdout": "Impeccable doctor: <WS>\n\nworth saying (2):\n  design-archive-missing  [DESIGN.md]\n    DESIGN.md is a compact map, but its full document at .impeccable/design-full.md beside it could not be read.\n    → Restore .impeccable/design-full.md beside DESIGN.md from the original design document; do not compact the map again.\n  design-md-coverage  [DESIGN.md]\n    DESIGN.md has no typography, components section. Agents generating new screens get no normative guidance for those, and the live design panel renders generic approximations in their place.\n    → Ask whether the section never applied or was never written. `document` fills it from the code if the project has the answer in its CSS.\n\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

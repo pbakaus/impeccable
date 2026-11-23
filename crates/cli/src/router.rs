@@ -6,9 +6,64 @@ use impeccable_common::Io;
 pub type InstalledPack =
     impeccable_core::rule_pack::RulePackSet<dyn impeccable_html::StaticRulePack>;
 
+// Buffer only finite commands that emit one JSON document. Live polling,
+// servers and generation must expose stdout while they are still running.
+fn buffers_upload_json(args: &[String], io: &Io) -> bool {
+    if !args.iter().any(|a| matches!(a.as_str(), "--json" | "-json"))
+        || args.iter().any(|a| a == "--stream")
+    {
+        return false;
+    }
+    args.first().is_some_and(|verb| match verb.as_str() {
+        "detect" | "foundations" | "live-accept" => true,
+        "critique-storage" | "audit-storage" => args.get(1).is_some_and(|a| a == "write"),
+        v if v.starts_with("live") => false,
+        v => !matches!(v, "hook" | "hook-before-edit") && is_scan(args, io),
+    })
+}
+
+
 /// Route a CLI invocation using this build's hooks. Callers own stream flushing
 /// and process exit; registry registration is process-wide and idempotent.
 pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
+    if buffers_upload_json(args, io) {
+        let (mut capture, cap) = Io::captured("", io.cwd.clone(), io.env.clone());
+        std::mem::swap(&mut io.stdout, &mut capture.stdout);
+        let (code, mut urls) = impeccable_account::receipt::capture(|| run_inner(args, io, pack));
+        std::mem::swap(&mut io.stdout, &mut capture.stdout);
+        if args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github")) {
+            urls.clear();
+        }
+        let out = cap.stdout.borrow();
+        let value = serde_json::from_slice::<serde_json::Value>(&out).or_else(|e| {
+            if matches!(args.first().map(String::as_str), Some("critique-storage" | "audit-storage")) && code == 0 {
+                let text = String::from_utf8_lossy(&out);
+                let text = text.trim();
+                // Reports off writes no file: say so, never as a path a script would read.
+                Ok(match text.strip_prefix("REPORTS OFF:") {
+                    Some(_) => serde_json::json!({"saved": false, "reportsOff": true, "message": text}),
+                    None => serde_json::json!({"path": text}),
+                })
+            } else { Err(e) }
+        });
+        if let Ok(mut value) = value {
+            // Foundations leads when a scan saved several pages (receipt::saved_first).
+            if let Some(url) = urls.first() {
+                if value.is_array() { value = serde_json::json!({"findings": value}); }
+                if value.is_object() {
+                    value["savedTo"] = url.as_str().into();
+                    if urls.len() > 1 { value["savedPages"] = serde_json::json!(urls); }
+                }
+            }
+            io.out(&format!("{}\n", serde_json::to_string_pretty(&value).unwrap()));
+        } else { io.out(&String::from_utf8_lossy(&out)); }
+        return code;
+    }
+    run_inner(args, io, pack)
+}
+
+
+fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     pack.install();
     let html = impeccable_html::StaticHtmlEngine {
         static_rule_pack: pack.static_rule_pack,
@@ -27,6 +82,12 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
     if impeccable_mcp::browser::is_extension_origin(verb) {
         return impeccable_mcp::native_host(args, io);
     }
+    if verb == "context" {
+        if let Err(message) = impeccable_context::taste::explicit_focus(rest) {
+            io.err(&format!("{message}\n"));
+            return 1;
+        }
+    }
     // A small allowlist excludes every hook and internal verb. All I/O beyond
     // the cheap daily gate belongs to a detached process.
     if matches!(
@@ -42,7 +103,19 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             | "check"
     ) {
         crate::setup_report::schedule(io);
-        crate::setup_report::schedule_taste(io);
+        let focus = if verb == "context" {
+            impeccable_context::taste::request_focus(rest, io)
+        } else if verb == "detect" {
+            let target = rest.iter().find(|a| !a.starts_with('-'));
+            let args = target.map(|t| vec!["--target".into(), t.clone()]).unwrap_or_default();
+            impeccable_context::taste::request_focus(&args, io)
+        } else { None };
+        if let Some(repo) = impeccable_account::health::github_repository(&io.cwd.to_string_lossy()) {
+            io.env.insert("IMPECCABLE_TASTE_REPOSITORY".into(), repo);
+        } else {
+            io.env.remove("IMPECCABLE_TASTE_REPOSITORY");
+        }
+        crate::setup_report::schedule_taste(io, focus);
         if verb == "context" {
             crate::switch_sync::schedule(io);
         }
@@ -97,8 +170,10 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 format!("Impeccable lines in your agents' rule files:\n{}", crate::agent_block::listing(io))
             })
         }
+        "taste" => impeccable_account::taste::run(rest, io),
         "taste-refresh" => impeccable_account::taste::run_refresh(rest, io),
         "world" => impeccable_account::world::run(rest, io),
+        "critique-frames" => crate::critique_frames::run(rest, io),
         "critiques-refresh" => impeccable_account::critiques::run_refresh(rest, io),
         "critiques" => impeccable_account::critiques::run(rest, io),
         "health" => impeccable_account::health::run(rest, io),
@@ -167,7 +242,7 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 saved = Some(s)
             });
             if let Some(snapshot) = saved {
-                let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json"));
+                let quiet = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
                 impeccable_account::critiques::after_save(io, &snapshot, impeccable_account::critiques::Report::Audit, quiet);
             }
             code
@@ -244,7 +319,27 @@ pub fn run(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         "hooks" | "hook-admin" => impeccable_hook::run_hook_admin(rest, io),
         // A successful variant accept records the prototyping session (REN-1917), after its result is out.
         v if v.starts_with("live") => impeccable_live::run_with_accepted(v, rest, io, &mut |io, a| {
-            impeccable_account::prototypes::after_accept(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms))
+            let json = rest.iter().any(|a| matches!(a.as_str(), "--json" | "-json"));
+            let silent = rest.iter().any(|a| matches!(a.as_str(), "--quiet" | "--github"));
+            let quiet = json || silent;
+            // live-poll streams unbuffered, so its accepted event carries the page itself (REN-2403).
+            // The upload runs on its own thread: the event waits two seconds at most, even when
+            // DNS stalls (ureq leaves lookups unbounded), and a slow upload still finishes behind it.
+            if json && v.ends_with("poll") {
+                let (cwd, env) = (io.cwd.clone(), io.env.clone());
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let (mut io, _) = Io::captured("", cwd, env);
+                    let (_, urls) = impeccable_account::receipt::capture(|| {
+                        impeccable_account::prototypes::after_accept_quiet(&mut io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), true)
+                    });
+                    let _ = tx.send(urls.into_iter().next());
+                });
+                let url = rx.recv_timeout(std::time::Duration::from_secs(2)).ok().flatten();
+                return url.filter(|_| !silent);
+            }
+            impeccable_account::prototypes::after_accept_quiet(io, &a.session_id, &a.root, &a.target, a.variants, (&a.accepted_at, a.accepted_ms), quiet);
+            None
         }),
         // `npx impeccable src/` shorthand: a path-shaped, flag, URL, or existing
         // first arg is a detect target (cli.js looksLikeDetectTarget).
@@ -277,6 +372,9 @@ fn detect(
     // Most runs can't upload (not signed in, CI, opted out): those don't
     // pay for a report.
     if !impeccable_account::health::wanted(io) {
+        if !args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github")) && impeccable_account::health::wanted_at_sign_in(io) {
+            if let Some(line) = impeccable_account::critiques::opt_out_nudge(io, &io.cwd) { io.err(&line); }
+        }
         return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
     }
     let started = std::time::SystemTime::now();
@@ -530,6 +628,8 @@ const KNOWN_VERBS: &[&str] = &[
     "health-design-refresh",
     "critiques",
     "critiques-refresh",
+    "critique-frames",
+    "taste",
     "taste-refresh",
     "pro-refresh",
     "agents",
@@ -664,5 +764,108 @@ mod verb_tests {
         run(&["-y"], false);
         assert_eq!(launcher.exists(), cfg!(unix));
         let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[cfg(test)]
+#[path = "../../account/tests/support/fake.rs"]
+mod receipt_fake;
+
+#[cfg(test)]
+mod receipt_tests {
+    use super::*;
+
+    #[test]
+    fn report_json_with_reports_off_names_no_path() {
+        let fake = super::receipt_fake::Fake::start();
+        let env = fake.env("receipt-off");
+        let root = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]);
+        std::fs::create_dir_all(root.join(".impeccable")).unwrap();
+        std::fs::write(root.join(".impeccable/config.json"), r#"{"reports":{"enabled":false}}"#).unwrap();
+        std::fs::write(root.join("body.md"), "Report").unwrap();
+        let mut env = env;
+        env.insert("IMPECCABLE_CRITIQUE_META".into(), r#"{"target":"Home","total_score":24,"max_score":40,"p0_count":0,"p1_count":0}"#.into());
+        let (mut io, cap) = Io::captured("", root.clone(), env);
+        let body = root.join("body.md").to_string_lossy().into_owned();
+        let args = ["critique-storage", "write", "home", body.as_str(), "--json"].map(str::to_owned);
+        assert_eq!(run(&args, &mut io, InstalledPack::NONE), 0);
+        let output: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+        assert_eq!(output["reportsOff"], true, "{output}");
+        assert!(output.get("path").is_none(), "{output}");
+    }
+
+    #[test]
+    fn streaming_live_commands_are_never_buffered() {
+        let home = super::receipt_fake::temp_home("receipt-stream-predicate");
+        let (io, _) = Io::captured("", home.clone(), Default::default());
+        for verb in ["live-poll", "live-server", "live-generate", "serve-question", "mcp", "hook"] {
+            std::fs::create_dir_all(home.join(verb)).unwrap();
+            for flags in [vec!["--json"], vec!["--stream", "--json"]] {
+                let args = std::iter::once(verb).chain(flags).map(str::to_owned).collect::<Vec<_>>();
+                assert!(!buffers_upload_json(&args, &io), "{args:?}");
+            }
+        }
+        assert!(buffers_upload_json(&["live-accept".into(), "--json".into()], &io));
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn local_report_json_does_not_require_an_upload() {
+        let home = super::receipt_fake::temp_home("local-report-json");
+        let body = home.join("body.md");
+        std::fs::write(&body, "Report").unwrap();
+        for verb in ["critique-storage", "audit-storage"] {
+            for opted_out in [false, true] {
+                let mut env = std::collections::HashMap::from([
+                    ("IMPECCABLE_HOME".into(), home.to_string_lossy().into_owned()),
+                ]);
+                if opted_out { env.insert("DO_NOT_TRACK".into(), "1".into()); }
+                let (mut io, cap) = Io::captured("", home.clone(), env);
+                let args = [verb, "write", "home", body.to_str().unwrap(), "--json"].map(str::to_owned);
+                assert_eq!(run(&args, &mut io, InstalledPack::NONE), 0);
+                let value: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+                assert!(std::path::Path::new(value["path"].as_str().unwrap()).is_file());
+                assert_eq!(value.as_object().unwrap().len(), 1);
+                assert!(cap.stderr.borrow().is_empty());
+            }
+        }
+        std::fs::remove_dir_all(home).unwrap();
+    }
+
+    #[test]
+    fn report_json_carries_the_server_url_without_extra_output() {
+        let fake = super::receipt_fake::Fake::start();
+        fake.knobs.lock().unwrap().critiques = true;
+        let mut env = fake.env("receipt-json");
+        impeccable_account::login(&env, &mut |u| super::receipt_fake::browser(u), std::time::Duration::from_secs(10)).unwrap();
+        let root = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]);
+        std::fs::write(root.join("body.md"), "Report").unwrap();
+        env.insert("IMPECCABLE_CRITIQUE_META".into(), r#"{"target":"Home","total_score":24,"max_score":40,"p0_count":0,"p1_count":0}"#.into());
+        let (mut io, cap) = Io::captured("", root.clone(), env.clone());
+        let body = root.join("body.md").to_string_lossy().into_owned();
+        let args = ["critique-storage", "write", "home", body.as_str(), "--json"].map(str::to_owned);
+        let code = run(&args, &mut io, InstalledPack::NONE);
+        assert_eq!(code, 0, "{}", String::from_utf8_lossy(&cap.stderr.borrow()));
+        let output: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+        assert!(output["savedTo"].as_str().unwrap().contains("/app/-/critiques?report="));
+        assert!(output["path"].as_str().is_some());
+        assert!(cap.stderr.borrow().is_empty());
+        fake.route("POST", "/cli/v1/critiques", 500, vec![], "{}");
+        let before = fake.hits("/cli/v1/critiques");
+        for verb in ["critique-storage", "audit-storage"] {
+            env.insert("IMPECCABLE_REPORT_META".into(), format!(
+                "{{\"target\":\"Home\",\"total_score\":16,\"max_score\":{},\"p0_count\":0,\"p1_count\":0}}",
+                if verb == "audit-storage" { 20 } else { 40 },
+            ));
+            let (mut io, cap) = Io::captured("", root.clone(), env.clone());
+            let args = [verb, "write", "home", body.as_str(), "--json"].map(str::to_owned);
+            assert_eq!(run(&args, &mut io, InstalledPack::NONE), 0);
+            let output: serde_json::Value = serde_json::from_slice(&cap.stdout.borrow()).unwrap();
+            assert!(output["path"].as_str().is_some());
+            assert!(output.get("savedTo").is_none());
+            assert!(cap.stderr.borrow().is_empty());
+        }
+        assert_eq!(fake.hits("/cli/v1/critiques"), before + 2);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

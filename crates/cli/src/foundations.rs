@@ -6,6 +6,10 @@
 
 mod local;
 
+#[cfg(test)]
+#[path = "foundations/golden.rs"]
+mod golden;
+
 use impeccable_common::Io;
 use std::collections::BTreeMap;
 
@@ -200,10 +204,12 @@ pub(crate) fn run(
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) -> i32 {
     let mut json = false;
+    let mut quiet = false;
     let mut path = None;
     for a in args {
         match a.as_str() {
-            "--json" => json = true,
+            "--json" | "-json" => json = true,
+            "--quiet" | "--github" => quiet = true,
             "--help" | "-h" => {
                 io.out(USAGE);
                 return 0;
@@ -269,7 +275,9 @@ pub(crate) fn run(
     if let Some(full) = full {
         if impeccable_account::health::wanted(io) {
             let scan = crate::router::health_scan(full, items, started);
-            impeccable_account::health::after_scan(io, &scan, json);
+            impeccable_account::health::after_scan(io, &scan, json || quiet);
+        } else if !json && !quiet && impeccable_account::health::wanted_at_sign_in(io) {
+            if let Some(line) = impeccable_account::critiques::opt_out_nudge(io, &io.cwd) { io.err(&line); }
         }
     }
     0

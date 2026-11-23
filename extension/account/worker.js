@@ -118,7 +118,8 @@ async function asked({ persona, task, tabId }) {
 async function plan(message) {
   const ask = await asked(message);
   if (!ask.body) return { ok: false, why: ask.why };
-  const planned = await session.planWalk(ask.body);
+  // `early`: asked as the person paused writing, before they sent it (panel.js `askEarly`): the server counts the unused ones.
+  const planned = await session.planWalk(ask.body, { early: message.early === true });
   // The width the walk will run at: the one picked, unless this server's word on widths was never heard (`takesWidths`).
   return planned.ok && Object.hasOwn(SERVER_DEVICE, message.device) ? { ...planned, width: (await takesWidths()) === null ? 'desktop' : message.device } : planned;
 }

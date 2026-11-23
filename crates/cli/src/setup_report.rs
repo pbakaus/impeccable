@@ -1,5 +1,6 @@
 //! Detached setup reporting worker. Only normal, explicit command entrypoints
 //! schedule it; edit hooks and the worker itself cannot recurse.
+use impeccable_common::proc::{spawn_refresh_args, spawn_worker};
 use impeccable_common::Io;
 use serde_json::{json, Value};
 use std::process::{Command, Stdio};
@@ -11,78 +12,14 @@ pub fn schedule(io: &Io) {
     spawn_refresh(io, "setup-report");
 }
 
-pub fn schedule_taste(io: &Io) {
-    if impeccable_account::taste::wanted(io) {
-        spawn_refresh(io, "taste-refresh");
+pub fn schedule_taste(io: &Io, focus: Option<&str>) {
+    if impeccable_account::taste::wanted_for(io, focus) {
+        spawn_refresh_args(io, &io.cwd, "taste-refresh", &focus.map(|f| vec!["--focus", f]).unwrap_or_default());
     }
 }
 
 pub(crate) fn spawn_refresh(io: &Io, verb: &str) {
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let mut cmd = Command::new(exe);
-    cmd.arg(verb)
-        .current_dir(&io.cwd)
-        .envs(&io.env)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    impeccable_common::proc::detach(&mut cmd);
-    let _ = spawn_worker(&mut cmd);
-}
-
-#[cfg(not(windows))]
-fn spawn_worker(cmd: &mut Command) -> std::io::Result<std::process::Child> {
-    cmd.spawn()
-}
-
-#[cfg(windows)]
-fn spawn_worker(cmd: &mut Command) -> std::io::Result<std::process::Child> {
-    use std::ffi::c_void;
-    use std::os::windows::io::AsRawHandle;
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn GetHandleInformation(handle: *mut c_void, flags: *mut u32) -> i32;
-        fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
-    }
-    const INHERIT: u32 = 1;
-    struct Restore(Vec<(*mut c_void, u32)>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            for &(handle, flags) in &self.0 {
-                // SAFETY: borrowed standard handles remain owned by this process.
-                unsafe {
-                    SetHandleInformation(handle, INHERIT, flags & INHERIT);
-                }
-            }
-        }
-    }
-    // Windows inherits *all* inheritable handles, including the command's
-    // original output pipes even with Stdio::null configured for the child.
-    // Such a pipe would hold the caller's output() open until the upload ends.
-    // Temporarily remove inheritance from those originals; the worker gets
-    // only its new null handles. Restore the flags on every exit path.
-    let mut restore = Restore(Vec::new());
-    for handle in [
-        std::io::stdin().as_raw_handle(),
-        std::io::stdout().as_raw_handle(),
-        std::io::stderr().as_raw_handle(),
-    ] {
-        let mut flags = 0;
-        // SAFETY: these are borrowed OS standard handles, never closed here.
-        if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
-            continue;
-        }
-        if flags & INHERIT == 0 {
-            continue;
-        }
-        restore.0.push((handle, flags));
-        if unsafe { SetHandleInformation(handle, INHERIT, 0) } == 0 {
-            return Err(std::io::Error::last_os_error());
-        }
-    }
-    cmd.spawn()
+    spawn_refresh_args(io, &io.cwd, verb, &[]);
 }
 
 pub fn run(io: &Io) -> i32 {

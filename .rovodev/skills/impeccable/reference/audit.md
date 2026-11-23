@@ -150,8 +150,8 @@ Keep P3s few: a long tail of minor issues buries the ones that matter.
 After the report is delivered, save a copy so the findings outlive this conversation: write it, from the score table through Recommended Actions, to a temp file, then run the write command with the scores as metadata and delete the temp file:
 
 ```bash
-IMPECCABLE_REPORT_META='{"target":"<user phrasing, or .>","total_score":<n>,"max_score":20,"p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
+IMPECCABLE_REPORT_META='{"target":"<user phrasing, or .>","title":"<page title, or empty>","total_score":<n>,"max_score":20,"p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
   .rovodev/skills/impeccable/scripts/impeccable audit-storage write "<resolved target, or . for the whole project>" <temp-file>
 ```
 
-The helper prints the path it wrote, which you mention in one line; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.
+Use the observed `<title>` or first h1 for `title`; leave it empty when unknown. The helper prints the path it wrote, which you mention in one line. Pass any `Saved to Impeccable: <url>` or `Not saved to Impeccable: <reason>` line on to the person word for word; `REPORTS OFF:` means the project opted out, and you mention nothing. Saving never replaces delivering: the user reads the report in chat first.

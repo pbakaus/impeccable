@@ -803,6 +803,14 @@ followed by a single `\n`. Overwrites (one brief per slug).
 
 #### `context.mjs` -> `impeccable context`
 
+Usage: `impeccable context [--target <path>] [--command <verb>] [--focus web|slides|motion]`.
+Explicit `--focus web|slides|motion` wins over `--command` and derived focus.
+Invalid or missing focus values are usage errors naming all three values.
+The target, resolved surface brief and web platform signals select cached taste
+for slides, motion or web; unknown work uses whole taste. `--command animate`
+selects motion for an animation task on any surface. See [Taste](#taste) for
+focus derivation, repository rules and refresh behavior.
+
 - **Invoked from**: `SKILL.src.md` Setup step 1: `node <skill-base-dir>/scripts/context.mjs` once per session, cwd = user's project, optionally `--target <path>` for a named source file or route. Also imported (not spawned) by `doctor.mjs`, `context-signals.mjs`, `surface-brief.mjs`, `lib/impeccable-paths.mjs`, live scripts. `reference/routing.md`, `init.md`, `hooks.md`, `doctor.md`, `visualize.md`, `polish.md` refer to its directives by name.
 - **CLI args / flags**: `--target <p>` / `-t <p>` / `--target=<p>` (strict; last wins). Missing value -> stderr `--target requires a path value.\n`, exit 1. Nothing else.
 - **Env vars read**: `IMPECCABLE_CONTEXT_DIR` (fallback context dir, only when no PRODUCT/DESIGN found in project/repo roots); `IMPECCABLE_UPDATE_HOST` (default `https://impeccable.style`, trailing `/` stripped); `IMPECCABLE_UPDATE_CACHE` (default `~/.impeccable/update-check.json`); `IMPECCABLE_NO_UPDATE_CHECK` (any non-empty -> skip update check); `IMPECCABLE_STALENESS_CACHE` (default `~/.impeccable/staleness-check.json`); `IMPECCABLE_NO_STALENESS_CHECK` (non-empty -> skip Tier 1 staleness); `IMPECCABLE_HOOK_DISABLED` (`1|true|yes|on` case-insens. -> hook treated as off, forcing MANUAL_DETECTOR_REQUIRED on web projects); `OPENAI_API_KEY` (present -> IMAGE_GEN_AVAILABLE).
@@ -885,7 +893,7 @@ Any exception in collection -> directive silently omitted.
 Tier 2 (`staleness-deep.mjs`, doctor only):
 - `check_design_dead_paths(design, designPath, projectRoot)` (also a boot finding, so it reaches CONTEXT_STALE): the files DESIGN.md names (backticked paths and link targets that contain `/`, not globs, a link's `#…`/`?…` cut off), resolved beside DESIGN.md; any missing -> `design-md-dead-path` (route), naming up to 5 and counting the rest. Existence checks only; it reads no file.
 - `check_design_colour_drift(design, designPath, projectRoot)` (doctor only): the named files that exist and are token files (`.css .scss .sass .less`, or `.json .js .ts .mjs .cjs .mts` whose name contains token/theme/tailwind/design) are read; each frontmatter `colors` value is looked for in them, compared lower-case, without whitespace, a leading `0.` as `.`, and short hex spelled out. Reported as `design-md-color-drift` (route) only when at least one declared colour is found and some are not.
-- `check_sprawl(design, designPath)` (doctor only): DESIGN.md longer than 1.6 KB -> `design-md-sprawl` (route), naming `impeccable design-compact`.
+- `check_sprawl(design, designPath, cwd)` (doctor only): an uncompacted DESIGN.md longer than 1.6 KB -> `design-md-sprawl` (route), naming `impeccable design-compact`. A compact map (the standalone `<!-- impeccable:design-map -->` marker in its body) with a readable `.impeccable/design-full.md` beside DESIGN.md emits neither finding, even when the retained frontmatter exceeds 1.6 KB. An unreadable or missing archive -> `design-archive-missing` (mention), asking to restore the original rather than compact the map again.
 - `checkDesignCoverage({design, designPath, parseDesignMd})`: seed marker `<!-- SEED: established with the user before implementation; re-run /impeccable document once there's code to capture the actual tokens and components. -->` (or `$impeccable`) -> required `colors, typography`; else `colors, typography, components`; missing = section null AND frontmatter[section] has no non-empty string leaf (empty `[]`/`{}` strings don't count; booleans/numbers don't count) -> `design-md-coverage` (mention).
 - `checkDetectorIgnores({projectRoot, knownRuleIds})`: per config file: `detector.ignoreRules` lowercased/trimmed, not `*`, not in registry -> `detector-ignore-rules-unknown` (mention; skipped when registry null); `detector.ignoreFiles` entries without `*` and not existing -> `detector-ignore-files-missing` (mention).
 - `checkHookInstallation({projectRoot, repoRoot, providerId})`: manifests per provider (same table as context); commands containing a marker; script token extraction: double-quoted path first, `'\''` -> unparseable (skip), single-quoted, else bare token `/([^\s"'|&;()]*skills\/impeccable\/scripts\/hook(?:-before-edit)?\.mjs)/`; resolution: `$(`/backtick -> skip; `${CLAUDE_PROJECT_DIR}` -> root; any other `${VAR}`/`$VAR` -> skip; relative -> join(root). Missing -> `hook-script-missing` (mention). If any manifest installed and any config has `hook.enabled === false` -> `hook-enabled-conflict` (mention, returns after first). It also checks the provider's user-level manifest (Claude `~/.claude/settings.json`; Codex and agents the same `$CODEX_HOME/hooks.json` or `~/.codex/hooks.json` file context reads); a missing launcher there gets the fix `impeccable update --user` for Claude, and a by-hand fix for Codex and agents, whose `update --user` writes project hooks and never repoints a launcher entry in the home file. Provider `cursor` only: a manifest whose `hooks.preToolUse` still runs an Impeccable hook (the retired before-edit gate, either spelling) -> `cursor-hook-pre-edit-gate` (auto, path the manifest, summary `<rel> still runs the design hook as Cursor's \`preToolUse\` write gate, which is retired. Cursor now runs it after each edit on \`postToolUse\` and hands the findings to the agent as context.`, fix ``Move the entry to `postToolUse`: `impeccable doctor --fix`, `impeccable hooks on`, or the next `impeccable update` does it.``). It is emitted before any `hook-script-missing` for the same manifest.
@@ -1026,7 +1034,7 @@ Tier 2 (`staleness-deep.mjs`, doctor only):
     "devServer": { running, ports },
     "scan": { targets, via } }
   ```
-  `hasCode`: `package.json` or any of `src app pages site public components lib`. `platform` = extractPlatform(product) (null for web). `critique.latest`: newest snapshot across slugs; `score` = Number(`total_score` ?? `score`), `p0` = `p0_count` ?? `p0`, `p1` = `p1_count` ?? `p1` (null when missing/blank/NaN); `file` cwd-relative. `git`: not a repo -> `{ isRepo:false, branch:null, base:null, changedFiles:[], changedCount:0 }`; branch = `rev-parse --abbrev-ref HEAD`; base detection: on integration branch (`HEAD`, `develop|main|master`, or any remote's `refs/remotes/<r>/HEAD` short name) -> base null; else candidates in order: upstream (`@{u}` full symbolic ref, local or remote), `develop` (advertised remote rev first, then local, then `<remote>/develop` origin-first), each remote HEAD name, `main`, `master`; first with a `rev-parse --verify --quiet` hit wins. `changedFiles` = `git diff --name-only <baseRev>...HEAD` when base, else `git -c core.quotepath=false status --porcelain` paths (`old -> new` -> new). `devServer`: TCP probe `127.0.0.1` ports `4321 3000 5173 5174 8080 8000 4200`, 250 ms timeout, sorted ascending. `scan`: changed files with ext in `.html .htm .css .scss .jsx .tsx .js .ts .vue .svelte .astro`, not under a hidden/`node_modules`/`dist`/`build`/`__pycache__` dir segment (hidden `.vitepress`, `.vuepress`, `.storybook` allowed), existing -> `{targets (max 50), via:'git-changes'}`; else existing of `src app components pages public` -> `'source-dir'`; else `index.html` -> `'html'`; else hasCode -> `['.']`, `'root'`; else `[]`, null.
+  `hasCode`: `package.json` or any of `src app pages site public components lib`. `platform` = extractPlatform(product) (null for web). `critique.latest`: newest snapshot across slugs (from a monorepo root it also reads each workspace's store, newest by file name); `score` = Number(`total_score` ?? `score`), `p0` = `p0_count` ?? `p0`, `p1` = `p1_count` ?? `p1` (null when missing/blank/NaN); `file` cwd-relative. `git`: not a repo -> `{ isRepo:false, branch:null, base:null, changedFiles:[], changedCount:0 }`; branch = `rev-parse --abbrev-ref HEAD`; base detection: on integration branch (`HEAD`, `develop|main|master`, or any remote's `refs/remotes/<r>/HEAD` short name) -> base null; else candidates in order: upstream (`@{u}` full symbolic ref, local or remote), `develop` (advertised remote rev first, then local, then `<remote>/develop` origin-first), each remote HEAD name, `main`, `master`; first with a `rev-parse --verify --quiet` hit wins. `changedFiles` = `git diff --name-only <baseRev>...HEAD` when base, else `git -c core.quotepath=false status --porcelain` paths (`old -> new` -> new). `devServer`: TCP probe `127.0.0.1` ports `4321 3000 5173 5174 8080 8000 4200`, 250 ms timeout, sorted ascending. `scan`: changed files with ext in `.html .htm .css .scss .jsx .tsx .js .ts .vue .svelte .astro`, not under a hidden/`node_modules`/`dist`/`build`/`__pycache__` dir segment (hidden `.vitepress`, `.vuepress`, `.storybook` allowed), existing -> `{targets (max 50), via:'git-changes'}`; else existing of `src app components pages public` -> `'source-dir'`; else `index.html` -> `'html'`; else hasCode -> `['.']`, `'root'`; else `[]`, null.
 
 ---
 
@@ -2494,10 +2502,7 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
 - `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
-  (see **The Impeccable block** below), the loop switch's line: "When you
-  need a person's decision or input, use needs_you.post (Impeccable) instead of
-  asking in chat or a built-in question tool. If needs_you says Loop isn't
-  connected, ask normally." An installation an older CLI made, whose engine-managed
+  (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
   block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
   block through the engine on the next connect, and the line moves into the
   Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets
@@ -2619,17 +2624,19 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   switches: [{id, label, line}]}`, which the repo settings page mirrors. Any other
   argument prints `Usage: impeccable switches [--catalog]` and exits 2.
 - **The Impeccable block** (REN-2056). Each switch that is on adds one fixed,
-  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together stay under about 300 tokens), between
+  compiled-in line, in catalog order (`use`, `taste`, `wide`, `browser`, `system`, `critique`, `loop`, `voice`, `a11y`; all nine together are 1,448 bytes, about 362 tokens at four bytes per token), between
   `<!-- impeccable start -->` and `<!-- impeccable end -->` in the rule file the agent
   reads: `CLAUDE.md` in the Claude config folder (`$CLAUDE_CONFIG_DIR` when set), and
   for Codex `AGENTS.override.md` in `CODEX_HOME` when it exists, else `AGENTS.md`.
+  Earlier taste and Loop catalog wording reads as those switches being on and
+  is replaced by the current wording on the next write through `ALIASES`.
   A line the engine doesn't know is kept, after the known ones. When no switch is
   left on, the block goes. The pre-REN-2056 taste block (`<!-- impeccable:taste -->`
   to `<!-- /impeccable:taste -->`) reads as the taste switch being on and is replaced
   by the Impeccable block where it stood on the first write. **Taste:** after a connect (text, `--agent`, `--json`, the one after
   `loop install`, or a yes to login's offer), each agent the engine now holds a
   committed installation for is offered the taste line, telling the agent to call the
-  MCP's `taste.get` once per task and record design calls with `taste.note`. It never
+  MCP's `taste.get` with the task focus (web, slides or motion), or `impeccable taste --focus <kind>` without MCP, once per task; retain its rev for `since` while the rules stay in context, and record choices or corrections with `taste.note` or `impeccable taste note`. It never
   holds rules, taste or ids. A file whose taste line is there is brought up to date
   in place (no question).
   A file with no recorded answer is asked about once, for all such files
@@ -2972,8 +2979,9 @@ runs any of this.
 
 This follows `health off`, CI and telemetry opt-outs, including both the working
 directory and scanned root. Hooks and partial scans never upload. The request
-has a two-second deadline, no retries and no terminal messages. A 404 or any
-other failure leaves the health request, detect output and exit code intact.
+has a two-second deadline and no retries. Every successful upload names its
+Foundations page; failures print one `Not saved to Impeccable:` line with a next
+step. A failure leaves the health request, detect output and exit code intact.
 Design health notices are also suppressed for `--json` (including `-json`),
 `--quiet` and `--github`. The saved sync choice is rechecked between requests,
 so `health off` during a foundations upload prevents the health upload.
@@ -3096,7 +3104,7 @@ has a two-second elapsed-time budget, no retries; busy upload or lifecycle
 locks skip it. Credential and file/git preparation run in bounded read workers
 that cannot upload. HTTP connect/read timeouts are capped at the remaining
 budget. DNS resolution remains synchronous and unbounded in ureq.
-A 404 is quietly deferred, as are all other failures.
+A failed POST prints `Not saved to Impeccable:` with a reason and a step to try again.
 
 The upload takes a consistent, generation-matched state/credential snapshot
 under the lifecycle lock without waiting or prompting. An expired token can be
@@ -3167,12 +3175,12 @@ Status reports the saved preference, independent of sign-in or CI.
 
 After a successful `critique-storage write`, the CLI makes at most one
 best-effort POST to `/cli/v1/critiques`, with a two-second budget. It preserves
-the storage verb's exit code. The first successful upload per sign-in appends
-N2 to the critique-storage write step's stdout. `--json` (including `-json`),
-`--quiet` and `--github` suppress it without marking it shown. A login-keyed
+the storage verb's exit code. Every successful upload prints its page link;
+the first per sign-in also explains how to stop uploads. `--json` (including `-json`),
+`--quiet` and `--github` suppress the notice without marking it shown; JSON carries the page URL as `savedTo`. A login-keyed
 marker in the account store prevents repeats; a new sign-in hears it again.
 If saving the marker fails, the notice still prints and the upload is kept. It never
-uploads from hooks, reads, closes, audit writes or disabled reports. CI,
+uploads from hooks, reads, closes or disabled reports. Audit writes upload too. CI,
 telemetry opt-outs, no sign-in, missing `critiques:write` and unreadable
 preferences skip uploads. Credential reads share the two-second budget and
 never prompt for Keychain approval. A hidden `critiques-refresh` subprocess
@@ -3184,26 +3192,78 @@ Connection and read timeouts are capped at the remaining request budget.
 ureq's synchronous DNS lookup remains unbounded.
 Native projects follow the same report-save path.
 
+After a successful critique or audit upload, a signed-in person with health
+uploads enabled gets a detached whole-repository `detect . --quiet` refresh
+of Design health and Foundations, when the report's project is inside git.
+The CLI records the attempt before spawning and starts at most one per
+repository top in 24 hours, including failed attempts. The refresh and its
+failures are silent and do not change the save command's output or exit code.
+
 Sign-in requests `critiques:write` only when advertised in
 `scopes_supported`. Payload v1 maps saved `target`, `total_score`,
 `max_score`, `na_heuristics`, and severity counts to `target`, `score`,
-`na`, and `counts`. Missing per-heuristic scores and P2/P3 counts are null.
+`na`, and `counts`. Optional `title` is the observed page title or first h1:
+collapse Unicode whitespace runs, remove Unicode Cc/Cf characters, trim, and
+cap at 120 Unicode code points. Empty or non-string titles are omitted.
+Optional `heuristics` is an array of `{n,score}` with integer `n` 1–10 and
+integer `score` 0–4, excluding N/A heuristics. Invalid entries and duplicate
+indices are dropped. Non-array heuristics are omitted. Optional `p2_count`
+and `p3_count` must be integers 0–100; invalid counts are dropped. These
+cleaned fields persist in snapshot frontmatter (heuristics as a JSON array)
+and appear in trend reads. Payload v1 sends `title` when known, `heuristics`,
+and `counts.p0` through `counts.p3`; missing heuristic detail or optional
+counts remain null. Both metadata environment variables accept these fields.
 `body` is passed separately to the save callback, never recovered from
 frontmatter. Multiline frontmatter strings are JSON-quoted. Critique body
 inputs must be regular files, never final symlinks or reparse points, with a
 64 KB size check on the opened handle before reading and a bounded read to
 catch growth. Absolute temporary files outside the project remain valid.
-Encoded upload requests over 80 KB are silently skipped.
+Encoded upload requests over 80 KB print `Not saved to Impeccable: the report is over 80 KB; save a shorter report`.
 
 The account store's `IMPECCABLE_HOME/critiques.lock` serializes final upload
 admission and the entire POST with `on`, `off` and `forget`. An uploader
 does not wait for this lock; preference commands wait at most three seconds.
 After a successful `off` or `forget`, no earlier uploader can start a POST.
 A fresh UUID identifies each saved report; `createdAt` is its save time.
+With a repo key, the upload also names where the critique ran (REN-2377), so a
+critique of a checked-out pull request files under it: `headSha` (HEAD's commit,
+40 or 64 lowercase hex, once the repository has a commit), `branch` (the
+checked-out branch's short name from git, left out when HEAD is detached) and
+`pr` (the critique meta's optional `pr`, a number or `#`-prefixed digits
+from 1). The top, commit and branch come from one `git rev-parse` within the
+existing 150 ms; before the first commit the top is asked for alone.
+
+Optional critique meta `url` names the http(s) page viewed and is never sent in
+the critique payload. A successful upload starts the silent, detached
+`critique-frames` worker, given the critique's id and the sign-in it uploaded
+under; it captures nothing for any other sign-in.
+Within a single 20-second budget it captures desktop 1440×900 and phone 390×844
+viewport WebPs (quality 80, one lower-quality retry if over 300 KB). Failed
+loads, documents answered with a non-2xx status, redirects to another origin
+or path (query/hash changes are allowed), and frames still over 300 KB are
+dropped. Every request below rechecks that sign-in, `critiques:write` and the
+upload opt-outs under the critiques upload lock and sends while holding it,
+for two seconds at most like a report upload, so
+`critiques off` or `forget` stops the next one. Each frame reserves with
+`POST /cli/v1/critiques/captures` (`sha256`, `bytes`, `contentType`),
+optionally uploads with an authenticated WebP POST to the returned
+`uploadUrl` with exact Content-Length, then successful keys attach through
+`POST /cli/v1/critiques/{critiqueId}/captures` with viewport, dimensions and
+optional cleaned title as `label`. No attach is sent without a successful
+frame. Errors are best effort; 429 stops the job, 404 on attach ends it,
+and the deadline stops further requests. Saving, receipt lines and JSON
+output do not wait for or change with frames.
+
 Optional `repoKey` uses design health's remote normalization and local repo ID,
 including from subdirectories. With that key, a valid remote repository name
-is sent as optional `label`, using design health's label recipe. Local-only
-repos and invalid names omit `label`. No label is sent without a repo key.
+is sent as optional `label`, using design health's label recipe; a repo with
+no remote sends its folder's name. Invalid names omit `label`. No label is sent
+without a repo key. A repo with no remote also sends optional `place`: its parent
+folder's name only (never a path), cleaned like `label` and at most 60
+characters, so two clones with one name can be told apart (REN-2313). It is
+left out when the parent is the home folder, whose name is usually the
+person's login. Design health, foundations and design uploads send `place` by
+the same rule.
 
 After a variant accept that succeeds (`live-accept --variant N`, directly or
 through `live-poll`, including a receipt replay; never `--discard`), the CLI
@@ -3231,14 +3291,67 @@ The CLI reads standing design preferences with
 GET /cli/v1/taste?limit=12 at the account issuer, using its bearer token and
 the taste:read scope. OAuth requests that scope only when scopes_supported
 advertises it. The saved sign-in state records the granted scope as taste.
-There is no taste write path. The CLI ignores the response's say and page.
+The cache retains the sanitized `say` line for foreground reads and ignores `page`.
 
-The hidden taste-refresh verb accepts no arguments, prints nothing and exits
+`impeccable taste [--focus web|slides|motion] [--since <rev>] [--json]`
+is the foreground equivalent of `taste.get` for agents without MCP. It
+revalidates the requested slice using the same account session, conditional
+GET, repository resolution, locks, fallback and cache as the worker. Text
+prints personal rules, repository rules, the server's `say` line and
+`rev: <revision>`. JSON prints `{state, rules, repositoryRules, say, rev, paused}`. When the person paused their own taste but the repository's rules are served (`state: "ready"`, `paused: true`), text output starts with "Your own taste is paused; these are this repository's rules."
+The revision is the exact ETag, including quotes if present; a response
+without ETag uses the hex SHA-256 of the sanitized state/rules/repositoryRules/
+say tuple. `--since` is compared locally after revalidation. If unchanged,
+text prints `Taste rules are unchanged (rev: <rev>).` and JSON prints
+`{unchanged:true, rev}`, with no repeated rules. Existing caches missing
+say/rev are fetched without a validator once to upgrade them.
+An invalid or missing focus names `web, slides or motion` and exits 1.
+Signed out or without read access, stderr directs the person to
+`impeccable login` and exits 1. With taste disabled by the environment or
+saved consent, or a paused response, stdout prints `Taste is off.` and exits
+0 (`--json` prints that line as a JSON string). Network failures report an
+error without presenting stale rules.
+
+`context [--target <path>] [--command <verb>] [--focus web|slides|motion]` uses explicit focus first, then derives taste focus from the
+existing target and resolved surface brief: deck/slides/pptx/keynote signals
+select `slides`, animation/motion/lottie signals select `motion`; `--command
+animate` also selects `motion`. Otherwise a web platform, web implementation,
+URL/route or web source target selects `web`. Native and unknown tasks send no
+focus. The optional `--command` carries the active skill verb, which context
+previously did not receive (so a web page's animation task can request motion).
+The detached read sends `focus=web|slides|motion` when known, and
+`repository=owner/name` when cwd's origin resolves to GitHub, using the same
+bounded remote read and SSH-alias normalization as uploads. A 400 `{error:
+"focus"}` retries without focus or a focused ETag, for older servers.
+Whole taste uses `taste.json`; slices use `taste-web.json`, `taste-slides.json`
+and `taste-motion.json`. A fallback whole response is saved in the requested
+slice. Each cache's repository identity gates its ETag and refresh freshness;
+context appends sanitized `repositoryRules` after personal rules only when
+the cache belongs to the current repository. All slices share the existing
+issuer, sign-in, private-write and lifecycle lock rules, including clearing
+all of this issuer's slices on logout, sign-in or read-scope revocation.
+
+`impeccable taste note --chose <text> --rule <text> [--over <text>]
+[--repository owner/name] [--event <id>] [--json]` posts exactly `event`,
+`chose`, `rule`, and supplied optional `over` and `repository` fields to
+`POST /cli/v1/taste/calls`. Repository defaults to cwd's GitHub origin.
+Without `--event`, the event is the hex SHA-256 of a JSON tuple of chose,
+rule, over (null if absent), and repository (null if absent), making reruns
+idempotent. Client limits are 120 characters for event, 200 for chose/over,
+240 for rule and 201 for repository; required values must be nonempty and
+repository must be owner/name. Validation errors exit 1 before sending.
+This uses CLI sign-in with `taste:write` and the server's usual plan/TASTE
+gates. Missing sign-in/scope or a 403 directs the person to `impeccable login`.
+Successful outcomes print one line: `recorded`, `already recorded`,
+`paused (taste capture is paused for your account)`, or `full`. `--json`
+prints the server outcome object. `IMPECCABLE_NO_TASTE` disables notes too.
+
+The hidden taste-refresh verb accepts optional `--focus web|slides|motion`, prints nothing and exits
 0. It loads credentials through the non-interactive worker session path,
 including during token renewal, and silently skips credentials needing approval.
 It uses the ordinary authenticated request helper and request timeouts. A version 1 response in ready, empty, paused or plan
 state is cached at <impeccable home>/taste.json, honoring IMPECCABLE_HOME.
-Only ready responses retain rules. The cache contains version, fetchedAt
+Only ready responses retain rules. The cache also records repository, sanitized repositoryRules and say, and rev. It contains version, fetchedAt
 (Unix seconds), etag, issuer, state and at most 12 rules with id, text and
 direction. Writes use a private atomic replacement (0600 on Unix). Control
 characters are dropped, whitespace collapsed, text trimmed and capped at
@@ -3247,7 +3360,7 @@ letters, digits, underscores and hyphens are skipped.
 
 The service sends ETag, Cache-Control: private, no-cache and Vary:
 Authorization. The worker
-sends If-None-Match only for a cache from the same issuer. A 304 changes only
+sends If-None-Match only for a cache from the same issuer and repository. A 304 changes only
 fetchedAt. A 404 or 403 deletes the cache silently. Network failures, other
 statuses and malformed responses preserve it. A 200 in paused, plan or empty
 state replaces the cache at once, so the next boot prints none of the old
@@ -3266,7 +3379,7 @@ The router's ordinary entrypoint allowlist, including context, schedules
 taste-refresh detached when saved state says signed in with taste and the
 cache is absent or fetchedAt is more than 60 seconds old, so every session
 start revalidates and a pause, reset or deleted rule takes effect from the
-next session start. This gate reads saved state and the small cache only,
+next session start. This gate reads saved state, the bounded local git origin and the small cache,
 with no keychain or network access. CI suppresses scheduling (an explicit
 taste-refresh still runs). A telemetry opt-out does not stop the read: it
 fetches only the person's own preferences.
@@ -3451,3 +3564,29 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
 ## Pro before it's on sale (17 Nov 2026)
 
 Until Pro is on sale, the CLI names Pro only to an account that has it. An account without Pro gets no Pro or pricing line: none from `login`, `whoami` or install's sign-in offer, no `Pro rules are off: this account doesn't include them` line on a scan, no `needs-pro` place and no `upgrade` next step among the setup lines. A world that needs Pro still says so when someone asks for it.
+
+### Upload page receipts
+
+Every successful upload prints `Saved to Impeccable: <url>`. The link is the
+http(s) `url` the service's answer names when it names one (REN-2343), else a
+page built here: foundations use `/-/foundations?repo=<encoded uploaded label>`
+(without a label, `/-/foundations`), health counts use `/-/design-health`,
+DESIGN.md uses `/-/design`, and critiques, audits and prototypes use
+`/-/critiques`, relative to the account's known app home. Custom services without
+a known app home cannot supply a derived page link.
+
+`--json` / `-json` adds `savedTo` to the output object instead of printing a
+receipt. A detect findings array becomes an object with `findings` and
+`savedTo` when a page was saved; without a saved page its shape is unchanged.
+Successful local report writes always return a JSON object with `path`, even
+when signed out, opted out or unable to upload; `savedTo` is optional. With reports
+turned off nothing is written, and the object is `{"saved": false, "reportsOff": true,
+"message"}` with no `path`. When several pages were saved, `savedPages` lists them all and
+`savedTo` prefers Foundations. `live-poll --json` streams unbuffered, so it
+records an accepted variant before writing that accept event (waiting two
+seconds at most, even if DNS stalls) and puts the page on it as `savedTo`;
+plain `live-poll` keeps the accept last and prints the receipt on stderr.
+`--quiet` and `--github` suppress receipts.
+Failures say what could not be saved and how to try again; nothing is queued
+for retry. A telemetry opt-out prints its effective setting and how to turn
+saving back on, once per project per day. Signed-out hints stay unchanged.

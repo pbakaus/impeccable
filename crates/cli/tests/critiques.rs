@@ -45,7 +45,7 @@ fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
     assert!(child.wait().unwrap().success());
 }
 
-const META: &str = r#"{"target":"Pricing","total_score":24,"max_score":32,"na_heuristics":"7,10","p0_count":1,"p1_count":2}"#;
+const META: &str = r#"{"target":"Pricing","total_score":24,"max_score":32,"na_heuristics":"7,10","p0_count":1,"p1_count":2,"p2_count":3,"p3_count":4,"title":"Pricing plans","heuristics":[{"n":1,"score":4},{"n":2,"score":3}]}"#;
 fn write(env: &HashMap<String, String>, root: &Path) -> Output {
     impeccable(
         env,
@@ -100,10 +100,11 @@ fn only_new_reports_upload_and_explicit_off_wins() {
     assert_eq!(b["target"], "Pricing");
     assert_eq!(b["score"], serde_json::json!({"total":24,"max":32}));
     assert_eq!(b["na"], serde_json::json!([7, 10]));
-    assert_eq!(b["heuristics"], serde_json::Value::Null);
+    assert_eq!(b["title"], "Pricing plans");
+    assert_eq!(b["heuristics"], serde_json::json!([{"n":1,"score":4},{"n":2,"score":3}]));
     assert_eq!(
         b["counts"],
-        serde_json::json!({"p0":1,"p1":2,"p2":null,"p3":null})
+        serde_json::json!({"p0":1,"p1":2,"p2":3,"p3":4})
     );
     assert_eq!(
         b["body"],
@@ -112,7 +113,7 @@ Crowded header.
 "
     );
     assert!(b.get("label").is_none());
-    assert_eq!(b.as_object().unwrap().len(), 9);
+    assert_eq!(b.as_object().unwrap().len(), 10);
     impeccable(&env, root, &["critique-storage", "latest", "pricing"])
         .output()
         .unwrap();
@@ -157,9 +158,9 @@ fn gates_and_service_failures_preserve_the_saved_report() {
         (401, "your sign-in expired; sign in again with npx impeccable login"),
         (403, "this sign-in can't save critiques; sign in again with npx impeccable login"),
         (409, "it was made before you deleted your critique history"),
-        (429, "you've reached the upload limit (10 a minute, 200 a day); the next critique after that will upload"),
-        (404, "the account service had a problem (HTTP 404); the next critique will upload"),
-        (500, "the account service had a problem (HTTP 500); the next critique will upload"),
+        (429, "you've reached the upload limit (10 a minute, 200 a day); run it again later to save it"),
+        (404, "Impeccable had a problem; the report is saved locally. Run it again to save it."),
+        (500, "Impeccable had a problem; the report is saved locally. Run it again to save it."),
     ] {
         fake.route("POST", "/cli/v1/critiques", status, vec![], "{}");
         let out = write(&env, root);
@@ -285,6 +286,44 @@ fn review_numeric_target_keeps_its_original_spelling() {
     let r = fake.record.lock().unwrap();
     assert_eq!(r.critiques.len(), 1);
     assert_eq!(r.critiques[0]["target"], "00404");
+}
+
+#[test]
+fn optional_metadata_is_cleaned_without_losing_the_upload() {
+    let (fake, env) = setup("critique-optional-metadata");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let title = format!("  Plans\t \n\u{200e}{}\0  ", "界".repeat(200));
+    for (title, expected) in [
+        (title, Some(format!("Plans {}", "界".repeat(114)))),
+        (" \0\u{200d} \n".into(), None),
+    ] {
+        let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+        meta["title"] = title.into();
+        meta["heuristics"] = serde_json::json!([
+            {"n":1,"score":4}, {"n":0,"score":2}, {"n":2,"score":5},
+            {"n":3,"score":"2"}, {"n":4.5,"score":2}, null,
+            {"n":1,"score":2}, {"n":9,"score":0}
+        ]);
+        meta["p2_count"] = (-1).into();
+        meta["p3_count"] = 101.into();
+        let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+            .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+        assert!(out.status.success());
+        let records = fake.record.lock().unwrap();
+        let b = records.critiques.last().expect("upload landed");
+        assert_eq!(b.get("title").and_then(|v| v.as_str()), expected.as_deref());
+        assert_eq!(b["heuristics"], serde_json::json!([{"n":1,"score":4},{"n":9,"score":0}]));
+        assert!(b["counts"]["p2"].is_null());
+        assert!(b["counts"]["p3"].is_null());
+        let path = String::from_utf8_lossy(&out.stdout).lines().next().unwrap().to_string();
+        let saved = std::fs::read_to_string(path).unwrap();
+        let front = impeccable_context::critique_storage::parse_frontmatter(&saved);
+        assert_eq!(front.get("title").and_then(|v| v.as_str()), expected.as_deref());
+        assert_eq!(front["heuristics"], b["heuristics"]);
+        assert!(!front.contains_key("p2_count"));
+        assert!(!front.contains_key("p3_count"));
+    }
+    assert_eq!(fake.hits("/cli/v1/critiques"), 2);
 }
 
 #[test]
@@ -598,6 +637,9 @@ fn repo_labels_use_the_remote_or_folder_name_and_are_omitted_when_invalid() {
         if expected.is_none() {
             assert!(body.get("label").is_none());
         }
+        // Only a repo with no remote names its place: the parent folder (REN-2313).
+        let place = remote.is_none().then(|| root.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str())).flatten();
+        assert_eq!(body.get("place").and_then(serde_json::Value::as_str), place);
     }
 }
 
@@ -650,7 +692,7 @@ fn the_service_accepts_optional_labels_only_with_repo_keys() {
 fn every_save_links_its_critique_and_the_first_on_a_sign_in_says_how_to_stop() {
     let (fake, env) = setup("critique-notice");
     let root = Path::new(&env["IMPECCABLE_HOME"]);
-    let stop = " Every critique you save uploads; to stop: impeccable critiques off";
+    let stop = "\nEvery critique you save uploads; to stop: impeccable critiques off";
     let hook = impeccable(&env, root, &["hook-before-edit"])
         .output()
         .unwrap();
@@ -953,4 +995,239 @@ fn an_accepted_variant_records_the_prototype_once_and_never_when_opted_out() {
     std::fs::write(&receipt, r.to_string()).unwrap();
     assert!(accept().status.success());
     assert_eq!(fake.hits("/cli/v1/prototypes"), 2);
+}
+
+#[test]
+fn successful_report_uploads_refresh_health_once_a_day_only_when_wanted_in_git() {
+    let (fake, env) = setup("critique-health-refresh");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let health = root.join("health.json");
+    let marks = || -> serde_json::Value {
+        std::fs::read(&health).ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v.get("critiqueRefreshes").cloned())
+            .unwrap_or(serde_json::json!({}))
+    };
+    // An upload outside git leaves no scheduling timestamp.
+    assert!(write(&env, root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    assert_eq!(marks(), serde_json::json!({}));
+    assert!(Command::new("git").args(["init", "-q"]).current_dir(root)
+        .status().unwrap().success());
+    fake.route("POST", "/cli/v1/critiques", 500, vec![], "{}");
+    assert!(write(&env, root).status.success());
+    assert_eq!(marks(), serde_json::json!({}));
+    fake.route("POST", "/cli/v1/critiques", 200, vec![], r#"{"outcome":"recorded"}"#);
+    std::fs::write(&health, r#"{"sync":false}"#).unwrap();
+    let before = write(&env, root);
+    assert!(before.status.success());
+    assert!(before.stderr.is_empty());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 3);
+    assert_eq!(marks(), serde_json::json!({}));
+    std::fs::write(&health, r#"{"sync":true}"#).unwrap();
+    let first = write(&env, root);
+    let claimed = marks();
+    assert_eq!(claimed.as_object().unwrap().len(), 1);
+    assert!(claimed.as_object().unwrap().values().all(|v| v.as_u64().unwrap() > 0));
+    let second = write(&env, root);
+    assert_eq!(marks(), claimed);
+    // After the initial upload notice, scheduling changes no output or status.
+    for out in [&before, &first, &second] {
+        let text = String::from_utf8(out.stdout.clone()).unwrap();
+        let path = text.lines().next().unwrap();
+        assert!(Path::new(path).is_file());
+        assert_eq!(out.stdout, format!("{path}\nSaved to Impeccable.\n").as_bytes());
+    }
+    assert_eq!(first.stderr, before.stderr);
+    assert_eq!(second.stderr, before.stderr);
+    assert_eq!(first.status.code(), before.status.code());
+    assert_eq!(second.status.code(), before.status.code());
+    // An audit uses the same success hook, even when its upload notice is quiet.
+    let mut expired = claimed;
+    for value in expired.as_object_mut().unwrap().values_mut() {
+        *value = 1.into();
+    }
+    std::fs::write(&health, serde_json::json!({"sync":true,"critiqueRefreshes":expired}).to_string()).unwrap();
+    let audit = impeccable(&env, root, &["audit-storage", "write", ".", "report.md", "--quiet"])
+        .env("IMPECCABLE_REPORT_META", r#"{"target":".","total_score":14,"max_score":20,"p0_count":0,"p1_count":2}"#)
+        .output().unwrap();
+    assert!(audit.status.success());
+    assert!(audit.stderr.is_empty());
+    assert_eq!(marks().as_object().unwrap().len(), 1);
+    assert_ne!(marks(), expired);
+}
+
+#[test]
+fn a_report_upload_refreshes_health_and_foundations_in_the_background() {
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        (k.critiques, k.health, k.foundations) = (true, true, true);
+    }
+    let env = fake.env("critique-health-upload");
+    login(&env);
+    let root = Path::new(&env["IMPECCABLE_HOME"]).join("work").join("site");
+    std::fs::create_dir_all(&root).unwrap();
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/antipatterns");
+    std::fs::copy(fixtures.join("cream-palette.html"), root.join("index.html")).unwrap();
+    std::fs::write(root.join("report.md"), "# Report\nCrowded header.").unwrap();
+    for args in [vec!["init", "-q"], vec!["remote", "add", "origin", "https://github.com/acme/site.git"]] {
+        assert!(Command::new("git").args(args).current_dir(&root).status().unwrap().success());
+    }
+    assert!(write(&env, &root).status.success());
+    assert_eq!(fake.hits("/cli/v1/critiques"), 1);
+    // The refresh is detached: wait for its uploads without blocking the save.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while (fake.hits("/cli/v1/health/scans") == 0 || fake.hits("/cli/v1/foundations") == 0)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let r = fake.record.lock().unwrap();
+    let scan = r.scans.last().expect("the background refresh uploaded a health scan");
+    assert_eq!(scan["repoKey"], r.critiques[0]["repoKey"]);
+    assert!(r.foundations.last().is_some(), "the background refresh uploaded Foundations");
+}
+
+// The service's fake validates actual bytes, lengths, hashes and issued keys.
+fn frame_page(mode: &'static str) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>, std::sync::Arc<std::sync::atomic::AtomicBool>, std::thread::JoinHandle<()>) {
+    use std::io::{Read, Write};
+    use std::sync::{Arc, atomic::{AtomicBool, AtomicUsize, Ordering}};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}/page", listener.local_addr().unwrap());
+    let hits = Arc::new(AtomicUsize::new(0));
+    let stop = Arc::new(AtomicBool::new(false));
+    let (seen, done) = (hits.clone(), stop.clone());
+    let handle = std::thread::spawn(move || {
+        while !done.load(Ordering::SeqCst) {
+            match listener.accept() {
+                // One thread per connection: Chrome opens spare connections that
+                // send nothing, and the real request must not wait behind them.
+                Ok((mut stream, _)) => { let seen = seen.clone(); std::thread::spawn(move || {
+                    // An accepted socket inherits the listener's non-blocking mode on macOS.
+                    stream.set_nonblocking(false).unwrap();
+                    stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+                    let mut buf = [0; 4096];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]);
+                    if n == 0 {
+                        return;
+                    }
+                    if request.starts_with("GET /page ") {
+                        seen.fetch_add(1, Ordering::SeqCst);
+                    }
+                    if mode == "redirect" && request.starts_with("GET /page ") {
+                        let _ = write!(stream, "HTTP/1.1 302 Found\r\nLocation: /signin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    } else if mode == "error" && request.starts_with("GET /page ") {
+                        let body = "<h1>Server error</h1>";
+                        let _ = write!(stream, "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    } else {
+                        let body = "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'><style>body{background:#fcfaf7;color:#222;font:24px sans-serif}</style><h1>Pricing</h1><p>Plans for everyone.</p>";
+                        let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    }
+                }); }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(std::time::Duration::from_millis(20)),
+                Err(_) => break,
+            }
+        }
+    });
+    (url, hits, stop, handle)
+}
+
+fn check_frames(mode: &'static str) {
+    let dropped = mode != "ok";
+    use std::sync::atomic::Ordering;
+    let (fake, mut env) = setup(&format!("frames-{mode}"));
+    // Browser discovery uses the same environment in the detached worker.
+    // Chrome on Windows also needs its profile folders to start.
+    for key in ["IMPECCABLE_BROWSER", "PUPPETEER_EXECUTABLE_PATH", "CHROME_PATH", "PUPPETEER_DANGEROUS_NO_SANDBOX",
+        "LOCALAPPDATA", "APPDATA", "USERPROFILE", "ProgramFiles", "ProgramFiles(x86)"] {
+        if let Ok(v) = std::env::var(key) { env.insert(key.into(), v); }
+    }
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let (url, hits, stop, server) = frame_page(mode);
+    let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+    meta["url"] = url.into();
+    let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+        .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(said(&out).contains("Saved to Impeccable:"));
+    assert!(fake.record.lock().unwrap().critiques[0].get("url").is_none());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
+    while std::time::Instant::now() < deadline {
+        if !dropped && fake.record.lock().unwrap().captures.len() == 2 { break; }
+        if dropped && hits.load(Ordering::SeqCst) >= 2 {
+            // Both pages were seen; give a wrongly kept frame time to upload.
+            std::thread::sleep(std::time::Duration::from_secs(3));
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    stop.store(true, Ordering::SeqCst);
+    server.join().unwrap();
+    let seen = hits.load(Ordering::SeqCst);
+    assert!(seen >= 2, "worker navigated both viewports ({seen} page loads)");
+    let record = fake.record.lock().unwrap();
+    if dropped {
+        assert!(record.captures.is_empty());
+        assert_eq!(record.hits.get("/cli/v1/critiques/captures").copied().unwrap_or(0), 0);
+    } else {
+        assert_eq!(record.captures.len(), 2);
+        for (c, viewport, width, height) in [
+            (&record.captures[0], "desktop", 1440, 900),
+            (&record.captures[1], "phone", 390, 844),
+        ] {
+            assert_eq!(c["viewport"], viewport);
+            assert_eq!(c["width"], width);
+            assert_eq!(c["height"], height);
+            assert_eq!(c["label"], "Pricing plans");
+        }
+    }
+}
+
+/// One browser at a time: the page itself attaches both frames, and a
+/// redirect elsewhere or an error page attaches none.
+#[test]
+fn a_critique_attaches_frames_only_of_the_page_itself() {
+    if impeccable_browser::discovery::find_browser(&std::env::vars().collect()).is_err() {
+        eprintln!("skip: no installed browser found");
+        return;
+    }
+    for mode in ["ok", "redirect", "error"] {
+        check_frames(mode);
+    }
+}
+
+/// A critique of a checked-out pull request names its branch, commit and, when
+/// the agent gave one, the pull request, so it files under it (REN-2377).
+#[test]
+fn a_critique_names_the_branch_commit_and_pull_request_it_ran_on() {
+    let (fake, env) = setup("critique-pull");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(["-c", "user.name=t", "-c", "user.email=t@t"]).args(args).current_dir(root).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    git(&["init", "-q"]);
+    git(&["checkout", "-q", "-b", "ada/fix-nav"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "nav"]);
+    let sha = git(&["rev-parse", "HEAD"]);
+    impeccable(&env, root, &["critiques", "on"]).output().unwrap();
+    let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+    meta["pr"] = "#134".into();
+    let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+        .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // Detached, with no pull request named: the commit alone.
+    git(&["checkout", "-q", "--detach"]);
+    std::fs::write(root.join("report.md"), "# Report\nCrowded header, again.").unwrap();
+    assert!(write(&env, root).status.success());
+    let record = fake.record.lock().unwrap();
+    assert!(record.refused.is_empty(), "{:?}", record.refused);
+    let [first, second] = &record.critiques[..] else { panic!("{:?}", record.critiques) };
+    assert_eq!((first["headSha"].as_str(), first["branch"].as_str(), first["pr"].as_u64()), (Some(sha.as_str()), Some("ada/fix-nav"), Some(134)));
+    assert_eq!(second["headSha"].as_str(), Some(sha.as_str()));
+    assert!(second.get("branch").is_none() && second.get("pr").is_none(), "{second}");
 }
