@@ -363,6 +363,7 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
       if (!card) continue;
       for (const [cls, text] of [['name', card.name], ['about', card.about || card.role]]) { const node = hero.querySelector(`.${cls}`); if (node && node.textContent !== text) node.textContent = text; }
     }
+    retip();
     waitForFaces(round + 1, run);
   }, FACE_WAITS[round]);
 }
@@ -712,7 +713,17 @@ function sights() {
   return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
     type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'aria-label': COPY.home.sights[sees], 'aria-description': facts[sees],
     onclick: () => { pre.sees = sees; render(); },
-  }, icon(look), el('span', { class: 'tip', 'aria-hidden': 'true' }, el('span', { class: 'tip-h', text: COPY.home.sights[sees] }), facts[sees]))));
+  }, icon(look), el('span', { class: 'tip', 'aria-hidden': 'true' }, el('span', { class: 'tip-h', text: COPY.home.sights[sees] }), el('span', { class: 'tip-fact', text: facts[sees] })))));
+}
+/** The Sees figures again, in place, for a card whose profile came after it was drawn (`waitForFaces`). */
+function retip() {
+  for (const sees of Object.keys(SIGHTS)) {
+    const button = app.querySelector(`[data-act="sees-${sees}"]`);
+    const fact = button?.querySelector('.tip-fact');
+    if (!fact) continue;
+    fact.textContent = common(sees, picked());
+    button.setAttribute('aria-description', fact.textContent);
+  }
 }
 
 /**

@@ -63,7 +63,7 @@ export const COPY = {
     common: {
       normal: (share, who) => `${share} ${who ? `people in the US ${who}’s age` : 'adults in the US'} wear glasses or contacts.`,
       older: (share, who) => `${share} ${who ? `people in the US ${who}’s age` : 'people in the US over 40'} have a cataract.`,
-      'colour-blind': (men, women) => `About 1 in ${men} men and 1 in ${women} women are born with red-green colour blindness.`,
+      'colour-blind': (men, women) => `About 1 in ${men} men and 1 in ${women} women of Northern European descent have red-green colour blindness.`,
     },
     share: { about: (n, of) => `About ${n} in ${of}`, fewer: (of) => `Fewer than 1 in ${of}` },
   },
