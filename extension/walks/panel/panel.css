@@ -256,6 +256,7 @@ b { font-weight: 500; }
 .fr-list li { display: flex; gap: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.45; color: var(--muted); text-wrap: pretty; }
 .fr-list li + li { border-top: 1px solid var(--rule); }
 .fr-list li b { display: block; color: var(--ink); }
+.fr-list li a { color: var(--ink); text-underline-offset: 2px; }
 .fr-list .ic { margin-top: 1px; color: var(--ink); }
 .fr-list li.warn { background: var(--gold-wash); }
 .fr-list li.warn .ic { color: var(--gold-deep); stroke-width: 2.2; }
