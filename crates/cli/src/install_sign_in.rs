@@ -72,7 +72,7 @@ pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
     use impeccable_context::telemetry;
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
     let end = end(args, terminal, io.env_truthy("CI"));
-    if end == End::Nothing || telemetry::choice_recorded(&io.env, &io.cwd.to_string_lossy()) {
+    if end == End::Nothing || telemetry::choice_recorded(&io.env, telemetry::telemetry_disabled(&io.env, &io.cwd.to_string_lossy())) {
         return;
     }
     if end == End::Hint {

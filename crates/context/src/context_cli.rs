@@ -801,11 +801,11 @@ fn update_check_disabled_by_config(cwd: &str) -> bool {
 }
 
 /// JS: computeUpdateDirective()
-pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider) -> Option<String> {
+pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider, telemetry_off: bool) -> Option<String> {
     if env.get("IMPECCABLE_NO_UPDATE_CHECK").map(|v| !v.is_empty()).unwrap_or(false) {
         return None;
     }
-    if update_check_disabled_by_config(cwd) || crate::telemetry::telemetry_disabled(env, cwd) {
+    if update_check_disabled_by_config(cwd) || telemetry_off {
         return None;
     }
     let local = read_local_skill_version(provider)?;
@@ -941,8 +941,10 @@ pub fn run_with_hook_repair(
             io.out(&format!("{}\n", notices.join(" ")));
         }
     }
-    let update_directive = compute_update_directive(&cwd, &env, &provider);
-    let telemetry_directive = crate::telemetry::choice_directive(&env, &cwd, &provider.verb_cmd("telemetry"));
+    // An opt-out where context runs, or in the workspace `--target` selects.
+    let telemetry_off = crate::telemetry::telemetry_disabled(&env, &cwd) || resolved_target_path.as_deref().is_some_and(|t| crate::telemetry::telemetry_disabled(&env, t));
+    let update_directive = compute_update_directive(&cwd, &env, &provider, telemetry_off);
+    let telemetry_directive = crate::telemetry::choice_directive(&env, telemetry_off, &provider.verb_cmd("telemetry"));
     let cmd = &provider.command;
 
     if !ctx.has_product {
@@ -2100,17 +2102,28 @@ mod seeded_world_tests {
 mod update_check_tests {
     use super::*;
 
+    // Catches an opt-out in the workspace `--target` selects still asking, or
+    // still checking for updates.
     #[test]
-    fn telemetry_off_skips_the_update_check() {
-        let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id())).to_string_lossy().into_owned();
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(jsp::join(&[&tmp, "SKILL.md"]), "---\nversion: 1.0.0\n---\n").unwrap();
-        let cache = jsp::join(&[&tmp, "update-check.json"]);
+    fn telemetry_off_skips_the_update_check_and_the_ask() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::create_dir_all(tmp.join("apps/web/.impeccable")).unwrap();
+        std::fs::write(tmp.join("SKILL.md"), "---\nversion: 1.0.0\n---\n").unwrap();
+        let cache = tmp.join("update-check.json").to_string_lossy().into_owned();
         std::fs::write(&cache, format!(r#"{{"lastCheck":{},"latestVersion":"99.0.0"}}"#, now_ms() as i64)).unwrap();
-        let env = |off: &str| Env::from([("HOME".to_string(), tmp.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), tmp.clone()), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("DO_NOT_TRACK".to_string(), off.to_string())]);
-        let directive = |off: &str| compute_update_directive(&tmp, &env(off), &crate::provider::detect(&env(off), &tmp));
-        assert_eq!(directive("1"), None);
-        assert!(directive("0").is_some_and(|d| d.starts_with("UPDATE_AVAILABLE")));
+        let boot = || {
+            let t = tmp.to_string_lossy().into_owned();
+            let env = Env::from([("HOME".to_string(), t.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), t), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("IMPECCABLE_NO_STALENESS_CHECK".to_string(), "1".to_string())]);
+            let (mut io, cap) = impeccable_common::Io::captured("", tmp.clone(), env);
+            assert_eq!(super::run(&["--target".to_string(), "apps/web".to_string()], &mut io), 0);
+            let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+            (out.contains("UPDATE_AVAILABLE"), out.contains("TELEMETRY_CHOICE"))
+        };
+        assert_eq!(boot(), (true, true));
+        std::fs::write(tmp.join("apps/web/.impeccable/config.json"), r#"{"telemetry": false}"#).unwrap();
+        assert_eq!(boot(), (false, false));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

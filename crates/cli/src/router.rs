@@ -186,6 +186,9 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             if code == 0 && rest.first().map(String::as_str) == Some("install") {
                 register_browser_host(&rest[1..], io);
             }
+            if code == 0 && matches!(rest.first().map(String::as_str), Some("install" | "update")) {
+                crate::install_sign_in::telemetry_notice(&rest[1..], io);
+            }
             code
         }
         "loop" => crate::loop_install::run(rest, io),

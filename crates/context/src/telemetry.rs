@@ -120,10 +120,11 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
     opt_out_reason(env, cwd).is_some()
 }
 
-/// Whether this machine holds a telemetry decision: any opt-out, or a
-/// `telemetry` choice in the user config (`impeccable telemetry on|off`).
-pub fn choice_recorded(env: &Env, cwd: &str) -> bool {
-    config_choice(&user_config_path(env)).is_some() || telemetry_disabled(env, cwd)
+/// Whether this machine holds a telemetry decision: an opt-out (`off`, from
+/// `telemetry_disabled` for the roots in play), or a `telemetry` choice in the
+/// user config (`impeccable telemetry on|off`).
+pub fn choice_recorded(env: &Env, off: bool) -> bool {
+    off || config_choice(&user_config_path(env)).is_some()
 }
 
 /// The short notice an install or update shows an undecided user.
@@ -134,8 +135,8 @@ pub fn notice() -> String {
 /// `context`'s ask for an undecided user, `verb` being how this install runs
 /// `impeccable telemetry`. None in CI (`1`, `true`, `yes` or `on`, as install
 /// reads it) or once a choice is recorded.
-pub fn choice_directive(env: &Env, cwd: &str, verb: &str) -> Option<String> {
-    if crate::util::truthy_env(env, "CI") || choice_recorded(env, cwd) {
+pub fn choice_directive(env: &Env, off: bool, verb: &str) -> Option<String> {
+    if crate::util::truthy_env(env, "CI") || choice_recorded(env, off) {
         return None;
     }
     Some(format!("TELEMETRY_CHOICE: No telemetry choice is recorded on this machine. In your first reply, tell the user once, in a sentence or two, what this notice says, thanking them and keeping the link: \"{}\" Ask whether to keep it on. Continue the current task without waiting. When the user answers, run `{verb} on` or `{verb} off` and tell the user what it prints. Record only an answer the user gives.", notice().trim_end().replace('\n', " ")))
@@ -1229,7 +1230,7 @@ mod tests {
         let recorded = |pairs: &[(&str, &str)]| {
             let mut e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
             e.extend(env(pairs));
-            choice_recorded(&e, &cwd)
+            choice_recorded(&e, telemetry_disabled(&e, &cwd))
         };
         assert!(!recorded(&[]), "no choice before the verb runs");
         assert!(recorded(&[("DO_NOT_TRACK", "1")]), "an env opt-out is a choice");
