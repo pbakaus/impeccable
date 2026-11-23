@@ -426,6 +426,22 @@ test('the side panel’s steps list keeps its rows as a step comes, and the curr
     [before.length + 1, true, ['7']]);
 });
 
+test('the side panel’s Sees tips give the figure for the picked persona’s age band, and name them only when the card gives an age', async () => {
+  const personas = [{ name: 'Zoe', role: 'A 24-year-old design student', slug: 'zoe' }, { name: 'Ben', role: 'A 70-year-old retired builder', slug: 'ben' }, { name: 'Ada', role: 'A mum with a 3-year-old', slug: 'ada' }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas });
+  const facts = () => ['normal', 'older'].map((sees) => h.app.querySelector(`[data-act="sees-${sees}"]`).attributes['data-fact']);
+  const seen = [];
+  for (const [i, who] of personas.entries()) {
+    await h.press(`pick-${i}`);
+    seen.push(facts().map((fact) => [fact.match(/\d+ in \d+/)[0], fact.includes(who.name)]));
+  }
+  assert.deepEqual(seen, [
+    [['5 in 10', true], ['1 in 100', true]],
+    [['8 in 10', true], ['4 in 10', true]],
+    [['6 in 10', false], ['2 in 10', false]],
+  ]);
+});
+
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async (t) => {
   // Alex, their own, has no face yet: the panel's waits for it run on these timers.
   t.mock.timers.enable({ apis: ['setTimeout'] });

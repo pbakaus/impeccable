@@ -51,10 +51,20 @@ export const COPY = {
     /** The width a journey runs at: the group, and each choice. */
     width: 'Screen',
     widths: { desktop: 'Desktop', tablet: 'Tablet', phone: 'Phone' },
-    /** How the persona sees the page on this journey (../sight.js): the group, each choice, and what it means (its hover label). */
+    /** How the persona sees the page on this journey (../sight.js): the group, each choice, and what it means (the plan's line). */
     sight: 'Sees',
-    sights: { normal: 'Normal eyes', older: 'Older eyes', 'colour-blind': 'Colour-blind' },
-    sees: { normal: 'Normal eyes: the page as it is', older: 'Older eyes: blurry and low contrast', 'colour-blind': 'Colour-blind: red and green look alike' },
+    sights: { normal: 'Normal eyes', older: 'Blurry, low-contrast vision', 'colour-blind': 'Colour-blind' },
+    sees: { normal: 'Normal eyes: the page as it is', older: 'Blurry, low-contrast vision', 'colour-blind': 'Colour-blind: red and green look alike' },
+    /**
+     * Under each choice's name on hover: how common it is in the US (panel.js `COMMON`). `share` reads "About 5 in 10";
+     * `who` is the persona's name when its card gives an age, else nothing and the figure is a general one.
+     */
+    common: {
+      normal: (share, who) => `${share} ${who ? `people in the US ${who}’s age` : 'adults in the US'} wear glasses or contacts.`,
+      older: (share, who) => `${share} ${who ? `people in the US ${who}’s age` : 'people in the US over 40'} have a cataract.`,
+      'colour-blind': (men, women) => `About 1 in ${men} men and 1 in ${women} women are born with red-green colour blindness.`,
+    },
+    share: { about: (n, of) => `About ${n} in ${of}`, fewer: (of) => `Fewer than 1 in ${of}` },
   },
   /** Create a persona's intro: these lines play above the box, one after another, and it stays on the last. */
   intro: ['Imagine you’re the persona.', 'How do you use the web each day?', 'What drives you mad in apps?', 'And what makes you smile?', 'Now tell us who you are.'],
@@ -250,7 +260,7 @@ export const COPY = {
   tabGroup: (name) => `Impeccable · ${name}`,
 
   /** The corner of every picture on a journey whose persona sees differently (../sight.js). */
-  seenAs: { older: 'As seen with older eyes', 'colour-blind': 'As seen with colour blindness' },
+  seenAs: { older: 'As seen with blurry, low-contrast vision', 'colour-blind': 'As seen with colour blindness' },
 
   /** The first time the panel is signed in: two screens, then the home. `points`: [icon, the fact, the fine print]. */
   firstRun: {

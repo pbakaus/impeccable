@@ -50,6 +50,42 @@ const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
 const SIGHTS = { normal: 'eye', older: 'glasses', 'colour-blind': 'palette' };
 const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
+/**
+ * How common each sight is in the US, as a percentage by the youngest age of each band (the persona's band is the last
+ * it reaches), and for all ages (`all`). `below`: only a bound is known.
+ */
+const COMMON = {
+  // Adults who wear glasses or contact lenses, NHIS 2016-17, Table 24 of the CDC Vision & Eye Health Surveillance
+  // System's NHIS report (NORC, 2025): https://www.norc.org/content/dam/norc-org/pdfs/NHISDataSummaryReportVEHSS.pdf
+  normal: { bands: [[18, 46.2], [40, 70.3], [65, 84.9], [85, 85.8]], all: 64.0 },
+  // Cataract, 2010 US prevalence by age, NEI "Cataract Tables" (40 and over only; `all` is everyone over 40):
+  // https://web.archive.org/web/20210109114800/https://www.nei.nih.gov/learn-about-eye-health/resources-for-health-educators/eye-health-data-and-statistics/cataract-data-and-statistics/cataract-tables
+  // Under 40, NEI gives no figure. Only 0.5% of adults 18-39 have ever been told they had one (NHIS 2016-17, Table 20 of
+  // the NORC report above), so it stands as a bound.
+  older: { bands: [[18, { below: 1 }], [40, 2.51], [50, 5.22], [55, 9.14], [60, 15.45], [65, 24.73], [70, 36.49], [75, 49.49], [80, 68.3]], all: 17.11 },
+};
+/**
+ * Red-green colour blindness, as 1 in so many: inherited, so the same at every age; among people of Northern European
+ * ancestry. MedlinePlus Genetics (NIH): https://medlineplus.gov/genetics/condition/color-vision-deficiency/
+ */
+const COLOUR_BLIND = { men: 12, women: 200 };
+/** The persona's own age, where its card opens with it ("A 24-year-old …"); an adult's only, else null. */
+function ageOf(person) {
+  for (const text of [person?.role, person?.about]) {
+    const age = Number(/^\s*an?\s+(\d{1,3})[- ]year[- ]old\b/i.exec(text ?? '')?.[1]);
+    if (age >= 18 && age <= 120) return age;
+  }
+  return null;
+}
+/** How common `sees` is, in a line naming the persona where its age is known. */
+function common(sees, person) {
+  if (sees === 'colour-blind') return COPY.home.common[sees](COLOUR_BLIND.men, COLOUR_BLIND.women);
+  const age = ageOf(person);
+  const { bands, all } = COMMON[sees];
+  const share = age === null ? all : bands.findLast(([from]) => age >= from)[1];
+  const words = share.below ? COPY.home.share.fewer(100 / share.below) : share >= 10 ? COPY.home.share.about(Math.round(share / 10), 10) : COPY.home.share.about(1, Math.round(100 / share));
+  return COPY.home.common[sees](words, age === null ? null : person.name);
+}
 /** The screen a persona's card names (`device`), else the width the person last picked (`ownWidth`). */
 const SCREEN_OF = { mobile: 'phone', tablet: 'tablet' };
 let ownWidth = 'desktop';
@@ -670,10 +706,11 @@ function widths() {
   }, icon(width))));
 }
 
-/** Normal, Older eyes or Colour-blind: how the persona sees the page on this journey alone. */
+/** Normal, blurry and low contrast, or colour-blind: how the persona sees the page on this journey alone; on hover, how common it is. */
 function sights() {
+  const facts = Object.fromEntries(Object.keys(SIGHTS).map((sees) => [sees, common(sees, picked())]));
   return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
-    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sees[sees], 'aria-label': COPY.home.sights[sees],
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sights[sees], 'data-fact': facts[sees], 'aria-label': COPY.home.sights[sees], 'aria-description': facts[sees],
     onclick: () => { pre.sees = sees; render(); },
   }, icon(look))));
 }

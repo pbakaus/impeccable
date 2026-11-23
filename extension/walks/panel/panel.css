@@ -173,7 +173,12 @@ b { font-weight: 500; }
  */
 .tabs button::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
   white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
-.tabs .sights button::after { left: auto; right: 0; }
+/*
+ * Sees' tip is two lines: the name, darker, then how common it is (`data-fact`), wrapping within the panel. One box, so
+ * the name sits on the fact however many lines it takes; the first line takes the ink colour through the clipped background.
+ */
+.tabs .sights button::after { left: auto; right: 0; content: attr(data-tip) "\A" attr(data-fact); width: max-content; max-width: calc(100vw - 40px); white-space: pre-line;
+  color: transparent; background: linear-gradient(var(--ink) 0 1.4em, var(--muted) 1.4em); -webkit-background-clip: text; background-clip: text; }
 .tabs button:hover::after, .tabs button:focus-visible::after { opacity: 1; }
 .field .row + .row { margin-top: 10px; }
 .choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
