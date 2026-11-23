@@ -6,6 +6,11 @@
 # bare LF.
 *.cmd text eol=crlf
 
+# The sh launcher and its provider copies, like every sh script, fail on the
+# `\r` that a `core.autocrlf=true` checkout would add (#1462).
+**/scripts/impeccable text eol=lf
+*.sh text eol=lf
+
 # The oracle replays goldens recorded from a POSIX checkout, and a finding's
 # snippet carries the fixture's own bytes, so these files have to arrive with
 # LF on every platform. `-text` disables end-of-line conversion outright, which

@@ -388,6 +388,11 @@ test('cmd launcher is checked out with CRLF line endings', () => {
   assert.equal(withoutCrlf.includes(10), false, 'cmd.exe batch labels require CRLF line endings');
 });
 
+test('sh launcher is checked out with LF line endings', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'skill/scripts/impeccable'));
+  assert.equal(source.includes(13), false, 'sh fails on a CR in the launcher (#1462)');
+});
+
 test('cmd launcher calls PATH candidates so a batch shim returns to it', () => {
   // Without `call`, cmd.exe hands control to a .cmd candidate and never comes
   // back, so the probe and the verb it was meant to run are lost (#1240).
