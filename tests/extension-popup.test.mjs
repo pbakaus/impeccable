@@ -843,7 +843,7 @@ for (const [label, through] of [['seen to the end', ['intro-next', 'intro-next',
   });
 }
 
-test('the side panel’s first run shows once: Before you start (with the privacy policy), then the tab group, then the home, and the next panel opens home', async () => {
+test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, firstRunSeen: false, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
   const seen = [h.body.dataset.screen];
   assert.deepEqual(h.app.querySelectorAll('a').map((a) => [a.attributes.href, a.attributes.target]), [['https://impeccable.style/privacy', '_blank']], 'the privacy policy opens in a new tab');
