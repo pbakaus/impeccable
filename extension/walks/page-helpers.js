@@ -1876,7 +1876,10 @@ function skimView(mode, target) {
   if (mode === "off")
     return null;
   const read = w.__impeccableRead ??= new WeakSet;
-  const CRISP = "a,button,h1,h2,h3,h4,h5,h6,[role=heading],[role=button],[role=link],strong,b,label,summary,legend,caption,th,input,select,textarea,option";
+  const CRISP = "a,button,h1,h2,h3,h4,h5,h6,[role=heading],[role=button],[role=link],strong,b,label,summary,legend,caption,th";
+  const typed = ["checkbox", "radio", "button", "submit", "hidden", "file", "range", "color", "image", "reset", "date", "datetime-local", "month", "time", "week"].map((t) => `[type="${t}" i]`).join(", ");
+  const named = ["name", "id", "placeholder", "aria-label"].flatMap((a) => ["passw", "pwd"].map((x) => `[${a}*="${x}" i]`)).join(", ");
+  const SKIP = `input, textarea, select, option, [contenteditable=""], [contenteditable=true], [contenteditable=plaintext-only], [role=textbox], [role=searchbox], [role=combobox], [role=spinbutton], [role=slider], [role=listbox], input[type="password" i], [data-impeccable-secret-field], [data-impeccable-secret-maybe], input:not(${typed}):is(${named}), [autocomplete*="password" i], [autocomplete*="one-time-code" i], [autocomplete*="cc-" i]`;
   const styles = new Map;
   const style = (el) => {
     let s = styles.get(el);
@@ -1891,15 +1894,18 @@ function skimView(mode, target) {
     return null;
   };
   const blocks = new Map;
+  const runs = [];
   const range = d.createRange();
   const walker = d.createTreeWalker(d.body, 4);
   for (let n = walker.nextNode();n; n = walker.nextNode()) {
     const parent = n.parentElement;
-    if (!parent || !/\S/.test(n.data) || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName) || parent.closest(`#${HOST}`) || style(parent).visibility === "hidden")
+    if (!parent || !/\S/.test(n.data) || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName) || parent.closest(`#${HOST}`) || parent.isContentEditable || parent.closest(SKIP) || style(parent).visibility === "hidden")
       continue;
     const block = blockOf(parent);
     if (!block)
       continue;
+    if (mode === "read")
+      runs.push([parent, n.data, block]);
     const crispHere = Boolean(parent.closest(CRISP)) || Number(style(parent).fontWeight) >= 600;
     const size = parseFloat(style(parent).fontSize) || 16;
     const words = blocks.get(block) ?? [];
@@ -1918,10 +1924,25 @@ function skimView(mode, target) {
     const want = (target ?? "").toLowerCase().match(/[\p{L}\d£$\u20AC.,%]{3,}/gu) ?? [];
     if (!want.length)
       return null;
+    const texts = new Map;
+    for (const [at, data, block] of runs) {
+      for (let e = at;e; e = e.parentElement) {
+        if (!blocks.has(e))
+          continue;
+        const t = texts.get(e);
+        if (!t)
+          texts.set(e, { text: data, last: block });
+        else {
+          t.text += (t.last === block ? "" : " ") + data;
+          t.last = block;
+        }
+      }
+    }
+    const textOf = (el) => texts.get(el)?.text ?? "";
     let best = null;
     const list = [...blocks.keys()];
     for (const [i, el] of list.entries()) {
-      const text = (el.textContent ?? "").toLowerCase();
+      const text = textOf(el).toLowerCase();
       const score = want.filter((t) => text.includes(t)).length / want.length;
       const under = el.closest("h1,h2,h3,h4,h5,h6,[role=heading]") ? list.slice(i + 1).find((b) => !b.closest("h1,h2,h3,h4,h5,h6,[role=heading]")) : el;
       const r = el.getBoundingClientRect(), seen = r.bottom > 0 && r.top < w.innerHeight;
@@ -1934,7 +1955,7 @@ function skimView(mode, target) {
     const r = best.el.getBoundingClientRect();
     if (r.top < 0 || r.bottom > w.innerHeight)
       best.el.scrollIntoView({ block: r.height > w.innerHeight ? "start" : "center", behavior: "instant" });
-    return (best.el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    return textOf(best.el).replace(/\s+/g, " ").trim().slice(0, 80);
   }
   const kept = [], hidden = [], boxes = [];
   let keptWords = 0, hiddenWords = 0;
@@ -2235,4 +2256,4 @@ export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldR
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '9c2e340a95c50ff2';
+export const HASH = '2b56decfea1ddfd2';
