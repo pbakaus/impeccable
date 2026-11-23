@@ -118,12 +118,11 @@ local_id="$IMPECCABLE_HOME/health/repos/$(printf '%s' "$(cd "$R2" && pwd -P)" | 
 if [ $health = 1 ] && [ -f "$local_id" ]; then
   carry="carry-$(date -u +%Y%m%d%H%M%S)-$$"
   git -C "$R2" remote add origin "https://github.com/impeccable-e2e/$carry"
-  # --quiet still uploads, and leaves the one-time notice for step 3's check.
-  (cd "$R2" && "$BIN" detect --quiet .) > "$H/carry.out" 2> "$H/carry.err"; rc=$?
+  (cd "$R2" && "$BIN" detect .) > "$H/carry.out" 2> "$H/carry.err"; rc=$?
   check "carry: the pushed repository's scan runs" '[ $rc = 0 ] || [ $rc = 2 ]'
   check "carry: the service answered the scan naming its local key (saved id settled)" '[ ! -e "$local_id" ]'
   info "carry: repository label $carry"
-  [ ! -e "$local_id" ] || info "carry: detect said: $(grep -E '^(Saved|Not saved|Design health|Foundations)' "$H/carry.err" | tr '\n' ' ' | cut -c1-300)"
+  while IFS= read -r line; do info "carry stderr: $line"; done < <(grep -E "^(Saved|Not saved|Design health|Foundations|This scan|Impeccable|Couldn)" "$H/carry.err" | cut -c1-200)
 elif [ $health = 1 ]; then
   fail "carry: login's scan left a local id for the repository with no remote"
 fi
@@ -164,7 +163,8 @@ fi
 # The scan's notices (no secrets: product lines only), so a failure shows its cause.
 while IFS= read -r line; do info "detect stderr: $line"; done < <(grep -E "^(Design health|Pro rules)" "$H/detect.err" | cut -c1-200)
 if [ $health = 1 ]; then
-  check "health: the scan's counts were saved (one-time notice)" 'grep -q "^Saved this scan.s counts to " "$H/detect.err"'
+  # The notice is once per sign-in: step 1b's scan may have shown it first.
+  check "health: the scan's counts were saved (one-time notice)" 'cat "$H/detect.err" "$H/carry.err" 2>/dev/null | grep -q "^Saved this scan.s counts to "'
   "$BIN" health status > "$H/health.out" 2>&1
   info "health status: $(head -1 "$H/health.out" | cut -c1-200)"
   check "health: status says on" 'grep -q "^Design health: on" "$H/health.out"'
