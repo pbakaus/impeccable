@@ -3514,7 +3514,9 @@ its usage and exits 0; otherwise it serves until stdin closes and exits 0.
   relay's life, so only one relay runs per user). One agent drives at a time: a probe
   claims nothing, the first call claims the browser, and when that agent's
   connection ends the extension gets `{"type":"agent-gone"}` before any other
-  agent can claim. The relay numbers calls itself, so an answer reaches only
+  agent can claim. An agent's `impeccable mcp` closes its connection after a
+  `browser_end` the extension answered, so an ended session frees the browser
+  while that agent's process lives on (REN-2466). The relay numbers calls itself, so an answer reaches only
   the agent that asked, and is dropped once that agent has gone. When the
   account service can't list its tools, `tools/list` still answers with the
   browser tools. The relay ends,
