@@ -514,6 +514,22 @@ test('the persona intro carries on through a redraw and starts over when Create 
   assert.equal(lastFace(), start);
 });
 
+// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where motion is reduced.
+for (const reduced of [false, true]) {
+  test(`Create a persona's box waits out the intro${reduced ? ', except with reduced motion' : ''}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    globalThis.matchMedia = (query) => ({ matches: reduced && query.includes('reduce') });
+    t.after(() => { delete globalThis.matchMedia; });
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+    const held = () => 'inert' in h.app.querySelector('.box').attributes;
+    await h.press('make-persona');
+    t.mock.timers.tick(15000);
+    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, !reduced]);
+    t.mock.timers.tick(5000);
+    assert.equal(held(), false, 'the intro over, the box is within reach');
+  });
+}
+
 // Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
 test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

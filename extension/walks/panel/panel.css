@@ -382,6 +382,9 @@ b { font-weight: 500; }
 @keyframes intro-settle { from { opacity: 0; transform: translateY(.2em); } }
 @keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes intro-in { 0% { opacity: 0; } 15% { opacity: 1; } }
+/* The box under the intro keeps its place, unseen, and fades in once the last line has settled (its delay is set inline). */
+.box.waits { animation: box-in 280ms var(--ease) both; }
+@keyframes box-in { from { opacity: 0; } }
 
 /* ---------- Make a persona: its device and disability above the box, every choice in sight ---------- */
 .traits-pick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
