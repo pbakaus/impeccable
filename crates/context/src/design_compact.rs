@@ -98,8 +98,25 @@ pub fn propose(design: &str, dir: &std::path::Path) -> String {
 
 /// A DESIGN.md longer than the map `context` carries in its place (doctor only): what compacting it would save, and how,
 /// with the person's consent.
-pub fn check_sprawl(design: Option<&str>, design_path: Option<&str>) -> Vec<crate::staleness::Finding> {
+pub fn check_sprawl(design: Option<&str>, design_path: Option<&str>, cwd: &str) -> Vec<crate::staleness::Finding> {
     let (Some(design), Some(rel)) = (design, design_path) else { return vec![] };
+    // Compaction preserves the token frontmatter, which may exceed the map budget on its own.
+    // Check the archive beside the selected DESIGN.md, not beside the caller's working directory.
+    if split_frontmatter(design).1.lines().any(|line| line.trim() == design_map::MAP_MARKER) {
+        let path = jsp::resolve(cwd, &[rel]);
+        let archive = std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new(cwd)).join(ARCHIVE);
+        if safe_read(&archive.to_string_lossy()).is_some() {
+            return vec![];
+        }
+        return vec![crate::staleness::finding(
+            "design-archive-missing",
+            "DESIGN.md",
+            Some(rel.to_string()),
+            "mention",
+            format!("{rel} is a compact map, but its full document at {ARCHIVE} beside it could not be read."),
+            format!("Restore {ARCHIVE} beside {rel} from the original design document; do not compact the map again."),
+        )];
+    }
     if design.trim().len() <= MAP_BUDGET {
         return vec![];
     }
@@ -224,6 +241,15 @@ mod tests {
         let parse = |t: &str| crate::design_parser::parse_design_md(t).frontmatter;
         assert_eq!(parse(&out), parse(design));
         assert!(out.len() < design.len(), "{} of {} bytes", out.len(), design.len());
+    }
+
+    #[test]
+    fn a_marker_in_frontmatter_does_not_hide_an_uncompacted_document() {
+        let design = format!("---\nnote: |\n  {}\n---\n\n# Design\n{}", design_map::MAP_MARKER, "Long history. ".repeat(200));
+        let findings = check_sprawl(Some(&design), Some("DESIGN.md"), ".");
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].id, "design-md-sprawl");
+        assert!(check_sprawl(Some("# Short"), Some("DESIGN.md"), ".").is_empty());
     }
 
     #[test]
