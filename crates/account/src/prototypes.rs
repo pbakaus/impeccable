@@ -64,13 +64,18 @@ fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u6
         Err(stop) => return stopped(stop),
     };
     let mut body = body(session_id, root, target, variants, accepted_at)?;
-    if let Some((key, _)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
-        body["repoKey"] = key.into();
-    }
+    let was = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env).and_then(|repo| {
+        body["repoKey"] = repo.key.into();
+        crate::health::Was::put(repo.was.as_ref(), &mut body);
+        repo.was
+    });
     let answer = match send(io, started, &signed_in, "/cli/v1/prototypes", body, quiet) {
         Ok((answer, _)) => answer,
         Err(stop) => return stopped(stop),
     };
+    if answer.is_ok() {
+        crate::health::Was::settled(was.as_ref());
+    }
     Some(match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             crate::receipt::saved(io, crate::receipt::landed(&v, crate::receipt::page(&signed_in.0, "critiques", None)), quiet);

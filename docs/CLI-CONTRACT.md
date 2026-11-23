@@ -2907,6 +2907,19 @@ The v1 body contains only `version`, `scanId`, `repoKey`, `scannedAt`,
 `productType` and `items`, plus an optional `label`: the repo's name by design
 health's label recipe, sent only when the remote supplies a usable one. Scan
 identity, time, repo key and label match design health.
+
+**A repository that gains an origin (REN-2047).** A repository with no
+`origin` is keyed by SHA-256 of a random id saved under
+`$IMPECCABLE_HOME/health/repos/<sha256 of its canonical top>`; with one, by its
+normalized remote. When the remote resolves and that saved id is still there,
+every upload that carries `repoKey` (the design health scan, foundations,
+DESIGN.md, critiques and prototypes) also sends optional `was`: the 64-hex
+lowercase key the saved id gave it, so the service can move the person's own
+stream to the new key. A pushed repository only reads the saved id, never
+creates one. The first upload carrying `was` that gets a 2xx removes the saved
+id, whether the service moved the stream or left it, so later uploads send no
+`was`. A failed upload keeps it for the next one.
+
 `productType` is `null`: the detector does not classify products. `items` maps
 only these 18 ids, the ones the service accepts, to `checked` or `failing`
 (`covered` is never sent yet); an item without evidence either way is left out.
@@ -3124,7 +3137,7 @@ If the bounded lock wait expires, the existing setting-save error uses the
 cause `another impeccable command is using it; try again`.
 
 `POST /cli/v1/design` sends only `{version:1, uploadId, repoKey, changedAt,
-text, sidecar, label?}`. Repo keying matches design health. Optional `label`
+text, sidecar, label?, place?, was?}`. Repo keying (and `was`) matches design health. Optional `label`
 uses the same repo-name recipe as design health, derived from the normalized
 origin remote, with no folder-name fallback. It is omitted when unavailable;
 backslashes are refused. `changedAt` is the observation time, so a previously

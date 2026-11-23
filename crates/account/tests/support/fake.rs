@@ -578,13 +578,14 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     ]
                     .into();
                     assert!(
-                        keys.is_superset(&required) && keys.len() <= required.len() + 2,
+                        keys.is_superset(&required) && keys.len() <= required.len() + 3,
                         "{keys:?}"
                     );
                     assert!(
-                        keys.iter().all(|k| required.contains(k) || ["label", "place"].contains(k)),
+                        keys.iter().all(|k| required.contains(k) || ["label", "place", "was"].contains(k)),
                         "{keys:?}"
                     );
+                    assert!(valid_was(&v), "{v}");
                     assert_eq!(v["version"], 1);
                     assert_eq!(v["scanId"].as_str().unwrap().len(), 36);
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
@@ -632,9 +633,11 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "text",
                         "sidecar",
                         "label",
-                        "place"
+                        "place",
+                        "was"
                     ]
                     .contains(&k.as_str())));
+                    assert!(valid_was(&v), "{v}");
                     assert_eq!(v["version"], 1);
                     assert_eq!(v["repoKey"].as_str().unwrap().len(), 64);
                     assert_eq!(v["uploadId"].as_str().unwrap().len(), 36);
@@ -684,7 +687,8 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                     // As the service parses it: these keys only, nothing of the variants.
                     let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
                     let o = v.as_object().unwrap();
-                    assert!(o.keys().all(|k| ["prototypeId", "target", "repoKey", "variants", "createdAt"].contains(&k.as_str())), "{v}");
+                    assert!(o.keys().all(|k| ["prototypeId", "target", "repoKey", "variants", "createdAt", "was"].contains(&k.as_str())), "{v}");
+                    assert!(valid_was(&v) && (v.get("was").is_none() || v.get("repoKey").is_some()), "{v}");
                     assert_eq!(v["prototypeId"].as_str().unwrap().split('-').map(str::len).collect::<Vec<_>>(), [8, 4, 4, 4, 12]);
                     assert!((1..=24).contains(&v["variants"].as_u64().unwrap()));
                     assert!(v["createdAt"].as_str().unwrap().ends_with('Z'));
@@ -712,6 +716,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "counts",
                         "body",
                         "kind",
+                        "was",
                     ];
                     assert!(v
                         .as_object()
@@ -1036,8 +1041,19 @@ fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
     if let Some(n) = body.get("pr") {
         if !n.as_u64().is_some_and(|n| n >= 1) || !keyed { return Err("pr"); }
     }
+    if !valid_was(body) || (body.get("was").is_some() && !keyed) {
+        return Err("was");
+    }
     parse_place(body.get("place"))?;
     Ok(())
+}
+
+/// pristine#8070 (REN-2047): `was` is optional, and when present it is the
+/// 64-hex lowercase key the repository had before it gained an origin.
+fn valid_was(body: &serde_json::Value) -> bool {
+    body.get("was").is_none_or(|w| {
+        w.as_str().is_some_and(|s| s.len() == 64 && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)))
+    })
 }
 
 /// The service's `parseScan` (pristine src/health/payload.ts, REN-1559 v1),
@@ -1070,9 +1086,13 @@ pub fn parse_scan(b: &serde_json::Value) -> Result<(), &'static str> {
         "truncated",
         "label",
         "place",
+        "was",
     ];
     if o.keys().any(|k| !KEYS.contains(&k.as_str())) {
         return Err("unknown field");
+    }
+    if !valid_was(b) {
+        return Err("was");
     }
     if b["version"] != 1 { return Err("version"); }
     if b["coverage"] != "full" { return Err("coverage"); }

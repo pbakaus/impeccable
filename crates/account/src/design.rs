@@ -114,6 +114,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         "text": text, "sidecar": sidecar,
     });
     crate::health::name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
+    Was::put(repo.was.as_ref(), &mut body);
     if serde_json::to_vec(&body).map_or(true, |b| b.len() > BODY_BYTES) {
         return;
     }
@@ -227,6 +228,9 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
         token,
         body,
     );
+    if answer.is_ok() {
+        Was::settled(repo.was.as_ref());
+    }
     let landed = match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
             crate::receipt::landed(&v, crate::receipt::page(&account, "design", None))
@@ -420,6 +424,7 @@ mod identity_tests {
                 stream: "11".repeat(32),
                 label: None,
                 place: None,
+                was: None,
             })
         });
         assert!(

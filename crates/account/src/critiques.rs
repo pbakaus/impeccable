@@ -358,10 +358,13 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
     };
     let mut top = None;
+    let mut was = None;
     if let Some(root) = root {
         if let Some(repo) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
             body["repoKey"] = repo.key.into();
             crate::health::name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
+            crate::health::Was::put(repo.was.as_ref(), &mut body);
+            was = repo.was;
             // Where it ran, so a critique of a pull request's checkout files under it (REN-2377).
             if let Some(sha) = repo.head_sha {
                 body["headSha"] = sha.into();
@@ -384,6 +387,9 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         Ok(sent) => sent,
         Err(stop) => return stopped(stop),
     };
+    if answer.is_ok() {
+        crate::health::Was::settled(was.as_ref());
+    }
     use crate::http::ApiError;
     match answer {
         Ok(v) if matches!(v["outcome"].as_str(), Some("recorded" | "repeat")) => {
