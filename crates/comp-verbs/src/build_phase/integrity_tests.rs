@@ -15,7 +15,7 @@ fn completion_is_scoped_and_detects_post_finish_edits() {
     assert_eq!(crate::completion::report(&ws.path, Some(&state), Some("other"))["canContinue"], false);
     for phase in PHASES { state["phases"][phase]["status"] = json!("closed"); }
     state["phase"] = json!("review");
-    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path, "").ok());
     save_state(&io, &state);
     let finish = ["finish", "--disposition", "ship"].map(String::from);
     assert_eq!(run(&finish, &mut io, &no_organic_scan), 0);
@@ -1698,7 +1698,7 @@ fn screenshot_policy_finish_binds_no_capture_manifest() {
     let mut io = ws.io();
     let mut state = json!({"phase":"review", "artifact":"index.html", "phases":{}});
     for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
-    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path));
+    state["responsiveInputSha256"] = json!(crate::completion::input_hash(&ws.path, "").ok());
     save_state(&io, &state);
     assert_eq!(run(&["finish", "--disposition", "ship"].map(String::from), &mut io, &no_organic_scan), 0);
     let state = load_state(&io).unwrap();
@@ -2073,4 +2073,54 @@ fn a_code_region_the_accepted_first_viewport_lacks_carries_to_desktop_width() {
     // Removed after the acceptance: it blocks again.
     let (removed, _) = run_reviewed_desktop(&ws, &without, Some(&current), 0.1);
     assert!(removed.reasons.iter().any(|r| r == "at desktop width, region headline is missing"), "{:?}", removed.reasons);
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unfingerprintable_project_names_the_problem_until_a_fingerprint_scope_is_set() {
+    let ws = menu_workspace();
+    ws.write("site/index.html", b"<main>Menu</main>");
+    ws.write("site/data.json", b"{\"items\":1}");
+    ws.write(".impeccable/review/desktop.png", &png_io::encode_png(&menu_page(40.0, 480, true), &[]).unwrap());
+    let mut state = json!({"comp":"comp.png","artifact":"site/index.html","phase":"responsive","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["responsive"] = json!({"status":"open","attempts":0,"notes":[]});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    std::fs::create_dir_all(ws.path.join("content")).unwrap();
+    std::os::unix::fs::symlink("../site/index.html", ws.path.join("content/link.html")).unwrap();
+    let (mut io, out) = captured(&ws);
+    let reason = "The user said: \"the comp does not need to match at desktop width\"";
+    let forced = ["advance", "--min", "0.1", "--force", "--reason", reason].map(String::from);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("symlink at content/link.html") && out_err(&out).contains("\"fingerprintScope\": \"<dir>\""), "{}", out_err(&out));
+    // A scope that does not hold the entry is refused.
+    ws.write(".impeccable/config.json", br#"{"fingerprintScope":"content"}"#);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("does not contain site/index.html"), "{}", out_err(&out));
+    ws.write(".impeccable/config.json", br#"{"fingerprintScope":"site"}"#);
+    assert_eq!(run(&forced, &mut io, &no_organic_scan), 0);
+    assert_eq!(load_state(&io).unwrap()["responsiveInputScope"], "site");
+    let ship = ["finish", "--disposition", "ship"].map(String::from);
+    assert_eq!(run(&ship, &mut io, &no_organic_scan), 0);
+    let state = load_state(&io).unwrap();
+    assert_eq!(state["finish"]["artifactInputsScope"], "site");
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "complete");
+    // Data the page reads is inside the scope, so an edit after ship voids it.
+    ws.write("site/data.json", b"{\"items\":2}");
+    assert_eq!(crate::completion::report(&ws.path, Some(&state), None)["status"], "changed-after-finish");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_ship_without_a_recorded_fingerprint_refuses_an_unreadable_tree() {
+    let ws = menu_workspace();
+    ws.write("index.html", b"<main>Menu</main>");
+    let mut state = json!({"comp":"comp.png","artifact":"index.html","phase":"review","phases":{}});
+    for phase in PHASES { state["phases"][phase] = json!({"status":"closed"}); }
+    state["phases"]["review"] = json!({"status":"open"});
+    ws.write(".impeccable/build/state.json", util::json_pretty(&state).as_bytes());
+    std::os::unix::fs::symlink("index.html", ws.path.join("link.html")).unwrap();
+    let (mut io, out) = captured(&ws);
+    assert_eq!(run(&["finish", "--disposition", "ship"].map(String::from), &mut io, &no_organic_scan), 2);
+    assert!(out_err(&out).contains("could not be fingerprinted: the project cannot be checked in full: it holds a symlink at link.html"), "{}", out_err(&out));
 }

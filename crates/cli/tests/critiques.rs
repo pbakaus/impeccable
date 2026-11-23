@@ -1198,3 +1198,36 @@ fn a_critique_attaches_frames_only_of_the_page_itself() {
         check_frames(mode);
     }
 }
+
+/// A critique of a checked-out pull request names its branch, commit and, when
+/// the agent gave one, the pull request, so it files under it (REN-2377).
+#[test]
+fn a_critique_names_the_branch_commit_and_pull_request_it_ran_on() {
+    let (fake, env) = setup("critique-pull");
+    let root = Path::new(&env["IMPECCABLE_HOME"]);
+    let git = |args: &[&str]| {
+        let out = Command::new("git").args(["-c", "user.name=t", "-c", "user.email=t@t"]).args(args).current_dir(root).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    git(&["init", "-q"]);
+    git(&["checkout", "-q", "-b", "ada/fix-nav"]);
+    git(&["commit", "-q", "--allow-empty", "-m", "nav"]);
+    let sha = git(&["rev-parse", "HEAD"]);
+    impeccable(&env, root, &["critiques", "on"]).output().unwrap();
+    let mut meta: serde_json::Value = serde_json::from_str(META).unwrap();
+    meta["pr"] = "#134".into();
+    let out = impeccable(&env, root, &["critique-storage", "write", "pricing", "report.md"])
+        .env("IMPECCABLE_CRITIQUE_META", meta.to_string()).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    // Detached, with no pull request named: the commit alone.
+    git(&["checkout", "-q", "--detach"]);
+    std::fs::write(root.join("report.md"), "# Report\nCrowded header, again.").unwrap();
+    assert!(write(&env, root).status.success());
+    let record = fake.record.lock().unwrap();
+    assert!(record.refused.is_empty(), "{:?}", record.refused);
+    let [first, second] = &record.critiques[..] else { panic!("{:?}", record.critiques) };
+    assert_eq!((first["headSha"].as_str(), first["branch"].as_str(), first["pr"].as_u64()), (Some(sha.as_str()), Some("ada/fix-nav"), Some(134)));
+    assert_eq!(second["headSha"].as_str(), Some(sha.as_str()));
+    assert!(second.get("branch").is_none() && second.get("pr").is_none(), "{second}");
+}

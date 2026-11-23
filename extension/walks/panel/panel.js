@@ -50,6 +50,42 @@ const WIDTHS = ['desktop', 'tablet', 'phone'];
 /** How the persona may see the page (../sight.js), each with its icon; a persona's card names its own (`sees`). */
 const SIGHTS = { normal: 'eye', older: 'glasses', 'colour-blind': 'palette' };
 const SEES_OF = { 'older-eyes': 'older', 'colour-blind': 'colour-blind' };
+/**
+ * How common each sight is in the US, as a percentage by the youngest age of each band (the persona's band is the last
+ * it reaches), and for all ages (`all`). `below`: only a bound is known.
+ */
+const COMMON = {
+  // Adults who wear glasses or contact lenses, NHIS 2016-17, Table 24 of the CDC Vision & Eye Health Surveillance
+  // System's NHIS report (NORC, 2025): https://www.norc.org/content/dam/norc-org/pdfs/NHISDataSummaryReportVEHSS.pdf
+  normal: { bands: [[18, 46.2], [40, 70.3], [65, 84.9], [85, 85.8]], all: 64.0 },
+  // Cataract, 2010 US prevalence by age, NEI "Cataract Tables" (40 and over only; `all` is everyone over 40):
+  // https://web.archive.org/web/20210109114800/https://www.nei.nih.gov/learn-about-eye-health/resources-for-health-educators/eye-health-data-and-statistics/cataract-data-and-statistics/cataract-tables
+  // Under 40, NEI gives no figure. Only 0.5% of adults 18-39 have ever been told they had one (NHIS 2016-17, Table 20 of
+  // the NORC report above), so it stands as a bound.
+  older: { bands: [[18, { below: 1 }], [40, 2.51], [50, 5.22], [55, 9.14], [60, 15.45], [65, 24.73], [70, 36.49], [75, 49.49], [80, 68.3]], all: 17.11 },
+};
+/**
+ * Red-green colour blindness, as 1 in so many: inherited, so the same at every age; among people of Northern European
+ * ancestry. MedlinePlus Genetics (NIH): https://medlineplus.gov/genetics/condition/color-vision-deficiency/
+ */
+const COLOUR_BLIND = { men: 12, women: 200 };
+/** The persona's own age, where its card opens with it ("A 24-year-old …"); an adult's only, else null. */
+function ageOf(person) {
+  for (const text of [person?.role, person?.about]) {
+    const age = Number(/^\s*an?\s+(\d{1,3})[- ]year[- ]old\b/i.exec(text ?? '')?.[1]);
+    if (age >= 18 && age <= 120) return age;
+  }
+  return null;
+}
+/** How common `sees` is, in a line naming the persona where its age is known. */
+function common(sees, person) {
+  if (sees === 'colour-blind') return COPY.home.common[sees](COLOUR_BLIND.men, COLOUR_BLIND.women);
+  const age = ageOf(person);
+  const { bands, all } = COMMON[sees];
+  const share = age === null ? all : bands.findLast(([from]) => age >= from)[1];
+  const words = share.below ? COPY.home.share.fewer(100 / share.below) : share >= 10 ? COPY.home.share.about(Math.round(share / 10), 10) : COPY.home.share.about(1, Math.round(100 / share));
+  return COPY.home.common[sees](words, age === null ? null : person.name);
+}
 /** The screen a persona's card names (`device`), else the width the person last picked (`ownWidth`). */
 const SCREEN_OF = { mobile: 'phone', tablet: 'tablet' };
 let ownWidth = 'desktop';
@@ -327,6 +363,7 @@ function waitForFaces(round = 0, run = (faceRun += 1)) {
       if (!card) continue;
       for (const [cls, text] of [['name', card.name], ['about', card.about || card.role]]) { const node = hero.querySelector(`.${cls}`); if (node && node.textContent !== text) node.textContent = text; }
     }
+    retip();
     waitForFaces(round + 1, run);
   }, FACE_WAITS[round]);
 }
@@ -462,15 +499,21 @@ function maker() {
   box.value = pre.describe;
   box.addEventListener('keydown', (event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void make(box); } });
   const create = el('button', { class: 'btn btn-gold', type: 'button', 'data-act': 'make', disabled: pre.making, text: COPY.make.action, onclick: () => { void make(box); } });
+  const intro = !made && !pre.making && !ownFull() ? introHero() : null;
   const hero = made ? el('div', { class: 'hero', 'data-slug': made.slug }, face(made, 112), el('span', { class: 'name', text: made.name }), el('p', { class: 'about', text: made.about || made.role }), traits())
     : pre.making ? el('div', { class: 'hero is-making', role: 'status', 'aria-label': COPY.make.making }, blank('skel'), el('span', { class: 'skel skel-name' }), el('span', { class: 'skel skel-line' }), el('span', { class: 'skel skel-line short' }))
-      : ownFull() ? el('div', { class: 'hero' }, blank()) : introHero();
+      : intro?.hero ?? el('div', { class: 'hero' }, blank());
+  // While the intro plays, the box is there but unseen and out of reach; it fades in as the last line settles.
+  const plays = intro && !still();
+  const wait = plays ? intro.left : 0;
+  clearTimeout(introWait);
+  introWait = wait > 0 ? setTimeout(revealBox, wait) : null;
   const parts = [
     el('div', { class: 'top' }, made || pre.making ? null : el('button', { class: 'btn btn-sec sm icon-only', type: 'button', 'data-act': 'back', title: COPY.top.back, 'aria-label': COPY.top.back, onclick: () => goHome() }, icon('back')),
       el('span', { class: 'grow' }),
       made || pre.making || !pre.apps?.length ? null : button('from-app', COPY.make.fromApp, 'sec sm', () => { Object.assign(pre, { modal: true, appsOpen: false, modalSite: siteOf(hereUrl) }); render(); app.querySelector('[data-act="apps"]')?.focus(); })),
     el('div', { class: 'middle' }, hero),
-    made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: 'box' },
+    made ? el('div', { class: 'box' }, button('confirm', COPY.make.confirm, 'gold full tall', confirmMade)) : el('div', { class: plays ? 'box waits' : 'box', inert: wait > 0, style: plays ? `animation-delay:${wait}ms` : undefined },
             // At the limit, picking an app's personas is all that's left here: the limit stands where the form was.
       ownFull() && !pre.making ? el('p', { class: 'err below', role: 'status', 'data-state': 'full', text: COPY.make.limit(ownMax) }) : [
         el('div', { class: 'traits-pick' }, el('p', { class: 'pick-h', id: 'device-h', text: COPY.make.device }), devices(), el('p', { class: 'pick-h', id: 'needs-h', text: COPY.make.disability }), needs()),
@@ -500,16 +543,31 @@ const due = (i) => i && LEAD + i * BEAT;
  */
 function introHero() {
   const at = Date.now() - (pre.shown ??= Date.now());
+  let last = 0;
   // Letters in words, so a narrow panel wraps a line between words.
   const lines = COPY.intro.map((text, i) => {
     let k = 0;
-    const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => el('span', { text: ch, style: i ? `animation-delay:${due(i) + 160 + (w + k++) * 16 - at}ms` : undefined })))]);
+    const words = text.split(' ').flatMap((word, w) => [w ? ' ' : null, el('span', {}, [...word].map((ch) => {
+      last = due(i) + 160 + (w + k++) * 16;
+      return el('span', { text: ch, style: i ? `animation-delay:${last - at}ms` : undefined });
+    }))]);
     return el('span', { style: `animation-delay:${due(i + 1) - at}ms` }, words);
   });
   // Four faces for COPY.intro's five lines: the fourth stays for the last two. panel.css's ring counts the same lines.
-  return el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
+  const hero = el('div', { class: 'hero intro', 'aria-hidden': 'true', style: `--beat:${BEAT}ms;--lead:${LEAD}ms;--since:${at}ms` },
     el('span', { class: 'intro-pics' }, [1, 2, 3, 4].map((n, i) => el('img', { class: 'intro-pic', src: `intro/intro-${n}.webp`, alt: '', style: `animation-delay:${due(i) - at}ms` })), ring()),
     el('span', { class: 'intro-line' }, lines));
+  // `left`: how long until the last line's last letter has settled (panel.css's intro-settle, 700ms).
+  return { hero, left: last + 700 - at };
+}
+
+/** The intro over, the box below it is drawn again within reach, and takes the focus the screen opened with. */
+let introWait = null;
+function revealBox() {
+  introWait = null;
+  if (screen() !== 'make') return;
+  render();
+  if (!document.activeElement || document.activeElement === document.body) app.querySelector('textarea')?.focus();
 }
 
 /** Round the intro's face: a faint track, and a gold arc on it that grows round from the top while each line holds. */
@@ -621,6 +679,8 @@ function home() {
 
 /** Reduced motion: the bars hold a still, gentle arch, and listening still shows. */
 const still = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+// Turned on or off while Create a persona's intro plays: the box under it follows at once (see maker).
+globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.addEventListener?.('change', () => { if (screen() === 'make') render(); });
 const STILL = Array.from({ length: BARS }, (_, i) => 0.12 + 0.3 * Math.sin((Math.PI * i) / (BARS - 1)));
 
 /** The mic: press to talk; while listening the same button, selected, stops it. */
@@ -670,12 +730,23 @@ function widths() {
   }, icon(width))));
 }
 
-/** Normal, Older eyes or Colour-blind: how the persona sees the page on this journey alone. */
+/** Normal, blurry and low contrast, or colour-blind: how the persona sees the page on this journey alone; on hover, how common it is. */
 function sights() {
+  const facts = Object.fromEntries(Object.keys(SIGHTS).map((sees) => [sees, common(sees, picked())]));
   return el('div', { class: 'widths sights', role: 'group', 'aria-label': COPY.home.sight }, Object.entries(SIGHTS).map(([sees, look]) => el('button', {
-    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'data-tip': COPY.home.sees[sees], 'aria-label': COPY.home.sights[sees],
+    type: 'button', 'data-act': `sees-${sees}`, 'aria-pressed': pre.sees === sees ? 'true' : 'false', 'aria-label': COPY.home.sights[sees], 'aria-description': facts[sees],
     onclick: () => { pre.sees = sees; render(); },
-  }, icon(look))));
+  }, icon(look), el('span', { class: 'tip', 'aria-hidden': 'true' }, el('span', { class: 'tip-h', text: COPY.home.sights[sees] }), el('span', { class: 'tip-fact', text: facts[sees] })))));
+}
+/** The Sees figures again, in place, for a card whose profile came after it was drawn (`waitForFaces`). */
+function retip() {
+  for (const sees of Object.keys(SIGHTS)) {
+    const button = app.querySelector(`[data-act="sees-${sees}"]`);
+    const fact = button?.querySelector('.tip-fact');
+    if (!fact) continue;
+    fact.textContent = common(sees, picked());
+    button.setAttribute('aria-description', fact.textContent);
+  }
 }
 
 /**
@@ -1179,9 +1250,31 @@ async function signOut() {
   render();
 }
 
+/**
+ * After Get Pro, the account is asked again every few seconds for ten minutes, until it has Pro or this screen goes:
+ * the checkout runs in a tab beside the panel, which need not lose or regain focus, and Pro lands a moment after paying.
+ * Only a clear answer is taken (Pro, or signed out): one with no word on Pro (the server out of reach) changes nothing.
+ */
+const PRO_EVERY = 5000;
+const settled = (answer) => answer?.pro === true || answer?.signedIn === false;
+let proUntil = 0;
+let proTimer = null;
+const proAgain = () => { proTimer = setTimeout(() => { if (screen() === 'not-pro' && Date.now() < proUntil) void knowAccount(settled).finally(proAgain); else proTimer = null; }, PRO_EVERY); };
+function awaitPro() {
+  proUntil = Date.now() + 10 * 60 * 1000;
+  if (!proTimer) proAgain();
+}
+/** Asked again on a look (the panel focused, another tab, the tab gone elsewhere): once in 2 s at most, and without Pro, a clear answer only. */
+let lookedAt = -Infinity;
+function relook() {
+  if (Date.now() - lookedAt < 2000) return;
+  lookedAt = Date.now();
+  void knowAccount(screen() === 'not-pro' ? settled : undefined);
+}
+
 /** Signed in without Impeccable Pro, by the server's word: Scan, then Get Pro and another account. */
 const notPro = () => [scanBox(), el('div', { class: 'foot' }, el('p', { class: 'task', text: COPY.notPro.line }),
-  button('get-pro', COPY.notPro.getPro, 'gold full', () => { void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
+  button('get-pro', COPY.notPro.getPro, 'gold full', () => { awaitPro(); void chrome.runtime.sendMessage({ account: 'get-pro' }).catch(() => undefined); }),
   button('another-account', COPY.notPro.other, 'sec full', () => { void signOut(); }))];
 
 /** How to start a walk with no account: the command, and one press to copy it. */
@@ -1206,7 +1299,8 @@ function beforeYouStart() {
   const words = COPY.firstRun.before;
   return [
     el('div', { class: 'fr-mid' }, el('h2', { class: 'hd', text: words.title }),
-      el('ul', { class: 'fr-list' }, words.points.map(([name, fact, more]) => el('li', { class: name === 'warn' ? 'warn' : '' }, icon(name), el('span', {}, el('b', { text: fact }), ' ', more))))),
+      el('ul', { class: 'fr-list' }, words.points.map(([name, fact, more, link]) => el('li', { class: name === 'warn' ? 'warn' : '' }, icon(name),
+        el('span', {}, el('b', { text: fact }), ' ', more, link ? [' ', el('a', { href: link[1], target: '_blank', rel: 'noreferrer', text: link[0] })] : null))))),
     foot(0, 'got-it', words.next, () => { pre.screen = 'tab-group'; render(); }),
   ];
 }
@@ -1247,6 +1341,8 @@ function render() {
   // The account popover belongs to the home, and signed out to that screen: another screen closes it.
   if (shown !== 'home' && shown !== 'loading' && shown !== 'signed-out') pre.menu = false;
   // The moment's time runs from when it is first drawn; a stand-in holds it.
+  // Back to no Pro (a Scan walk over) within Get Pro's ten minutes: asked again, as before.
+  if (shown === 'not-pro' && !proTimer && Date.now() < proUntil) proAgain();
   if (shown === 'connected' && !connectedFor && !stubbed) connectedFor = setTimeout(() => { pre.connected = false; connectedFor = null; render(); }, CONNECTED_MS);
   const focused = document.activeElement?.getAttribute?.('data-act');
   const body = document.body;
@@ -1286,9 +1382,12 @@ async function look() {
   hereUrl = tab?.url ?? '';
 }
 
-async function knowAccount() {
+/** `taken`: whether to take this answer; every answer, but for Get Pro's rechecks. */
+async function knowAccount(taken = () => true) {
   const answer = await chrome.runtime.sendMessage({ account: 'status' }).catch(() => null);
-  const was = account?.signedIn === true;
+  if (!taken(answer)) return;
+  // Pro come just now (Get Pro paid for) counts as just signed in: no personas were asked for without it.
+  const was = account?.signedIn === true && account.pro !== false;
   const before = screen();
   account = answer?.ok === true && answer.available === true ? answer : null;
   if (account?.signedIn === true && account.pro !== false && (!was || pre.personas === null)) void loadPersonas();
@@ -1363,15 +1462,16 @@ async function start() {
       clearTimeout(settling);
       settling = setTimeout(() => { if (siteOf(hereUrl) !== asked && screen() === 'home' && pre.personas !== undefined && account?.signedIn === true && account.pro !== false) void loadPersonas(); }, 500);
     };
-    chrome.tabs.onActivated.addListener(() => { void look().then(() => { moved(); render(); }); });
+    // Without Pro, back from another tab or the tab gone elsewhere (paid there, maybe): asked again.
+    chrome.tabs.onActivated.addListener(() => { if (screen() === 'not-pro') relook(); void look().then(() => { moved(); render(); }); });
     // Scan names the tab's site: drawn again only when the site changes, as a redraw moves its box.
-    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
+    chrome.tabs.onUpdated?.addListener((tabId, change) => { if (tabId === here && change.url) { if (screen() === 'not-pro') relook(); const site = hostOf(hereUrl) !== hostOf(change.url); hereUrl = change.url; moved(); if ((pre.screen === 'home' || (pre.screen === 'scan' && site)) && !isLive(view)) render(); } });
     const [{ view: kept }, { connected: just } = {}] = await Promise.all([chrome.storage.session.get('view'), Promise.resolve(chrome.storage.session.get('connected')).catch(() => ({})), look(), knowWalk()]);
     if (kept?.v === 1) view = kept;
     if (just === true) connect();
     if (!(await chrome.storage.local.get('firstRunSeen').catch(() => ({}))).firstRunSeen) pre.screen = 'before';
     // Asked again whenever the panel is looked at: a sign-in in the popup shows here.
-    if (BUILD.account) { void knowAccount(); addEventListener('focus', () => { void knowAccount(); }); }
+    if (BUILD.account) { void knowAccount(); addEventListener('focus', relook); }
     // Wakes a worker Chrome put to sleep, so a walk it lost is not shown as still going.
     act('hello');
   }

@@ -43,6 +43,17 @@ impl Report {
 }
 
 /// Uses only saved metadata. Missing heuristic detail stays null, never inferred from prose.
+/// The pull request the agent says it checked out (meta `pr`), when it gave one
+/// (REN-2377). A number or its digits; anything else is left out.
+fn pull_number(meta: &serde_json::Map<String, Value>) -> Option<u64> {
+    let n = match meta.get("pr")? {
+        Value::Number(n) => n.as_u64()?,
+        Value::String(s) => s.trim().trim_start_matches('#').parse().ok()?,
+        _ => return None,
+    };
+    (1..=i32::MAX as u64).contains(&n).then_some(n)
+}
+
 fn payload(snapshot: &SavedReport, report: Report) -> Option<Value> {
     let mut metadata = snapshot.meta.clone();
     impeccable_context::critique_storage::clean_report_metadata(&mut metadata);
@@ -348,10 +359,20 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
     };
     let mut top = None;
     if let Some(root) = root {
-        if let Some((repo_top, key, label, place)) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
-            top = Some(repo_top);
-            body["repoKey"] = key.into();
-            crate::health::name_body(&mut body, label.as_deref(), place.as_deref());
+        if let Some(repo) = crate::health::critique_repo_at(&root.to_string_lossy(), &io.env) {
+            body["repoKey"] = repo.key.into();
+            crate::health::name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
+            // Where it ran, so a critique of a pull request's checkout files under it (REN-2377).
+            if let Some(sha) = repo.head_sha {
+                body["headSha"] = sha.into();
+            }
+            if let Some(branch) = repo.branch {
+                body["branch"] = branch.into();
+            }
+            if let Some(n) = pull_number(&snapshot.meta) {
+                body["pr"] = n.into();
+            }
+            top = Some(repo.top);
         }
     }
     if serde_json::to_vec(&body).map_or(true, |bytes| bytes.len() > 80 * 1024) {
@@ -384,15 +405,15 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
                 } else {
                     crate::upload_notice::Kind::Critique
                 });
-            let at = v["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://"));
-            let mut line = match at {
+            let at = crate::receipt::landed(&v, crate::receipt::page(&signed_in.0, "critiques", None));
+            let mut line = match &at {
                 Some(url) => format!("Saved to Impeccable: {url}"),
-                None => crate::receipt::page(&signed_in.0, "critiques", None).map(|url| format!("Saved to Impeccable: {url}")).unwrap_or_else(|| "Saved to Impeccable.".to_string()),
+                None => "Saved to Impeccable.".to_string(),
             };
             if first {
                 line.push_str(&format!("\nEvery {} you save uploads; to stop: impeccable critiques off", report.noun()));
             }
-            if quiet { crate::receipt::saved(io, at.map(str::to_owned).or_else(|| crate::receipt::page(&signed_in.0, "critiques", None)), quiet); }
+            if quiet { crate::receipt::saved(io, at, quiet); }
             Some(line + "\n")
         }
         Ok(_) => not_saved("the account service gave an answer this version doesn't read; update with npx impeccable update"),

@@ -260,10 +260,13 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
                 foundation_body,
             );
         synced.foundations = foundation_result.is_ok();
-        if synced.foundations {
-            crate::receipt::saved(io, crate::receipt::page(&account, "foundations", repo.label.as_deref()), quiet);
-        } else if let Err(error) = foundation_result {
-            crate::receipt::failed_upload(io, "Foundations", &error, quiet);
+        match foundation_result {
+            Ok(answer) => crate::receipt::saved_first(
+                io,
+                crate::receipt::landed(&answer, crate::receipt::page(&account, "foundations", repo.label.as_deref())),
+                quiet,
+            ),
+            Err(error) => crate::receipt::failed_upload(io, "Foundations", &error, quiet),
         }
     } else {
         crate::stale_grant::emit(
@@ -286,9 +289,9 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
-        Ok(_) => {
+        Ok(answer) => {
             synced.health = true;
-            crate::receipt::saved(io, crate::receipt::page(&account, "design-health", None), quiet);
+            crate::receipt::saved(io, crate::receipt::landed(&answer, crate::receipt::page(&account, "design-health", None)), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
                 // In the person's words, not a feature's name: what was kept, where, and how to stop.
@@ -705,18 +708,42 @@ pub(crate) fn critique_repo(
     root: &str,
     env: &std::collections::HashMap<String, String>,
 ) -> Option<(String, Option<String>)> {
-    critique_repo_at(root, env).map(|(_, key, label, _)| (key, label))
+    critique_repo_at(root, env).map(|r| (r.key, r.label))
+}
+
+/// Where a critique ran, as its upload names it.
+pub(crate) struct CritiqueRepo {
+    pub top: String,
+    pub key: String,
+    pub label: Option<String>,
+    pub place: Option<String>,
+    /// `HEAD`'s commit, once the repository has one.
+    pub head_sha: Option<String>,
+    /// The checked-out branch's short name; `None` when HEAD is detached.
+    pub branch: Option<String>,
 }
 
 /// [`critique_repo`] plus the repository top it read, so a caller needs no second git lookup.
 pub(crate) fn critique_repo_at(
     root: &str,
     env: &std::collections::HashMap<String, String>,
-) -> Option<(String, String, Option<String>, Option<String>)> {
+) -> Option<CritiqueRepo> {
     let short = critique_git_deadline();
-    let top = git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?;
+    // One question answers the top, HEAD's commit and the branch. It fails
+    // only before the first commit, which then asks for the top alone; a git
+    // that ran out of time ends the lookup, as it always has.
+    let (top, head_sha, branch) = match git_run(root, &["rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD"], short).ok()? {
+        Some(out) => {
+            let mut lines = out.lines().map(str::trim);
+            let top = lines.next().filter(|t| !t.is_empty())?.to_string();
+            let sha = lines.next().filter(|s| matches!(s.len(), 40 | 64) && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
+            let branch = lines.next().filter(|b| *b != "HEAD" && !b.is_empty() && b.chars().count() <= 255 && !b.chars().any(char::is_control));
+            (top, sha.map(str::to_owned), branch.map(str::to_owned))
+        }
+        None => (git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?, None, None),
+    };
     let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
-    repo_identity(&top, remote, env).map(|(key, label, place)| (top, key, label, place))
+    repo_identity(&top, remote, env).map(|(key, label, place)| CritiqueRepo { top, key, label, place, head_sha, branch })
 }
 
 /// GitHub owner/name using the same bounded origin read and resolver as uploads.

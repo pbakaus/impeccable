@@ -703,6 +703,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "repoKey",
                         "label",
                         "place",
+                        "branch",
+                        "headSha",
+                        "pr",
                         "score",
                         "na",
                         "heuristics",
@@ -1019,6 +1022,19 @@ fn parse_critique_label(body: &serde_json::Value) -> Result<(), &'static str> {
     if parse_label(body.get("label"))?.is_some() && body.get("repoKey").is_none_or(|v| v.is_null())
     {
         return Err("label");
+    }
+    // Where a local critique ran (REN-2377): each refused by its own name, each only with repoKey.
+    let keyed = body.get("repoKey").is_some_and(|v| !v.is_null());
+    if let Some(b) = body.get("branch") {
+        let ok = b.as_str().is_some_and(|b| (1..=255).contains(&b.chars().count()) && !b.chars().any(char::is_control));
+        if !ok || !keyed { return Err("branch"); }
+    }
+    if let Some(h) = body.get("headSha") {
+        let ok = h.as_str().is_some_and(|h| matches!(h.len(), 40 | 64) && h.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
+        if !ok || !keyed { return Err("headSha"); }
+    }
+    if let Some(n) = body.get("pr") {
+        if !n.as_u64().is_some_and(|n| n >= 1) || !keyed { return Err("pr"); }
     }
     parse_place(body.get("place"))?;
     Ok(())

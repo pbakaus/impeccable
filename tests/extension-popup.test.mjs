@@ -329,8 +329,9 @@ async function sidePanel({ view, status, signIn = { ok: false }, firstRunSeen = 
   Object.assign(globalThis, {
     document, location: { search }, addEventListener() {},
     chrome: {
-      // A persona made is in the list from then on, as the worker's is; one removed is gone from it.
-      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); if (message.account === 'remove' && remove.ok) personas.splice(personas.findIndex((p) => p.mine && p.slug === message.slug) >>> 0, 1); return { status, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, remove, journeys }[message.account]; } },
+      // A persona made is in the list from then on, as the worker's is; one removed is gone from it. The account comes
+      // as a copy, as a message does: a test changes it for the next answer only.
+      runtime: { getManifest: () => ({ version: '9.9.9' }), async openOptionsPage() { opened.push('options'); }, async sendMessage(message) { sent.push(message); if (message.control) return control[message.control]; await hold[message.account]; if (message.account === 'create' && create.ok) personas.push(create.persona); if (message.account === 'remove' && remove.ok) personas.splice(personas.findIndex((p) => p.mine && p.slug === message.slug) >>> 0, 1); return { status: status && { ...status }, 'sign-in': signIn, personas: message.app ? { ok: true, personas: cast } : { ok: true, personas }, apps, plan, walk, create, remove, journeys }[message.account]; } },
       storage: { local: area(local), session: { ...area(session), onChanged: { addListener: (listener) => changed.push(listener) } } },
       action: { async openPopup() { opened.push('popup'); } },
       tabs: { async create(made) { opened.push(made); }, async query() { return [{ id: front, url: at }]; }, onActivated: { addListener: (listener) => activated.push(listener) }, onUpdated: { addListener: (listener) => updated.push(listener) } },
@@ -425,6 +426,39 @@ test('the side panel’s steps list keeps its rows as a step comes, and the curr
     [before.length + 1, true, ['7']]);
 });
 
+test('the side panel’s Sees tips give the figure for the picked persona’s age band, and name them only when the card gives an age', async () => {
+  const personas = [{ name: 'Zoe', role: 'A 24-year-old design student', slug: 'zoe' }, { name: 'Ben', role: 'A 70-year-old retired builder', slug: 'ben' }, { name: 'Ada', role: 'A mum with a 3-year-old', slug: 'ada' }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas });
+  const facts = () => ['normal', 'older'].map((sees) => h.app.querySelector(`[data-act="sees-${sees}"]`).attributes['aria-description']);
+  const seen = [];
+  for (const [i, who] of personas.entries()) {
+    await h.press(`pick-${i}`);
+    seen.push(facts().map((fact) => [fact.match(/\d+ in \d+/)[0], fact.includes(who.name)]));
+  }
+  assert.deepEqual(seen, [
+    [['5 in 10', true], ['1 in 100', true]],
+    [['8 in 10', true], ['4 in 10', true]],
+    [['6 in 10', false], ['2 in 10', false]],
+  ]);
+});
+
+// Catches the Sees figures staying general when a persona just made gets its age from the profile after reaching home.
+test('the side panel’s Sees figures follow a profile that arrives after the persona reaches home', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const personas = [{ name: 'Maya', role: '', slug: 'default:maya', default: true }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas, create: { ok: true, persona: { name: 'Nora', role: 'Night nurse', slug: 'nora', mine: true } } });
+  await h.press('make-persona');
+  h.app.querySelector('textarea').value = 'A night-shift nurse checking HR forms on break.';
+  await h.press('make');
+  await h.press('confirm');
+  const fact = () => h.app.querySelector('[data-act="sees-normal"]').attributes['aria-description'];
+  assert.equal(fact().includes('Nora'), false);
+  personas[1] = { ...personas[1], about: 'A 24-year-old nurse on nights.' };
+  t.mock.timers.tick(3000);
+  for (let n = 0; n < 5; n += 1) await tick();
+  assert.deepEqual([fact().match(/\d+ in \d+/)[0], fact().includes('Nora')], ['5 in 10', true]);
+});
+
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async (t) => {
   // Alex, their own, has no face yet: the panel's waits for it run on these timers.
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -497,21 +531,45 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
-// Catches the intro starting over on a redraw (a device pressed), or carrying on from last time when the screen opens again.
+// Catches the intro starting over on a redraw (the person's apps arriving), or carrying on from last time when the screen opens again.
 test('the persona intro carries on through a redraw and starts over when Create a persona opens again', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+  const hold = {};
+  let answer;
+  hold.apps = new Promise((resolve) => { answer = resolve; });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], apps: { ok: true, apps: [] }, hold });
   // How long until the last face comes in.
   const lastFace = () => parseInt(h.app.querySelectorAll('img.intro-pic').at(-1).attributes.style.split(':')[1], 10);
   await h.press('make-persona');
   const start = lastFace();
   t.mock.timers.tick(3000);
-  await h.press('device-phone');
+  answer();
+  for (let n = 0; n < 5; n += 1) await tick();
   assert.equal(lastFace(), start - 3000);
   await h.press('back');
   await h.press('make-persona');
   assert.equal(lastFace(), start);
 });
+
+// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where
+// motion is reduced, from the start or from partway through.
+for (const reduced of ['never', 'from the start', 'partway']) {
+  test(`Create a persona's box waits out the intro, reduced motion ${reduced}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const motion = { matches: reduced === 'from the start', changed: [] };
+    globalThis.matchMedia = () => ({ get matches() { return motion.matches; }, addEventListener: (_, listener) => motion.changed.push(listener) });
+    t.after(() => { delete globalThis.matchMedia; });
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+    const held = () => 'inert' in h.app.querySelector('.box').attributes;
+    await h.press('make-persona');
+    t.mock.timers.tick(3000);
+    if (reduced === 'partway') { assert.equal(held(), true); motion.matches = true; for (const listener of motion.changed) listener(); }
+    t.mock.timers.tick(12000);
+    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, reduced === 'never']);
+    t.mock.timers.tick(5000);
+    assert.equal(held(), false, 'the intro over, the box is within reach');
+  });
+}
 
 // Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
 test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {
@@ -706,15 +764,53 @@ for (const [label, status, offers] of [
   ['signed in to an account the server says has no Pro', { ok: true, available: true, signedIn: true, pro: false }, ['get-pro', 'another-account']],
 ]) {
   test(`with no walk running, the side panel offers ${offers.join(' and ')}: ${label}`, async (t) => {
-    t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
     const h = await sidePanel({ view: STUBS['signed-out'], status, signIn: { ...signedIn, ok: true }, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
     assert.deepEqual(h.acts(), offers);
     assert.equal(h.app.querySelector('section[id="panel-scan"]')?.hidden, false, 'Scan is on the screen');
     if (offers[0] === 'get-pro') {
       assert.deepEqual([h.body.dataset.screen, h.sent.some((m) => m.account === 'personas')], ['not-pro', false]);
+      const asked = (panel) => panel.sent.filter((m) => m.account === 'status').length;
+      const wait = async (ms) => { t.mock.timers.tick(ms); for (let n = 0; n < 5; n += 1) await tick(); };
+      const shown = asked(h);
+      await h.switchTo(2);
+      await h.navigate('https://impeccable.reviews/app/-/account?tab=plan');
+      assert.equal(asked(h), shown + 1, 'back from another tab, or the tab gone elsewhere: asked again, once in 2 s');
+      await wait(2000);
+      await h.navigate('https://impeccable.reviews/app/-/account');
+      assert.equal(asked(h), shown + 2);
       await h.press('get-pro');
       await h.press('another-account');
       assert.deepEqual([h.sent.filter((m) => m.account === 'get-pro' || m.account === 'sign-out').map((m) => m.account), h.body.dataset.screen], [['get-pro', 'sign-out'], 'signed-out']);
+      const out = asked(h);
+      await wait(60_000);
+      assert.equal(asked(h), out, 'signed out, the account is not asked again');
+      // Paid in the checkout's tab, the panel left open: within a moment it has Pro, with no reopening.
+      const paying = { ...status };
+      const p = await sidePanel({ view: STUBS['signed-out'], status: paying, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
+      await p.press('get-pro');
+      await p.press('get-pro');
+      const first = asked(p);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'not-pro'], 'asked again once, however often pressed');
+      // A Scan walk meanwhile: no asking while it runs, and again once it is over.
+      await p.show(STUBS.walking);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [1, 'walking']);
+      await p.show(undefined);
+      await wait(5000);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [2, 'not-pro']);
+      // The server out of reach for a moment (no word on Pro), asked on a timer or another tab: still no Pro, still asking.
+      delete paying.pro;
+      await wait(5000);
+      await p.switchTo(3);
+      assert.deepEqual([asked(p) - first, p.body.dataset.screen], [4, 'not-pro']);
+      paying.pro = true;
+      await wait(5000);
+      assert.deepEqual([p.body.dataset.screen, p.sent.some((m) => m.account === 'personas'), p.acts().includes('send')], ['home', true, true]);
+      const done = asked(p);
+      await wait(60_000);
+      assert.equal(asked(p), done, 'with Pro, no more asking');
       return;
     }
     if (!offers.includes('sign-in')) return;
@@ -857,6 +953,7 @@ for (const [label, move] of [
 test('the side panel’s first run shows once: Before you start, then the tab group, then the home, and the next panel opens home', async () => {
   const h = await sidePanel({ view: STUBS.idle, status: signedIn, firstRunSeen: false, personas: [{ name: 'Mira', role: '', slug: 'mira' }] });
   const seen = [h.body.dataset.screen];
+  assert.deepEqual(h.app.querySelectorAll('a').map((a) => [a.attributes.href, a.attributes.target]), [['https://impeccable.style/privacy', '_blank']], 'the privacy policy opens in a new tab');
   await h.press('got-it');
   seen.push(h.body.dataset.screen);
   await h.press('start-walking');
