@@ -138,13 +138,14 @@ function clickByText(wanted, opts) {
     return tag === "button" || el.getAttribute("role") === "button" || tag === "input" && /^(?:button|submit|reset)$/i.test(el.getAttribute("type") ?? "");
   };
   const entry = (e) => !!e && (e.tagName.toLowerCase() === "textarea" || e.tagName.toLowerCase() === "input" && !/^(?:checkbox|radio|button|submit|reset|image|file|range|color)$/i.test(e.getAttribute("type") ?? ""));
+  const ownerOf = (e) => !e ? null : e.form !== undefined ? e.form : e.closest?.("form") ?? null;
   const formOf = (f) => {
-    const form = f?.closest?.("form") ?? null;
+    const form = ownerOf(f);
     return form && !form.querySelector?.('main, header, [role="main"], [role="banner"]') ? form : null;
   };
   const asksSubmit = wantsButton || wantsIcon;
   const typing = asksSubmit && entry(doc.activeElement) ? formOf(doc.activeElement) : null;
-  const submitIn = (form, e) => !!form?.contains?.(e) && (e.tagName.toLowerCase() === "button" ? /^(?:submit)?$/i.test(e.getAttribute("type") ?? "") : e.tagName.toLowerCase() === "input" && /^(?:submit|image)$/i.test(e.getAttribute("type") ?? ""));
+  const submitIn = (form, e) => !!form && ownerOf(e) === form && (e.tagName.toLowerCase() === "button" ? /^(?:submit)?$/i.test(e.getAttribute("type") ?? "") : e.tagName.toLowerCase() === "input" && /^(?:submit|image)$/i.test(e.getAttribute("type") ?? ""));
   const sends = (e) => submitIn(typing, e);
   const nextAt = spoken.findIndex((x, i) => x === "next" && spoken[i + 1] === "to" || x === "beside");
   const after = nextAt === -1 ? [] : spoken.slice(nextAt + (spoken[nextAt] === "next" ? 2 : 1)), upTo = after.findIndex((x) => /^(?:in|inside|within|on|under|of|for)$/.test(x));
@@ -1837,6 +1838,148 @@ function agentSight() {
   return { items: kept.map(([, item]) => item), view: { width: Math.round(W), height: Math.round(H) } };
 }
 
+function armPress(aimed, at, controls) {
+  const w = globalThis;
+  const opaque = (e) => /^(?:iframe|frame|object|embed|canvas)$/i.test(e.tagName) || e.tagName.includes("-") || !!e.shadowRoot;
+  const pointer = (e) => !!e && w.getComputedStyle?.(e)?.cursor === "pointer";
+  const control = (p) => {
+    for (let e = w.document.elementFromPoint(p.x, p.y);e; e = e.parentElement) {
+      if (opaque(e))
+        return;
+      if (e.closest(controls) === e || typeof e.onclick === "function" || pointer(e) && !pointer(e.parentElement))
+        return e;
+    }
+    return null;
+  };
+  const there = control(at), meant = control(aimed);
+  if (!meant || there === undefined)
+    return null;
+  const press = { hit: false };
+  w.__impeccablePress = press;
+  w.addEventListener("click", (e) => {
+    press.hit = Boolean(there && there.contains(e.target));
+  }, { capture: true, once: true });
+  const name = there ? (there.getAttribute("aria-label") || there.innerText || there.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80) || null : null;
+  const href = there?.closest("a[href]")?.getAttribute("href");
+  return { same: there === meant, name, ...there ? { tag: there.tagName.toLowerCase() } : {}, ...href != null ? { href } : {}, ...there && there.closest(controls) !== there ? { informal: true } : {} };
+}
+
+function readPress() {
+  return globalThis.__impeccablePress ?? null;
+}
+
+function skimView(mode, target) {
+  const w = globalThis;
+  const d = w.document;
+  const HOST = "__impeccable-skim";
+  d.getElementById(HOST)?.remove?.();
+  if (mode === "off")
+    return null;
+  const read = w.__impeccableRead ??= new WeakSet;
+  const CRISP = "a,button,h1,h2,h3,h4,h5,h6,[role=heading],[role=button],[role=link],strong,b,label,summary,legend,caption,th,input,select,textarea,option";
+  const styles = new Map;
+  const style = (el) => {
+    let s = styles.get(el);
+    if (!s)
+      styles.set(el, s = w.getComputedStyle(el));
+    return s;
+  };
+  const blockOf = (el) => {
+    for (let e = el;e; e = e.parentElement)
+      if (!/^(inline|contents)/.test(style(e).display))
+        return e;
+    return null;
+  };
+  const blocks = new Map;
+  const range = d.createRange();
+  const walker = d.createTreeWalker(d.body, 4);
+  for (let n = walker.nextNode();n; n = walker.nextNode()) {
+    const parent = n.parentElement;
+    if (!parent || !/\S/.test(n.data) || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE)$/.test(parent.tagName) || parent.closest(`#${HOST}`) || style(parent).visibility === "hidden")
+      continue;
+    const block = blockOf(parent);
+    if (!block)
+      continue;
+    const crispHere = Boolean(parent.closest(CRISP)) || Number(style(parent).fontWeight) >= 600;
+    const size = parseFloat(style(parent).fontSize) || 16;
+    const words = blocks.get(block) ?? [];
+    for (const m of n.data.matchAll(/\S+/g)) {
+      range.setStart(n, m.index);
+      range.setEnd(n, m.index + m[0].length);
+      const r = range.getClientRects()[0];
+      if (!r || r.width === 0)
+        continue;
+      const rect = { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height };
+      words.push({ text: m[0], rect, crisp: crispHere || /\d/.test(m[0]), size });
+    }
+    blocks.set(block, words);
+  }
+  if (mode === "read") {
+    const want = (target ?? "").toLowerCase().match(/[\p{L}\d£$\u20AC.,%]{3,}/gu) ?? [];
+    if (!want.length)
+      return null;
+    let best = null;
+    const list = [...blocks.keys()];
+    for (const [i, el] of list.entries()) {
+      const text = (el.textContent ?? "").toLowerCase();
+      const score = want.filter((t) => text.includes(t)).length / want.length;
+      const under = el.closest("h1,h2,h3,h4,h5,h6,[role=heading]") ? list.slice(i + 1).find((b) => !b.closest("h1,h2,h3,h4,h5,h6,[role=heading]")) : el;
+      const r = el.getBoundingClientRect(), seen = r.bottom > 0 && r.top < w.innerHeight;
+      if (under && score >= 0.5 && (!best || score > best.score || score === best.score && seen && !best.seen))
+        best = { el: under, score, seen };
+    }
+    if (!best)
+      return null;
+    read.add(best.el);
+    const r = best.el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > w.innerHeight)
+      best.el.scrollIntoView({ block: r.height > w.innerHeight ? "start" : "center", behavior: "instant" });
+    return (best.el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  }
+  const kept = [], hidden = [], boxes = [];
+  let keptWords = 0, hiddenWords = 0;
+  for (const [block, words] of blocks) {
+    let readHere = false;
+    for (let e = block;e && !readHere; e = e.parentElement)
+      readHere = read.has(e);
+    const inView = words.filter((x) => x.rect.bottom > 0 && x.rect.top < w.innerHeight && x.rect.right > 0 && x.rect.left < w.innerWidth);
+    if (!inView.length)
+      continue;
+    const first = Math.min(...words.map((x) => x.rect.top)), line = Math.min(...words.map((x) => x.rect.height));
+    const blurred = [];
+    for (const x of inView) {
+      if (readHere || x.crisp || x.rect.top < first + line / 2) {
+        kept.push(x.text);
+        keptWords += 1;
+        continue;
+      }
+      blurred.push(x.text);
+      hiddenWords += 1;
+      const last = boxes[boxes.length - 1];
+      if (last && Math.abs(last.rect.top - x.rect.top) < 2 && Math.max(x.rect.left - last.rect.right, last.rect.left - x.rect.right) < x.size) {
+        const left = Math.min(last.rect.left, x.rect.left), right = Math.max(last.rect.right, x.rect.right);
+        last.rect = { ...last.rect, left, right, width: right - left };
+      } else
+        boxes.push({ rect: { ...x.rect }, size: x.size });
+    }
+    if (blurred.length)
+      hidden.push(blurred.join(" "));
+  }
+  if (mode === "on" && boxes.length) {
+    const host = d.createElement("div");
+    host.id = HOST;
+    Object.assign(host.style, { position: "fixed", inset: "0", pointerEvents: "none", zIndex: "2147483647" });
+    for (const { rect, size } of boxes) {
+      const b = d.createElement("div");
+      const pad = Math.round(size * 0.15);
+      Object.assign(b.style, { position: "absolute", left: `${rect.left - pad}px`, top: `${rect.top - pad / 2}px`, width: `${rect.width + 2 * pad}px`, height: `${rect.height + pad}px`, backdropFilter: `blur(${Math.max(2, size * 0.2).toFixed(1)}px)` });
+      host.appendChild(b);
+    }
+    d.documentElement.appendChild(host);
+  }
+  return { kept: kept.join(" "), hidden, keptWords, hiddenWords };
+}
+
 function coverSecrets(on, forMs) {
   const mark = "--secret-cover";
   const seen = "data-impeccable-secret-field";
@@ -2077,7 +2220,7 @@ function coverHolds() {
   return bare;
 }
 
-export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, agentSight, coverSecrets, coverHolds });
+export const helpers = Object.freeze({ clickByText, confirmingControl, currentUrlOf, fieldReads, focusedText, pageAddress, pageSignature, scrollBy, scrollPageTo, scrollToSurface, typeInto, controlKeyEvidence, focusedControl, locateChange, restoreClosed, pageLinks, browserLanguage, documentLang, themeReads, readCover, readLanding, relativeStylesMissedInPage, installSystemFace, readConsentState, consentSeen, markConsentSeen, collectA11ySample, documentTitle, letGoOfFocus, secretFocus, viewSize, agentSight, armPress, readPress, skimView, coverSecrets, coverHolds });
 
 /** The helpers that read what the consent rules leave in the page's own world: run there. */
 export const pageWorld = Object.freeze(["readConsentState","consentSeen","markConsentSeen"]);
@@ -2086,10 +2229,10 @@ export const pageWorld = Object.freeze(["readConsentState","consentSeen","markCo
 export const newDocument = Object.freeze(["browserLanguage","installSystemFace","loadConsent"]);
 
 /** The helpers that find what lies at a point: the badge hides while one runs, so it is never what they find. */
-export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldReads","scrollBy","readCover"]);
+export const atAPoint = Object.freeze(["clickByText","confirmingControl","fieldReads","scrollBy","readCover","armPress"]);
 
 /** Each helper's `noSecrets` argument, which this extension always sets: no password, card or one-time-code field is typed into or read. */
 export const noSecrets = Object.freeze({"typeInto":3,"fieldReads":1});
 
 /** This file's and consent-rules.js's hash (sha-256 of the two, this line left out): the hello says it. */
-export const HASH = '10e148da916857b9';
+export const HASH = '9c2e340a95c50ff2';
