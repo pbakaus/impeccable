@@ -2510,6 +2510,10 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
   synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
   session that Loop will wake it. An older or unreadable bundle gets no such hook.
+  From Loop 0.2.2 it also adds a prompt-submit hook, `loop-hook <agent> presence`
+  (Claude Code and Codex `UserPromptSubmit`, Cursor `beforeSubmitPrompt`, 5 s), for Pair
+  (REN-2485): it stamps when the person last prompted that session, and tells a session
+  the person is pairing with that it may ask in chat. Disconnect takes it out with the rest.
   From Loop 0.1.3, whose own hook reading accepts it, every hook command is
   guarded: `/usr/bin/xattr -p com.apple.quarantine '<helper>' 2>/dev/null |
   /usr/bin/grep -Eq '^[0-9a-fA-F]{2}[0-389abAB][0-9a-fA-F];' || exec '<helper>'

@@ -769,6 +769,35 @@ fn sessions_learn_loop_will_wake_them_only_from_a_loop_that_can_say_so() {
 }
 
 #[test]
+fn prompts_reach_loop_for_pair_only_from_a_loop_that_reads_them() {
+    // Catches (REN-2485): Pair needs to know when the person last prompted each session; the
+    // prompt-submit hook goes in for Claude Code, Codex and Cursor only with a Loop whose helper reads it,
+    // and disconnect takes it out again.
+    for (version, wanted) in [("0.2.1", false), ("0.2.2", true)] {
+        let b = cursor_box(&format!("presence-{version}"));
+        b.install_loop_version(version);
+        fs::create_dir_all(b.home().join(".cursor")).unwrap();
+        let out = b.run(&["loop", "connect"]);
+        assert!(out.status.success(), "{}", text(&out));
+        let read = |file: &str| fs::read_to_string(b.home().join(file)).unwrap_or_default();
+        for (file, event, command) in [
+            (".claude/settings.json", "UserPromptSubmit", " claude presence"),
+            (".codex/hooks.json", "UserPromptSubmit", " codex presence"),
+            (".cursor/hooks.json", "beforeSubmitPrompt", "cursor presence"),
+        ] {
+            let contents = read(file);
+            assert_eq!(contents.contains(command), wanted, "{version} {file}: {contents}");
+            assert_eq!(contents.contains(event), wanted, "{version} {file}: {contents}");
+        }
+        assert!(b.run(&["loop", "disconnect"]).status.success());
+        for file in [".claude/settings.json", ".codex/hooks.json", ".cursor/hooks.json"] {
+            let after = read(file);
+            assert!(!after.contains(" presence"), "{file}: {after}");
+        }
+    }
+}
+
+#[test]
 fn codex_waits_for_an_answer_at_the_end_of_a_turn_only_with_a_loop_that_can_hold() {
     // Catches (REN-2057): Codex has no background wake, so a blocking Stop hook holds the
     // turn for Loop's answer; wired for an older helper, it would stall every turn's end.

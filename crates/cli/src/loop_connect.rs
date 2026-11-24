@@ -125,6 +125,11 @@ const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 // Loop 0.2.0 is the first release with the Cursor, Copilot and opencode wake helpers (REN-2057).
 const CLI_WAKE: semver::Version = semver::Version::new(0, 2, 0);
 
+/// The first Loop whose helper reads the person's prompts for Pair (REN-2485): it stamps when the person last
+/// prompted a session, and tells a session the person is pairing with that it may ask in chat. An older helper
+/// exits 0 on the unknown verb, so a wrong gate costs a no-op hook, never a failed prompt.
+const PRESENCE: semver::Version = semver::Version::new(0, 2, 2);
+
 /// All harness-specific policy lives here; orchestration below uses these descriptions.
 struct AgentDescription {
     harness: &'static str,
@@ -194,6 +199,7 @@ const AGENTS: &[AgentDescription] = &[
             hook("PostToolUse", None, "register", 10, false, None),
             hook("PreToolUse", Some("AskUserQuestion"), "adoption", 2, false, None),
             hook("SessionStart", None, "context", 5, false, Some(semver::Version::new(0, 1, 1))),
+            hook("UserPromptSubmit", None, "presence", 5, false, Some(PRESENCE)),
         ],
     },
     AgentDescription {
@@ -209,6 +215,7 @@ const AGENTS: &[AgentDescription] = &[
             hook("PostToolUse", None, "register", 10, false, None),
             hook("SessionStart", None, "context", 5, false, Some(semver::Version::new(0, 1, 1))),
             hook("Stop", None, "lifecycle", 3600, false, Some(STOP_HOLD)),
+            hook("UserPromptSubmit", None, "presence", 5, false, Some(PRESENCE)),
         ],
     },
     AgentDescription {
@@ -222,6 +229,7 @@ const AGENTS: &[AgentDescription] = &[
             hook("sessionStart", None, "lifecycle", 10, false, Some(CLI_WAKE)),
             hook("afterMCPExecution", None, "register", 10, false, Some(CLI_WAKE)),
             hook("stop", None, "lifecycle", 3600, false, Some(CLI_WAKE)),
+            hook("beforeSubmitPrompt", None, "presence", 5, false, Some(PRESENCE)),
         ],
     },
     AgentDescription {
