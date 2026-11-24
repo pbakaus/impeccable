@@ -259,6 +259,37 @@ fn tells_the_agent_its_tools_changed_when_chrome_connects_later() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+// Catches an agent that ended its session still holding the browser while its MCP process lives on, so every
+// other agent is told someone else is using it (REN-2466).
+#[test]
+fn an_ended_session_hands_the_browser_to_the_next_agent() {
+    let dir = short_dir("handoff");
+    let socket = dir.join("browser").join("host.sock");
+    let mut ext = relay(&socket);
+    // A release that never comes fails the test instead of hanging it.
+    ext.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut a = Live::start(&socket);
+    for (id, tool) in [(1, "browser_open"), (2, "browser_end")] {
+        a.send(json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": tool, "arguments": {} } }));
+        let asked = read_frame(&mut ext, FROM_EXTENSION_MAX).unwrap().unwrap();
+        assert_eq!(asked["tool"], tool);
+        write_frame(&mut ext, &json!({ "id": asked["id"], "result": { "content": [] } }), FROM_EXTENSION_MAX).unwrap();
+        assert_eq!(a.read()["id"], id);
+    }
+    // A's process is still running; its session is over, so the relay has let it go.
+    assert_eq!(read_frame(&mut ext, FROM_EXTENSION_MAX).unwrap().unwrap()["type"], "agent-gone");
+    let mut b = browser::Link::connect(&socket, "b").unwrap();
+    let mut ext_b = ext.try_clone().unwrap();
+    let extension = std::thread::spawn(move || {
+        let asked = read_frame(&mut ext_b, FROM_EXTENSION_MAX).unwrap().unwrap();
+        write_frame(&mut ext_b, &json!({ "id": asked["id"], "result": { "content": [{ "type": "text", "text": "B's" }] } }), FROM_EXTENSION_MAX).unwrap();
+    });
+    assert_eq!(b.call("browser_open", &json!({})).unwrap()["content"][0]["text"], "B's");
+    extension.join().unwrap();
+    a.end();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 // Catches a crashed relay's leftover socket file hiding the relay that replaces it: same path, a new socket.
 #[test]
 fn a_relay_replacing_a_crashed_ones_file_is_news() {
