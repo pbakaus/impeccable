@@ -281,7 +281,14 @@ fn browsed(request: &Value, socket: &std::path::Path, agent: &str, link: &mut Op
         Some(l) => l.call(name, &args),
     };
     Some(match answer {
-        Ok(result) => json!({ "jsonrpc": "2.0", "id": id, "result": result }),
+        Ok(result) => {
+            // The relay hands the browser back when this connection closes, and this process outlives the
+            // session: an ended session closes it, so the next agent can take over (REN-2466).
+            if name == "browser_end" {
+                *link = None;
+            }
+            json!({ "jsonrpc": "2.0", "id": id, "result": result })
+        }
         Err(line) => {
             // Busy or gone, this agent doesn't hold the browser: its next call connects afresh.
             *link = None;

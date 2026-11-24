@@ -3,7 +3,9 @@
  *
  * Each config specifies:
  * - provider: key into PROVIDER_PLACEHOLDERS (e.g. 'claude-code')
- * - configDir: dot-directory name (e.g. '.claude')
+ * - configDir: dot-directory name (e.g. '.claude'); Muse uses 'workspace'
+ * - skillsDirName: optional folder under configDir holding skills
+ *   (default 'skills'; Muse uses 'custom-skills')
  * - hooksManifestDir: optional dot-directory the hook manifest is written
  *   under when the harness reads it from outside configDir (Antigravity)
  * - displayName: human-readable name for log output (e.g. 'Claude Code')
@@ -227,6 +229,23 @@ export const PROVIDERS = {
     // .hermes/plugins/, since Hermes hooks are in-process plugin callbacks.
     frontmatterFields: ['license', 'compatibility', 'metadata'],
     pluginPayload: { source: 'hermes-plugin', dest: 'plugins/impeccable-design-hook' },
+  },
+  muse: {
+    provider: 'muse',
+    providerTags: ['muse'],
+    // Muse (Meta's personal AI agent) has no dot-dir config folder: user
+    // custom skills live in ~/workspace/custom-skills/<name>/SKILL.md, so
+    // the generated layout is workspace/custom-skills/ rather than the
+    // usual <dot-dir>/skills/. Muse reads only the `name` and
+    // `description` frontmatter fields, so no optional fields are emitted;
+    // the version rides under `metadata` like the Codex build. Muse has
+    // no documented hooks or subagent file format, so no emitHooks /
+    // agentFormat.
+    configDir: 'workspace',
+    skillsDirName: 'custom-skills',
+    displayName: 'Muse',
+    frontmatterFields: [],
+    versionInMetadata: true,
   },
   devin: {
     provider: 'devin',

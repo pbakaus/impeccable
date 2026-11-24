@@ -46,6 +46,7 @@ env:
     .trae-cn
     .veto
     .vibe
+    workspace/custom-skills
     plugin
     cursor-plugin
 

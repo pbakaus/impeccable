@@ -14,7 +14,8 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 
 use crate::providers::{
-    opencode_global_config_dir, provider_display_name, Scope, Sys, API_BASE, PROVIDER_DIRS,
+    is_user_only_provider, opencode_global_config_dir, provider_display_name, skills_dir_name, Scope,
+    Sys, API_BASE, PROVIDER_DIRS,
 };
 use crate::util::{self, jsp};
 use crate::bundle_signature::{self, TrustedKeys, MAX_SIGNATURE_BYTES};
@@ -614,7 +615,7 @@ pub fn list_skill_tree_files(root: &str) -> Vec<String> {
 }
 
 static PROVIDER_PATH_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/").unwrap()
+    Regex::new(r"\.(claude|cursor|devin|dsh|agents|agent|github|gemini|codex|grok|hermes|kiro|opencode|pi|qoder|trae|trae-cn|rovodev|vibe)/skills/|workspace/custom-skills/").unwrap()
 });
 
 /// JS: normalizeForHash(content)
@@ -643,7 +644,7 @@ pub fn is_up_to_date(sys: &Sys, root: &str, providers: &[&str], bundle_dir: &str
         return Ok(false);
     }
     for (provider, local_skills_dir) in unique {
-        let bundle_skills_dir = jsp::join(&[bundle_dir, provider, "skills"]);
+        let bundle_skills_dir = jsp::join(&[bundle_dir, provider, skills_dir_name(provider)]);
         // JS-PARITY: a provider with no bundled skills dir `continue`s past
         // the agents check too.
         if !util::exists(&bundle_skills_dir) {
@@ -713,10 +714,11 @@ fn is_in_project_provider_link(local_skills_dir: &str, root: &str, provider: &st
     PROVIDER_DIRS
         .iter()
         .filter(|other| **other != provider)
-        .any(|other| resolved_target == jsp::join(&[root, other, "skills"]))
+        .any(|other| resolved_target == jsp::join(&[root, other, skills_dir_name(other)]))
 }
 
-/// The bundle's skill directories under `<bundle>/<provider>/skills` (real
+/// The bundle's skill directories under `<bundle>/<provider>/<skills-dir>`
+/// (`skills` for every provider except Muse's `custom-skills`; real
 /// directories only, like `Dirent.isDirectory()`).
 fn bundle_skill_dirs(src_dir: &str) -> Vec<String> {
     util::read_dir_names(src_dir)
@@ -726,17 +728,35 @@ fn bundle_skill_dirs(src_dir: &str) -> Vec<String> {
         .collect()
 }
 
+/// The outcome of `copy_provider_skills`, split so callers can tell a
+/// satisfied install from a missing bundle variant.
+pub struct CopySkillsResult {
+    /// Skill directories written this run.
+    pub written: Vec<String>,
+    /// Skill directories left in place because they already hold a linked
+    /// install: the skill is available and updates through its source
+    /// checkout, so these count as satisfied, never as "nothing
+    /// installed", and are never rewritten.
+    pub preserved_links: Vec<String>,
+}
+
 /// JS: copyProviderSkills(bundleDir, root, targets, {scope}). Returns the
-/// skill directories written (the JS returned only the count).
-pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[&str], scope: Option<Scope>) -> Result<Vec<String>, String> {
+/// skill directories written and the linked installs preserved (the JS
+/// returned only the count).
+pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[&str], scope: Option<Scope>) -> Result<CopySkillsResult, String> {
     let mut written = Vec::new();
+    let mut preserved_links = Vec::new();
     for provider in targets {
-        let src_dir = jsp::join(&[bundle_dir, provider, "skills"]);
+        let src_dir = jsp::join(&[bundle_dir, provider, skills_dir_name(provider)]);
         if !util::exists(&src_dir) {
             continue;
         }
-        let local_skills_dir = if scope == Some(Scope::User) {
-            sys.user_provider_skills_dir(root, provider)
+        let local_skills_dir = if scope == Some(Scope::User) || is_user_only_provider(provider) {
+            // User-only providers (Muse) always land in their global dir
+            // under the real home, even inside a mixed project-scope
+            // install: <project>/workspace/skills is never read by Muse.
+            let dest_root = if scope == Some(Scope::User) { root } else { sys.home.as_str() };
+            sys.user_provider_skills_dir(dest_root, provider)
         } else {
             jsp::join(&[root, provider, "skills"])
         };
@@ -747,6 +767,16 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
         for skill in &skills {
             let src = jsp::join(&[&src_dir, skill]);
             let dest = jsp::join(&[&local_skills_dir, skill]);
+            if is_user_only_provider(provider) && util::is_symlink(&dest) {
+                // A linked install at the provider's actual (global)
+                // destination. Project-scope discovery cannot see that
+                // destination, so a mixed install reaches this copy with
+                // the provider looking missing; linked installs are never
+                // overwritten (checkout changes are how they update), so
+                // leave the link in place and report it as satisfied.
+                preserved_links.push(dest);
+                continue;
+            }
             util::rm_rf(&dest);
             util::copy_dir(&src, &dest)?;
             written.push(dest);
@@ -767,7 +797,7 @@ pub fn copy_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, targets: &[
             }
         }
     }
-    Ok(written)
+    Ok(CopySkillsResult { written, preserved_links })
 }
 
 /// JS: skills.mjs#providerCommandsDir. Project installs land at
@@ -846,7 +876,7 @@ pub fn copy_provider_commands(sys: &Sys, bundle_dir: &str, root: &str, targets: 
 pub fn refresh_provider_skills(sys: &Sys, bundle_dir: &str, root: &str, providers: &[&str], scope: Option<Scope>) -> Result<Vec<String>, String> {
     let mut updated = Vec::new();
     for (provider, local_skills_dir) in sys.deduplicate_providers(root, providers, scope) {
-        let src_dir = jsp::join(&[bundle_dir, provider, "skills"]);
+        let src_dir = jsp::join(&[bundle_dir, provider, skills_dir_name(provider)]);
         if !util::exists(&src_dir) {
             continue;
         }
@@ -1006,7 +1036,7 @@ pub fn resolve_link_source(source_value: Option<&str>, root: &str) -> Result<Lin
     if util::exists(&universal_root) {
         return Ok(LinkSource { checkout_root, bundle_root: universal_root });
     }
-    if PROVIDER_DIRS.iter().any(|p| util::exists(&jsp::join(&[&checkout_root, p, "skills"]))) {
+    if PROVIDER_DIRS.iter().any(|p| util::exists(&jsp::join(&[&checkout_root, p, skills_dir_name(p)]))) {
         return Ok(LinkSource { bundle_root: checkout_root.clone(), checkout_root });
     }
     Err(format!("Could not find compiled skills in {source_path}. Expected dist/universal/ or provider skill folders."))
@@ -1032,13 +1062,20 @@ pub struct LinkResult {
 }
 
 /// JS: linkProviderSkills(bundleRoot, root, targets, {force})
-pub fn link_provider_skills(io: &mut Io, bundle_root: &str, root: &str, targets: &[&str], force: bool) -> Result<LinkResult, String> {
+pub fn link_provider_skills(sys: &Sys, io: &mut Io, bundle_root: &str, root: &str, targets: &[&str], force: bool) -> Result<LinkResult, String> {
     let mut result = LinkResult { linked: 0, already: 0, skipped: 0 };
     // JS: resolveUniqueLinkTargets
     let mut seen: Vec<String> = Vec::new();
     let mut unique: Vec<(&str, String)> = Vec::new();
     for provider in targets {
-        let local_skills_dir = jsp::join(&[root, provider, "skills"]);
+        let local_skills_dir = if is_user_only_provider(provider) {
+            // User-only providers (Muse) read skills from their global dir
+            // under the real home only: link there, never into
+            // <project>/workspace/custom-skills, which Muse does not read.
+            sys.user_provider_skills_dir(&sys.home, provider)
+        } else {
+            jsp::join(&[root, provider, skills_dir_name(provider)])
+        };
         util::mkdir_p(&local_skills_dir)?;
         let real = util::realpath(&local_skills_dir).unwrap_or_else(|| local_skills_dir.clone());
         if seen.contains(&real) {
@@ -1048,7 +1085,7 @@ pub fn link_provider_skills(io: &mut Io, bundle_root: &str, root: &str, targets:
         unique.push((provider, local_skills_dir));
     }
     for (provider, local_skills_dir) in unique {
-        let src_dir = jsp::join(&[bundle_root, provider, "skills"]);
+        let src_dir = jsp::join(&[bundle_root, provider, skills_dir_name(provider)]);
         if !util::exists(&src_dir) {
             continue;
         }
@@ -1061,7 +1098,7 @@ pub fn link_provider_skills(io: &mut Io, bundle_root: &str, root: &str, targets:
                     continue;
                 }
                 if !force {
-                    io.err(&format!("Skipped existing {provider}/skills/{skill}. Use --force to replace it with a link.\n"));
+                    io.err(&format!("Skipped existing {provider}/{}/{skill}. Use --force to replace it with a link.\n", skills_dir_name(provider)));
                     result.skipped += 1;
                     continue;
                 }
