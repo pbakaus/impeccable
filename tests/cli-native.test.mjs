@@ -43,6 +43,8 @@ test('native engine package, download, cache, and skill installation', {
       'the engine must match native Node, not run under emulation');
   }
   const digest = createHash('sha256').update(binary).digest('hex');
+  // The verified-cache stamp: digest and size, as the shim and installer write it.
+  const stamp = `${digest} ${binary.length}`;
   const asset = new URL(assetUrl(VERSION, TARGET, 'http://localhost')).pathname;
   const assetName = path.posix.basename(asset);
   const manifestLine = `${VERSION} ${assetName} ${digest}\n`;
@@ -112,8 +114,10 @@ test('native engine package, download, cache, and skill installation', {
     const installed = await fixture.run(['install', '--providers=claude', '--project', '--no-hooks', '--yes']);
     assert.equal(installed.status, 0, `${installed.stdout}\n${installed.stderr}`);
     assert.match(installed.stdout, new RegExp(`Installed impeccable engine v${VERSION.replaceAll('.', '\\.')} \\(${TARGET}\\)`));
-    const installedBin = path.join(fixture.dir, '.claude', 'skills', 'impeccable', 'scripts', 'bin', TARGET, EXE);
-    assert.deepEqual(fs.readFileSync(installedBin), binary);
+    // The installer fills the shared, version-pinned cache the launchers read.
+    assert.deepEqual(fs.readFileSync(fixture.cached), binary);
+    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), stamp);
+    assert.equal(fs.existsSync(path.join(fixture.dir, '.claude', 'skills', 'impeccable', 'scripts', 'bin')), false);
     assert.deepEqual(requests, [asset]);
   });
 
@@ -122,7 +126,7 @@ test('native engine package, download, cache, and skill installation', {
     assertProbe(await fixture.run(['engine-probe']));
     assert.deepEqual(requests, [asset]);
     assert.deepEqual(fs.readFileSync(fixture.cached), binary);
-    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), digest);
+    assert.equal(fs.readFileSync(`${fixture.cached}.verified`, 'utf8').trim(), stamp);
     requests.length = 0;
     assertProbe(await fixture.run(['engine-probe']));
     assert.deepEqual(requests, []);
