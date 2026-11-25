@@ -739,25 +739,46 @@ fn every_save_links_its_critique_and_the_first_on_a_sign_in_says_how_to_stop() {
     assert_eq!(said(&write(&env, root)), "Saved to Impeccable.");
 }
 
+// Catches a sign-in offer, hint or nudge reaching someone who isn't signed in.
 #[test]
-fn signed_out_saves_suggest_signing_in_once_a_day_per_project() {
+fn signed_out_install_and_critique_never_mention_signing_in() {
     let fake = Fake::start();
     let env = fake.env("critique-signed-out");
     let root = Path::new(&env["IMPECCABLE_HOME"]);
     std::fs::create_dir_all(root).unwrap();
+    let mentions = |text: &str| {
+        let text = text.to_ascii_lowercase();
+        ["login", "sign in", "sign-in"].iter().any(|w| text.contains(w))
+    };
+
+    // A local bundle, with the engine binary staged so install stays offline.
+    let bundle = root.join("bundle/.claude/skills/impeccable");
+    std::fs::create_dir_all(bundle.join("scripts")).unwrap();
+    std::fs::write(bundle.join("SKILL.md"), "---\nname: impeccable\n---\n# impeccable\n").unwrap();
+    std::fs::write(bundle.join("scripts/VERSION"), "9.9.9\n").unwrap();
+    std::fs::write(bundle.join("scripts/impeccable"), "#!/bin/sh\nexit 0\n").unwrap();
+    if let Some((os, arch)) = impeccable_skills::engine_binary::platform_tag() {
+        let bin = bundle.join(format!("scripts/bin/{os}-{arch}"));
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("impeccable"), "#!/bin/sh\nexit 0\n").unwrap();
+    }
+    let project = root.join("project");
+    std::fs::create_dir_all(project.join(".git")).unwrap();
+    let out = impeccable(&env, &project, &["install", "-y", "--providers=claude", "--scope=project", "--no-hooks"])
+        .env("IMPECCABLE_BUNDLE_PATH", root.join("bundle"))
+        .env("TMPDIR", root)
+        .env("IMPECCABLE_NO_UPDATE_CHECK", "1")
+        .output()
+        .unwrap();
+    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("Done!"), "{text}");
+    assert!(!mentions(&text), "{text}");
+
     std::fs::write(root.join("report.md"), "# Report\nCrowded header.").unwrap();
-    let nudge = "Keep this critique's history: npx impeccable login";
-    assert_eq!(said(&write(&env, root)), nudge);
-    assert_eq!(said(&write(&env, root)), "");
-    // Another project gets its own line the same day.
-    let other = root.join("other");
-    std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join("report.md"), "# Report\nCrowded header.").unwrap();
-    assert_eq!(said(&write(&env, &other)), nudge);
-    // Turned off, or in CI: nothing.
-    let mut ci = env.clone();
-    ci.insert("CI".into(), "1".into());
-    assert_eq!(said(&write(&ci, &other)), "");
+    let out = write(&env, root);
+    assert_eq!(said(&out), "");
+    assert!(!mentions(&String::from_utf8_lossy(&out.stderr)));
     assert_eq!(fake.hits("/cli/v1/critiques"), 0);
 }
 

@@ -49,6 +49,9 @@ pub(crate) fn after_install(
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
+    if !impeccable_account::OFFER_SIGN_IN {
+        return;
+    }
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
     match end(args, terminal, io.env_truthy("CI")) {
         End::Nothing => return,
