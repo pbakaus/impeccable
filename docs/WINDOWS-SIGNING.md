@@ -40,6 +40,14 @@ Only its job receives an OIDC token; only the publish job can write releases.
 Publication waits for successful signing and downloads only `impeccable-*`
 artifacts, so it cannot package the unsigned intermediate.
 
+The two signing legs run independently, but publication needs both: a failed
+`windows-arm64` signing job holds back the whole engine release until it is
+re-run and passes. Signing and publication run only on an `engine-v*` tag
+push. A manual `workflow_dispatch` run builds and smokes every target,
+`windows-arm64` on the hosted `windows-11-arm` runner included, and stops
+there. The hosted ARM64 runner appears in the release workflow only, not in
+`ci.yml`.
+
 RFC 3161 timestamping is required because Azure issues short-lived signing
 certificates. Don't pin a leaf certificate thumbprint: Azure rotates them.
 If signing or verification fails, fix the cause and retry; don't add an

@@ -10,23 +10,13 @@ const ci = Bun.YAML.parse(readFileSync(new URL('../.github/workflows/ci.yml', im
 const action = (job, name) => job.steps.find(step => step.uses?.startsWith(`${name}@`));
 
 describe('engine release targets', () => {
-  test('CI exercises native npm packages and launchers on both Windows architectures', () => {
-    const rust = ci.jobs['native-cli-windows'];
-    expect(rust.strategy.matrix.include).toEqual([
-      { os: 'windows-latest', target: 'x86_64-pc-windows-msvc', arch: 'x64' },
-      { os: 'windows-11-arm', target: 'aarch64-pc-windows-msvc', arch: 'arm64' },
-    ]);
-    expect(rust['runs-on']).toBe('${{ matrix.os }}');
-    expect(action(rust, 'actions/setup-node').with.architecture).toBe('${{ matrix.arch }}');
-    expect(rust.steps.some(step => step.run === 'cargo build -p impeccable --target ${{ matrix.target }}')).toBe(true);
-    expect(ci.jobs['rust-windows'].steps.some(step => step.run === 'cargo test --workspace --no-fail-fast')).toBe(true);
-    const launcher = ci.jobs['launcher-windows'];
-    expect(launcher.strategy.matrix.os).toEqual(['windows-latest', 'windows-11-arm']);
-    expect(launcher['runs-on']).toBe('${{ matrix.os }}');
-    expect(action(launcher, 'actions/setup-node').with.architecture).toBe("${{ runner.arch == 'ARM64' && 'arm64' || 'x64' }}");
-    const native = rust.steps.find(step => step.name === 'Exercise native npm package and skill installation');
-    expect(native.run).toBe('node --test tests/cli-native.test.mjs');
-    expect(native.env.IMPECCABLE_BIN).toBe('${{ github.workspace }}/target/${{ matrix.target }}/debug/impeccable.exe');
+  test('the hosted Windows ARM64 runner is used by the release workflow only', () => {
+    // Catches: every PR paying for (and waiting on) a hosted windows-11-arm runner.
+    for (const [name, job] of Object.entries(ci.jobs)) {
+      expect(JSON.stringify(job), name).not.toContain('windows-11-arm');
+      expect(JSON.stringify(job), name).not.toContain('aarch64-pc-windows-msvc');
+    }
+    // The oracle job reads this output; the plan computes it, so the job must export it.
     expect(ci.jobs.changes.outputs.oracle).toBe('${{ steps.plan.outputs.oracle }}');
   });
 
@@ -36,7 +26,7 @@ describe('engine release targets', () => {
       os: 'windows-11-arm', target: 'aarch64-pc-windows-msvc', short: 'windows-arm64',
     });
     expect(build.strategy.matrix.include).toContainEqual({
-      os: 'windows-latest', target: 'x86_64-pc-windows-msvc', short: 'windows-x64',
+      os: 'namespace-profile-impeccable-windows', target: 'x86_64-pc-windows-msvc', short: 'windows-x64',
     });
     expect(build['runs-on']).toBe('${{ matrix.os }}');
     const smoke = build.steps.find(step => step.name === 'Smoke the binary');
@@ -64,6 +54,9 @@ describe('engine release signing boundary', () => {
     const tagPush = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')";
     expect(workflow.jobs['sign-windows'].if).toBe(tagPush);
     expect(workflow.jobs.publish.if).toBe(tagPush);
+    // The guard sits on the job, so it covers every leg of the signing matrix.
+    expect(workflow.jobs['sign-windows'].strategy.matrix.short).toContain('windows-arm64');
+    expect(JSON.stringify(workflow.jobs['sign-windows'].steps)).not.toContain('github.event_name');
     // The manual trigger takes no inputs, so nothing a dispatcher types reaches a step.
     expect(workflow.on.workflow_dispatch).toBeNull();
     // The build job holds no environment, no write or OIDC permission and no secret.
