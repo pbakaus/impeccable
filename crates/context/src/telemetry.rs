@@ -120,26 +120,57 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
     opt_out_reason(env, cwd).is_some()
 }
 
-/// Whether this machine holds a telemetry decision: an opt-out (`off`, from
-/// `telemetry_disabled` for the roots in play), or a `telemetry` choice in the
-/// user config (`impeccable telemetry on|off`).
+/// Whether the user was already told about usage data: an opt-out (`off`, from
+/// `telemetry_disabled` for the roots in play), or a `telemetry` value in the
+/// user config, which the notice writes as `true` once shown.
 pub fn choice_recorded(env: &Env, off: bool) -> bool {
     off || config_choice(&user_config_path(env)).is_some()
 }
 
-/// The short notice an install or update shows an undecided user.
-pub fn notice() -> String {
-    format!("Impeccable collects anonymous usage data: which visual directions a new design was shown and which one you picked, never your project's names, files or code. It keeps Impeccable free and in development. Thank you for helping. Details: {}\nOpting out also turns off the visual directions from the impeccable.style catalog and the daily update check.\n", PRIVACY_URL)
+/// What an install or update at a terminal prints, once. It never asks: staying
+/// on needs nothing, and opting out is the command it names.
+pub fn notice() -> &'static str {
+    "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping.\nDetails: impeccable.style/privacy · Opt out: npx impeccable telemetry off\nOpting out also turns off world building and auto updates.\n"
 }
 
-/// `context`'s ask for an undecided user, `verb` being how this install runs
-/// `impeccable telemetry`. None in CI (`1`, `true`, `yes` or `on`, as install
-/// reads it) or once a choice is recorded.
-pub fn choice_directive(env: &Env, off: bool, verb: &str) -> Option<String> {
-    if crate::util::truthy_env(env, "CI") || choice_recorded(env, off) {
+/// What the agent says, once, for an install that never showed `notice`.
+pub const AGENT_NOTICE: &str = "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping. If you'd rather opt out, tell me and I'll turn it off, though that also turns off world building and auto updates (details at impeccable.style/privacy).";
+
+/// `context`'s one-time notice for a user nobody has told yet, `verb` being how
+/// this install runs `impeccable telemetry`. Printing it records the user as told
+/// (`"telemetry": true`), so no later boot repeats it and the agent never has to
+/// stop the user to ask. None in CI (`1`, `true`, `yes` or `on`, as install reads
+/// it) or once told; a config that cannot be written leaves it to the next boot.
+pub fn notice_directive(env: &Env, off: bool, verb: &str) -> Option<String> {
+    if crate::util::truthy_env(env, "CI") || choice_recorded(env, off) || record_choice(env, true).is_err() {
         return None;
     }
-    Some(format!("TELEMETRY_CHOICE: No telemetry choice is recorded on this machine. In your first reply, tell the user once, in a sentence or two, what this notice says, thanking them and keeping the link: \"{}\" Ask whether to keep it on. Continue the current task without waiting. When the user answers, run `{verb} on` or `{verb} off` and tell the user what it prints. Record only an answer the user gives.", notice().trim_end().replace('\n', " ")))
+    Some(format!("TELEMETRY_NOTICE: The user has not been told about Impeccable's anonymous usage data yet. End your first reply to the user with this paragraph, word for word, after your own content: \"{AGENT_NOTICE}\" Do not ask about it, wait for an answer, or say it again; it is already recorded as told. Carry on with the task. If the user asks to opt out, run `{verb} off`."))
+}
+
+/// Why `record_choice` changed nothing.
+pub enum RecordError {
+    /// The user config does not parse to an object: the user's to fix, never overwritten.
+    Unreadable(String),
+    Write(String),
+}
+
+/// Writes `"telemetry": on` into the user config, keeping its other keys.
+pub fn record_choice(env: &Env, on: bool) -> Result<(), RecordError> {
+    let path = user_config_path(env);
+    let mut m = match safe_read(&path) {
+        None => Map::new(),
+        Some(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(Value::Object(m)) => m,
+            Ok(_) => return Err(RecordError::Unreadable(format!("{} is not a JSON object", impeccable_common::jsp::to_posix(&path)))),
+            Err(e) => return Err(RecordError::Unreadable(format!("{} is not valid JSON ({})", impeccable_common::jsp::to_posix(&path), e))),
+        },
+    };
+    m.insert("telemetry".into(), Value::Bool(on));
+    let dir = jsp::join(&[&crate::util::homedir(env), ".impeccable"]);
+    std::fs::create_dir_all(&dir)
+        .and_then(|_| std::fs::write(&path, format!("{}\n", crate::util::json_pretty(&Value::Object(m)))))
+        .map_err(|e| RecordError::Write(format!("{}: {}", path, e)))
 }
 
 pub fn agent(url: &str, timeout: Duration) -> ureq::Agent {
@@ -766,40 +797,22 @@ fn status_line(env: &Env, cwd: &str) -> String {
 pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
     let env = io.env.clone();
     let cwd = io.cwd.to_string_lossy().into_owned();
-    let path = user_config_path(&env);
-    // A missing file is an empty config; one that does not parse to an
-    // object is the user's to fix, never overwritten.
-    let read = || -> Result<Map<String, Value>, String> {
-        let Some(text) = safe_read(&path) else { return Ok(Map::new()) };
-        match serde_json::from_str::<Value>(&text) {
-            Ok(Value::Object(m)) => Ok(m),
-            Ok(_) => Err(format!("{} is not a JSON object", impeccable_common::jsp::to_posix(&path))),
-            Err(e) => Err(format!("{} is not valid JSON ({})", impeccable_common::jsp::to_posix(&path), e)),
-        }
-    };
-    let write = |m: &Map<String, Value>| -> Result<(), String> {
-        let dir = jsp::join(&[&crate::util::homedir(&env), ".impeccable"]);
-        std::fs::create_dir_all(&dir)
-            .and_then(|_| std::fs::write(&path, format!("{}\n", crate::util::json_pretty(&Value::Object(m.clone())))))
-            .map_err(|e| format!("{}: {}", path, e))
-    };
     match args.first().map(String::as_str) {
         Some("status") | None => {
             io.out(&status_line(&env, &cwd));
             0
         }
         Some(cmd @ ("off" | "on")) => {
-            let mut m = match read() {
-                Ok(m) => m,
-                Err(e) => {
+            match record_choice(&env, cmd == "on") {
+                Ok(()) => {}
+                Err(RecordError::Unreadable(e)) => {
                     io.err(&format!("telemetry: {}; fix or remove it, then run `impeccable telemetry {}` again. Nothing was changed.\n", e, cmd));
                     return 1;
                 }
-            };
-            m.insert("telemetry".into(), Value::Bool(cmd == "on"));
-            if let Err(e) = write(&m) {
-                io.err(&format!("telemetry: could not write the user config ({})\n", e));
-                return 1;
+                Err(RecordError::Write(e)) => {
+                    io.err(&format!("telemetry: could not write the user config ({})\n", e));
+                    return 1;
+                }
             }
             io.out(&status_line(&env, &cwd));
             0

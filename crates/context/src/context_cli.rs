@@ -944,7 +944,7 @@ pub fn run_with_hook_repair(
     // An opt-out where context runs, or in the workspace `--target` selects.
     let telemetry_off = crate::telemetry::telemetry_disabled(&env, &cwd) || resolved_target_path.as_deref().is_some_and(|t| crate::telemetry::telemetry_disabled(&env, t));
     let update_directive = compute_update_directive(&cwd, &env, &provider, telemetry_off);
-    let telemetry_directive = crate::telemetry::choice_directive(&env, telemetry_off, &provider.verb_cmd("telemetry"));
+    let telemetry_directive = crate::telemetry::notice_directive(&env, telemetry_off, &provider.verb_cmd("telemetry"));
     let cmd = &provider.command;
 
     if !ctx.has_product {
@@ -2102,10 +2102,10 @@ mod seeded_world_tests {
 mod update_check_tests {
     use super::*;
 
-    // Catches an opt-out in the workspace `--target` selects still asking, or
-    // still checking for updates.
+    // Catches an opt-out in the workspace `--target` selects still showing the
+    // notice or checking for updates, and the notice showing more than once.
     #[test]
-    fn telemetry_off_skips_the_update_check_and_the_ask() {
+    fn telemetry_notice_shows_once_and_never_over_an_opt_out() {
         let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join(".git")).unwrap();
@@ -2119,11 +2119,16 @@ mod update_check_tests {
             let (mut io, cap) = impeccable_common::Io::captured("", tmp.clone(), env);
             assert_eq!(super::run(&["--target".to_string(), "apps/web".to_string()], &mut io), 0);
             let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
-            (out.contains("UPDATE_AVAILABLE"), out.contains("TELEMETRY_CHOICE"))
+            (out.contains("UPDATE_AVAILABLE"), out.contains("TELEMETRY_NOTICE"))
         };
-        assert_eq!(boot(), (true, true));
-        std::fs::write(tmp.join("apps/web/.impeccable/config.json"), r#"{"telemetry": false}"#).unwrap();
+        let project = tmp.join("apps/web/.impeccable/config.json");
+        std::fs::write(&project, r#"{"telemetry": false}"#).unwrap();
         assert_eq!(boot(), (false, false));
+        assert!(!tmp.join(".impeccable/config.json").exists(), "an opted-out user is not marked as told");
+        std::fs::remove_file(&project).unwrap();
+        assert_eq!(boot(), (true, true));
+        assert_eq!(std::fs::read_to_string(tmp.join(".impeccable/config.json")).unwrap(), "{\n  \"telemetry\": true\n}\n");
+        assert!(!boot().1, "told once, never again");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

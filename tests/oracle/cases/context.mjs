@@ -250,7 +250,7 @@ const cases = [
     })),
   },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
-  { id: 'context-telemetry-choice', verb: 'context', workspace: 'ctx-empty', env: env({ DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, CI: null, IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
+  { id: 'context-telemetry-notice', verb: 'context', workspace: 'ctx-empty', env: env({ DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, CI: null, IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).
   { id: 'context-cmd-launcher-spaced-path', verb: 'context', workspace: 'ctx-empty', env: env({ IMPECCABLE_SELF: 'C:\\Users\\Oracle User\\skill\\scripts\\impeccable.cmd' }) },
