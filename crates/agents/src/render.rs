@@ -860,7 +860,10 @@ pub(super) fn render_rule(
     Ok(text.into_bytes())
 }
 
-fn http_entry(s: &Spec, url: &str) -> Value {
+/// The entry a journal-owned server is written as: the entry itself, or an older journal's URL as
+/// that harness's HTTP entry.
+fn mcp_entry(s: &Spec, given: &Value) -> Value {
+    let Some(url) = given.as_str() else { return given.clone() };
     match s.harness.as_str() {
         "cursor" => json!({"url":url}),
         "copilot" => json!({"type":"http", "url":url, "tools":["*"]}),
@@ -869,14 +872,14 @@ fn http_entry(s: &Spec, url: &str) -> Value {
     }
 }
 
-/// Edited HTTP entries must keep the journal even when other entries were removed.
+/// Edited entries must keep the journal even when other entries were removed.
 pub(super) fn drifted_http_servers(s: &Spec, path: &Path, current: &[u8], original: Option<&[u8]>) -> Vec<String> {
     if !json_entries_file(s, path) || path.ends_with("cli-config.json") { return vec![]; }
     let Ok(current) = parse_unique_json(current) else { return vec![] };
     let original = original.and_then(|b| parse_unique_json(b).ok());
     let section = if s.harness == "opencode" { "mcp" } else { "mcpServers" };
-    s.http_mcp_servers.iter().filter_map(|(name, url)| {
-        let wanted = http_entry(s, url);
+    s.mcp_entries.iter().filter_map(|(name, given)| {
+        let wanted = mcp_entry(s, given);
         let prior = original.as_ref().and_then(|v| v.get(section)).and_then(|v| v.get(name));
         let entry = current.get(section).and_then(|v| v.get(name));
         (prior != Some(&wanted) && entry.is_some_and(|v| v != &wanted)).then(|| name.clone())
@@ -911,8 +914,8 @@ pub(super) fn render_json_entries(
             .or_insert(json!({}))
             .as_object_mut()
             .ok_or_else(|| invalid_toml("mcpServers must be an object"))?;
-        for (name, url) in &s.http_mcp_servers {
-            let wanted = http_entry(s, url);
+        for (name, given) in &s.mcp_entries {
+            let wanted = mcp_entry(s, given);
             if undo {
                 if prior.get(section).and_then(|v| v.get(name)).is_none()
                     && servers.get(name) == Some(&wanted)
@@ -920,9 +923,6 @@ pub(super) fn render_json_entries(
                     servers.remove(name);
                 }
             } else {
-                if servers.get(name).is_some_and(|v| v != &wanted) {
-                    return Err(invalid_toml("MCP server settings differ"));
-                }
                 servers.insert(name.clone(), wanted);
             }
         }

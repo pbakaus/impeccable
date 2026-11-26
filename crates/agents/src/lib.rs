@@ -50,9 +50,12 @@ pub struct Spec {
     pub wake_plugin: Option<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
-    /// Journal-owned HTTP servers, rendered in the harness's MCP file.
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub http_mcp_servers: std::collections::BTreeMap<String, String>,
+    /// Journal-owned servers in the harness's MCP file (Cursor, Copilot, opencode), by name: the
+    /// exact entry to write, or a URL, which is how an older engine journaled an HTTP server (so its
+    /// installations still undo). Apply replaces whatever entry has that name; the caller decides
+    /// first that it may.
+    #[serde(default, rename = "httpMcpServers", skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub mcp_entries: std::collections::BTreeMap<String, Value>,
     /// Codex: `default_tools_approval_mode`; Cursor: `permissions.allow`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_approvals: Vec<McpApproval>,
