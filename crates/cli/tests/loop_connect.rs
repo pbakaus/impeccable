@@ -1999,3 +1999,45 @@ fn opencode_reconnects_with_a_linked_plugin_directory() {
     assert_eq!(fs::read_to_string(target.join("mine.ts")).unwrap(), "// My plugin\n");
     assert_eq!(fs::read_dir(target).unwrap().count(), 1);
 }
+
+#[test]
+fn a_connected_codex_moves_to_another_account_and_keeps_its_approval() {
+    // Catches (#1676 review): replacing Codex's server dropped connect's tool approval, so the
+    // engine's journal no longer matched and every later connect refused.
+    let mut b = Box::new("codex-move");
+    b.install_loop();
+    b.env.insert("IMPECCABLE_ACCOUNT_URL".into(), "https://api.staging.impeccable.style".into());
+    let out = b.run(&["loop", "connect", "--agent", "codex"]);
+    assert!(out.status.success(), "{}", text(&out));
+    b.env.remove("IMPECCABLE_ACCOUNT_URL");
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--agent", "codex"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    assert!(b.codex_has_server(), "{}", codex_config(&b));
+    assert!(codex_config(&b).contains("default_tools_approval_mode = \"approve\""), "{}", codex_config(&b));
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(!codex_config(&b).contains("default_tools_approval_mode"), "{}", codex_config(&b));
+}
+
+#[test]
+fn disconnect_puts_back_the_entry_a_journal_owned_server_replaced() {
+    // Catches (#1676 review): an earlier entry replaced by the local server stayed replaced
+    // after disconnect once anything else in the file had changed.
+    let b = cursor_box("cursor-restore");
+    b.install_loop_version("0.2.0");
+    let root = b.home().join(".cursor");
+    fs::create_dir_all(&root).unwrap();
+    let earlier = serde_json::json!({"url": "https://api.impeccable.style/mcp"});
+    fs::write(root.join("mcp.json"), serde_json::json!({"mcpServers": {"impeccable": earlier}}).to_string()).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let mut mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
+    mcp["theme"] = "mine".into();
+    fs::write(root.join("mcp.json"), mcp.to_string()).unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"], earlier);
+    assert_eq!(mcp["theme"], "mine");
+}

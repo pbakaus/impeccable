@@ -917,10 +917,13 @@ pub(super) fn render_json_entries(
         for (name, given) in &s.mcp_entries {
             let wanted = mcp_entry(s, given);
             if undo {
-                if prior.get(section).and_then(|v| v.get(name)).is_none()
-                    && servers.get(name) == Some(&wanted)
-                {
-                    servers.remove(name);
+                // Only an entry still as the engine wrote it is undone: removed, or the entry
+                // the baseline had under that name put back.
+                if servers.get(name) == Some(&wanted) {
+                    match prior.get(section).and_then(|v| v.get(name)) {
+                        Some(earlier) => { servers.insert(name.clone(), earlier.clone()); }
+                        None => { servers.remove(name); }
+                    }
                 }
             } else {
                 servers.insert(name.clone(), wanted);
