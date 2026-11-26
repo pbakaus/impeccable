@@ -2040,4 +2040,9 @@ fn disconnect_puts_back_the_entry_a_journal_owned_server_replaced() {
     let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
     assert_eq!(mcp["mcpServers"]["impeccable"], earlier);
     assert_eq!(mcp["theme"], "mine");
+    // The entry it put back is no edit of the person's: connecting again works.
+    let again = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+    assert!(again.status.success(), "{}", text(&again));
+    let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
 }
