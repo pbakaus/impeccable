@@ -119,17 +119,18 @@ fn mcp_command(io: &Io) -> Result<String> {
 
 /// Writes the launcher (macOS and Linux): the newest verified engine under the version cache,
 /// unless the engine that ran connect is at least as new, in which case that one. So it never
-/// runs an engine older than the one that connected, and still survives that one going away
-/// (an npx cache cleaned, say).
+/// runs an engine older than the one that connected. The connecting engine is first copied into
+/// the engine's own folder (`bin/mcp-engine`), so agents keep working when wherever it ran from
+/// goes away (an npx cache cleared, a cargo build rebuilt).
 fn write_launcher(io: &Io) -> Result<()> {
     if !cfg!(unix) {
         return Ok(());
     }
     let home = impeccable_account::config::impeccable_home(&io.env).ok_or("HOME is not set to an absolute path.")?;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let script = launcher_script(&home, &exe, env!("CARGO_PKG_VERSION"));
     let dir = home.join("bin");
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let exe = keep_engine(&dir)?;
+    let script = launcher_script(&home, &exe, env!("CARGO_PKG_VERSION"));
     let path = dir.join("mcp");
     if fs::read_to_string(&path).is_ok_and(|s| s == script) {
         return Ok(());
@@ -142,6 +143,25 @@ fn write_launcher(io: &Io) -> Result<()> {
         fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
     }
     fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+/// The running engine, copied to `<dir>/mcp-engine` unless that copy already has its bytes.
+fn keep_engine(dir: &Path) -> Result<PathBuf> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let kept = dir.join("mcp-engine");
+    let bytes = fs::read(&exe).map_err(|e| e.to_string())?;
+    if fs::read(&kept).is_ok_and(|b| b == bytes) {
+        return Ok(kept);
+    }
+    let tmp = dir.join(format!(".mcp-engine.{}.tmp", std::process::id()));
+    fs::write(&tmp, &bytes).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&tmp, &kept).map_err(|e| e.to_string())?;
+    Ok(kept)
 }
 
 fn launcher_script(home: &Path, exe: &Path, version: &str) -> String {
@@ -688,11 +708,16 @@ fn ensure_mcp(agent: &Agent) -> Result<bool> {
         post_add(agent)?;
         return Ok(true);
     }
+    // Codex keeps connect's tool approval in the server's own table, which `mcp remove` takes
+    // with it: it goes back on whatever entry stands afterwards, or the engine's journal no
+    // longer matches and every later connect refuses.
+    let approval = codex_approval(agent);
     let removed = match &prior {
         Some(_) => run_cli(agent, &agent.description.arguments(remove_args(agent))),
         None => Ok(()),
     };
     let ran = removed.and_then(|()| run_cli(agent, &agent.description.add_arguments(&agent.description.mcp_entry())));
+    let ran = ran.and_then(|()| set_codex_approval(agent, approval.as_deref()));
     let failure = match read_entry(agent) {
         Entry::Exact => return Ok(true),
         Entry::Absent => ran.err().unwrap_or_else(|| "the agent didn't add the MCP server".into()),
@@ -701,9 +726,42 @@ fn ensure_mcp(agent: &Agent) -> Result<bool> {
     // The entry it replaced goes back, so a failed connect leaves the agent as it was.
     if let Some(prior) = prior {
         if matches!(read_entry(agent), Entry::Ours(_)) { let _ = run_cli(agent, &agent.description.arguments(remove_args(agent))); }
-        if matches!(read_entry(agent), Entry::Absent) { let _ = run_cli(agent, &agent.description.add_arguments(&prior)); }
+        if matches!(read_entry(agent), Entry::Absent) {
+            let _ = run_cli(agent, &agent.description.add_arguments(&prior));
+            let _ = set_codex_approval(agent, approval.as_deref());
+        }
     }
     Err(failure)
+}
+
+/// Codex's `default_tools_approval_mode` on the `impeccable` server, as its config has it now.
+fn codex_approval(agent: &Agent) -> Option<String> {
+    if !matches!(agent.description.mcp_format, McpFormat::Toml) { return None; }
+    let doc = fs::read_to_string(&agent.mcp_file).ok()?.parse::<toml_edit::DocumentMut>().ok()?;
+    doc.get("mcp_servers")?.get(MCP_NAME)?.get("default_tools_approval_mode")?.as_str().map(str::to_owned)
+}
+
+/// Puts `mode` back on the `impeccable` server table, leaving the rest of the file as it is.
+fn set_codex_approval(agent: &Agent, mode: Option<&str>) -> Result<()> {
+    let Some(mode) = mode else { return Ok(()) };
+    let text = fs::read_to_string(&agent.mcp_file).map_err(|e| e.to_string())?;
+    let mut doc = text.parse::<toml_edit::DocumentMut>().map_err(|e| e.to_string())?;
+    let Some(table) = doc.get_mut("mcp_servers").and_then(|s| s.get_mut(MCP_NAME)).and_then(|t| t.as_table_like_mut()) else {
+        return Ok(());
+    };
+    table.insert("default_tools_approval_mode", toml_edit::value(mode));
+    write_through(&agent.mcp_file, doc.to_string().as_bytes())
+}
+
+/// Replaces a file's contents atomically. A symlinked file is written at its target, so the
+/// link stays and the engine's journal, which names the target, still matches.
+fn write_through(file: &Path, bytes: &[u8]) -> Result<()> {
+    let target = fs::canonicalize(file).unwrap_or_else(|_| file.to_path_buf());
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let tmp = target.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    if let Ok(m) = fs::metadata(&target) { let _ = fs::set_permissions(&tmp, m.permissions()); }
+    fs::rename(&tmp, &target).map_err(|e| e.to_string())
 }
 
 fn remove_args(agent: &Agent) -> &'static [&'static str] {
@@ -1468,10 +1526,7 @@ fn drop_legacy_hooks(agent: &Agent, helper: &Path, spec: &Spec) -> Result<()> {
     }
     let mut out = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
     out.push(b'\n');
-    let tmp = file.with_extension(format!("json.{}.tmp", std::process::id()));
-    fs::write(&tmp, out).map_err(|e| e.to_string())?;
-    if let Ok(m) = fs::metadata(&file) { let _ = fs::set_permissions(&tmp, m.permissions()); }
-    fs::rename(&tmp, &file).map_err(|e| e.to_string())
+    write_through(&file, &out)
 }
 
 /// Whether `command` is a hand-written form of one of connect's hooks for `harness`: the helper
