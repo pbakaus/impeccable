@@ -30,10 +30,16 @@ function run(shim, args, cwd, env) {
   });
 }
 
+// Locally the test skips without an engine. A CI job that names one through
+// IMPECCABLE_BIN wants this test run, so a missing file fails instead of
+// skipping (findEngineBinary ignores a path that does not exist).
+const NAMED = process.env.IMPECCABLE_BIN;
+
 test('native engine package, download, cache, and skill installation', {
-  skip: ENGINE ? false : ENGINE_MISSING_MESSAGE,
+  skip: ENGINE || NAMED ? false : ENGINE_MISSING_MESSAGE,
   timeout: 180000,
 }, async t => {
+  if (NAMED) assert.ok(fs.existsSync(NAMED), `IMPECCABLE_BIN names a missing engine: ${NAMED}`);
   const binary = fs.readFileSync(ENGINE);
   if (process.platform === 'win32') {
     assert.equal(binary.toString('ascii', 0, 2), 'MZ');
@@ -58,7 +64,9 @@ test('native engine package, download, cache, and skill installation', {
   t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}`;
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-native-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  // Windows can hold a just-run .exe open for a moment (Defender, x64 emulation),
+  // so retry the EPERM/EBUSY a removal right after the last run can hit.
+  t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
 
   function stage(name, line = manifestLine) {
     requests.length = 0;

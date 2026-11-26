@@ -20,6 +20,27 @@ describe('engine release targets', () => {
     expect(ci.jobs.changes.outputs.oracle).toBe('${{ steps.plan.outputs.oracle }}');
   });
 
+  test('CI runs the native CLI test against a real engine, never a skip', () => {
+    // Catches: cli-native registered only in the core suite, which has no engine and skips it.
+    const nativeStep = job => job.steps.find(step => step.run === 'node --test tests/cli-native.test.mjs');
+
+    // Every PR, natively on Windows x64, with the pinned release the shim downloads.
+    const windows = ci.jobs['launcher-windows'];
+    expect(windows['runs-on']).toBe('namespace-profile-impeccable-windows');
+    const fetch = windows.steps.findIndex(step => step.run === 'node scripts/fetch-engine.mjs');
+    const winNative = nativeStep(windows);
+    expect(fetch).toBeGreaterThanOrEqual(0);
+    expect(windows.steps.indexOf(winNative)).toBeGreaterThan(fetch);
+    expect(winNative.env.IMPECCABLE_BIN).toBe('${{ github.workspace }}\\skill\\scripts\\bin\\windows-x64\\impeccable.exe');
+
+    // Engine changes, on Linux, with this checkout's source build.
+    const oracle = ci.jobs.oracle;
+    const build = oracle.steps.findIndex(step => step.run === 'cargo build --release -p impeccable');
+    const linuxNative = nativeStep(oracle);
+    expect(oracle.steps.indexOf(linuxNative)).toBeGreaterThan(build);
+    expect(linuxNative.env.IMPECCABLE_BIN).toBe('${{ github.workspace }}/target/release/impeccable');
+  });
+
   test('builds and probes Windows ARM64 on a native runner', () => {
     const build = workflow.jobs.build;
     expect(build.strategy.matrix.include).toContainEqual({
