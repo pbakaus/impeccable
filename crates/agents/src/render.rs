@@ -882,7 +882,8 @@ pub(super) fn drifted_http_servers(s: &Spec, path: &Path, current: &[u8], origin
         let wanted = mcp_entry(s, given);
         let prior = original.as_ref().and_then(|v| v.get(section)).and_then(|v| v.get(name));
         let entry = current.get(section).and_then(|v| v.get(name));
-        (prior != Some(&wanted) && entry.is_some_and(|v| v != &wanted)).then(|| name.clone())
+        // The baseline's own entry, put back by undo, is no edit of the person's.
+        (prior != Some(&wanted) && entry.is_some_and(|v| v != &wanted) && entry != prior).then(|| name.clone())
     }).collect()
 }
 
