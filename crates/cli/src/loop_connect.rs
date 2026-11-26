@@ -2184,6 +2184,8 @@ mod account_tests {
         }
     }
 
+    // The launcher is a shell script, written on macOS and Linux only.
+    #[cfg(unix)]
     #[test]
     fn the_launcher_never_runs_an_engine_older_than_the_one_that_connected() {
         // Catches: an old cached engine without `impeccable mcp` serving every agent.
