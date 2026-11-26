@@ -174,7 +174,7 @@ if [ "$LOOP" = 1 ]; then
     PATH="$H/bin:/usr/bin:/bin" imp loop connect > "$H/connect.out" 2>&1; rc=$?
     check "loop connect: exits 0" '[ $rc = 0 ]'
     check "loop connect: Claude Code connected" 'grep -q "^Claude Code: connected" "$H/connect.out"'
-    mcp=$(jq -r '.mcpServers.impeccable.url // empty' "$HOME/.claude.json" 2>/dev/null)
+    mcp=$(jq -r '.mcpServers.impeccable.command // empty' "$HOME/.claude.json" 2>/dev/null)
     check "loop connect: MCP server registered" '[ -n "$mcp" ]'
     info "loop connect: MCP server $mcp"
     PATH="$H/bin:/usr/bin:/bin" imp loop disconnect > "$H/disconnect.out" 2>&1; rc=$?

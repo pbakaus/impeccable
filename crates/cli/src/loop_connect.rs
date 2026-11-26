@@ -2,14 +2,15 @@
 //! Needs you and Loop.
 //!
 //! For each agent found (Claude Code, Codex, Cursor, Copilot, opencode), connect:
-//! 1. adds the Impeccable MCP server, only if the agent has no server of that name, through
-//!    its CLI or the engine journal, then checks the exact global entry it wrote;
-//! 2. adds Loop's hooks through the agents engine (journaled, undone exactly);
+//! 1. gives it the local `impeccable mcp` server (REN-2507), through its CLI or the engine
+//!    journal, replacing an earlier entry of connect's own, then checks the exact global entry;
+//! 2. adds Loop's hooks through the agents engine (journaled, undone exactly), and takes out
+//!    older hand-added forms of the same hooks;
 //! 3. writes the record Loop's helper reads.
 //!
 //! Disconnect stops Loop waking, then removes journaled resources. Claude and Codex
 //! MCP servers stay; journal-owned entries created here are undone with the wake resources.
-//! Agent tokens are never seen or stored here: each agent signs in to the MCP server itself.
+//! The local server works under the CLI's own sign-in, so no agent signs in on its own.
 use impeccable_agents::{installed_specs, recover_spec, run_spec, Hook, McpApproval, Spec};
 use crate::agent_block;
 use crate::codex_trust;
@@ -20,88 +21,168 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// The Impeccable MCP servers. Constants of the build: the account service the CLI
-/// signs in to (`IMPECCABLE_ACCOUNT_URL`) chooses between them, and nothing else can name
-/// one. An entry is written into the agent's own global configuration and outlives the
-/// variable, so an account URL that is neither service is refused, never followed and
-/// never replaced by production.
-const MCP_URL: &str = "https://api.impeccable.style/mcp";
-const STAGING_MCP_URL: &str = "https://api.staging.impeccable.style/mcp";
-/// The account services, as `impeccable_account::config::normalize_origin` spells them.
-const ACCOUNTS: [(&str, &str); 2] = [
-    (impeccable_account::config::DEFAULT_ACCOUNT_URL, MCP_URL),
-    ("https://api.staging.impeccable.style", STAGING_MCP_URL),
-];
-thread_local! {
-    /// The server this command's account service names, set by every `init_mcp_url`
-    /// (not once per process), so a later call with another account never reuses the
-    /// first's. Per thread, as each command runs its connect on one.
-    static MCP_FOR_ACCOUNT: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+/// The account services an agent's server may use, as `normalize_origin` spells them. The
+/// entry pins one in the agent's own configuration, where it outlives the variable, so any
+/// other account URL is refused, never followed and never replaced by production.
+const ACCOUNTS: [&str; 2] = [impeccable_account::config::DEFAULT_ACCOUNT_URL, "https://api.staging.impeccable.style"];
+/// The web MCP servers earlier connects wrote: an entry naming one is connect's own and is
+/// replaced by the local server.
+const WEB_MCP: [&str; 2] = ["https://api.impeccable.style/mcp", "https://api.staging.impeccable.style/mcp"];
+/// Loop's preferences, where its Settings keep the person's server pick, and the bundle key
+/// naming the server a Loop was built for (Loop's own reading of both).
+const LOOP_PREFERENCES: &str = "Library/Preferences/style.impeccable.loop.plist";
+const LOOP_PICK: &str = "impeccable.server";
+const LOOP_BUNDLE_SERVER: &str = "ImpeccableServer";
+/// The variable the local server reads its account service from.
+const ACCOUNT_VAR: &str = "IMPECCABLE_ACCOUNT_URL";
+
+/// What every agent's entry runs this command: the local server's command and account
+/// service. Set by every `init_target` (not once per process), so a later call never reuses
+/// an earlier one's. Per thread, as each command runs its connect on one.
+#[derive(Clone)]
+struct Target {
+    account: &'static str,
+    command: String,
 }
-/// A build with the `test-mcp-url` feature (staging end-to-end runs only, like
-/// `test-release-keys`) may point connect at another https MCP server through
-/// `IMPECCABLE_MCP_URL`. Shipped builds don't have the feature, so they ignore the
-/// variable.
-#[cfg(feature = "test-mcp-url")]
 thread_local! {
-    static MCP_OVERRIDE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    static TARGET: std::cell::RefCell<Option<Target>> = const { std::cell::RefCell::new(None) };
 }
 
-fn mcp_url() -> &'static str {
-    #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = MCP_OVERRIDE.get() {
-        return url;
-    }
-    MCP_FOR_ACCOUNT.get().unwrap_or(MCP_URL)
+fn target() -> Target {
+    TARGET.with_borrow(Clone::clone).expect("init_target runs before any entry is read")
 }
 
-/// The MCP server of the account service `raw` names (`IMPECCABLE_ACCOUNT_URL`, unset
-/// for production), or why there is none.
-fn mcp_for_account(raw: Option<&str>) -> Result<&'static str> {
-    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
-        return Ok(MCP_URL);
-    };
-    let origin = impeccable_account::config::normalize_origin(raw);
-    ACCOUNTS
-        .iter()
-        .find(|(account, _)| origin.as_deref() == Some(*account))
-        .map(|(_, mcp)| *mcp)
-        .ok_or_else(|| {
+/// The account service connect points agents at: `IMPECCABLE_ACCOUNT_URL` when set (Loop sets
+/// it when it runs connect), else the installed Loop's, else production. A set variable naming
+/// neither service is refused.
+fn account_for(io: &Io) -> Result<&'static str> {
+    if let Some(raw) = io.env(ACCOUNT_VAR).map(str::trim).filter(|s| !s.is_empty()) {
+        let origin = impeccable_account::config::normalize_origin(raw);
+        return ACCOUNTS.iter().copied().find(|a| origin.as_deref() == Some(*a)).ok_or_else(|| {
             "IMPECCABLE_ACCOUNT_URL isn't the Impeccable account or its staging service, so no MCP server was added. Unset it to connect to Impeccable.".into()
-        })
+        });
+    }
+    Ok(io.home().and_then(|home| loop_account(&home)).unwrap_or(ACCOUNTS[0]))
 }
 
-/// In a `test-mcp-url` build, a set but unusable `IMPECCABLE_MCP_URL` is refused, never
-/// replaced by production: falling back would send a staging run's agents to production.
-fn init_mcp_url(io: &Io) -> Result<()> {
-    #[cfg(feature = "test-mcp-url")]
-    if let Some(url) = io.env("IMPECCABLE_MCP_URL") {
-        let usable = url::Url::parse(url)
-            .ok()
-            .filter(|u| {
-                // A local stack serves plain http on this machine only, its MCP on `api.localhost`.
-                let loopback = impeccable_account::config::loopback_url(u);
-                (u.scheme() == "https" || (u.scheme() == "http" && loopback))
-                    && u.host_str().is_some()
-                    && u.as_str() == url
-            });
-        if usable.is_none() || url.contains(char::is_whitespace) {
-            MCP_OVERRIDE.set(None);
-            return Err("IMPECCABLE_MCP_URL must be a plain https URL, or http on localhost.".into());
-        }
-        // Leaked once per call, in test builds only.
-        MCP_OVERRIDE.set(Some(Box::leak(url.to_string().into_boxed_str())));
+/// The account service the installed Loop uses, by Loop's own rule: the person's Settings pick
+/// applies to a Loop built for staging or production; otherwise the server it was built for. A
+/// Loop built for anything else (a local rehearsal), or none, names none.
+fn loop_account(home: &Path) -> Option<&'static str> {
+    let built = plist_string(&home.join(APP).join("Contents/Info.plist"), LOOP_BUNDLE_SERVER)?;
+    let built = impeccable_account::config::normalize_origin(&built)?;
+    let built = ACCOUNTS.iter().copied().find(|a| *a == built)?;
+    Some(match plist_string(&home.join(LOOP_PREFERENCES), LOOP_PICK).as_deref() {
+        Some("staging") => ACCOUNTS[1],
+        Some("production") => ACCOUNTS[0],
+        _ => built,
+    })
+}
+
+/// One string value of a property list, read through plutil as JSON (Loop's preference keys
+/// hold dots, which plutil's own key paths can't name).
+fn plist_string(path: &Path, key: &str) -> Option<String> {
+    let out = Command::new("/usr/bin/plutil")
+        .args(["-convert", "json", "-o", "-"])
+        .arg(path)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    serde_json::from_slice::<Value>(&out.stdout).ok()?.get(key)?.as_str().map(str::to_owned)
+}
+
+/// Sets this command's target. On a refused account the target still answers (judged against
+/// production, as status and disconnect read), and the refusal is returned.
+fn init_target(io: &Io) -> Result<()> {
+    let account = account_for(io);
+    let command = mcp_command(io)?;
+    TARGET.set(Some(Target { account: *account.as_ref().unwrap_or(&ACCOUNTS[0]), command }));
+    account.map(|_| ())
+}
+
+/// The command every agent's entry runs. On macOS and Linux, the launcher in the engine's own
+/// folder (`<IMPECCABLE_HOME>/bin/mcp`), which outlives updates and the bare PATH an agent app
+/// starts with. On Windows, the engine itself, from the version cache when it's there.
+fn mcp_command(io: &Io) -> Result<String> {
+    let home = impeccable_account::config::impeccable_home(&io.env).ok_or("HOME is not set to an absolute path.")?;
+    if cfg!(unix) {
+        return Ok(home.join("bin").join("mcp").display().to_string());
+    }
+    let cached = home.join("bin").join(env!("CARGO_PKG_VERSION")).join("impeccable.exe");
+    if cached.is_file() {
+        return Ok(cached.display().to_string());
+    }
+    std::env::current_exe().map(|p| p.display().to_string()).map_err(|e| e.to_string())
+}
+
+/// Writes the launcher (macOS and Linux): the newest verified engine under the version cache,
+/// unless the engine that ran connect is at least as new, in which case that one. So it never
+/// runs an engine older than the one that connected, and still survives that one going away
+/// (an npx cache cleaned, say).
+fn write_launcher(io: &Io) -> Result<()> {
+    if !cfg!(unix) {
         return Ok(());
     }
-    #[cfg(feature = "test-mcp-url")]
-    MCP_OVERRIDE.set(None);
-    let url = mcp_for_account(io.env("IMPECCABLE_ACCOUNT_URL"));
-    MCP_FOR_ACCOUNT.set(url.as_ref().ok().copied());
-    url.map(|_| ())
+    let home = impeccable_account::config::impeccable_home(&io.env).ok_or("HOME is not set to an absolute path.")?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let script = launcher_script(&home, &exe, env!("CARGO_PKG_VERSION"));
+    let dir = home.join("bin");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join("mcp");
+    if fs::read_to_string(&path).is_ok_and(|s| s == script) {
+        return Ok(());
+    }
+    let tmp = dir.join(format!(".mcp.{}.tmp", std::process::id()));
+    fs::write(&tmp, &script).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+fn launcher_script(home: &Path, exe: &Path, version: &str) -> String {
+    let q = |p: &Path| p.display().to_string().replace('\'', r"'\''");
+    let (home, exe) = (q(home), q(exe));
+    format!(
+        r#"#!/bin/sh
+# Impeccable: the local MCP server for your coding agents. Written by impeccable loop connect.
+# Runs the newest verified engine in this home's version cache, or the engine that connected
+# when that one is at least as new.
+home='{home}'
+connected='{exe}'
+connected_version='{version}'
+best=''
+best_version=''
+for v in $(ls -1 "$home/bin" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n -k3,3n); do
+  f="$home/bin/$v/impeccable"
+  s="$f.verified"
+  [ -f "$f" ] && [ -x "$f" ] && [ -f "$s" ] || continue
+  [ "$f" -nt "$s" ] && continue
+  want=$(awk '{{print $2; exit}}' "$s")
+  size=$(wc -c < "$f" | tr -d ' ')
+  [ -n "$want" ] && [ "$size" = "$want" ] && best="$f" && best_version="$v"
+done
+if [ -x "$connected" ]; then
+  newest=$(printf '%s
+%s
+' "$best_version" "$connected_version" | grep . | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+  [ "$newest" = "$connected_version" ] && best="$connected"
+fi
+if [ -z "$best" ]; then
+  echo "Impeccable: no engine to run. Run npx impeccable loop connect again." >&2
+  exit 1
+fi
+IMPECCABLE_HOME="$home"
+export IMPECCABLE_HOME
+exec "$best" "$@"
+"#
+    )
 }
 const MCP_NAME: &str = "impeccable";
-/// Why an existing entry of that name isn't the one connect would write.
-const SETTINGS_DIFFER: &str = "its settings differ";
 /// The agents-engine owner id for everything this writes.
 const OWNER: &str = "impeccable-loop";
 const APP: &str = "Applications/Impeccable Loop.app";
@@ -114,8 +195,8 @@ const SUPPORT: [&str; 2] = ["Impeccable Reviews", "Loop"];
 const TARGETS: &str = "connect.json";
 /// How long one connect or disconnect waits for another to finish.
 const LOCK_WAIT: Duration = Duration::from_secs(10);
-/// How long an agent's `mcp add` may take, Codex's browser sign-in included.
-const ADD_WAIT: Duration = Duration::from_secs(300);
+/// How long an agent's `mcp add` or `mcp remove` may take.
+const ADD_WAIT: Duration = Duration::from_secs(60);
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -143,8 +224,6 @@ struct AgentDescription {
     rule_override: Option<&'static str>,
     rule_existing_only: bool,
     post_add: &'static [&'static str],
-    sign_in: &'static str,
-    status_sign_in: bool,
     follow_up: Option<&'static str>,
     record: RecordLayout,
     approve_tools: bool,
@@ -154,11 +233,11 @@ struct AgentDescription {
 }
 
 #[derive(Clone, Copy)]
-enum McpFormat { Json { section: &'static str, transport: Option<&'static str>, all_tools: bool, enabled: bool }, Toml }
+enum McpFormat { Json { section: &'static str }, Toml }
 #[derive(Clone, Copy)]
 enum Registration {
     // CLI-added servers stay on disconnect, with a manual removal command.
-    Cli { add: &'static [&'static str], remove: &'static [&'static str], interactive: bool },
+    Cli { remove: &'static [&'static str] },
     // The engine both writes and undoes these server entries.
     Journal,
 }
@@ -182,10 +261,9 @@ const AGENTS: &[AgentDescription] = &[
     AgentDescription {
         harness: "claude", label: "Claude Code", binary: "claude", bin_env: "IMPECCABLE_CLAUDE_BIN",
         root: ".claude", root_env: Some("CLAUDE_CONFIG_DIR"), root_env_suffix: None, mcp_file: ".claude.json", mcp_in_home: true, mcp_manual_file: None,
-        mcp_format: McpFormat::Json { section: "mcpServers", transport: Some("http"), all_tools: false, enabled: false },
-        registration: Registration::Cli { add: &["mcp", "add-json", "--scope", "user", "{name}", "{entry}"], remove: &["mcp", "remove", "--scope", "user", "{name}"], interactive: false },
-        rule: "CLAUDE.md", rule_override: None, rule_existing_only: false, post_add: &[],
-        sign_in: "in Claude Code, run /mcp, choose impeccable, then Authenticate.", status_sign_in: false, follow_up: None,
+        mcp_format: McpFormat::Json { section: "mcpServers" },
+        registration: Registration::Cli { remove: &["mcp", "remove", "--scope", "user", "{name}"] },
+        rule: "CLAUDE.md", rule_override: None, rule_existing_only: false, post_add: &[], follow_up: None,
         record: RecordLayout::Accounts, approve_tools: false, wake_gate: None,
         plugin: None, hooks: &[
             hook("SessionStart", None, "lifecycle", 86400, true, None),
@@ -200,9 +278,8 @@ const AGENTS: &[AgentDescription] = &[
         harness: "codex", label: "Codex", binary: "codex", bin_env: "IMPECCABLE_CODEX_BIN",
         root: ".codex", root_env: Some("CODEX_HOME"), root_env_suffix: None, mcp_file: "config.toml", mcp_in_home: false, mcp_manual_file: None,
         mcp_format: McpFormat::Toml,
-        registration: Registration::Cli { add: &["mcp", "add", "{name}", "--url", "{url}"], remove: &["mcp", "remove", "{name}"], interactive: true },
-        rule: "AGENTS.md", rule_override: Some("AGENTS.override.md"), rule_existing_only: false, post_add: &[],
-        sign_in: "run codex mcp login impeccable (skip it if Codex just signed you in).", status_sign_in: false, follow_up: None,
+        registration: Registration::Cli { remove: &["mcp", "remove", "{name}"] },
+        rule: "AGENTS.md", rule_override: Some("AGENTS.override.md"), rule_existing_only: false, post_add: &[], follow_up: None,
         record: RecordLayout::ConfigDir, approve_tools: true, wake_gate: None,
         plugin: None, hooks: &[
             hook("SessionStart", None, "lifecycle", 10, false, None),
@@ -214,9 +291,8 @@ const AGENTS: &[AgentDescription] = &[
     AgentDescription {
         harness: "cursor", label: "Cursor", binary: "cursor-agent", bin_env: "IMPECCABLE_CURSOR_BIN",
         root: ".cursor", root_env: None, root_env_suffix: None, mcp_file: "mcp.json", mcp_in_home: false, mcp_manual_file: None,
-        mcp_format: McpFormat::Json { section: "mcpServers", transport: None, all_tools: false, enabled: false }, registration: Registration::Journal,
-        rule: "rules/impeccable.mdc", rule_override: None, rule_existing_only: false, post_add: &["mcp", "enable", "impeccable"],
-        sign_in: "run cursor-agent mcp login impeccable.", status_sign_in: true, follow_up: None,
+        mcp_format: McpFormat::Json { section: "mcpServers" }, registration: Registration::Journal,
+        rule: "rules/impeccable.mdc", rule_override: None, rule_existing_only: false, post_add: &["mcp", "enable", "impeccable"], follow_up: None,
         record: RecordLayout::Global, approve_tools: true, wake_gate: Some(CLI_WAKE),
         plugin: None, hooks: &[
             hook("sessionStart", None, "lifecycle", 10, false, Some(CLI_WAKE)),
@@ -227,9 +303,8 @@ const AGENTS: &[AgentDescription] = &[
     AgentDescription {
         harness: "copilot", label: "GitHub Copilot CLI", binary: "copilot", bin_env: "IMPECCABLE_COPILOT_BIN",
         root: ".copilot", root_env: Some("COPILOT_HOME"), root_env_suffix: None, mcp_file: "mcp-config.json", mcp_in_home: false, mcp_manual_file: None,
-        mcp_format: McpFormat::Json { section: "mcpServers", transport: Some("http"), all_tools: true, enabled: false }, registration: Registration::Journal,
+        mcp_format: McpFormat::Json { section: "mcpServers" }, registration: Registration::Journal,
         rule: "copilot-instructions.md", rule_override: None, rule_existing_only: false, post_add: &[],
-        sign_in: "on first use.", status_sign_in: true,
         follow_up: Some("In each repo, answer \"Yes, and don't ask again\" for Impeccable's tools once; then Copilot wakes by itself."),
         record: RecordLayout::Global, approve_tools: false, wake_gate: Some(CLI_WAKE),
         plugin: None, hooks: &[
@@ -242,10 +317,9 @@ const AGENTS: &[AgentDescription] = &[
         harness: "opencode", label: "opencode", binary: "opencode", bin_env: "IMPECCABLE_OPENCODE_BIN",
         root: ".config/opencode", root_env: Some("XDG_CONFIG_HOME"), root_env_suffix: Some("opencode"),
         mcp_file: "opencode.json", mcp_in_home: false, mcp_manual_file: Some("opencode.jsonc"),
-        mcp_format: McpFormat::Json { section: "mcp", transport: Some("remote"), all_tools: false, enabled: true },
+        mcp_format: McpFormat::Json { section: "mcp" },
         registration: Registration::Journal,
-        rule: "AGENTS.md", rule_override: None, rule_existing_only: true, post_add: &[],
-        sign_in: "on first use.", status_sign_in: true, follow_up: None,
+        rule: "AGENTS.md", rule_override: None, rule_existing_only: true, post_add: &[], follow_up: None,
         record: RecordLayout::Global, approve_tools: false, wake_gate: Some(CLI_WAKE),
         hooks: &[], plugin: Some(include_str!("../assets/opencode-loop-plugin.ts")),
     },
@@ -273,23 +347,42 @@ impl AgentDescription {
         self.rule_override.into_iter().chain(std::iter::once(self.rule)).map(|name| root.join(name)).collect()
     }
 
+    /// The local server's entry, in the shape this agent's own CLI writes it (Codex's TOML
+    /// table as the same keys). The account service is always pinned, production included, so
+    /// a variable in the agent's own environment never moves it.
     fn mcp_entry(&self) -> Value {
-        let mut entry = json!({"url": mcp_url()});
-        if let McpFormat::Json { transport, all_tools, enabled, .. } = self.mcp_format {
-            if let Some(transport) = transport { entry["type"] = json!(transport); }
-            if all_tools { entry["tools"] = json!(["*"]); }
-            if enabled { entry["enabled"] = json!(true); }
+        let Target { account, command } = target();
+        let env = json!({ ACCOUNT_VAR: account });
+        match self.harness {
+            "claude" => json!({"type": "stdio", "command": command, "args": ["mcp"], "env": env}),
+            "copilot" => json!({"type": "local", "command": command, "args": ["mcp"], "env": env, "tools": ["*"]}),
+            "opencode" => json!({"type": "local", "command": [command, "mcp"], "environment": env, "enabled": true}),
+            _ => json!({"command": command, "args": ["mcp"], "env": env}),
         }
-        entry
+    }
+
+    /// The agent CLI's arguments that add `entry` (the local server, or an earlier entry being
+    /// put back) as its global `impeccable` server.
+    fn add_arguments(&self, entry: &Value) -> Vec<String> {
+        if self.harness == "claude" {
+            return ["mcp", "add-json", "--scope", "user", MCP_NAME].into_iter().map(String::from).chain([entry.to_string()]).collect();
+        }
+        let mut args: Vec<String> = ["mcp", "add", MCP_NAME].into_iter().map(String::from).collect();
+        if let Some(url) = entry["url"].as_str() {
+            args.extend(["--url".into(), url.into()]);
+            return args;
+        }
+        for (k, v) in entry["env"].as_object().into_iter().flatten() {
+            args.extend(["--env".into(), format!("{k}={}", v.as_str().unwrap_or_default())]);
+        }
+        args.push("--".into());
+        args.extend(entry["command"].as_str().map(String::from));
+        args.extend(entry["args"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from));
+        args
     }
 
     fn arguments(&self, args: &[&str]) -> Vec<String> {
-        args.iter().map(|arg| match *arg {
-            "{name}" => MCP_NAME.into(),
-            "{url}" => mcp_url().into(),
-            "{entry}" => self.mcp_entry().to_string(),
-            _ => (*arg).into(),
-        }).collect()
+        args.iter().map(|arg| if *arg == "{name}" { MCP_NAME.into() } else { (*arg).into() }).collect()
     }
 }
 
@@ -376,17 +469,19 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
             return Err(format!("Unknown agent: {h}. Use {}.", AGENTS.iter().map(|d| d.harness).collect::<Vec<_>>().join(", ")));
         }
     }
-    init_mcp_url(io)?;
+    init_target(io)?;
     let home = home(io)?;
     let helper = home.join(APP).join(HELPER);
     if !helper.is_file() {
         return Err(missing_loop(&helper));
     }
+    let sign_in = sign_in(io);
     // Checked before any agent's configuration changes.
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
     // Taken second, as --mcp-only takes it alone, so the two never add at once.
     let _mcp_lock = mcp_lock(io)?;
+    write_launcher(io)?;
     let mut out = String::new();
     let mut rows = Vec::new();
     let (mut connected, mut failed) = (0, 0);
@@ -409,17 +504,15 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
         match result {
             Ok(manual) => {
                 connected += 1;
-                out.push_str(&format!(
-                    "{label}: connected.\n  Sign in: {}\n",
-                    d.sign_in
-                ));
+                out.push_str(&format!("{label}: connected.\n"));
+                if let Some(step) = &sign_in { out.push_str(&format!("  Sign in: {step}\n")); }
                 if !manual.is_empty() {
                     if d.follow_up.is_some() { out.push_str(&format!("  {}\n", manual.join("; "))); }
                     else { out.push_str(&format!("  Then in {label}: {}.\n", manual.join("; "))); }
                 }
                 rows.push(json!({
                     "agent": harness, "label": label, "result": "connected",
-                    "signIn": d.sign_in, "then": manual,
+                    "signIn": sign_in, "then": manual,
                 }));
             }
             Err(e) => {
@@ -438,11 +531,12 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
 /// `loop status [--json]`: what Loop and each agent look like right now, read only.
 /// Nothing is written and no lock is taken; the agents' CLIs are never run.
 pub(crate) fn status(io: &Io) -> Result<Value> {
-    // Reading never needs the account's server: on an origin connect would refuse, an
-    // entry is judged against production's, as disconnect does. Failing here would also
-    // silence login's Loop offer.
-    let _ = init_mcp_url(io);
+    // Reading never needs a usable account: on one connect would refuse, an entry is judged
+    // against production's, as disconnect does. Failing here would also silence login's Loop
+    // offer.
+    let _ = init_target(io);
     let home = home(io)?;
+    let sign_in = sign_in(io);
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
     let version = bundle_version(&helper);
@@ -461,7 +555,9 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         let mcp = if manual_mcp(&agent).is_some() { "manual" } else { match read_entry(&agent) {
             Entry::Exact => "registered",
             Entry::Absent => "absent",
-            Entry::Other(_) => "different",
+            // An earlier entry of connect's own (the web server, or another account's) still
+            // needs a connect, so Loop shows the agent as not connected until it runs.
+            Entry::Ours(_) | Entry::Other(_) => "different",
         }};
         // Hooks count only when the engine installed them for this very config folder and
         // every resource is still as written: a journal alone says nothing once a hook was
@@ -494,7 +590,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
         let hooks = resources_ok && installed.iter().any(|s| s.harness == harness && s.root == agent.root && (!s.hooks.is_empty() || s.wake_plugin.is_some()));
         agents.push(json!({
             "agent": harness, "label": label, "detected": true,
-            "signIn": d.sign_in, "hooksRequired": hooks_required,
+            "signIn": sign_in, "hooksRequired": hooks_required,
             "mcp": mcp, "hooks": hooks, "instruction": instruction, "instructionRequired": d.writes_rule(&agent.root),
             "manualMcp": manual_mcp(&agent),
             "connected": connected && (hooks_required || resources_ok),
@@ -502,6 +598,8 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     }
     Ok(json!({
         "loop": { "installed": loop_installed, "version": version, "blocked": loop_installed && blocked(&helper) },
+        "account": target().account,
+        "signedIn": sign_in.is_none(),
         "agents": agents,
     }))
 }
@@ -539,66 +637,97 @@ pub(crate) fn status_text(v: &Value) -> String {
                 if a["instruction"] == true { "present" } else { "missing" },
             ));
         }
-        if let Some(d) = a["agent"].as_str().and_then(description).filter(|d| d.status_sign_in && a["detected"] == true) {
-            out.push_str(&format!("  Sign in: {}\n", d.sign_in));
-        }
         if let Some(step) = a["manualMcp"].as_str() { out.push_str(&format!("  {step}\n")); }
         if let Some(step) = a["agent"].as_str().and_then(description).filter(|_| a["detected"] == true).and_then(|d| d.follow_up) {
             out.push_str(&format!("  {step}\n"));
         }
     }
+    let detected = v["agents"].as_array().is_some_and(|a| a.iter().any(|x| x["detected"] == true));
+    if let Some(step) = v["agents"].as_array().into_iter().flatten().find_map(|a| a["signIn"].as_str()).filter(|_| detected) {
+        out.push_str(&format!("Sign in: {step}\n"));
+    }
     out
 }
 
-/// The MCP server, added only when the agent has none of that name. True when this call
-/// added it; an entry of that name that differs is left alone and is an error.
+/// The one sign-in step every agent's server needs, or None when the CLI is already signed in
+/// to the account service the entries name: the local server works under that sign-in.
+fn sign_in(io: &Io) -> Option<String> {
+    let account = target().account;
+    let mut env = io.env.clone();
+    env.insert(ACCOUNT_VAR.into(), account.into());
+    let signed_in = impeccable_account::config::Account::from_env(&env)
+        .is_ok_and(|a| impeccable_account::session::Session::load_quietly(&a).is_ok());
+    (!signed_in).then(|| if account == ACCOUNTS[0] {
+        "run impeccable login.".into()
+    } else {
+        format!("run {ACCOUNT_VAR}={account} impeccable login.")
+    })
+}
+
+/// The step a person takes when connect can't write the agent's MCP file itself.
 fn manual_mcp(agent: &Agent) -> Option<String> {
     let file = agent.description.mcp_manual_file.map(|name| agent.root.join(name))?;
-    (!agent.mcp_file.exists() && file.exists()).then(|| format!("Add the impeccable MCP server ({}) to {}.", mcp_url(), file.display()))
+    (!agent.mcp_file.exists() && file.exists()).then(|| format!("Add this impeccable MCP server to {}: {}", file.display(), agent.description.mcp_entry()))
 }
 
+/// The local server, in place: added when absent, put in place of an earlier entry of connect's
+/// own, left alone when exact. True when this call wrote it. An entry of that name that isn't
+/// connect's is left alone and is an error.
 fn ensure_mcp(agent: &Agent) -> Result<bool> {
     if manual_mcp(agent).is_some() { return Ok(false); }
-    if matches!(agent.description.registration, Registration::Journal) {
-        let added = mcp_absent(agent)?;
-        if added {
-            fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
-            run_spec("apply", &mcp_spec(agent)).map_err(|(_, m)| m)?;
+    let prior = match replaceable(agent)? {
+        Some(prior) => prior,
+        None => {
+            if matches!(agent.description.registration, Registration::Journal) { post_add(agent)?; }
+            return Ok(false);
         }
+    };
+    if matches!(agent.description.registration, Registration::Journal) {
+        fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
+        run_spec("apply", &journal_spec(agent)).map_err(|(_, m)| m)?;
         post_add(agent)?;
-        return Ok(added);
+        return Ok(true);
     }
-    if !mcp_absent(agent)? { return Ok(false); }
-    let ran = add_server(agent);
-    match read_entry(agent) {
-        Entry::Exact => Ok(true),
-        Entry::Absent => Err(ran.err().unwrap_or_else(|| "the agent didn't add the MCP server".into())),
-        Entry::Other(why) => Err(format!("the MCP server the agent wrote isn't as expected ({why}); check {}", agent.mcp_file.display())),
+    let removed = match &prior {
+        Some(_) => run_cli(agent, &agent.description.arguments(remove_args(agent))),
+        None => Ok(()),
+    };
+    let ran = removed.and_then(|()| run_cli(agent, &agent.description.add_arguments(&agent.description.mcp_entry())));
+    let failure = match read_entry(agent) {
+        Entry::Exact => return Ok(true),
+        Entry::Absent => ran.err().unwrap_or_else(|| "the agent didn't add the MCP server".into()),
+        Entry::Ours(_) | Entry::Other(_) => format!("the MCP server the agent wrote isn't as expected; check {}", agent.mcp_file.display()),
+    };
+    // The entry it replaced goes back, so a failed connect leaves the agent as it was.
+    if let Some(prior) = prior {
+        if matches!(read_entry(agent), Entry::Ours(_)) { let _ = run_cli(agent, &agent.description.arguments(remove_args(agent))); }
+        if matches!(read_entry(agent), Entry::Absent) { let _ = run_cli(agent, &agent.description.add_arguments(&prior)); }
     }
+    Err(failure)
 }
 
-fn mcp_absent(agent: &Agent) -> Result<bool> {
+fn remove_args(agent: &Agent) -> &'static [&'static str] {
+    let Registration::Cli { remove } = agent.description.registration else { unreachable!() };
+    remove
+}
+
+/// What `ensure_mcp` would replace: None when the entry is already exact, Some(None) when there
+/// is none, Some(Some(entry)) for an earlier entry of connect's own. Anything else under the
+/// name is the person's, and an error.
+fn replaceable(agent: &Agent) -> Result<Option<Option<Value>>> {
     match read_entry(agent) {
-        Entry::Exact => Ok(false),
-        Entry::Absent => Ok(true),
-        Entry::Other(why) if why == SETTINGS_DIFFER => {
-            return Err(format!(
-                "{} already has a different MCP server called {MCP_NAME}; it was left alone. Remove or rename it, then connect again.",
-                agent.mcp_file.display()
-            ))
-        }
-        Entry::Other(why) => {
-            return Err(format!(
-                "{} already has an MCP server called {MCP_NAME} ({why}); it was left alone",
-                agent.mcp_file.display()
-            ))
-        }
+        Entry::Exact => Ok(None),
+        Entry::Absent => Ok(Some(None)),
+        Entry::Ours(prior) => Ok(Some(Some(prior))),
+        Entry::Other(why) => Err(format!(
+            "{} already has an MCP server called {MCP_NAME} that isn't Impeccable's ({why}); it was left alone. Remove or rename it, then connect again.",
+            agent.mcp_file.display()
+        )),
     }
 }
 
 /// `loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]`: the MCP server alone, for a
-/// person without the Loop app (any OS). No hooks, no taste block, no Loop records: each
-/// agent signs in to the server itself on first use.
+/// person without the Loop app (any OS). No hooks, no taste block, no Loop records.
 pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
     let rows = (|| -> Result<(String, usize, usize, Vec<Value>)> {
         if let Some(h) = only {
@@ -606,9 +735,11 @@ pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value
                 return Err(format!("Unknown agent: {h}. Use {}.", AGENTS.iter().map(|d| d.harness).collect::<Vec<_>>().join(", ")));
             }
         }
-        init_mcp_url(io)?;
+        init_target(io)?;
         let home = home(io)?;
         let _lock = mcp_lock(io)?;
+        write_launcher(io)?;
+        let sign_in = sign_in(io);
         let (mut out, mut rows, mut connected, mut failed) = (String::new(), Vec::new(), 0, 0);
         for d in AGENTS {
             let (harness, label) = (d.harness, d.label);
@@ -624,10 +755,11 @@ pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value
                 Ok(added) => {
                     connected += 1;
                     let what = if manual_mcp(&agent).is_some() { "MCP setup needs a manual step" } else if added { "MCP server added" } else { "MCP server already there" };
-                    out.push_str(&format!("{label}: {what}.\n  Sign in: {}\n", d.sign_in));
+                    out.push_str(&format!("{label}: {what}.\n"));
+                    if let Some(step) = &sign_in { out.push_str(&format!("  Sign in: {step}\n")); }
                     let manual = manual_mcp(&agent);
                     if let Some(step) = &manual { out.push_str(&format!("  {step}\n")); }
-                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": d.sign_in, "manualMcp": manual }));
+                    rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": sign_in, "manualMcp": manual }));
                 }
                 Err(e) => {
                     failed += 1;
@@ -667,7 +799,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
     let added = match agent.description.registration {
         Registration::Cli { .. } => ensure_mcp(agent)?,
         Registration::Journal => {
-            if manual_mcp(agent).is_none() { mcp_absent(agent)?; }
+            if manual_mcp(agent).is_none() { replaceable(agent)?; }
             fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
             false
         }
@@ -753,6 +885,10 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
         .unwrap_or_default();
     if let Some(step) = agent.description.follow_up { manual.push(step.into()); }
     if let Some(step) = manual_mcp(agent) { manual.push(step); }
+    // Older hand-written forms of these hooks would run each one twice beside connect's.
+    if let Err(e) = drop_legacy_hooks(agent, helper, &spec) {
+        return Err(rollback(format!("couldn't take out its older Loop hooks: {e}")));
+    }
     // 4. The "ask through Loop" line, in the file the agent reads.
     if agent.description.writes_rule(&agent.root) {
         if let Err(e) = agent_block::set(&rule_file(agent.harness, &agent.root), "loop", true) {
@@ -780,8 +916,8 @@ fn commands(spec: &Spec) -> Vec<codex_trust::Written> {
 /// decides whether the server stays or is undone with the hooks.
 pub(crate) fn disconnect(io: &Io) -> Result<String> {
     // Disconnect adds no server, so an account URL connect would refuse never blocks it;
-    // the URL only decides whether a recorded entry still matches.
-    let _ = init_mcp_url(io);
+    // the account only decides whether a recorded entry still matches.
+    let _ = init_target(io);
     let home = home(io)?;
     let support = support_dir(&home)?;
     let _lock = lock(&support)?;
@@ -1054,6 +1190,9 @@ enum Entry {
     Absent,
     /// Exactly the entry connect writes, and nothing else.
     Exact,
+    /// An earlier entry of connect's own (the web server, or the local one for another account
+    /// or launcher), as read: connect replaces it.
+    Ours(Value),
     /// Something else under that name, or a file that can't be read as expected.
     Other(String),
 }
@@ -1067,37 +1206,75 @@ fn read_entry(agent: &Agent) -> Entry {
         Err(e) => return Entry::Other(e.to_string()),
     };
     let text = String::from_utf8_lossy(&bytes);
-    if let McpFormat::Json { section, .. } = agent.description.mcp_format {
-        let Ok(v) = serde_json::from_str::<Value>(&text) else {
-            return Entry::Other("its file isn't valid JSON".into());
-        };
-        return match v.get(section).and_then(|s| s.get(MCP_NAME)) {
-            None => Entry::Absent,
-            Some(e) if *e == agent.description.mcp_entry() => Entry::Exact,
-            Some(_) => Entry::Other(SETTINGS_DIFFER.into()),
-        };
-    }
-    let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
-        return Entry::Other("its file isn't valid TOML".into());
+    let found = match agent.description.mcp_format {
+        McpFormat::Json { section } => {
+            let Ok(v) = serde_json::from_str::<Value>(&text) else {
+                return Entry::Other("its file isn't valid JSON".into());
+            };
+            match v.get(section).and_then(|s| s.get(MCP_NAME)) {
+                None => return Entry::Absent,
+                Some(e) => e.clone(),
+            }
+        }
+        McpFormat::Toml => {
+            let Ok(doc) = text.parse::<toml_edit::DocumentMut>() else {
+                return Entry::Other("its file isn't valid TOML".into());
+            };
+            let Some(entry) = doc.get("mcp_servers").and_then(|s| s.get(MCP_NAME)) else {
+                return Entry::Absent;
+            };
+            match toml_entry(entry) {
+                Some(v) => v,
+                None => return Entry::Other("its settings differ".into()),
+            }
+        }
     };
-    let Some(entry) = doc.get("mcp_servers").and_then(|s| s.get(MCP_NAME)) else {
-        return Entry::Absent;
-    };
-    let Some(table) = entry.as_table_like() else {
-        return Entry::Other(SETTINGS_DIFFER.into());
-    };
-    // The approval mode is connect's own (through the engine's mcp_approvals), so a
-    // server it already set up still counts as exactly its own.
-    let keys: Vec<&str> = table
-        .iter()
-        .map(|(k, _)| k)
-        .filter(|k| *k != "default_tools_approval_mode")
-        .collect();
-    if keys == ["url"] && table.get("url").and_then(|v| v.as_str()) == Some(mcp_url()) {
+    if found == agent.description.mcp_entry() {
         Entry::Exact
+    } else if ours(&found) {
+        Entry::Ours(found)
     } else {
-        Entry::Other(SETTINGS_DIFFER.into())
+        Entry::Other("its settings differ".into())
     }
+}
+
+/// A Codex server table as the JSON keys connect compares: `url`, or `command`, `args` and `env`.
+/// The approval mode is connect's own (through the engine's mcp_approvals), so it's left out.
+/// None for any other key or type.
+fn toml_entry(item: &toml_edit::Item) -> Option<Value> {
+    let table = item.as_table_like()?;
+    let mut out = serde_json::Map::new();
+    for (key, value) in table.iter() {
+        let v = match key {
+            "default_tools_approval_mode" => continue,
+            "url" | "command" => json!(value.as_str()?),
+            "args" => json!(value.as_array()?.iter().map(|a| a.as_str()).collect::<Option<Vec<_>>>()?),
+            "env" => {
+                let env = value.as_table_like()?;
+                Value::Object(env.iter().map(|(k, v)| Some((k.to_string(), json!(v.as_str()?)))).collect::<Option<_>>()?)
+            }
+            _ => return None,
+        };
+        out.insert(key.into(), v);
+    }
+    Some(Value::Object(out))
+}
+
+/// An entry connect wrote before: the web server, or a local server running `impeccable mcp`
+/// (the launcher, the engine, or `npx impeccable mcp`).
+fn ours(entry: &Value) -> bool {
+    if let Some(url) = entry["url"].as_str() {
+        return WEB_MCP.contains(&url);
+    }
+    let (command, args): (Option<&str>, Vec<&str>) = match &entry["command"] {
+        Value::String(c) => (Some(c), entry["args"].as_array().into_iter().flatten().filter_map(Value::as_str).collect()),
+        Value::Array(a) => (a.first().and_then(Value::as_str), a.iter().skip(1).filter_map(Value::as_str).collect()),
+        _ => (None, vec![]),
+    };
+    let Some(command) = command else { return false };
+    let name = Path::new(command).file_name().and_then(|n| n.to_str()).unwrap_or(command);
+    args.last() == Some(&"mcp")
+        && (name.starts_with("impeccable") || name == "mcp" || args.iter().any(|a| a.starts_with("impeccable")))
 }
 
 /// The agent's CLI with exactly the configuration selection connect saw, run outside
@@ -1127,17 +1304,11 @@ fn post_add(agent: &Agent) -> Result<()> {
     if out.status.success() { Ok(()) } else { Err(format!("{} refused to enable impeccable.", agent.description.label)) }
 }
 
-/// CLI registration may include browser sign-in, bounded so it cannot hang connect.
-fn add_server(agent: &Agent) -> Result<()> {
-    let Registration::Cli { add, interactive, .. } = agent.description.registration else { unreachable!() };
-    let args = agent.description.arguments(add);
+/// One `mcp add` or `mcp remove` through the agent's CLI, bounded so it can't hang connect.
+/// The agent's own messages go to stderr, leaving JSON stdout intact.
+fn run_cli(agent: &Agent, args: &[String]) -> Result<()> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    if !interactive {
-        let out = cli(agent, &args).output().map_err(|e| e.to_string())?;
-        return if out.status.success() { Ok(()) } else { Err(format!("{} refused to add the MCP server", agent.description.binary)) };
-    }
     let mut child = cli(agent, &args)
-        // The agent's own sign-in messages stay on stderr, leaving JSON stdout intact.
         .stdout(std::io::stderr())
         .stderr(Stdio::inherit())
         .spawn()
@@ -1148,13 +1319,13 @@ fn add_server(agent: &Agent) -> Result<()> {
             return if status.success() {
                 Ok(())
             } else {
-                Err(format!("{} didn't finish adding the MCP server or signing in", agent.description.binary))
+                Err(format!("{} refused to change its MCP server", agent.description.binary))
             };
         }
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(format!("{} took too long to add the MCP server or sign in", agent.description.binary));
+            return Err(format!("{} took too long to change its MCP server", agent.description.binary));
         }
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -1163,7 +1334,7 @@ fn add_server(agent: &Agent) -> Result<()> {
 /// The command a person runs to remove the server, with the exact configuration
 /// selection connect used (Claude's default account: the variable unset).
 fn remove_command(agent: &Agent) -> String {
-    let Registration::Cli { remove, .. } = agent.description.registration else { unreachable!() };
+    let remove = remove_args(agent);
     let env = match &agent.env {
         Some((k, v)) => format!("{k}={} ", quote(v)),
         None => agent.description.root_env.map_or(String::new(), |name| format!("env -u {name} ")),
@@ -1238,12 +1409,101 @@ fn mcp_spec(agent: &Agent) -> Spec {
     Spec {
         version: 1, owner: OWNER.into(), harness: agent.harness.into(), root: agent.root.clone(),
         hooks: vec![], wake_plugin: None, mcp_servers: vec![], mcp_approvals: vec![], instruction: None,
-        http_mcp_servers: match agent.description.registration {
-            Registration::Journal if manual_mcp(agent).is_none() => [(MCP_NAME.into(), mcp_url().into())].into(),
-            Registration::Journal => Default::default(),
-            Registration::Cli { .. } => Default::default(),
-        },
+        mcp_entries: journal_entries(agent),
     }
+}
+
+fn journal_entries(agent: &Agent) -> std::collections::BTreeMap<String, Value> {
+    match agent.description.registration {
+        Registration::Journal if manual_mcp(agent).is_none() => [(MCP_NAME.into(), agent.description.mcp_entry())].into(),
+        _ => Default::default(),
+    }
+}
+
+/// What `--mcp-only` applies for a journal-owned server: the installation connect already
+/// made for this folder with its server brought up to date, so its hooks stay, or the server
+/// alone.
+fn journal_spec(agent: &Agent) -> Spec {
+    let installed = installed_specs(OWNER).ok().and_then(|found| {
+        found.committed.into_iter().find(|s| s.harness == agent.harness && s.root == agent.root)
+    });
+    match installed {
+        Some(spec) => Spec { mcp_entries: journal_entries(agent), ..spec },
+        None => mcp_spec(agent),
+    }
+}
+
+/// Takes the hand-written forms of Loop's hooks out of the agent's hook file once connect's own
+/// are in: the helper run directly with quoted arguments (`'<helper>' 'claude' 'register'`),
+/// or the older `needs-you-hook.mjs` script, for this agent and one of connect's kinds. Nothing
+/// else is touched: another agent's hooks, other kinds and every other command stay.
+fn drop_legacy_hooks(agent: &Agent, helper: &Path, spec: &Spec) -> Result<()> {
+    let file = match agent.harness {
+        "claude" => agent.root.join("settings.json"),
+        "codex" | "cursor" => agent.root.join("hooks.json"),
+        _ => return Ok(()),
+    };
+    let Ok(bytes) = fs::read(&file) else { return Ok(()) };
+    let Ok(mut doc) = serde_json::from_slice::<Value>(&bytes) else { return Ok(()) };
+    let kinds: Vec<&str> = agent.description.hooks.iter().map(|h| h.kind).collect();
+    let written: Vec<&str> = spec.hooks.iter().map(|h| h.command.as_str()).collect();
+    let legacy = |c: &str| !written.contains(&c) && legacy_hook(c, helper, agent.harness, &kinds);
+    let mut removed = 0;
+    for entries in doc.get_mut("hooks").and_then(Value::as_object_mut).into_iter().flat_map(|e| e.values_mut()).filter_map(Value::as_array_mut) {
+        entries.retain_mut(|entry| {
+            if let Some(c) = entry.get("command").and_then(Value::as_str) {
+                let keep = !legacy(c);
+                removed += usize::from(!keep);
+                return keep;
+            }
+            let Some(commands) = entry.get_mut("hooks").and_then(Value::as_array_mut) else { return true };
+            let before = commands.len();
+            commands.retain(|h| !h.get("command").and_then(Value::as_str).is_some_and(legacy));
+            removed += before - commands.len();
+            before == 0 || !commands.is_empty()
+        });
+    }
+    if removed == 0 {
+        return Ok(());
+    }
+    let mut out = serde_json::to_vec_pretty(&doc).map_err(|e| e.to_string())?;
+    out.push(b'\n');
+    let tmp = file.with_extension(format!("json.{}.tmp", std::process::id()));
+    fs::write(&tmp, out).map_err(|e| e.to_string())?;
+    if let Ok(m) = fs::metadata(&file) { let _ = fs::set_permissions(&tmp, m.permissions()); }
+    fs::rename(&tmp, &file).map_err(|e| e.to_string())
+}
+
+/// Whether `command` is a hand-written form of one of connect's hooks for `harness`: the helper
+/// with the agent and a kind as its only arguments (plain, or after a guard's `|| exec`), or
+/// `<node> …/needs-you-hook.mjs <agent> <state folder> <kind>`.
+fn legacy_hook(command: &str, helper: &Path, harness: &str, kinds: &[&str]) -> bool {
+    let tail = command.rsplit_once("|| exec ").map_or(command, |(_, t)| t);
+    let words = shell_words(tail);
+    let helper = helper.to_string_lossy();
+    match words.as_slice() {
+        [h, a, k] => *h == helper && a == harness && kinds.contains(&k.as_str()),
+        [_, script, a, _, k] => script.ends_with("/needs-you-hook.mjs") && a == harness && kinds.contains(&k.as_str()),
+        _ => false,
+    }
+}
+
+/// A command line's words, as sh splits plain and single-quoted words (`'\''` included).
+fn shell_words(line: &str) -> Vec<String> {
+    let (mut words, mut word, mut quoted, mut started) = (Vec::new(), String::new(), false, false);
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' => { quoted = !quoted; started = true; }
+            '\\' if !quoted => { if let Some(n) = chars.next() { word.push(n); } started = true; }
+            c if c.is_whitespace() && !quoted => {
+                if started { words.push(std::mem::take(&mut word)); started = false; }
+            }
+            c => { word.push(c); started = true; }
+        }
+    }
+    if started { words.push(word); }
+    words
 }
 
 /// Loop's hooks and approvals, with journal-owned MCP entries in the same apply.
@@ -1816,85 +2076,147 @@ mod tests {
 }
 
 #[cfg(test)]
-mod mcp_url_tests {
+mod account_tests {
     use super::*;
 
-    #[test]
-    fn a_shipped_build_ignores_the_mcp_override() {
-        // Catches: a variable redirecting a customer's agents to another MCP server.
+    fn io_for(home: &Path, account: Option<&str>) -> Io {
         let mut env = std::collections::HashMap::new();
-        env.insert("IMPECCABLE_MCP_URL".to_string(), "https://evil.example/mcp".to_string());
-        let (io, _) = Io::captured("", std::env::temp_dir(), env);
-        assert!(init_mcp_url(&io).is_ok());
-        #[cfg(not(feature = "test-mcp-url"))]
-        assert_eq!(mcp_url(), "https://api.impeccable.style/mcp");
-        #[cfg(feature = "test-mcp-url")]
-        assert_eq!(mcp_url(), "https://evil.example/mcp");
+        env.insert("HOME".to_string(), home.display().to_string());
+        if let Some(a) = account {
+            env.insert(ACCOUNT_VAR.to_string(), a.to_string());
+        }
+        Io::captured("", std::env::temp_dir(), env).0
+    }
+
+    fn plist(path: &Path, key: &str, value: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, format!(r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>{key}</key><string>{value}</string></dict></plist>"#)).unwrap();
     }
 
     #[test]
-    fn the_account_service_picks_its_own_mcp_server_and_nothing_else() {
-        // Catches: IMPECCABLE_ACCOUNT_URL writing another server into an agent's global
-        // config, or falling back to production for a run aimed elsewhere.
-        assert_eq!(mcp_for_account(None), Ok("https://api.impeccable.style/mcp"));
-        assert_eq!(mcp_for_account(Some(" ")), Ok("https://api.impeccable.style/mcp"));
-        assert_eq!(mcp_for_account(Some("https://api.impeccable.style/")), Ok("https://api.impeccable.style/mcp"));
-        assert_eq!(mcp_for_account(Some("https://API.staging.impeccable.style")), Ok("https://api.staging.impeccable.style/mcp"));
+    fn the_variable_names_the_account_and_nothing_else_may() {
+        // Catches: IMPECCABLE_ACCOUNT_URL pinning another server into an agent's global config,
+        // or a run aimed elsewhere falling back to production.
+        let home = std::env::temp_dir().join(format!("connect-account-{}", std::process::id()));
+        assert_eq!(account_for(&io_for(&home, None)), Ok(ACCOUNTS[0]));
+        assert_eq!(account_for(&io_for(&home, Some(" "))), Ok(ACCOUNTS[0]));
+        assert_eq!(account_for(&io_for(&home, Some("https://api.impeccable.style/"))), Ok(ACCOUNTS[0]));
+        assert_eq!(account_for(&io_for(&home, Some("https://API.staging.impeccable.style"))), Ok(ACCOUNTS[1]));
         for other in ["https://evil.example", "https://api.impeccable.style.evil.test", "http://127.0.0.1:8787", "https://impeccable.style", "not a url"] {
-            assert!(mcp_for_account(Some(other)).is_err(), "{other}");
+            assert!(account_for(&io_for(&home, Some(other))).is_err(), "{other}");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn with_no_variable_the_account_is_the_installed_loops() {
+        // Catches: a person's agents pointed at production while their Loop runs on staging, so
+        // their cards never reach it.
+        let home = std::env::temp_dir().join(format!("connect-loop-account-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&home);
+        let info = home.join(APP).join("Contents/Info.plist");
+        let picks = home.join(LOOP_PREFERENCES);
+        plist(&info, LOOP_BUNDLE_SERVER, "https://api.staging.impeccable.style");
+        assert_eq!(account_for(&io_for(&home, None)), Ok(ACCOUNTS[1]), "the server it was built for");
+        plist(&picks, LOOP_PICK, "production");
+        assert_eq!(account_for(&io_for(&home, None)), Ok(ACCOUNTS[0]), "the person's pick in Settings");
+        assert_eq!(account_for(&io_for(&home, Some("https://api.staging.impeccable.style"))), Ok(ACCOUNTS[1]), "the variable first");
+        // A Loop built for a local rehearsal never moves a real agent's server.
+        plist(&info, LOOP_BUNDLE_SERVER, "http://127.0.0.1:8764");
+        assert_eq!(account_for(&io_for(&home, None)), Ok(ACCOUNTS[0]));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn each_call_takes_its_own_account() {
+        // Catches (#1464 review): the first call's account sticking for the process.
+        let home = std::env::temp_dir().join(format!("connect-each-{}", std::process::id()));
+        assert!(init_target(&io_for(&home, Some(ACCOUNTS[1]))).is_ok());
+        assert_eq!(target().account, ACCOUNTS[1]);
+        assert!(init_target(&io_for(&home, Some(ACCOUNTS[0]))).is_ok());
+        assert_eq!(target().account, ACCOUNTS[0]);
+        assert!(init_target(&io_for(&home, Some(ACCOUNTS[1]))).is_ok());
+        assert!(init_target(&io_for(&home, Some("https://evil.example"))).is_err());
+        assert_eq!(target().account, ACCOUNTS[0], "a refused account leaves no earlier one behind");
+    }
+
+    #[test]
+    fn connect_replaces_only_its_own_earlier_entries() {
+        // Catches: a person's own server called impeccable overwritten, or an earlier web entry
+        // left beside the local one.
+        for own in [
+            json!({"type": "http", "url": "https://api.impeccable.style/mcp"}),
+            json!({"url": "https://api.staging.impeccable.style/mcp"}),
+            json!({"command": "/Users/p/.impeccable/bin/mcp", "args": ["mcp"], "env": {}}),
+            json!({"command": "npx", "args": ["-y", "impeccable", "mcp"]}),
+            json!({"type": "local", "command": ["/opt/bin/impeccable", "mcp"], "enabled": true}),
+        ] {
+            assert!(ours(&own), "{own}");
+        }
+        for theirs in [
+            json!({"url": "https://example.com/mcp"}),
+            json!({"command": "node", "args": ["server.js"]}),
+            json!({"command": "/usr/local/bin/other", "args": ["mcp"]}),
+        ] {
+            assert!(!ours(&theirs), "{theirs}");
         }
     }
 
     #[test]
-    fn each_call_takes_its_own_account_server() {
-        // Catches (#1464 review): the first call's server sticking for the process, so a
-        // later production call in it writes staging (or the reverse).
-        let io_for = |account: Option<&str>| {
-            let mut env = std::collections::HashMap::new();
-            if let Some(a) = account {
-                env.insert("IMPECCABLE_ACCOUNT_URL".to_string(), a.to_string());
-            }
-            Io::captured("", std::env::temp_dir(), env).0
+    fn only_hand_written_forms_of_connects_hooks_count_as_legacy() {
+        // Catches: an agent account's other hooks (or another agent's) stripped by connect.
+        let helper = Path::new("/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+        let kinds = ["lifecycle", "register", "adoption", "context"];
+        let plain = "'/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook' 'claude' 'register'";
+        let guarded = "/usr/bin/xattr -p com.apple.quarantine '/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook' 2>/dev/null | /usr/bin/grep -Eq 'x' || exec '/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook' claude lifecycle";
+        let script = "'/usr/local/bin/node' '/Users/p/code/pristine/scripts/needs-you-hook.mjs' 'claude' '/Users/p/.needs-you' 'lifecycle'";
+        for c in [plain, guarded, script] {
+            assert!(legacy_hook(c, helper, "claude", &kinds), "{c}");
+        }
+        for c in [
+            "'/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook' 'codex' 'register'",
+            "'/Users/p/Applications/Impeccable Loop.app/Contents/MacOS/loop-hook' 'claude' 'other'",
+            "'/tmp/elsewhere/loop-hook' 'claude' 'register'",
+            "'/usr/local/bin/node' '/Users/p/code/pristine/scripts/needs-you-hook.mjs' 'codex' '/x' 'lifecycle'",
+            "node /Users/p/code/pristine/scripts/stop-hook.mjs claude",
+        ] {
+            assert!(!legacy_hook(c, helper, "claude", &kinds), "{c}");
+        }
+    }
+
+    #[test]
+    fn the_launcher_never_runs_an_engine_older_than_the_one_that_connected() {
+        // Catches: an old cached engine without `impeccable mcp` serving every agent.
+        let root = std::env::temp_dir().join(format!("connect-launcher-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let cached = |v: &str| {
+            let dir = root.join("bin").join(v);
+            fs::create_dir_all(&dir).unwrap();
+            let f = dir.join("impeccable");
+            fs::write(&f, format!("#!/bin/sh\necho cached-{v}\n")).unwrap();
+            #[cfg(unix)]
+            { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&f, fs::Permissions::from_mode(0o755)).unwrap(); }
+            let size = fs::metadata(&f).unwrap().len();
+            std::thread::sleep(Duration::from_millis(1100));
+            fs::write(dir.join("impeccable.verified"), format!("digest {size}\n")).unwrap();
         };
-        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
-        #[cfg(not(feature = "test-mcp-url"))]
-        assert_eq!(mcp_url(), STAGING_MCP_URL);
-        assert!(init_mcp_url(&io_for(None)).is_ok());
-        #[cfg(not(feature = "test-mcp-url"))]
-        assert_eq!(mcp_url(), MCP_URL);
-        // A refused account leaves no earlier server behind.
-        assert!(init_mcp_url(&io_for(Some("https://api.staging.impeccable.style"))).is_ok());
-        assert!(init_mcp_url(&io_for(Some("https://evil.example"))).is_err());
-        #[cfg(not(feature = "test-mcp-url"))]
-        assert_eq!(mcp_url(), MCP_URL);
-    }
-
-    #[test]
-    fn a_test_build_refuses_an_unusable_override_instead_of_using_production() {
-        // Catches (#1403 review): an empty, http:// or padded IMPECCABLE_MCP_URL silently
-        // registering production in a staging run.
-        for bad in ["", "http://staging.example/mcp", " https://staging.example/mcp", "https://staging.example/mcp "] {
-            let mut env = std::collections::HashMap::new();
-            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
-            let (io, _) = Io::captured("", std::env::temp_dir(), env);
-            #[cfg(feature = "test-mcp-url")]
-            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
-            #[cfg(not(feature = "test-mcp-url"))]
-            assert!(init_mcp_url(&io).is_ok(), "{bad:?}");
-        }
-        // A local stack's http server on this machine is usable in a test build, `api.localhost` included (j9).
-        for good in ["http://127.0.0.1:8787/mcp", "http://localhost:8787/mcp", "http://api.localhost:8787/mcp", "https://staging.example/mcp"] {
-            let mut env = std::collections::HashMap::new();
-            env.insert("IMPECCABLE_MCP_URL".to_string(), good.to_string());
-            let (io, _) = Io::captured("", std::env::temp_dir(), env);
-            assert!(init_mcp_url(&io).is_ok(), "{good:?}");
-        }
-        #[cfg(feature = "test-mcp-url")]
-        for bad in ["http://127.0.0.1.evil.test/mcp", "http://localhost.evil.test/mcp", "http://192.168.1.2/mcp"] {
-            let mut env = std::collections::HashMap::new();
-            env.insert("IMPECCABLE_MCP_URL".to_string(), bad.to_string());
-            let (io, _) = Io::captured("", std::env::temp_dir(), env);
-            assert!(init_mcp_url(&io).is_err(), "{bad:?}");
-        }
+        let connected = root.join("connected");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&connected, "#!/bin/sh\necho connected\n").unwrap();
+        #[cfg(unix)]
+        { use std::os::unix::fs::PermissionsExt; fs::set_permissions(&connected, fs::Permissions::from_mode(0o755)).unwrap(); }
+        let run = |version: &str| {
+            let script = root.join("launcher");
+            fs::write(&script, launcher_script(&root, &connected, version)).unwrap();
+            let out = Command::new("/bin/sh").arg(&script).output().unwrap();
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        cached("0.1.24");
+        assert_eq!(run("0.1.30"), "connected", "a newer connecting engine wins");
+        cached("0.1.31");
+        assert_eq!(run("0.1.30"), "cached-0.1.31", "a newer verified engine wins");
+        fs::remove_file(&connected).unwrap();
+        assert_eq!(run("0.1.32"), "cached-0.1.31", "the cache when the connecting engine is gone");
+        let _ = fs::remove_dir_all(&root);
     }
 }
