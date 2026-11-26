@@ -219,6 +219,11 @@ fn plain_for_the_run(args: &[String], io: &mut Io) {
     }
 }
 
+/// Whether Impeccable suggests signing in to someone who isn't signed in: install's
+/// offer (or its one-line hint) and the signed-out line after a saved critique or audit.
+/// Off, both say nothing; `login` and everything a stored sign-in does are unchanged.
+pub const OFFER_SIGN_IN: bool = false;
+
 /// The sign-in `install` offers at its end. Only a fresh sign-in reaches here (the
 /// offer is made only when none is stored), and it prints what `login` prints.
 pub fn login_after_install(io: &mut Io) -> LoginOutcome {
