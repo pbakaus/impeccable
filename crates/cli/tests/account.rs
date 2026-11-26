@@ -274,6 +274,8 @@ fn login_offers_loop_connect_only_when_loop_is_installed_and_an_agent_is_not_con
     std::fs::set_permissions(&claude, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     std::fs::create_dir_all(home.join(".claude")).unwrap();
     env.insert("PATH".into(), format!("{}:/usr/bin:/bin", bin.display()));
+    // This Mac's own Antigravity app stays out of it.
+    env.insert("IMPECCABLE_ANTIGRAVITY_BIN".into(), home.join("no-antigravity").display().to_string());
 
     let (out, err) = login_output(&env, &home);
     assert!(!err.contains("Loop"), "no Loop, no offer: {err}");

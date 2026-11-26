@@ -86,11 +86,28 @@ pub struct Hook {
     )]
     pub async_rewake: Option<bool>,
 }
+impl Spec {
+    /// The key in the hook file that holds this installation's events: `hooks` everywhere but
+    /// Antigravity, whose `hooks.json` holds named hooks, one per owner.
+    pub(crate) fn hooks_key(&self) -> &str {
+        if self.harness == "antigravity" { &self.owner } else { "hooks" }
+    }
+}
 impl Hook {
     /// The entry both Claude Code and Codex read under `hooks.<event>`:
     /// `{"matcher"?, "hooks":[{"type":"command","command",options…}]}`. Unset
     /// fields are omitted. Cursor and Copilot use flat entries in their own formats.
     pub(crate) fn entry(&self, harness: &str) -> Value {
+        if harness == "antigravity" {
+            // A named hook groups matched events (`PreToolUse`, `PostToolUse`) by matcher and
+            // keeps the rest as flat handler lists.
+            let mut handler = json!({"type": "command", "command": self.command});
+            if let Some(timeout) = self.timeout { handler["timeout"] = json!(timeout); }
+            return match &self.matcher {
+                Some(m) => json!({"matcher": m, "hooks": [handler]}),
+                None => handler,
+            };
+        }
         if harness == "copilot" {
             let mut entry = json!({"type": "command", "bash": self.command});
             if let Some(timeout) = self.timeout { entry["timeoutSec"] = json!(timeout); }

@@ -226,6 +226,24 @@ const STOP_HOLD: semver::Version = semver::Version::new(0, 1, 4);
 // Loop 0.2.0 is the first release with the Cursor, Copilot and opencode wake helpers (REN-2057).
 const CLI_WAKE: semver::Version = semver::Version::new(0, 2, 0);
 
+// The first Loop whose helper knows the `antigravity` agent (REN-2509). Loop's own builds are
+// numbered by its station, 26.MMDD.HHMM, which compare newer than every hand-built 0.x; this is
+// held past every Loop published so far until the first one carrying the agent is known.
+const ANTIGRAVITY_WAKE: semver::Version = semver::Version::new(27, 0, 0);
+
+/// A Loop bundle's version as three numbers. Station builds are `26.MMDD.HHMM`, whose `HHMM`
+/// can start with a zero (`26.1126.0905`), which semver refuses: read leniently, so those
+/// builds keep every gate their version earns.
+fn loop_version(text: &str) -> Option<semver::Version> {
+    let mut parts = text.trim().split('.').map(|p| p.parse::<u64>().ok());
+    let (major, minor, patch) = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then(|| semver::Version::new(major, minor, patch))
+}
+
+/// Where an Antigravity installed as an app only keeps the program Loop wakes ended
+/// conversations through, when `agy` isn't on PATH (relative to `/` and to the home folder).
+const ANTIGRAVITY_APP_SERVER: &str = "Applications/Antigravity.app/Contents/Resources/bin/language_server";
+
 /// All harness-specific policy lives here; orchestration below uses these descriptions.
 struct AgentDescription {
     harness: &'static str,
@@ -343,6 +361,21 @@ const AGENTS: &[AgentDescription] = &[
         record: RecordLayout::Global, approve_tools: false, wake_gate: Some(CLI_WAKE),
         hooks: &[], plugin: Some(include_str!("../assets/opencode-loop-plugin.ts")),
     },
+    AgentDescription {
+        harness: "antigravity", label: "Antigravity", binary: "agy", bin_env: "IMPECCABLE_ANTIGRAVITY_BIN",
+        root: ".gemini", root_env: None, root_env_suffix: None,
+        mcp_file: "config/mcp_config.json", mcp_in_home: false, mcp_manual_file: None,
+        mcp_format: McpFormat::Json { section: "mcpServers" },
+        registration: Registration::Journal,
+        rule: "GEMINI.md", rule_override: None, rule_existing_only: false, post_add: &[], follow_up: None,
+        record: RecordLayout::Global, approve_tools: false, wake_gate: Some(ANTIGRAVITY_WAKE),
+        plugin: None, hooks: &[
+            hook("SessionStart", None, "lifecycle", 10, false, Some(ANTIGRAVITY_WAKE)),
+            hook("SessionStart", None, "context", 5, false, Some(ANTIGRAVITY_WAKE)),
+            hook("PostToolUse", Some("call_mcp_tool|mcp_.*"), "register", 10, false, Some(ANTIGRAVITY_WAKE)),
+            hook("Stop", None, "lifecycle", 3600, false, Some(ANTIGRAVITY_WAKE)),
+        ],
+    },
 ];
 
 fn description(harness: &str) -> Option<&'static AgentDescription> {
@@ -377,6 +410,7 @@ impl AgentDescription {
             "claude" => json!({"type": "stdio", "command": command, "args": ["mcp"], "env": env}),
             "copilot" => json!({"type": "local", "command": command, "args": ["mcp"], "env": env, "tools": ["*"]}),
             "opencode" => json!({"type": "local", "command": [command, "mcp"], "environment": env, "enabled": true}),
+            "antigravity" => json!({"command": command, "args": ["mcp"], "env": env, "disabled": false}),
             _ => json!({"command": command, "args": ["mcp"], "env": env}),
         }
     }
@@ -430,7 +464,7 @@ pub(crate) fn connect(io: &Io) -> Result<String> {
     connect_only(io, None)
 }
 
-/// `loop connect [--agent claude|codex|cursor|copilot|opencode]`: the full text report, sign-in and follow-up
+/// `loop connect [--agent claude|codex|cursor|copilot|opencode|antigravity]`: the full text report, sign-in and follow-up
 /// steps included, for every agent or just the one named.
 pub(crate) fn connect_only(io: &Io, only: Option<&str>) -> Result<String> {
     connect_text(io, only).0
@@ -468,7 +502,7 @@ fn connect_report(out: String, only: Option<&str>, connected: usize, failed: usi
     Ok(out)
 }
 
-/// `loop connect [--agent claude|codex|cursor|copilot|opencode] --json`, for Loop's own Settings and first-run
+/// `loop connect [--agent claude|codex|cursor|copilot|opencode|antigravity] --json`, for Loop's own Settings and first-run
 /// panel: never asks anything, and always answers one JSON object on stdout. The bool
 /// is whether every agent asked for connected.
 pub(crate) fn connect_json(io: &Io, only: Option<&str>) -> (Value, bool) {
@@ -560,7 +594,7 @@ pub(crate) fn status(io: &Io) -> Result<Value> {
     let helper = home.join(APP).join(HELPER);
     let loop_installed = helper.is_file();
     let version = bundle_version(&helper);
-    let loop_version = version.as_deref().and_then(|v| semver::Version::parse(v).ok());
+    let loop_version = version.as_deref().and_then(loop_version);
     let support = SUPPORT
         .iter()
         .fold(home.join(SUPPORT_PARENT), |d, part| d.join(part));
@@ -703,7 +737,7 @@ fn ensure_mcp(agent: &Agent) -> Result<bool> {
         }
     };
     if matches!(agent.description.registration, Registration::Journal) {
-        fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
+        fs::create_dir_all(agent.mcp_file.parent().unwrap_or(&agent.root)).map_err(|e| e.to_string())?;
         run_spec("apply", &journal_spec(agent)).map_err(|(_, m)| m)?;
         post_add(agent)?;
         return Ok(true);
@@ -784,7 +818,7 @@ fn replaceable(agent: &Agent) -> Result<Option<Option<Value>>> {
     }
 }
 
-/// `loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]`: the MCP server alone, for a
+/// `loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode|antigravity] [--json]`: the MCP server alone, for a
 /// person without the Loop app (any OS). No hooks, no taste block, no Loop records.
 pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value, bool) {
     let rows = (|| -> Result<(String, usize, usize, Vec<Value>)> {
@@ -858,6 +892,7 @@ fn connect_one(agent: &Agent, helper: &Path, support: &Path) -> Result<Vec<Strin
         Registration::Cli { .. } => ensure_mcp(agent)?,
         Registration::Journal => {
             if manual_mcp(agent).is_none() { replaceable(agent)?; }
+            fs::create_dir_all(agent.mcp_file.parent().unwrap_or(&agent.root)).map_err(|e| e.to_string())?;
             fs::create_dir_all(&agent.root).map_err(|e| e.to_string())?;
             false
         }
@@ -1222,11 +1257,20 @@ fn resolve(io: &Io, harness: &str) -> Option<PathBuf> {
     // Windows finds a CLI by its extension (npm installs `claude.cmd`), and separates
     // PATH entries with `;`, which split_paths knows.
     let names: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat"] } else { &[""] };
-    let path = io.env("PATH")?;
-    std::env::split_paths(path)
-        .filter(|d| d.is_absolute())
-        .flat_map(|d| names.iter().map(move |ext| d.join(format!("{binary}{ext}"))))
-        .find(|p| runnable(p))
+    let on_path = io.env("PATH").and_then(|path| {
+        std::env::split_paths(path)
+            .filter(|d| d.is_absolute())
+            .flat_map(|d| names.iter().map(move |ext| d.join(format!("{binary}{ext}"))))
+            .find(|p| runnable(p))
+    });
+    // Antigravity installed as an app alone has no `agy`: Loop wakes its live conversations
+    // through the app's own server (ended ones then come back closed).
+    on_path.or_else(|| {
+        (harness == "antigravity").then(|| {
+            let home = io.home().filter(|h| h.is_absolute());
+            [home, Some(PathBuf::from("/"))].into_iter().flatten().map(|base| base.join(ANTIGRAVITY_APP_SERVER)).find(|p| runnable(p))
+        })?
+    })
 }
 
 fn runnable(p: &Path) -> bool {
@@ -1564,7 +1608,7 @@ fn shell_words(line: &str) -> Vec<String> {
 /// Loop's hooks and approvals, with journal-owned MCP entries in the same apply.
 fn spec(agent: &Agent, helper: &Path) -> Spec {
     let mut spec = mcp_spec(agent);
-    let version = bundle_version(helper).and_then(|v| semver::Version::parse(&v).ok());
+    let version = bundle_version(helper).as_deref().and_then(loop_version);
     let guarded = version.as_ref().is_some_and(|v| *v >= GUARDED_SINCE);
     let helper_q = quote(helper);
     let harness = agent.harness;
@@ -2193,6 +2237,18 @@ mod account_tests {
         assert!(init_target(&io_for(&home, Some(ACCOUNTS[1]))).is_ok());
         assert!(init_target(&io_for(&home, Some("https://evil.example"))).is_err());
         assert_eq!(target().account, ACCOUNTS[0], "a refused account leaves no earlier one behind");
+    }
+
+    #[test]
+    fn station_built_loops_keep_their_gates_at_any_hour() {
+        // Catches: a Loop built before 10:00 (`26.1126.0905`) read as having no version, so it
+        // lost every hook its version earns.
+        assert_eq!(loop_version("26.1126.0905"), Some(semver::Version::new(26, 1126, 905)));
+        assert_eq!(loop_version("0.2.0"), Some(semver::Version::new(0, 2, 0)));
+        assert!(loop_version("26.1126.0905") > loop_version("0.2.0"));
+        for bad in ["", "26.1126", "26.1126.0905.1", "0.2.0-beta", "x.y.z"] {
+            assert_eq!(loop_version(bad), None, "{bad}");
+        }
     }
 
     #[test]

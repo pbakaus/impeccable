@@ -8,7 +8,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
         match s.harness.as_str() {
             "claude" => out.push(s.root.join("settings.json")),
             "codex" => out.extend([s.root.join("hooks.json"), s.root.join("config.toml")]),
-            "cursor" | "copilot" => out.push(render::hooks_file(s)),
+            "cursor" | "copilot" | "antigravity" => out.push(render::hooks_file(s)),
             _ => unreachable!(),
         }
     }
@@ -24,7 +24,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
         }
     }
     if !s.mcp_entries.is_empty() {
-        out.push(s.root.join(match s.harness.as_str() { "copilot" => "mcp-config.json", "opencode" => "opencode.json", _ => "mcp.json" }));
+        out.push(s.root.join(match s.harness.as_str() { "copilot" => "mcp-config.json", "opencode" => "opencode.json", "antigravity" => "config/mcp_config.json", _ => "mcp.json" }));
     }
     if s.instruction.is_some() {
         out.push(render::rule_file(s));
@@ -147,7 +147,7 @@ pub(super) fn resource_matches(
             let Some(root) = document.as_object() else {
                 return Ok(false);
             };
-            let Some(hooks) = root.get("hooks").and_then(Value::as_object) else {
+            let Some(hooks) = root.get(journal.spec.hooks_key()).and_then(Value::as_object) else {
                 return Ok(false);
             };
             for hook in &journal.spec.hooks {

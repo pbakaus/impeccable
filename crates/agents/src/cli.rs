@@ -11,7 +11,7 @@ pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
         );
     };
     if verb == "capabilities" {
-        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex","cursor","copilot","opencode"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
+        io.out(&json!({"schemaVersion":RESPONSE_VERSION,"requestVersion":REQUEST_VERSION,"journalVersion":JOURNAL_VERSION,"harnesses":["claude","codex","cursor","copilot","opencode","antigravity"],"scopes":["user"],"verbs":["list","plan","apply","undo","status","recover"],"lockTimeoutSeconds":10}).to_string());
         return 0;
     }
     if verb == "list" {
@@ -78,8 +78,8 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
     {
         return Err("Invalid owner id".into());
     }
-    if !["claude", "codex", "cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
-        return Err("Only Claude Code, Codex, Cursor, Copilot and opencode user installations are supported".into());
+    if !["claude", "codex", "cursor", "copilot", "opencode", "antigravity"].contains(&s.harness.as_str()) {
+        return Err("Only Claude Code, Codex, Cursor, Copilot, opencode and Antigravity user installations are supported".into());
     }
     if !s.root.is_absolute() {
         return Err("Account root must be an explicit absolute path".into());
@@ -115,10 +115,10 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Unsupported MCP approval mode".into());
         }
     }
-    if !s.mcp_entries.is_empty() && !["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
-        return Err("Journal-owned MCP entries require Cursor, Copilot or opencode".into());
+    if !s.mcp_entries.is_empty() && !["cursor", "copilot", "opencode", "antigravity"].contains(&s.harness.as_str()) {
+        return Err("Journal-owned MCP entries require Cursor, Copilot, opencode or Antigravity".into());
     }
-    if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str())
+    if ["cursor", "copilot", "opencode", "antigravity"].contains(&s.harness.as_str())
         && (!s.mcp_servers.is_empty() || s.mcp_approvals.iter().any(|a| a.mode != "approve"))
     {
         return Err("Journal registration requires journal-owned entries and approve permissions".into());

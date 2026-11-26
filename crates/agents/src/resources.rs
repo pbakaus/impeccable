@@ -380,7 +380,7 @@ pub(super) fn build_resource_records(
                     let entry = h.entry(&s.harness);
                     let present = pre
                         .as_ref()
-                        .and_then(|v| v.get("hooks"))
+                        .and_then(|v| v.get(s.hooks_key()))
                         .and_then(|v| v.get(&h.event))
                         .and_then(Value::as_array)
                         .is_some_and(|a| a.contains(&entry));
