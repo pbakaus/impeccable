@@ -655,8 +655,9 @@ for (const modelId of resolveModelList()) {
       } catch { return false; } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     })();
     for (const signedIn of [false, true]) {
-      it(`scenario 25: init stays quiet about sign-in when ${signedIn ? 'signed in' : 'signed out'}`, { skip: !accountLine && 'this engine prints no ACCOUNT line' }, async () => {
-        // init says nothing about sign-in either way, and never calls whoami.
+      it(`scenario 25: init ${signedIn ? 'stays quiet about sign-in when signed in' : 'leads with the sign-in line when signed out'}`, { skip: !accountLine && 'this engine prints no ACCOUNT line' }, async () => {
+        // init reads context's ACCOUNT line: signed out, its first message names the
+        // sign-in before any question; signed in, it says nothing; either way no whoami call.
         const workspace = prepareWorkspace({ files: {} });
         const home = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-home-'));
         if (signedIn) {
@@ -692,7 +693,11 @@ for (const modelId of resolveModelList()) {
           const said = `${before}\n${firstQuestion}`;
           const summary = `Said before the first question: ${said.slice(0, 1200)}\nTrace: ${JSON.stringify(summarizeTrace(trace), null, 2)}`;
           assert.equal(bashCommandsMatching(trace, 'impeccable whoami').length, 0, `init should read context's ACCOUNT line, not call whoami.\n${summary}`);
-          assert.ok(!/impeccable login/.test(`${trace.assistantTexts?.join('\n') ?? ''}\n${JSON.stringify(trace.questionCalls)}`), `init should not mention sign-in.\n${summary}`);
+          if (signedIn) {
+            assert.ok(!/impeccable login/.test(`${trace.assistantTexts?.join('\n') ?? ''}\n${JSON.stringify(trace.questionCalls)}`), `a signed-in init should not mention sign-in.\n${summary}`);
+          } else {
+            assert.ok(/npx impeccable login/.test(said), `a signed-out init should name the sign-in before its first question.\n${summary}`);
+          }
         } finally {
           cleanupWorkspace(workspace);
           fs.rmSync(home, { recursive: true, force: true });

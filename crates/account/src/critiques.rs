@@ -333,7 +333,7 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         Stop::Silent => None,
         Stop::OptOut => None,
         Stop::SignedOut(account) => {
-            if quiet || !crate::OFFER_SIGN_IN {
+            if quiet {
                 None
             } else {
                 signed_out_nudge(&account, root, report)
