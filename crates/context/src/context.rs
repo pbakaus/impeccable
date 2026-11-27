@@ -1297,7 +1297,7 @@ pub fn extract_platform(product: Option<&str>) -> Option<String> {
 /// package.json (not above `stop_root`) has a UI dependency and no native
 /// evidence, and a directory is when its own package.json does (a walk up
 /// from a directory could pass native source, such as an Xcode app folder).
-fn is_web_target(target_abs: &str, stop_root: &str) -> bool {
+pub fn is_web_target(target_abs: &str, stop_root: &str) -> bool {
     let ext = jsp::extname(target_abs).to_lowercase();
     if matches!(ext.as_str(), ".html" | ".htm" | ".vue" | ".svelte" | ".astro") {
         return true;

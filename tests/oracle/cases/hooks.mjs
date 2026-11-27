@@ -147,6 +147,28 @@ export default [
     setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n'),
     stdin: claudeEdit('src/components/Card.module.css'), files: CACHE_FILES,
   },
+  // #1644: a native project's web files are still scanned, per edit and at Stop.
+  {
+    id: 'hook-native-platform-web-file', workspace: 'hook-project', files: CACHE_FILES,
+    setup: (ws) => {
+      fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n');
+      // A build state skips only the build-completion reminder, not the scan.
+      fs.mkdirSync(`${ws}/.impeccable/build`, { recursive: true });
+      fs.writeFileSync(`${ws}/.impeccable/build/state.json`, '{}\n');
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/page.html') },
+      { verb: 'hook', stdin: stop() },
+    ],
+  },
+  {
+    id: 'hook-native-platform-ui-package', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    setup: (ws) => {
+      fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n');
+      fs.writeFileSync(`${ws}/package.json`, JSON.stringify({ name: 'site', private: true, dependencies: { next: '15.0.0' } }) + '\n');
+    },
+    stdin: claudeEdit('src/components/Card.tsx'),
+  },
   {
     id: 'hook-config-disabled', verb: 'hook', workspace: 'hook-project',
     setup: (ws) => { fs.mkdirSync(`${ws}/.impeccable`, { recursive: true }); fs.writeFileSync(`${ws}/.impeccable/config.json`, JSON.stringify({ hook: { enabled: false } }, null, 2) + '\n'); },
@@ -291,6 +313,12 @@ export default [
     id: 'hbe-native-platform', verb: 'hook-before-edit', workspace: 'hook-project',
     setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nandroid\n'),
     stdin: { hook_event_name: 'preToolUse', conversation_id: 'cv1', workspace_roots: [WS], tool_name: 'Write', tool_input: { path: 'src/new.css', content: '.t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }\n' } }, files: CACHE_FILES,
+  },
+
+  {
+    id: 'hbe-native-platform-web-file', verb: 'hook-before-edit', workspace: 'hook-project',
+    setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nandroid\n'),
+    stdin: { hook_event_name: 'preToolUse', conversation_id: 'cv1', workspace_roots: [WS], tool_name: 'Write', tool_input: { path: 'src/new.html', content: '<!doctype html><style>.t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }</style><h1 class="t">Hi</h1>\n' } }, files: CACHE_FILES,
   },
 
   // --- hook-admin.mjs ---

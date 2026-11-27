@@ -132,7 +132,7 @@ fn is_native(platform: Option<&str>) -> bool {
 
 /// JS: automaticHookMode(ctx)
 pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> &'static str {
-    if is_native(ctx.declared_platform.as_deref()) {
+    if is_native(ctx.platform.as_deref()) {
         return "none";
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
@@ -320,10 +320,6 @@ fn hook_ran_recently(roots: &[String], env: &Env) -> bool {
 }
 
 fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
-    // The hook skips a native-declared project, so it covers none of its files.
-    if is_native(ctx.declared_platform.as_deref()) {
-        return false;
-    }
     let provider_dir = match provider.id.as_str() {
         "claude-code" => ".claude", "codex" | "agents" => ".agents",
         "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
@@ -1910,8 +1906,8 @@ mod hook_not_installed_tests {
     }
 
     #[test]
-    fn a_hook_cache_does_not_cover_a_web_target_in_a_native_project() {
-        // The hook skips a native-declared project, so its cache covers no web target (#1644).
+    fn a_hook_cache_covers_a_web_target_in_a_native_project() {
+        // The hook scans a native project's web code, so its cache covers a web target (#1644).
         let fixture = Fixture::new("source");
         fixture.put("project/PRODUCT.md", "# P\n\n## Platform\nios\n");
         fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
@@ -1920,6 +1916,11 @@ mod hook_not_installed_tests {
         let ctx = load_context(&fixture.project, &options, &fixture.env);
         assert_eq!(ctx.platform.as_deref(), Some("web"));
         let provider = crate::provider::detect(&fixture.env, &fixture.project);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(!parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
+        // Without the cache the web target still gets the manual detector.
+        std::fs::remove_file(fixture.root.join("project/.impeccable/hook.cache.json")).unwrap();
         let mut parts = super::Parts::default();
         super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
         assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
