@@ -2500,6 +2500,32 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   once the new build is downloaded and verified, waiting up to 10 s; one still running
   keeps the old app and exits non-zero with `Impeccable Loop didn't quit. Quit it
   yourself, then run impeccable loop update again.` The updated Loop reopens unless `--no-open`.
+- **The agents' server (REN-2507):** every agent's `impeccable` entry is the local server,
+  `<IMPECCABLE_HOME>/bin/mcp mcp` with `env: {IMPECCABLE_ACCOUNT_URL: <account>}`, in the shape
+  its own CLI writes: Claude `{type: "stdio", command, args, env}` (`claude mcp add-json --scope
+  user`), Codex `command`, `args` and an `[mcp_servers.impeccable.env]` table (`codex mcp add
+  impeccable --env … -- <command> mcp`), Cursor `{command, args, env}`, Copilot `{type: "local",
+  command, args, env, tools: ["*"]}`, opencode `{type: "local", command: [<command>, "mcp"],
+  environment, enabled: true}`. It works under the CLI's own sign-in (`impeccable mcp` above), so
+  no agent signs in on its own; `signIn` is `run impeccable login.` (with the variable for
+  staging) while the CLI isn't signed in to that account, else null. The account is
+  `IMPECCABLE_ACCOUNT_URL` when set (Loop sets it when it runs connect), else the installed
+  Loop's: its Settings pick (`impeccable.server`, `staging` or `production`, in
+  `~/Library/Preferences/style.impeccable.loop.plist`) when its bundle's `ImpeccableServer` is
+  staging or production, else that `ImpeccableServer`; else production. Only production and
+  staging are accepted; any other set value is refused, and `loop status` and disconnect then
+  judge entries against production. The account is pinned in every entry, production included.
+  `<IMPECCABLE_HOME>/bin/mcp` (macOS and Linux) is a launcher connect writes: the newest verified
+  engine in the version cache, unless the engine that ran connect is at least as new and still
+  there, so it never runs an engine older than the one that connected. On Windows the entry
+  names the engine itself, from the version cache when it's there. An existing `impeccable`
+  entry of connect's own (one of the web servers `https://api.impeccable.style/mcp` or
+  `https://api.staging.impeccable.style/mcp`, or a command whose last argument is `mcp` run
+  through the launcher, an `impeccable` binary or `impeccable` in its arguments) is replaced; a
+  CLI replacement that fails puts the earlier entry back. Any other entry of that name is left
+  alone and is an error naming the file. `loop status` reports an entry that isn't exactly the
+  local server for today's account as `different`, so Loop shows the agent as not connected,
+  and adds `account` and `signedIn` to its object.
 - `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
   (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
@@ -2518,27 +2544,29 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   Older or unreadable bundles keep `'<helper>' <agent> <kind>`. A connect over
   hooks of the other form replaces them through the journal.
   An existing `[mcp_servers.impeccable]` that differs only in its approval mode
-  still counts as connect's own. `impeccable loop disconnect` removes the hooks,
+  still counts as connect's own. Once its hooks are in, connect takes hand-written forms of
+  them out of the agent's hook file (Claude `settings.json`, Codex and Cursor `hooks.json`):
+  the helper run with only the agent and one of connect's kinds as arguments (quoted or not,
+  plain or after a guard's `|| exec`), or `<node> …/needs-you-hook.mjs <agent> <state folder>
+  <kind>`. Other agents' and kinds' hooks and every other command stay. `impeccable loop disconnect` removes the hooks,
   the block and the approval through the same engine journal, and leaves the MCP
   server in place, printing the command that removes it.
 - Cursor resolves `cursor-agent` (override: `IMPECCABLE_CURSOR_BIN`) and uses
-  `~/.cursor`, with no config-root override. The engine merges the HTTP server into
+  `~/.cursor`, with no config-root override. The engine merges the server into
   `mcp.json` and `Mcp(impeccable:*)` into `cli-config.json`'s `permissions.allow`.
-  Connect runs `cursor-agent mcp enable impeccable`; sign in manually with
-  `cursor-agent mcp login impeccable`. Disconnect restores the original files,
+  Connect runs `cursor-agent mcp enable impeccable`. Disconnect restores the original files,
   retaining a pre-existing server and unrelated edits. `cursor-install.json` holds
   `enabled`, `harness: "cursor"` and the resolved executable, without `configDir`.
   From the provisional `CLI_WAKE` gate (0.2.0), `hooks.json` gets flat
   `sessionStart` and `afterMCPExecution` entries (10 seconds), and `stop`
   (3600 seconds, explicit `loop_limit: null`). Older bundles get no Cursor hooks;
-  status reports `hooks: false`, `hooksRequired: false` and the manual sign-in step.
+  status reports `hooks: false` and `hooksRequired: false`.
   The Loop and optional taste lines use `rules/impeccable.mdc`, created with
   `alwaysApply: true` front matter. A rule file and directory created by connect
   disappear when empty again; pre-existing files and directories stay.
 - GitHub Copilot CLI resolves `copilot` (override: `IMPECCABLE_COPILOT_BIN`)
   and uses `$COPILOT_HOME`, else `~/.copilot`. Its engine-journaled
-  `mcp-config.json` entry is `{type: "http", url: <mcp_url>, tools: ["*"]}`;
-  existing servers stay intact. Sign-in happens on first use, with no CLI command.
+  `mcp-config.json` entry is the local server's; existing servers stay intact.
   From the same provisional `CLI_WAKE` gate as Cursor (0.2.0), the dedicated
   `hooks/impeccable-loop.json` contains version 1 with flat `sessionStart`,
   `postToolUse` and `agentStop` command entries. They use `bash` and `timeoutSec`
@@ -2551,11 +2579,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   Impeccable's tools once; then Copilot wakes by itself.
 - opencode resolves `opencode` (override: `IMPECCABLE_OPENCODE_BIN`) and uses
   `$XDG_CONFIG_HOME/opencode`, else `~/.config/opencode`. Its journaled
-  `opencode.json` entry is `mcp.impeccable: {type: "remote", url: <mcp_url>,
-  enabled: true}`; `$schema`, other servers and unrelated settings stay intact.
+  `opencode.json` entry is `mcp.impeccable`, the local server's; `$schema`, other
+  servers and unrelated settings stay intact.
   When only `opencode.jsonc` exists, connect leaves it unread and unchanged,
-  prints a manual step to add the server there, and continues. Status reports
-  that MCP setup as `manual`; sign-in happens on first use.
+  prints a manual step naming the entry to add there, and continues. Status reports
+  that MCP setup as `manual`.
   From the same provisional `CLI_WAKE` gate, the engine owns
   `plugin/impeccable-loop.ts` and journals its newly created parent directory.
   The plugin uses the guarded helper command, maps session ids to UUIDs,
@@ -2692,13 +2720,11 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
 - `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]` gives each
   detected agent (or the one named) the `impeccable` MCP server and nothing else:
   no hooks, no instruction or taste block, no Loop records, and no platform check,
-  so it works on any OS without the Loop app. The server URL comes from the
-  account's origin (production or staging, from the engine's build constants;
-  any other origin is refused; `loop status` still answers there, judging an
-  entry against production's URL). Each agent signs in to the server itself on first
-  use; no token is written. An entry already there is kept. The text form prints
-  `<Agent>: MCP server added.` or `<Agent>: MCP server already there.` and a
-  `  Sign in: ...` line per agent; `--json` prints `{ok, agents:[{agent, label,
+  so it works on any OS without the Loop app. The entry, its account and replacement are
+  connect's (above); a journal-owned server keeps the hooks a full connect installed for that
+  folder. No token is written. The text form prints `<Agent>: MCP server added.` or
+  `<Agent>: MCP server already there.`, and `  Sign in: ...` while the CLI isn't signed in;
+  `--json` prints `{ok, agents:[{agent, label,
   result: connected|not_found|failed, added, signIn, error}]}`, or `{ok:false,
   error}` when nothing could be tried. It exits 0 only when every agent asked for
   connected. With any other argument (`--taste`, `--no-taste`, another verb) it

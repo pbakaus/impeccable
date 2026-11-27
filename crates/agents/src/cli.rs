@@ -115,13 +115,13 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
             return Err("Unsupported MCP approval mode".into());
         }
     }
-    if !s.http_mcp_servers.is_empty() && !["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
-        return Err("HTTP MCP files require Cursor, Copilot or opencode".into());
+    if !s.mcp_entries.is_empty() && !["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
+        return Err("Journal-owned MCP entries require Cursor, Copilot or opencode".into());
     }
     if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str())
         && (!s.mcp_servers.is_empty() || s.mcp_approvals.iter().any(|a| a.mode != "approve"))
     {
-        return Err("Journal registration requires HTTP servers and approve permissions".into());
+        return Err("Journal registration requires journal-owned entries and approve permissions".into());
     }
     for m in &s.mcp_servers {
         if m.name.is_empty() || m.name.contains(['/', '\\']) {
@@ -239,7 +239,7 @@ pub(super) fn list(home: &Path) -> Result<Value, (&'static str, String, i32)> {
             "harness":j.spec.harness,
             "hooks":j.spec.hooks.iter().map(|h| json!({"event":h.event,"matcher":h.matcher})).collect::<Vec<_>>(),
             "instruction":j.spec.instruction.is_some(),
-            "mcpServers":j.spec.mcp_servers.iter().map(|m| m.name.clone()).chain(j.spec.http_mcp_servers.keys().cloned()).collect::<Vec<_>>(),
+            "mcpServers":j.spec.mcp_servers.iter().map(|m| m.name.clone()).chain(j.spec.mcp_entries.keys().cloned()).collect::<Vec<_>>(),
             "mcpApprovals":j.spec.mcp_approvals.iter().map(|a| a.server.clone()).collect::<Vec<_>>(),
             "resources":resources,
         }));
