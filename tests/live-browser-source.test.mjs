@@ -8,6 +8,87 @@ const SOURCE = readFileSync(join(process.cwd(), 'skill/scripts/live-browser.js')
 const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
+describe('component preview remount parameters', () => {
+  it('persists the generation phase for a Svelte session', () => {
+    const source = SOURCE.match(/function saveSession\(\) \{[\s\S]*?\n  \}/)?.[0];
+    assert.ok(source);
+    let saved;
+    const context = {
+      currentSessionId: 'ab12cd34', APP_ROOT: '/app', state: 'GENERATING',
+      selectedAction: 'polish', selectedCount: 3, expectedVariants: 3, arrivedVariants: 1,
+      visibleVariant: 1, currentSourceFile: 'Card.svelte', currentPreviewFile: 'manifest.json',
+      currentPreviewMode: 'svelte-component', location: { pathname: '/', hash: '', search: '' },
+      paramsCurrentValues: { space: 23 }, parameterGenerationState: 'ready', generationPhase: 'first_reviewable',
+      sessionOrigin: null, insertPlaceholderSnapshot: null, pickedAnchorSnapshot: null, pickedAnchorViewportTop: null,
+      sessionState: { saveSession(value) { saved = JSON.parse(JSON.stringify(value)); } },
+    };
+    runInNewContext(`${source}\nsaveSession()`, context);
+    assert.equal(saved.generationPhase, 'first_reviewable');
+    assert.equal(saved.previewMode, 'svelte-component');
+    assert.equal(saved.paramValues.space, 23);
+  });
+  for (const framework of ['svelte', 'vue']) {
+    for (const deferred of [false, true]) {
+      for (const scenario of ['fresh', 'restore', 'same', 'switch', 'restore-other-session', 'restore-other-variant']) {
+        it(`mounts ${framework} with real saved parameter helpers (deferred=${deferred}, scenario=${scenario})`, async () => {
+          const source = SOURCE.match(/async function mountSvelteComponentVariant\([^\n]*\) \{[\s\S]*?\n  \}/)?.[0];
+          assert.ok(source);
+          const anchor = { values: { space: 8 } };
+          let mounted = false;
+          const frames = [];
+          const context = {
+            svelteComponentSession: {
+              sessionId: 'ab12cd34',
+              manifest: { previewMode: `${framework}-component`, componentExtension: framework }, mountTargetEl: {},
+              mountedVariant: scenario === 'same' ? 1 : scenario === 'switch' ? 2 : 0, propValues: {},
+            },
+            currentSessionId: 'ab12cd34', visibleVariant: 1, keptParamValues: null,
+            paramsCurrentValues: scenario === 'same' || scenario === 'switch' ? { space: 23 } : {},
+            selectedElement: {}, state: 'CYCLING',
+            componentModuleCandidates: (_manifest, path) => [path],
+            makeFrozenAnchor: value => value,
+            loadSvelteRuntime: async () => ({ mount() { mounted = true; return {}; } }),
+            importFirstReachable: async ([url]) => {
+              assert.equal(url, `/v1.${framework}`);
+              return { url, mod: { default: {} } };
+            },
+            getMountedSvelteComponentAnchor: () => mounted && !deferred ? anchor : null,
+            removeSvelteComponentVariantStyle() {}, syncCyclingControls() {},
+            isSvelteInsertManifest: () => false, applyOriginalAttrsToSvelteAnchor() {},
+            parseVariantParams: () => [{ id: 'space', kind: 'range', min: 4, max: 32 }],
+            applyParamValue(target, param, value) { target.values[param.id] = value; },
+            requestAnimationFrame: fn => frames.push(fn),
+            reportVariantMounted() {}, mountErrorState: null, console,
+          };
+          const helpers = ['rememberSavedParamValues', 'keptParamValuesForVisibleVariant', 'isValidSavedParamValue', 'applySavedParamValues'].map(name => {
+            const helper = SOURCE.match(new RegExp(`function ${name}\\([^\\n]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];
+            assert.ok(helper, `missing production helper: ${name}`);
+            return helper;
+          }).join('\n');
+          const mount = runInNewContext(`${helpers}\n${source}\nmountSvelteComponentVariant`, context);
+          if (scenario.startsWith('restore')) {
+            context.savedSession = {
+              id: scenario === 'restore-other-session' ? 'other-session' : context.currentSessionId,
+              visible: scenario === 'restore-other-variant' ? 2 : 1,
+              paramValues: { space: 23 },
+            };
+            runInNewContext('rememberSavedParamValues(savedSession)', context);
+          }
+          assert.equal(await mount(1), true);
+          assert.equal(mounted, true);
+          if (deferred) assert.equal(anchor.values.space, 8, 'wait for the mounted anchor before restoring edits');
+          context.getMountedSvelteComponentAnchor = () => anchor;
+          for (const frame of frames) frame();
+          const retainsEdits = scenario === 'same' || scenario === 'restore';
+          assert.equal(anchor.values.space, retainsEdits ? 23 : 8);
+          if (retainsEdits) assert.equal(context.paramsCurrentValues.space, 23);
+          if (scenario.startsWith('restore-other-')) assert.equal(context.keptParamValues, null);
+        });
+      }
+    }
+  }
+});
+
 describe('live-browser source contracts', () => {
   it('does not checkpoint a generation before captureAndEmit creates its session', () => {
     for (const name of ['handleGo', 'handleInsertCreate']) {

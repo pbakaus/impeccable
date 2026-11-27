@@ -453,7 +453,7 @@ fn completion_type_for_accept_result(event_type: &str, result: &Value) -> &'stat
         return "error";
     }
     if event_type == "accept"
-        && result.get("previewMode").and_then(|m| m.as_str()) == Some("svelte-component")
+        && matches!(result.get("previewMode").and_then(|m| m.as_str()), Some("svelte-component" | "vue-component"))
     {
         return "error";
     }
