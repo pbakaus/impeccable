@@ -25,25 +25,26 @@ pub fn local_port(url: &str) -> Option<u16> {
         },
     };
     let host = host.to_ascii_lowercase();
-    let local = host == "localhost"
-        || host.ends_with(".localhost")
-        || host == "::1"
-        || host.starts_with("127.");
+    let loopback_v4 = host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback());
+    let local = host == "localhost" || host.ends_with(".localhost") || host == "::1" || loopback_v4;
+    let default = match scheme.to_ascii_lowercase().as_str() {
+        "http" => 80,
+        "https" => 443,
+        _ => return None,
+    };
     if !local {
         return None;
     }
-    match (scheme.to_ascii_lowercase().as_str(), port) {
-        (_, Some(p)) => p.parse().ok(),
-        ("http", None) => Some(80),
-        ("https", None) => Some(443),
-        _ => None,
-    }
+    port.map_or(Some(default), |p| p.parse().ok())
 }
 
 fn run_text(cmd: &str, args: &[&str]) -> Option<String> {
     let out = Command::new(cmd)
         .args(args)
         .env("LC_ALL", "C")
+        // The caller's own git settings would point `git -C` at their checkout, not the folder asked about.
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -66,13 +67,19 @@ pub fn parse_lsof(text: &str) -> Vec<(u32, Option<String>)> {
     out
 }
 
-/// The process listening on a loopback TCP port.
+/// The process listening on a TCP port. Two processes on it (one on 127.0.0.1, another on ::1) are no answer: which
+/// one the page reached can't be told here.
 fn listener(port: u16) -> Option<u32> {
     let text = run_text(
         "lsof",
         &["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN", "-Fp"],
     )?;
-    parse_lsof(&text).first().map(|(pid, _)| *pid)
+    one_pid(&parse_lsof(&text))
+}
+
+fn one_pid(found: &[(u32, Option<String>)]) -> Option<u32> {
+    let first = found.first()?.0;
+    found.iter().all(|(pid, _)| *pid == first).then_some(first)
 }
 
 /// Each process's working folder, in one `lsof` for all of them.
@@ -229,6 +236,9 @@ mod tests {
         assert_eq!(local_port("https://example.com:5173/"), None);
         assert_eq!(local_port("http://localhost.example.com:5173/"), None);
         assert_eq!(local_port("file:///tmp/a.html"), None);
+        assert_eq!(local_port("http://127.example.com:5173/"), None);
+        assert_eq!(local_port("ftp://localhost:5173/"), None);
+        assert_eq!(local_port("http://127.0.0.2:5173/"), Some(5173));
     }
 
     #[test]
@@ -237,6 +247,9 @@ mod tests {
             parse_lsof("p42\nfcwd\nn/w/app\np7\nn/w/other\n"),
             [(42, Some("/w/app".into())), (7, Some("/w/other".into()))]
         );
+        // One server on both addresses is one; two servers sharing the port is no answer.
+        assert_eq!(one_pid(&parse_lsof("p42\np42\n")), Some(42));
+        assert_eq!(one_pid(&parse_lsof("p42\np7\n")), None);
     }
 
     // Catches the page handed to the wrong session: one in another checkout, one picked when two are equally likely,
