@@ -801,7 +801,13 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // alone, as before.
     // Shell writes never reach the per-edit pass, so Stop also scans UI files
     // modified since the session started, when the event says when that was.
-    let session_start = crate::stop_discovery::session_start_ms(&event);
+    let stop_started = std::time::SystemTime::now();
+    // Discovery covers this turn: a file changed before the session's last
+    // Stop pass was that pass's to report, or no write of this session's (#1670).
+    let session_start = crate::stop_discovery::session_start_ms(&event).map(|start| {
+        let last = if named_session { crate::hook_sessions::last_stop_ms(rt, &session_id, stop_started) } else { None };
+        last.map_or(start, |last| last.max(start))
+    });
     let home = rt.resolve(&[&rt.homedir()]);
     let mut first_root = resolve_stop_cwd(rt, &session_cwd, &session_id);
     // A session started inside a project (`src/`) keys to that project, as the
@@ -1011,6 +1017,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
         passes.push(RootPass { cwd: root.clone(), config: root_config, cache: root_cache, groups, scans, dirty });
+    }
+    if named_session && session_start.is_some() {
+        crate::hook_sessions::record_stop(rt, &session_id, stop_started);
     }
     if passes.is_empty() {
         // Every root fell out at a gate: report the first, as a single root did.

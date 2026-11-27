@@ -4287,6 +4287,33 @@ fn stop_skips_files_modified_before_the_session_started() {
 }
 
 #[test]
+fn stop_discovery_covers_only_the_turn_since_the_last_stop() {
+    // #1670: a resumed session began days ago. A page changed before its
+    // last Stop is not this turn's, a page written since is.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".test-home/.keep", "");
+    let session = uuid_v7(now_ms() - 3 * 86_400_000);
+    let first = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(audit_str(&first.audit, "skipped"), Some("no-touched-files"));
+    // That Stop ended an earlier turn: a marker this fresh reads as a sibling copy.
+    for dir in std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).unwrap().flatten() {
+        for marker in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            set_mtime(&marker.path().to_string_lossy(), now_ms() - 60_000);
+        }
+    }
+    let old = t.write("old.css", SIDE_TAB_CSS);
+    set_mtime(&old, now_ms() - 3_600_000);
+    let second = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(second.stdout, "", "{:?}", second.audit);
+    t.write("new.css", SIDE_TAB_CSS);
+    let third = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(third.stdout.contains("new.css") && !third.stdout.contains("old.css"), "{}", third.stdout);
+}
+
+#[test]
 fn stop_does_not_guess_a_session_start() {
     // No v7 id and no transcript: today's behavior, cache only.
     let t = Tmp::new();

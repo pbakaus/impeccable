@@ -11,6 +11,10 @@
 //! transcript file's birth time marks when the session began. With neither,
 //! discovery stays off and Stop scans the cache alone, as before.
 //!
+//! The window starts at the later of the session start and the session's
+//! previous Stop pass (#1670), so a resumed session does not rescan every file
+//! changed since it began.
+//!
 //! The walk is bounded (depth, entries visited, files kept) because it runs on
 //! every Stop. It skips hidden directories, dependency and build output,
 //! non-regular files and files over the size limit, and refuses to walk a
