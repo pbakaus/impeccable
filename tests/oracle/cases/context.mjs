@@ -640,7 +640,7 @@ const cases = [
   {
     id: 'pin-git-home-not-project-root', verb: 'pin', workspace: 'ctx-empty', cwd: 'proj/sub',
     setup: (ws) => { fs.mkdirSync(path.join(ws, '.git')); fs.mkdirSync(path.join(ws, 'proj/sub'), { recursive: true }); write(ws, '.claude/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'); },
-    args: ['pin', 'polish'], env: env({ HOME: WS }), files: ['.*/skills/**'],
+    args: ['pin', 'polish'], env: env({ HOME: WS, USERPROFILE: WS }), files: ['.*/skills/**'],
   },
   { id: 'pin-unpin-nothing-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'polish'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-unpin-skips-non-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'audit'], env: env(), files: ['.*/skills/**'] },
