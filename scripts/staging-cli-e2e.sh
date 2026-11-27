@@ -84,6 +84,12 @@ check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.
 acct() { (cd "$R2" && IMPECCABLE_NO_UPDATE_CHECK=1 exec "$BIN" context) < /dev/null 2>/dev/null | grep '^ACCOUNT:'; }
 check "context: says a fresh install is not signed in" '[ "$(acct)" = "ACCOUNT: not signed in" ]'
 [ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
+# Every upload kind starts off until a person turns it on at their terminal (REN-2530). The
+# seeded test person's yes, saved as `impeccable uploads on all` saves it, so the sign-in's scan
+# and the uploads below may go.
+acct_dir="$IMPECCABLE_HOME/account/$(printf '%s' "$ISSUER" | { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; } | cut -c1-16)"
+mkdir -p "$acct_dir" && chmod 700 "$IMPECCABLE_HOME" "$IMPECCABLE_HOME/account" "$acct_dir"
+(umask 077; printf '{"on":["scan","health","design","critiques","screenshots","prototypes","setup"]}' > "$acct_dir/uploads.json")
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
 url=""
