@@ -29,8 +29,16 @@ fn login(env: &HashMap<String, String>) {
     login_with(env, &[]);
 }
 
+/// Every upload kind switched on, as `impeccable uploads on all` at the person's terminal saves it.
+fn consent(env: &HashMap<String, String>) {
+    let account = impeccable_account::config::Account::from_env(env).unwrap();
+    impeccable_account::uploads::seed(&account, &impeccable_account::uploads::Kind::ALL);
+}
+
 /// `extra`: `--force` for a second sign-in to an account already signed in.
 fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
+    // The person's yes to every upload kind (REN-2530), saved before the sign-in so its scan may go too.
+    consent(env);
     let args: Vec<&str> = ["login", "--no-browser"].iter().chain(extra).copied().collect();
     let mut child = impeccable(env, Path::new(&env["IMPECCABLE_HOME"]), &args)
         .stdout(Stdio::piped())
@@ -1191,6 +1199,7 @@ fn stale_design_and_foundations_grants_require_current_service_offering() {
 
 /// `login` run from `cwd`; returns what it printed to stderr.
 fn login_in(env: &HashMap<String, String>, cwd: &Path) -> String {
+    consent(env);
     let mut child = impeccable(env, cwd, &["login", "--no-browser"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1308,19 +1317,19 @@ fn a_repo_already_added_by_detect_is_not_scanned_again_at_sign_in() {
 }
 
 #[test]
-fn a_telemetry_opt_out_still_gets_the_sign_in_scan_and_is_told_what_was_sent() {
-    // Signing in is the consent for this one scan; the line says what left the machine.
+fn a_telemetry_opt_out_stops_the_sign_in_scan_even_with_its_switch_on() {
+    // Catches (REN-2534): signing in overriding DO_NOT_TRACK; the opt-out beats the scan's own switch.
     let fake = Fake::start();
     fake.knobs.lock().unwrap().health = true;
     let mut env = fake.env("first-signin-dnt");
     env.insert("DO_NOT_TRACK".into(), "1".into());
     let root = repo(&env, Some("https://github.com/acme/my-site"));
     let err = login_in(&env, &root);
-    assert!(err.contains("Sent its name, finding counts and foundations checks, never your code or file names."), "{err}");
-    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
-    // Later scans still honor the opt-out.
+    assert!(!err.contains("Sent its name"), "{err}");
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
+    // Later scans honor it too.
     run(&env, &root, &["detect", "--json", "."]);
-    assert_eq!(fake.hits("/cli/v1/health/scans"), 1);
+    assert_eq!(fake.hits("/cli/v1/health/scans"), 0);
 }
 
 #[test]

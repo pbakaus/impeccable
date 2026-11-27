@@ -31,6 +31,7 @@ fn every_offered_scope_combination_survives_refresh() {
         }
         let env = fake.env(&format!("combined-scopes-{mask}"));
         login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        support::consent(&env);
         assert_eq!(fake.record.lock().unwrap().scopes, [expected.join(" ")]);
         let account = Account::from_env(&env).unwrap();
         let mut session = Session::load(&account).unwrap();
@@ -106,6 +107,7 @@ fn omitted_scope_keeps_login_grants_and_refresh_features() {
         }
         let env = fake.env(&format!("omitted-scopes-{mask}"));
         login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        support::consent(&env);
         let account = Account::from_env(&env).unwrap();
         let mut session = Session::load(&account).unwrap();
         assert_eq!(session.state.scopes, expected);
@@ -138,6 +140,7 @@ fn sign_in_asks_for_worlds_read_only_where_it_is_offered() {
         fake.knobs.lock().unwrap().worlds = offered;
         let env = fake.env(&format!("worlds-scope-{offered}"));
         login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        support::consent(&env);
         let asked = fake.record.lock().unwrap().scopes.join(" ");
         assert_eq!(asked.split(' ').any(|s| s == "worlds:read"), offered, "{asked}");
     }

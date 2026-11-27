@@ -11,6 +11,7 @@ fn setup_scope_projection_daily_limit_opt_out_and_forget() {
     fake.knobs.lock().unwrap().setup = true;
     let env = fake.env("setup-contract");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     assert_eq!(
         fake.record.lock().unwrap().scopes[0],
         "account:read rules:read setup:write"
@@ -58,6 +59,7 @@ fn setup_scope_is_optional_and_declined_scope_sends_nothing() {
         }
         let env = fake.env(if off { "setup-off" } else { "setup-denied" });
         login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+        support::consent(&env);
         let (io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env);
         setup::report(&io, &json!({}), "4.8.1", &json!({}));
         assert_eq!(fake.hits("/cli/v1/setup/reports"), 0);
@@ -76,6 +78,7 @@ fn setup_respects_opt_outs_corrupt_state_and_daily_retry_after_404() {
     fake.knobs.lock().unwrap().setup = true;
     let env = fake.env("setup-retry");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let (mut io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env);
     for k in ["CI", "DO_NOT_TRACK", "IMPECCABLE_NO_TELEMETRY"] {
         io.env.insert(k.into(), "1".into());
@@ -128,6 +131,7 @@ fn off_succeeds_while_a_report_is_waiting_for_the_service() {
     fake.knobs.lock().unwrap().setup = true;
     let env = fake.env("setup-control-busy");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let gate = fake.hold("/cli/v1/setup/reports");
     let upload = {
         let env = env.clone();
@@ -158,6 +162,7 @@ fn a_claim_precedes_inventory_and_never_borrows_a_replacement_sign_in() {
     fake.knobs.lock().unwrap().setup = true;
     let env = fake.env("setup-bound-claim");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let (mut io, _) = Io::captured("", PathBuf::from(&env["IMPECCABLE_HOME"]), env.clone());
     let old = setup::begin(&io).expect("claim before inventory");
     assert!(
@@ -167,6 +172,7 @@ fn a_claim_precedes_inventory_and_never_borrows_a_replacement_sign_in() {
     assert!(setup::begin(&io).is_none());
     fake.knobs.lock().unwrap().setup_denied = true;
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     old.report(
         &io,
         &json!({"installations":[],"pendingTransactions":0}),
@@ -180,6 +186,7 @@ fn a_claim_precedes_inventory_and_never_borrows_a_replacement_sign_in() {
     );
     fake.knobs.lock().unwrap().setup_denied = false;
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let cancelled = setup::begin(&io).unwrap();
     assert_eq!(setup::run(&["off".into()], &mut io), 0);
     assert_eq!(setup::run(&["on".into()], &mut io), 0);
