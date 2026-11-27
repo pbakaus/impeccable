@@ -25,6 +25,20 @@ pub(super) fn dedicated_wake_file(s: &Spec) -> Option<PathBuf> {
     }
 }
 
+/// The folder of the engine's own files that an apply creates when it's missing (and an undo removes when empty):
+/// the dedicated wake file's, or Antigravity's `config` (its hooks and MCP files both live there).
+pub(super) fn own_dir(s: &Spec) -> Option<PathBuf> {
+    if s.harness == "antigravity" && (!s.hooks.is_empty() || !s.mcp_entries.is_empty()) {
+        return Some(s.root.join("config"));
+    }
+    dedicated_wake_file(s).and_then(|p| p.parent().map(Path::to_path_buf))
+}
+
+/// Whether `path` is a harness rule file (its instruction block lives there).
+pub(super) fn is_rule_file(path: &Path) -> bool {
+    path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") || path.ends_with("GEMINI.md")
+}
+
 pub(super) fn json_entries_file(s: &Spec, path: &Path) -> bool {
     match s.harness.as_str() {
         "cursor" => path.ends_with("mcp.json") || path.ends_with("cli-config.json"),
@@ -49,7 +63,7 @@ pub(super) fn render(
     if s.harness == "codex" && path.ends_with("config.toml") {
         return render_codex_config(s, before);
     }
-    let is_rule = path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md");
+    let is_rule = is_rule_file(path);
     if is_rule {
         return render_rule(s, before);
     }
@@ -122,10 +136,13 @@ pub(super) fn remove_owned(
     if s.harness == "opencode" && path.ends_with("plugin/impeccable-loop.ts") {
         return Ok((s.wake_plugin.as_deref().map(str::as_bytes) == Some(current)).then(|| original.unwrap_or_default().to_vec()));
     }
-    if (s.instruction.is_some() || path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md"))
+    if (s.instruction.is_some() || is_rule_file(path))
         && String::from_utf8_lossy(current).contains(&format!("impeccable:{}", s.owner))
     {
         return remove_rule_block(s, current, original).map(Some);
+    }
+    if s.harness == "antigravity" && json_entries_file(s, path) {
+        return render_json_entries(s, path, Some(current), original, true).map(Some);
     }
     if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
         if json_entries_file(s, path) {

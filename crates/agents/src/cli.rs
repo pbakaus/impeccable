@@ -118,6 +118,9 @@ pub(super) fn validate(s: &Spec) -> Result<(), String> {
     if !s.mcp_entries.is_empty() && !["cursor", "copilot", "opencode", "antigravity"].contains(&s.harness.as_str()) {
         return Err("Journal-owned MCP entries require Cursor, Copilot, opencode or Antigravity".into());
     }
+    if s.harness == "antigravity" && s.mcp_entries.values().any(|e| !e.is_object()) {
+        return Err("Antigravity's MCP entries must be the entry itself".into());
+    }
     if ["cursor", "copilot", "opencode", "antigravity"].contains(&s.harness.as_str())
         && (!s.mcp_servers.is_empty() || s.mcp_approvals.iter().any(|a| a.mode != "approve"))
     {

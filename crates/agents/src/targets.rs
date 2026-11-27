@@ -33,8 +33,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
 }
 /// Planning a dedicated hooks file must not create its missing parent directory.
 pub(super) fn physical_target(s: &Spec, path: &Path) -> Result<PathBuf, (&'static str, String, i32)> {
-    if render::dedicated_wake_file(s).as_deref() == Some(path) {
-        let parent = path.parent().unwrap();
+    if let Some(parent) = path.parent().filter(|p| render::own_dir(s).as_deref() == Some(*p)) {
         if matches!(fs::symlink_metadata(parent), Err(e) if e.kind() == io::ErrorKind::NotFound) {
             return Ok(canonical_target(parent)?.join(path.file_name().unwrap()));
         }
@@ -150,6 +149,10 @@ pub(super) fn resource_matches(
             let Some(hooks) = root.get(journal.spec.hooks_key()).and_then(Value::as_object) else {
                 return Ok(false);
             };
+            // A named hook the person switched off (Antigravity's `enabled: false`) isn't there.
+            if hooks.get("enabled") == Some(&Value::Bool(false)) {
+                return Ok(false);
+            }
             for hook in &journal.spec.hooks {
                 let entry = hook.entry(&s.harness);
                 if entry == resource.last_written_value
