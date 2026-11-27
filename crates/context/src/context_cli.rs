@@ -1594,6 +1594,7 @@ mod user_scope_hook_tests {
             product_path: None,
             has_design: false,
             design: None,
+            design_bytes: None,
             design_path: None,
             context_dir: project.clone(),
             product_context_dir: None,

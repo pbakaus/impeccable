@@ -1,0 +1,7 @@
+{
+  "stdout": "Usage: impeccable design-sidecar stamp [--target <path>]\n\nAfter document writes or reviews .impeccable/design.json, stamp its DESIGN.md\ncontent fingerprint. Never use this command just to dismiss a stale warning.\n",
+  "stderr": "",
+  "exit": 0,
+  "signal": null,
+  "files": {}
+}

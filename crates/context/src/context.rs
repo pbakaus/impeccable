@@ -78,6 +78,9 @@ pub struct Ctx {
     pub product_path: Option<String>,
     pub has_design: bool,
     pub design: Option<String>,
+    // Keep the original bytes from the same read for sidecar fingerprints.
+    // The display text is decoded lossily and may not preserve invalid UTF-8.
+    pub design_bytes: Option<Vec<u8>>,
     pub design_path: Option<String>,
     pub context_dir: String,
     pub product_context_dir: Option<String>,
@@ -124,7 +127,8 @@ pub fn load_context(cwd: &str, options: &TargetOptions, env: &Env) -> Ctx {
     let resolved = resolve_context(cwd, options, env);
     let abs_cwd = jsp::resolve(cwd, &[]);
     let product = resolved.product_path.as_deref().and_then(safe_read);
-    let design = resolved.design_path.as_deref().and_then(safe_read);
+    let design_bytes = resolved.design_path.as_deref().and_then(|p| std::fs::read(p).ok());
+    let design = design_bytes.as_deref().map(|bytes| String::from_utf8_lossy(bytes).into_owned());
     let platform = extract_platform(product.as_deref());
     let target = if has_target_option(options) { options.target_path.as_deref() } else { None };
     let sr = resolve_surface_brief(&resolved.project_root, target);
@@ -158,6 +162,7 @@ pub fn load_context(cwd: &str, options: &TargetOptions, env: &Env) -> Ctx {
         is_monorepo: resolved.is_monorepo,
         product,
         design,
+        design_bytes,
     }
 }
 

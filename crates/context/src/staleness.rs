@@ -3,7 +3,7 @@
 use crate::artifact_schema::*;
 use crate::context::{BriefSummary, Ctx, TargetCandidate};
 use crate::jsp;
-use crate::util::{exists, js_trim, mtime_ms, read_json};
+use crate::util::{exists, js_trim, read_json};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::{Map, Value};
@@ -227,7 +227,15 @@ pub fn js_truthy(v: &Value) -> bool {
 }
 
 /// JS: checkDesignSidecar
-pub fn check_design_sidecar(design_path: Option<&str>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
+pub fn check_design_sidecar(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
+    check_design_sidecar_inner(design_path, design_source, sidecar_candidates, project_root, false)
+}
+
+pub fn check_design_sidecar_for_doctor(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str) -> Vec<Finding> {
+    check_design_sidecar_inner(design_path, design_source, sidecar_candidates, project_root, true)
+}
+
+fn check_design_sidecar_inner(design_path: Option<&str>, design_source: Option<&[u8]>, sidecar_candidates: &[String], project_root: &str, report_unverified: bool) -> Vec<Finding> {
     let mut out = Vec::new();
     let canonical = sidecar_candidates.first();
     let Some(present) = sidecar_candidates.iter().find(|c| exists(c)) else { return out };
@@ -267,22 +275,32 @@ pub fn check_design_sidecar(design_path: Option<&str>, sidecar_candidates: &[Str
         }
     }
     if let Some(dp) = design_path {
-        let dm = mtime_ms(dp);
-        let sm = mtime_ms(present);
-        if let (Some(d), Some(s)) = (dm, sm) {
-            if d > s {
-                out.push(finding(
-                    "design-sidecar-stale",
-                    "design.json",
-                    Some(rel_present.clone()),
-                    "mention",
-                    format!(
-                        "DESIGN.md was edited after {} was generated, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.",
-                        rel_present
-                    ),
-                    "Offer `document` to refresh the sidecar, preserving DESIGN.md.".to_string(),
-                ));
-            }
+        // Boot already loaded DESIGN.md. Never reopen it here, and do no
+        // fingerprint work for legacy sidecars without a stamp.
+        let verified = sidecar.as_ref().and_then(|s| s.get("designMdFingerprint")).and_then(|stamp| {
+            design_source.and_then(|bytes| crate::design_sidecar::matches_source(Some(stamp), bytes))
+        });
+        match verified {
+            Some(true) => {},
+            Some(false) => out.push(finding(
+                "design-sidecar-stale", "design.json", Some(rel_present.clone()), "mention",
+                format!("DESIGN.md content differs from the fingerprint recorded in {}, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.", rel_present),
+                "Offer `document` to refresh the sidecar, preserving DESIGN.md.".to_string(),
+            )),
+            None if report_unverified => out.push(finding(
+                "design-sidecar-unverified", "design.json", Some(rel_present.clone()), "mention",
+                format!("{} has no verifiable DESIGN.md content fingerprint; file timestamps cannot establish whether it is current.", rel_present),
+                "Offer `document` to review or regenerate the sidecar against DESIGN.md, then stamp its fingerprint. Do not stamp an unchecked sidecar just to dismiss this notice.".to_string(),
+            )),
+            None => {
+                if matches!((crate::util::mtime_ms(dp), crate::util::mtime_ms(present)), (Some(d), Some(s)) if d > s) {
+                    out.push(finding(
+                        "design-sidecar-stale", "design.json", Some(rel_present.clone()), "mention",
+                        format!("DESIGN.md was edited after {} was generated, so the sidecar's ramps, shadows, motion tokens, and component snippets may contradict it.", rel_present),
+                        "Offer `document` to refresh the sidecar, preserving DESIGN.md.".to_string(),
+                    ));
+                }
+            },
         }
     }
     out
@@ -499,7 +517,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
         } else {
             Vec::new()
         },
-        design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), &extras.sidecar_candidates, &project_root),
+        design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), ctx.design_bytes.as_deref(), &extras.sidecar_candidates, &project_root),
         design_drift: crate::staleness_deep::check_design_dead_paths(ctx.design.as_deref(), extras.abs_design_path.as_deref(), &project_root),
         config: check_config(&project_root, Some(&ctx.repo_root)),
         build_path: check_build_path_unset(&project_root, Some(&ctx.repo_root), ctx.product.as_deref()),

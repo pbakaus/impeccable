@@ -9,6 +9,18 @@ const PENDING_DOCK_POSITION_SOURCE = SOURCE.match(/function positionPendingDock\
 const CAPTURE_AND_EMIT_SOURCE = SOURCE.match(/async function captureAndEmit\([\s\S]*?\n  \}/)?.[0] || '';
 
 describe('live-browser source contracts', () => {
+  it('offers a refresh for stale sidecars without claiming verification', () => {
+    const source = SOURCE.match(/function renderStaleHint\([^]*?\n  \}/)?.[0];
+    assert.ok(source);
+    const render = runInNewContext(`(${source})`, {
+      document: { createElement: () => ({}) },
+      IMPECCABLE_COMMAND: 'impeccable',
+    });
+    assert.match(render().innerHTML, /may be out of date/);
+    assert.match(render().innerHTML, /to refresh the sidecar/);
+    assert.doesNotMatch(render().innerHTML, /verified/);
+  });
+
   it('does not checkpoint a generation before captureAndEmit creates its session', () => {
     for (const name of ['handleGo', 'handleInsertCreate']) {
       const body = SOURCE.match(new RegExp(`function ${name}\\(\\) \\{[\\s\\S]*?\\n  \\}`))?.[0];

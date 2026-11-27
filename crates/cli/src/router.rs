@@ -249,6 +249,7 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
         }
         "embed-prompt" => impeccable_context::run_embed_prompt(rest, io),
         "signals" | "context-signals" => impeccable_context::run_signals(rest, io),
+        "design-sidecar" => impeccable_context::design_sidecar::run(rest, io),
         "doctor" => impeccable_context::run_doctor(rest, io),
         "design-compact" => impeccable_context::run_design_compact(rest, io),
         "design-lookup" => impeccable_context::run_design_lookup(rest, io),
@@ -654,6 +655,7 @@ const KNOWN_VERBS: &[&str] = &[
     "embed-prompt",
     "signals",
     "context-signals",
+    "design-sidecar",
     "doctor",
     "design-compact",
     "design-lookup",

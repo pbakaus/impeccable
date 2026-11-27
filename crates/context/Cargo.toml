@@ -12,7 +12,7 @@ default = []
 core-registry = []
 
 [dependencies]
-impeccable-common = { workspace = true, features = ["seed"] }
+impeccable-common = { workspace = true, features = ["seed", "fingerprint"] }
 impeccable-comp = { workspace = true }
 impeccable-core = { workspace = true }
 serde = { workspace = true }

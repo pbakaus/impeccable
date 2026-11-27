@@ -6,6 +6,9 @@
 //! `io.stdout` / `io.stderr`, reads `io.stdin()` lazily, and returns the exit
 //! code. Only the `cli` binary calls `std::process::exit`.
 
+#[cfg(feature = "fingerprint")]
+pub mod design_fingerprint;
+
 pub mod flow;
 pub mod fsx;
 pub mod git;

@@ -91,7 +91,9 @@ fn collect(cwd: &str, target: &TargetOptions, env: &Env, provider: &crate::provi
     let mut findings: Vec<Finding> = Vec::new();
     findings.extend(boot.product);
     findings.extend(boot.native_platform);
-    findings.extend(boot.design_sidecar);
+    findings.extend(crate::staleness::check_design_sidecar_for_doctor(
+        abs_design_path.as_deref(), ctx.design_bytes.as_deref(), &sidecar_candidates, &project_root,
+    ));
     findings.extend(boot.design_drift);
     // Reads the token files DESIGN.md names, so doctor runs it and the boot does not.
     findings.extend(check_design_colour_drift(ctx.design.as_deref(), abs_design_path.as_deref(), &project_root));
