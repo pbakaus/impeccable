@@ -134,28 +134,16 @@ pub fn check_product(product: Option<&str>, product_path: &str) -> Vec<Finding> 
     out
 }
 
-/// JS: checkNativePlatformEvidence
-pub fn check_native_platform_evidence(
-    project_root: &str,
-    platform: Option<&str>,
-    product: Option<&str>,
-    product_path: Option<&str>,
-) -> Vec<Finding> {
-    if project_root.is_empty() {
-        return vec![];
-    }
-    if let Some(p) = platform {
-        if !p.is_empty() && p != "web" {
-            return vec![];
-        }
-    }
+/// Native project markers in `dir`: the files and package.json dependencies
+/// that say a codebase is native.
+fn native_evidence_at(dir: &str) -> Vec<NativeEvidence> {
     let mut evidence: Vec<NativeEvidence> = Vec::new();
     for (rel, platform, reason) in NATIVE_EVIDENCE_PATHS {
-        if exists(&jsp::join(&[project_root, rel])) {
+        if exists(&jsp::join(&[dir, rel])) {
             evidence.push(NativeEvidence { platform, reason });
         }
     }
-    if let Some(pkg) = read_json(&jsp::join(&[project_root, "package.json"])) {
+    if let Some(pkg) = read_json(&jsp::join(&[dir, "package.json"])) {
         // JS: { ...pkg.dependencies, ...pkg.devDependencies } then deps[name] truthy
         let dep_truthy = |name: &str| -> bool {
             let mut v: Option<&Value> = None;
@@ -182,6 +170,30 @@ pub fn check_native_platform_evidence(
             }
         }
     }
+    evidence
+}
+
+/// Whether `dir` carries native project markers (#1644).
+pub(crate) fn has_native_evidence(dir: &str) -> bool {
+    !native_evidence_at(dir).is_empty()
+}
+
+/// JS: checkNativePlatformEvidence
+pub fn check_native_platform_evidence(
+    project_root: &str,
+    platform: Option<&str>,
+    product: Option<&str>,
+    product_path: Option<&str>,
+) -> Vec<Finding> {
+    if project_root.is_empty() {
+        return vec![];
+    }
+    if let Some(p) = platform {
+        if !p.is_empty() && p != "web" {
+            return vec![];
+        }
+    }
+    let evidence = native_evidence_at(project_root);
     if evidence.is_empty() {
         return vec![];
     }
@@ -492,7 +504,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
         native_platform: if ctx.product.as_deref().map(|p| !p.is_empty()).unwrap_or(false) {
             check_native_platform_evidence(
                 &project_root,
-                ctx.platform.as_deref(),
+                ctx.declared_platform.as_deref(),
                 ctx.product.as_deref(),
                 ctx.product_path.as_deref(),
             )

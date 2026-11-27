@@ -132,7 +132,7 @@ fn is_native(platform: Option<&str>) -> bool {
 
 /// JS: automaticHookMode(ctx)
 pub fn automatic_hook_mode(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> &'static str {
-    if is_native(ctx.platform.as_deref()) {
+    if is_native(ctx.declared_platform.as_deref()) {
         return "none";
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
@@ -458,7 +458,7 @@ fn hook_consent_declined_at(root: &str) -> bool {
 /// directive and doctor so both report the same state.
 pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> Vec<Finding> {
     let manifests = hook_manifests_for(&provider.id);
-    if manifests.is_empty() || is_native(ctx.platform.as_deref()) {
+    if manifests.is_empty() || is_native(ctx.declared_platform.as_deref()) {
         return vec![];
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
@@ -928,7 +928,7 @@ pub fn run_with_hook_repair(
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
-    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+    if !is_native(ctx.declared_platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
         let mut notices = Vec::new();
         for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
             match repair(&root) {
@@ -1015,6 +1015,9 @@ pub fn run_with_hook_repair(
         } else {
             "WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.".to_string()
         });
+    }
+    if ctx.platform != ctx.declared_platform {
+        parts.push(format!("PLATFORM_TARGET_WEB: PRODUCT.md's `## Platform` is `{}`, but the target `{}` is web code, so this session treats it as `web`: the native platform reference is not loaded and commands take their web path, the detector included.", ctx.declared_platform.as_deref().unwrap_or(""), options.target_path.as_deref().unwrap_or("")));
     }
     for (name, path, content) in load_native_platform_references(ctx.platform.as_deref(), &provider) {
         parts.doc(format!("# NATIVE PLATFORM REFERENCE: {} (reference/{}.md)", name.to_uppercase(), name), &path, &content);
@@ -1605,6 +1608,7 @@ mod user_scope_hook_tests {
             surface_brief_candidates: vec![],
             has_visual_implementation: false,
             platform: None,
+            declared_platform: None,
             project_root: project.clone(),
             repo_root: project.clone(),
             is_monorepo: false,
