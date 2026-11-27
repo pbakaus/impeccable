@@ -413,3 +413,50 @@ fn a_capped_walk_proves_no_detector_pass() {
         assert_eq!(got["items"].get(id), None, "{id}: {}", got["items"]);
     }
 }
+
+#[test]
+fn the_deployed_site_is_found_in_committed_files_and_kept_for_a_day() {
+    // Catches: the outside checks asking a host that isn't the product's
+    // (a code host), sending anything with no site named, or asking the
+    // network again within a day instead of keeping the last answers.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    for (name, homepage, cached_host, want) in [
+        ("own", Some("https://acme.dev/"), "acme.dev", true),
+        ("codehost", Some("https://github.com/acme/app"), "github.com", false),
+        ("none", None, "acme.dev", false),
+        ("untracked", Some("https://acme.dev/"), "acme.dev", false),
+    ] {
+        let dir = std::env::temp_dir()
+            .join(format!("impeccable-foundations-site-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pkg = match homepage {
+            Some(h) => format!(r#"{{"homepage":"{h}","dependencies":{{"react":"19.0.0"}}}}"#),
+            None => REACT.to_string(),
+        };
+        std::fs::write(dir.join("package.json"), pkg).unwrap();
+        git(&dir, &["init", "-q"]);
+        // Only a committed file names the site.
+        if name != "untracked" {
+            git(&dir, &["add", "package.json"]);
+        }
+        let home = dir.parent().unwrap().join(format!("{}-home", dir.file_name().unwrap().to_string_lossy()));
+        std::fs::create_dir_all(&home).unwrap();
+        let key = dir.canonicalize().unwrap().to_string_lossy().into_owned();
+        let cache = serde_json::json!({ key: { "host": cached_host, "probed": now - 60, "items": {
+            "https-enforced": { "state": "checked", "at": now - 60 },
+            "security-txt": { "state": "failing", "at": now - 60 },
+        } } });
+        std::fs::write(home.join("foundations-site.json"), cache.to_string()).unwrap();
+        let got = foundations(&dir);
+        let _ = std::fs::remove_dir_all(&dir);
+        if want {
+            assert_eq!(got["items"]["https-enforced"], "checked", "{name}: {got}");
+            assert_eq!(got["items"]["security-txt"], "failing", "{name}: {got}");
+        } else {
+            assert!(got["items"].get("https-enforced").is_none(), "{name}: {got}");
+        }
+    }
+}

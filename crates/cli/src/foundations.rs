@@ -1,10 +1,11 @@
-//! Foundations: the 18-item roadmap every project needs. A full `detect`
-//! and `impeccable foundations` settle what they can from the project's
-//! files and the detector, and a signed-in CLI with foundations consent
+//! Foundations: the roadmap every project needs. A full `detect` and
+//! `impeccable foundations` settle what they can from the project's files,
+//! the detector and the deployed site those files name (`site`), and a signed-in CLI with foundations consent
 //! uploads the states (`impeccable_account::health`). An item with no
 //! evidence either way is left out, never sent as a pass.
 
 mod local;
+pub(crate) mod site;
 
 #[cfg(test)]
 #[path = "foundations/golden.rs"]
@@ -20,6 +21,16 @@ const ITEMS: &[(&str, &str, &str)] = &[
         "secrets-out-of-repo",
         "No secrets in the repository",
         "A key in a tracked file is a key anyone with the code can use.",
+    ),
+    (
+        "https-enforced",
+        "HTTPS only",
+        "Without HTTPS, anyone on the same wifi can read or change what your visitors see and send.",
+    ),
+    (
+        "certificate-renews",
+        "Certificate renewing",
+        "An expired certificate takes the whole site down behind a browser warning.",
     ),
     (
         "readable-contrast",
@@ -82,6 +93,21 @@ const ITEMS: &[(&str, &str, &str)] = &[
         "Known holes in old packages get patched only if someone hears about them.",
     ),
     (
+        "security-headers",
+        "Security headers",
+        "A few response headers stop whole classes of attacks, like your page framed inside someone else's.",
+    ),
+    (
+        "email-authentication",
+        "Email can't be spoofed",
+        "Without SPF and DMARC anyone can send email as your domain, and your own emails land in spam.",
+    ),
+    (
+        "security-txt",
+        "A security contact",
+        "People who find a hole in your product need a way to tell you first.",
+    ),
+    (
         "error-tracking",
         "Error tracking",
         "You hear about errors from a dashboard, not from customers leaving.",
@@ -114,6 +140,7 @@ pub(crate) fn from_scan(
     root: &str,
     full: &impeccable_detect::cli::FullScan,
     foundations_wanted: bool,
+    env: &std::collections::HashMap<String, String>,
 ) -> BTreeMap<String, String> {
     let mut items: BTreeMap<String, String> = BTreeMap::new();
     // Only a git work tree's top uploads, and only with foundations
@@ -128,7 +155,19 @@ pub(crate) fn from_scan(
     for (id, s) in detector(full, &local) {
         items.insert(id.to_string(), s.to_string());
     }
+    for (id, s) in outside(std::path::Path::new(root), env) {
+        items.insert(id.to_string(), s.to_string());
+    }
     items
+}
+
+/// The deployed site's items, only for a git work tree's top: a subfolder
+/// can't speak for the site its repository names.
+fn outside(root: &std::path::Path, env: &std::collections::HashMap<String, String>) -> site::Items {
+    if !root.join(".git").exists() {
+        return site::Items::new();
+    }
+    site::check(root, env)
 }
 
 /// The detector's two classes. A pass means "none found by the scan", and
@@ -257,6 +296,11 @@ pub(crate) fn run(
             items.insert(id.to_string(), s.to_string());
         }
     }
+    if !local.empty {
+        for (id, s) in outside(&root, &io.env) {
+            items.insert(id.to_string(), s.to_string());
+        }
+    }
     let next = ITEMS
         .iter()
         .find(|(id, ..)| items.get(*id).map(String::as_str) == Some("failing"))
@@ -283,7 +327,7 @@ pub(crate) fn run(
     0
 }
 
-const USAGE: &str = "Usage: impeccable foundations [path] [--json]\n\nChecks the product foundations this project's files can show: CI, icons, 404 page, secrets and more.\n";
+const USAGE: &str = "Usage: impeccable foundations [path] [--json]\n\nChecks the product foundations this project's files and its deployed site can show: CI, icons, 404 page, secrets, HTTPS and more.\n";
 
 fn print_roadmap(
     io: &mut Io,
