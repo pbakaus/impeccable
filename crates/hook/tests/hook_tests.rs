@@ -77,7 +77,8 @@ fn build_completion_reminder_skips_native_projects() {
     }).to_string());
     let stop = hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "owner"));
     assert!(stop.stdout.is_empty(), "{}", stop.stdout);
-    assert_eq!(stop.audit["skipped"], "native-platform");
+    // Only the reminder is skipped; the scan still runs over web code (#1644).
+    assert_eq!(stop.audit["skipped"], "no-touched-files");
 }
 
 #[test]

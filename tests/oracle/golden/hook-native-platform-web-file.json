@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"[impeccable@1] Design hook findings requiring review in src/page.html (3 issue(s)):\\n- L1 [low-contrast] Low contrast text. Text does not meet WCAG AA contrast requirements (4.5:1 for body, 3:1 for large text). Increase the contrast between text and background.\\n- L1 [low-contrast] Low contrast text.\\n- L1 [dark-glow] Glowing shadow accents. Colored glow shadows — a zero-offset chromatic halo (box- or text-shadow) on any background, or any colored blurred shadow on a dark background — are the default \\\"cool\\\" look of AI-generated UIs. Use neutral elevation shadows and subtle, purposeful lighting instead.\\n\\nTriage each finding, then state in your reply what you fixed, what you suppressed, and what you left standing:\\n- Real design problem: fix it. Keep intentional design as designed.\\n- Confident false positive or sanctioned exception (an intentional demo or fixture, documentation of bad design, literal or domain-appropriate motion, a choice the user confirmed): persist the narrowest ignore yourself and disclose it. Run `<HOOK_ADMIN_CMD> ignore-value <rule> \\\"<value>\\\" --reason \\\"<who decided: evidence>\\\"` with the pair shown on the finding line, or value \\\"*\\\" plus `--file <path>` when the line shows none. Write \\\"user confirmed\\\" in a reason only when the user did.\\n- Unsure: leave it as is and give the reason in one line. Ask the user only when you genuinely cannot decide.\\nSelf-serve ends at ignore-value: `ignore-file` and `ignore-rule` need the user's explicit approval, and never add an ignore to push a blocked write through. Full suppression ladder: /impeccable hooks.\"}}",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "stdout": "{\"hookSpecificOutput\":{\"hookEventName\":\"Stop\",\"additionalContext\":\"[impeccable@1] Findings marked attribution unknown may predate this session; do not treat them as regressions or broaden the task to chase them.\\n\\n[impeccable@1] Design hook findings requiring review in src/page.html (1 issue(s)):\\n- L1 [cramped-padding] [attribution unknown] Cramped padding. Text is too close to the edge of its container. Two shapes: (1) an element with its own text where the space between the rendered text and the border box is too small for the font size, and (2) a wrapper whose children's text lands flush against a visible boundary (border, outline, or non-transparent background) with nothing to inset it. Add at least 8px (ideally 12–16px) of space inside bordered, outlined, or colored containers.\\n\\nTriage per the session policy: fix real problems; persist confident false-positive or sanctioned-exception ignores via `impeccable hooks ignore-value` and disclose them in your reply; unsure, leave it with a reason.\"}}",
+      "stderr": "",
+      "exit": 0,
+      "signal": null
+    }
+  ],
+  "files": {
+    ".impeccable/build/state.json": "{}\n",
+    ".impeccable/hook.cache.json": "{\"version\":1,\"sessions\":{\"s1\":{\"updatedAt\": <EPOCH>,\"files\":{\"<WS>/src/page.html\":{\"editCount\":1,\"findings\":[\"low-contrast:1.3:1 (need 4.5:1) — text #666666 on #555555#1\",\"low-contrast:1.1:1 (need 4.5:1) — text #000000 on #111111#1\",\"dark-glow:Zero-offset box-shadow glow (#8b5cf6)#1\",\"cramped-padding:<div> \\\"hero\\\": children flush against bg on all sides (no inset)#1\"]}},\"footerShown\":true}}}"
+  }
+}

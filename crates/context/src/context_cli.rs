@@ -458,7 +458,7 @@ fn hook_consent_declined_at(root: &str) -> bool {
 /// directive and doctor so both report the same state.
 pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> Vec<Finding> {
     let manifests = hook_manifests_for(&provider.id);
-    if manifests.is_empty() || is_native(ctx.platform.as_deref()) {
+    if manifests.is_empty() || is_native(ctx.declared_platform.as_deref()) {
         return vec![];
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
@@ -928,7 +928,7 @@ pub fn run_with_hook_repair(
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
-    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+    if !is_native(ctx.declared_platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
         let mut notices = Vec::new();
         for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
             match repair(&root) {
@@ -1015,6 +1015,9 @@ pub fn run_with_hook_repair(
         } else {
             "WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.".to_string()
         });
+    }
+    if ctx.platform != ctx.declared_platform {
+        parts.push(format!("PLATFORM_TARGET_WEB: PRODUCT.md's `## Platform` is `{}`, but the target `{}` is web code, so this session treats it as `web`: the native platform reference is not loaded and commands take their web path, the detector included.", ctx.declared_platform.as_deref().unwrap_or(""), options.target_path.as_deref().unwrap_or("")));
     }
     for (name, path, content) in load_native_platform_references(ctx.platform.as_deref(), &provider) {
         parts.doc(format!("# NATIVE PLATFORM REFERENCE: {} (reference/{}.md)", name.to_uppercase(), name), &path, &content);
@@ -1605,6 +1608,7 @@ mod user_scope_hook_tests {
             surface_brief_candidates: vec![],
             has_visual_implementation: false,
             platform: None,
+            declared_platform: None,
             project_root: project.clone(),
             repo_root: project.clone(),
             is_monorepo: false,
@@ -1899,6 +1903,27 @@ mod hook_not_installed_tests {
         assert!(manual_detector_required(&fixture, &fixture.project));
         fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
         assert!(!manual_detector_required(&fixture, &fixture.project));
+    }
+
+    #[test]
+    fn a_hook_cache_covers_a_web_target_in_a_native_project() {
+        // The hook scans a native project's web code, so its cache covers a web target (#1644).
+        let fixture = Fixture::new("source");
+        fixture.put("project/PRODUCT.md", "# P\n\n## Platform\nios\n");
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        fixture.put("project/site/index.html", "<p>x</p>");
+        let options = TargetOptions { target_path: Some("site/index.html".to_string()) };
+        let ctx = load_context(&fixture.project, &options, &fixture.env);
+        assert_eq!(ctx.platform.as_deref(), Some("web"));
+        let provider = crate::provider::detect(&fixture.env, &fixture.project);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(!parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
+        // Without the cache the web target still gets the manual detector.
+        std::fs::remove_file(fixture.root.join("project/.impeccable/hook.cache.json")).unwrap();
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
     }
 
     #[test]
