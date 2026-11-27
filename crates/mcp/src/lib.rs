@@ -181,6 +181,7 @@ fn serve_all(
 ) {
     let mut agent: Option<String> = None;
     let mut presence: Option<presence::Presence> = None;
+    let mut observe_after = false;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
     // Which relay socket was there at the last tools/list (its device, inode and change time, so a relay
@@ -202,9 +203,8 @@ fn serve_all(
             if let (Some((env, cwd)), None) = (here, &presence) {
                 presence = presence::Presence::start(env, agent.as_deref().unwrap_or("agent"), cwd);
             }
-            if let (Some((env, cwd)), true, None) = (here, discover, &observer) {
-                observer = observe(env, cwd, upstream);
-            }
+            // Found after the reply below: a `ps`, a git read and a claim never hold up the agent's start.
+            observe_after = here.is_some() && discover && observer.is_none();
         }
         // The name the session gives itself, before a missing one is filled with the harness's.
         if let Some(from) = named_by(&request) {
@@ -274,6 +274,11 @@ fn serve_all(
                 }
             }
             frame(out, &reply);
+        }
+        if std::mem::take(&mut observe_after) {
+            if let Some((env, cwd)) = here {
+                observer = observe(env, cwd, upstream);
+            }
         }
     }
 }

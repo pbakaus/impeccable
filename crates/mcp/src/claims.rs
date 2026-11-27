@@ -21,6 +21,8 @@ use std::time::Duration;
 
 /// How often a held lease is renewed: a third of the lease the server gives (60 s, so every 20 s).
 const RENEW_SHARE: u32 = 3;
+/// How long a conflict holds off the next claim: the server's lease (60 s), after which a gone holder has lapsed.
+const LEASE_FALLBACK: Duration = Duration::from_secs(60);
 /// The server takes at most this many delivery ids in one receipt.
 const RECEIPT_MAX: usize = 100;
 /// Loop's own records and proofs are small; anything larger isn't one.
@@ -245,8 +247,13 @@ pub struct Observer {
     instance: String,
     installation: String,
     name: Option<String>,
-    /// The door said it's off, or the claim conflicts: nothing more is tried.
+    /// The door said it's off: nothing more is tried.
     done: bool,
+    /// Another instance's lease was live: no claim is tried before this. Its lease runs out within one lease when that
+    /// process is gone (a crash, a restart that didn't release), and this session then takes the inbox over.
+    not_before: Option<std::time::Instant>,
+    /// Whether the conflict line was told.
+    told: bool,
     /// The conflict line, told to the agent once.
     tell: Option<String>,
     every: Duration,
@@ -271,6 +278,8 @@ impl Observer {
             installation,
             name: None,
             done: false,
+            not_before: None,
+            told: false,
             tell: None,
             every,
             stop: None,
@@ -328,6 +337,9 @@ impl Observer {
 
     fn claim(&mut self) {
         let Some(name) = self.name.clone().filter(|_| !self.done) else { return };
+        if self.not_before.is_some_and(|t| std::time::Instant::now() < t) {
+            return;
+        }
         let folder = self.place.cwd.file_name().and_then(|f| f.to_str()).map(str::to_string);
         let mut context = json!({ "harness": self.harness });
         if let Some(b) = &self.place.branch { context["branch"] = json!(b); }
@@ -337,6 +349,7 @@ impl Observer {
         let answer = self.lock().door.post(&body);
         match answer {
             Ok(v) => {
+                self.not_before = None;
                 let generation = match &v["generation"] {
                     Value::String(s) => s.clone(),
                     Value::Number(n) => n.to_string(),
@@ -355,8 +368,10 @@ impl Observer {
             }
             Err(Refused::Off) => self.done = true,
             Err(Refused::Conflict) => {
-                self.done = true;
-                self.tell = Some(format!("Another session holds {name} in this project."));
+                self.not_before = Some(std::time::Instant::now() + LEASE_FALLBACK);
+                if !std::mem::replace(&mut self.told, true) {
+                    self.tell = Some(format!("Another session holds {name} in this project."));
+                }
             }
             Err(Refused::Lapsed | Refused::Other) => {}
         }
@@ -657,7 +672,8 @@ mod tests {
         drop(o);
     }
 
-    // Catches claiming again and again once the door is off, and a conflict told more than once or not at all.
+    // Catches claiming again and again once the door is off, a conflict told more than once or not at all, and a
+    // conflict that never retries after the holder is gone (a crashed session's restart could never take its inbox).
     #[test]
     fn an_off_door_stops_and_a_conflict_is_told_once() {
         let b = Box_::new("off");
@@ -674,6 +690,10 @@ mod tests {
         assert_eq!(o.take_note().as_deref(), Some("Another session holds t1jp in this project."));
         o.named("t1jp");
         assert_eq!((o.take_note(), actions(&held).len()), (None, 1));
+        // Once the holder's lease could have run out (it crashed), the next call tries again, told nothing new.
+        o.not_before = Some(std::time::Instant::now());
+        o.named("t1jp");
+        assert_eq!((o.take_note(), actions(&held).len()), (None, 2));
     }
 
     /// The account service's `/mcp` as one canned answer, remembering the instance each call carried.

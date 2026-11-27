@@ -69,11 +69,12 @@ fn base(arg: &str) -> &str {
     arg.rsplit(['/', '\\']).next().unwrap_or(arg)
 }
 
-/// The harness a process is, from its program or (for `node <script>`) its script.
+/// The harness a process is (presence's names), for the claims observer.
 pub fn harness_name(p: &Proc) -> Option<&'static str> {
     harness_of(p)
 }
 
+/// The harness a process is, from its program or (for `node <script>`) its script.
 fn harness_of(p: &Proc) -> Option<&'static str> {
     let program = base(p.args.first()?);
     let named = |n: &str| HARNESSES.iter().find(|(exe, _)| *exe == n).map(|(_, h)| *h);
