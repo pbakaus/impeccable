@@ -841,6 +841,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let mut first_skip: Option<RunResult> = None;
     let mut scanned = 0usize;
     let mut discovered_scanned = 0usize;
+    let mut discovery_capped = false;
     let mut pre_existing = 0usize;
     let mut new_findings = 0usize;
     let mut unknown = 0usize;
@@ -939,6 +940,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         let mut dirty = false;
         for (file_path, found) in &touched {
             if *found && discovered_scanned >= STOP_MAX_FILES {
+                discovery_capped = true;
                 break;
             }
             if !*found && scanned >= STOP_MAX_FILES {
@@ -1018,7 +1020,9 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         }
         passes.push(RootPass { cwd: root.clone(), config: root_config, cache: root_cache, groups, scans, dirty });
     }
-    if named_session && session_start.is_some() {
+    // A capped pass leaves the window where it was: the files it scanned are
+    // cached now, so the next pass reaches the ones it left.
+    if named_session && session_start.is_some() && !discovery_capped {
         crate::hook_sessions::record_stop(rt, &session_id, stop_started);
     }
     if passes.is_empty() {

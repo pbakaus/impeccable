@@ -113,29 +113,34 @@ pub fn record_stop(rt: &Runtime, session: &str, started: SystemTime) {
         sweep_expired(&base, &session_name);
     }
     let marker = stop_marker(&base, &session_name);
-    let mut opts = std::fs::OpenOptions::new();
     let previous = match std::fs::symlink_metadata(&marker) {
         Ok(meta) if meta.is_file() => {
             let Ok(last) = meta.modified().map(ms) else { return };
             if last + SIBLING_MS > ms(started) {
                 return; // a sibling copy recorded this pass
             }
-            // Never follow a link swapped in after the check.
-            #[cfg(unix)]
-            std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_NOFOLLOW);
-            opts.write(true).truncate(true);
             last.to_string()
         }
         Ok(_) => return,
-        Err(_) => {
-            private_file_mode(opts.write(true).create_new(true));
-            String::new()
-        }
+        Err(_) => String::new(),
     };
-    if let Ok(mut file) = opts.open(&marker) {
-        if file.write_all(previous.as_bytes()).is_ok() {
-            let _ = file.set_modified(started);
-        }
+    // Written beside it and renamed over it, so a sibling never reads a
+    // half-written marker. The temp name is `<64 hex>` too, for the sweep.
+    let temp = base.join(&session_name).join(sha256_hex("stop.tmp"));
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    private_file_mode(&mut opts);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_NOFOLLOW);
+    let Ok(mut file) = opts.open(&temp) else { return };
+    if file.write_all(previous.as_bytes()).is_err() || file.set_modified(started).is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(&temp);
+        return;
+    }
+    drop(file);
+    if std::fs::rename(&temp, &marker).is_err() {
+        let _ = std::fs::remove_file(&temp);
     }
     // The sweep dates a session by its dir: a session still stopping is live.
     if let Ok(dir) = std::fs::File::open(base.join(&session_name)) {
