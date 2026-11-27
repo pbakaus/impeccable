@@ -14,6 +14,7 @@
 //! URL is ever written to either.
 pub mod asset;
 pub mod browser;
+pub mod claims;
 pub mod host_setup;
 pub mod presence;
 
@@ -65,7 +66,20 @@ pub trait Upstream {
     fn upload(&mut self, _url: &str, _content_type: &str, _bytes: &[u8]) -> Result<(), String> {
         Err("Uploads aren't available here.".into())
     }
+    /// The claims door, for this session's observer (REN-2503); None where there is none.
+    fn claims_door(&self) -> Option<Box<dyn claims::Door>> {
+        None
+    }
+    /// The instance handle every `/mcp` call carries as `Impeccable-Instance` while this session holds its inbox.
+    fn set_instance(&mut self, _instance: Option<String>) {}
+    /// Where the CLI keeps its sign-in: "keychain" or "file".
+    fn credential_store(&self) -> Option<&'static str> {
+        None
+    }
 }
+
+/// What the initialize instructions add when the sign-in is a file any program the agent runs could read.
+pub const FILE_STORE_NOTE: &str = "Impeccable's sign-in on this machine is kept in a file, not the system keychain, so programs run here can read it.";
 
 /// `impeccable mcp`: serve stdin until it closes.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
@@ -122,8 +136,52 @@ pub fn serve_session(
     socket: Option<&std::path::Path>,
     here: Option<(&std::collections::HashMap<String, String>, &std::path::Path)>,
 ) {
+    serve_all(input, out, err, upstream, socket, here, None, true);
+}
+
+/// `serve` with an observer already made (tests): its claim, receipts and header, without finding a harness.
+pub fn serve_observed(input: impl BufRead, out: &mut dyn Write, err: &mut dyn Write, upstream: &mut dyn Upstream, observer: claims::Observer) {
+    serve_all(input, out, err, upstream, None, None, Some(observer), false);
+}
+
+/// This session's observer: its harness, found from one process list, and the Loop record that names it.
+#[cfg(unix)]
+fn observe(env: &HashMap<String, String>, cwd: &std::path::Path, upstream: &dyn Upstream) -> Option<claims::Observer> {
+    let door = upstream.claims_door()?;
+    let harness = claims::this_harness(&presence::snapshot())?;
+    let project = impeccable_account::health::repo_key(&cwd.display().to_string(), env)
+        .map(|(key, _)| key)
+        .filter(|k| k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit()))
+        .unwrap_or_default();
+    let place = claims::Place {
+        home: impeccable_account::config::impeccable_home(env)?,
+        loop_root: claims::loop_root(env)?,
+        cwd: cwd.to_path_buf(),
+        project,
+        branch: claims::branch(cwd),
+        renew_every: Duration::from_secs(20),
+    };
+    claims::Observer::start(door, &harness, place)
+}
+#[cfg(not(unix))]
+fn observe(_env: &HashMap<String, String>, _cwd: &std::path::Path, _upstream: &dyn Upstream) -> Option<claims::Observer> {
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn serve_all(
+    input: impl BufRead,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    upstream: &mut dyn Upstream,
+    socket: Option<&std::path::Path>,
+    here: Option<(&std::collections::HashMap<String, String>, &std::path::Path)>,
+    mut observer: Option<claims::Observer>,
+    discover: bool,
+) {
     let mut agent: Option<String> = None;
     let mut presence: Option<presence::Presence> = None;
+    let mut observe_after = false;
     // The relay connection, kept only while this agent holds the browser (its last call wasn't refused as busy).
     let mut link: Option<browser::Link> = None;
     // Which relay socket was there at the last tools/list (its device, inode and change time, so a relay
@@ -145,11 +203,24 @@ pub fn serve_session(
             if let (Some((env, cwd)), None) = (here, &presence) {
                 presence = presence::Presence::start(env, agent.as_deref().unwrap_or("agent"), cwd);
             }
+            // Found after the reply below: a `ps`, a git read and a claim never hold up the agent's start.
+            observe_after = here.is_some() && discover && observer.is_none();
         }
         // The name the session gives itself, before a missing one is filled with the harness's.
-        if let (Some(p), Some(from)) = (presence.as_mut(), named_by(&request)) {
-            p.named(&from);
+        if let Some(from) = named_by(&request) {
+            if let Some(p) = presence.as_mut() {
+                p.named(&from);
+            }
+            if let Some(o) = observer.as_mut() {
+                o.named(&from);
+            }
         }
+        let tool = request.pointer("/params/name").and_then(Value::as_str).map(str::to_string);
+        // A call that names nothing still takes back a claim that lapsed, under the name the inbox has.
+        if let (Some(o), true, None) = (observer.as_mut(), is_needs_you_call(&request), named_by(&request)) {
+            o.reclaim();
+        }
+        upstream.set_instance(observer.as_ref().and_then(claims::Observer::instance));
         asked_as(&mut request, agent.as_deref());
         if listed_with.is_some_and(|was| was != relay_there()) {
             frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
@@ -186,7 +257,36 @@ pub fn serve_session(
                     None => reply = json!({ "jsonrpc": "2.0", "id": request["id"], "result": { "tools": browser::tools() } }),
                 }
             }
-            frame(out, &reply);
+            if request.get("method").and_then(Value::as_str) == Some("initialize") && upstream.credential_store() == Some("file") {
+                if let Some(result) = reply.get_mut("result") {
+                    result["instructions"] = json!(match result["instructions"].as_str() {
+                        Some(said) if !said.is_empty() => format!("{said}\n\n{FILE_STORE_NOTE}"),
+                        _ => FILE_STORE_NOTE.to_string(),
+                    });
+                }
+            }
+            let mut handed = Vec::new();
+            if let (Some(o), Some(tool)) = (observer.as_mut(), tool.as_deref().filter(|t| t.starts_with("needs_you."))) {
+                if let Some(result) = reply.get("result").filter(|_| tool == "needs_you.answer") {
+                    handed = claims::deliveries(result);
+                }
+                if let Some(note) = o.take_note() {
+                    if let Some(content) = reply.pointer_mut("/result/content").and_then(Value::as_array_mut) {
+                        content.push(json!({ "type": "text", "text": note }));
+                    }
+                }
+            }
+            // Received means handed over: the receipt follows the written, flushed reply, never precedes it.
+            if frame(out, &reply) && !handed.is_empty() {
+                if let Some(o) = observer.as_mut() {
+                    o.received(&handed);
+                }
+            }
+        }
+        if std::mem::take(&mut observe_after) {
+            if let Some((env, cwd)) = here {
+                observer = observe(env, cwd, upstream);
+            }
         }
     }
 }
@@ -297,9 +397,14 @@ fn browsed(request: &Value, socket: &std::path::Path, agent: &str, link: &mut Op
     })
 }
 
-fn frame(out: &mut dyn Write, v: &Value) {
-    let _ = writeln!(out, "{v}");
-    let _ = out.flush();
+/// Write one frame; whether it reached the agent's pipe.
+fn frame(out: &mut dyn Write, v: &Value) -> bool {
+    writeln!(out, "{v}").is_ok() && out.flush().is_ok()
+}
+
+fn is_needs_you_call(request: &Value) -> bool {
+    request.get("method").and_then(Value::as_str) == Some("tools/call")
+        && request.pointer("/params/name").and_then(Value::as_str).is_some_and(|n| n.starts_with("needs_you."))
 }
 
 /// The reply to one request; None for a notification.
@@ -398,11 +503,13 @@ fn failed(id: &Value, f: Failure) -> Value {
 /// The real account service, under the CLI's stored sign-in. `browser`: whether one can open here; `open` opens one
 /// on the authorization URL and says whether it did (tests hand in the fake service's).
 pub fn service(env: HashMap<String, String>, browser: bool, open: Box<dyn FnMut(&str) -> bool>) -> impl Upstream {
-    Service { env, browser, open, unopened: None }
+    Service { env, browser, open, unopened: None, instance: None }
 }
 
 struct Service {
     env: HashMap<String, String>,
+    /// `Impeccable-Instance` for every call, while this session holds its inbox.
+    instance: Option<String>,
     browser: bool,
     open: Box<dyn FnMut(&str) -> bool>,
     /// A sign-in whose browser did not open, still waiting out its own deadline on its worker (which holds the
@@ -432,7 +539,8 @@ impl Upstream for Service {
             Err(SessionError::NotSignedIn | SessionError::Expired) => return Err(Failure::Auth),
             Err(e) => return Err(Failure::Other(e.to_string())),
         };
-        match session.call(|client, token| client.post_json(&url, token, request.clone())) {
+        let headers: Vec<(&str, &str)> = self.instance.as_deref().map(|i| ("Impeccable-Instance", i)).into_iter().collect();
+        match session.call(|client, token| client.post_json_with(&url, token, request.clone(), &headers)) {
             Ok(reply) => Ok(reply),
             Err(SessionError::NotSignedIn | SessionError::Expired) => Err(Failure::Auth),
             // 401: the sign-in is gone. 403 only for a missing scope (the service says `insufficient_scope`): a plan
@@ -450,6 +558,22 @@ impl Upstream for Service {
 
     fn browser(&self) -> bool {
         self.browser
+    }
+
+    fn claims_door(&self) -> Option<Box<dyn claims::Door>> {
+        Some(Box::new(ClaimsDoor { env: self.env.clone() }))
+    }
+
+    fn set_instance(&mut self, instance: Option<String>) {
+        self.instance = instance;
+    }
+
+    fn credential_store(&self) -> Option<&'static str> {
+        let account = Account::from_env(&self.env).ok()?;
+        match impeccable_account::store::Store::new(&account).state()?.backend {
+            impeccable_account::store::Backend::Keychain => Some("keychain"),
+            impeccable_account::store::Backend::File => Some("file"),
+        }
     }
 
     fn sign_in(&mut self) -> Result<(), String> {
@@ -490,6 +614,31 @@ impl Upstream for Service {
             Ok(true) => Ok(()),
             _ => Err(NOT_APPROVED.into()),
         }
+    }
+}
+
+/// The claims door on the account service, under the CLI's stored sign-in. It never opens a browser or a Keychain
+/// dialog: without a sign-in the claim simply isn't taken.
+struct ClaimsDoor {
+    env: HashMap<String, String>,
+}
+
+impl claims::Door for ClaimsDoor {
+    fn post(&mut self, body: &Value) -> Result<Value, claims::Refused> {
+        let account = Account::from_env(&self.env).map_err(|_| claims::Refused::Other)?;
+        let url = format!("{}/cli/v1/needs-you/claims", account.issuer);
+        let mut session = Session::load_quietly(&account).map_err(|_| claims::Refused::Other)?;
+        match session.call(|client, token| client.post_json(&url, token, body.clone())) {
+            Ok(v) => Ok(v),
+            Err(SessionError::Api(ApiError::Status { status: 404, .. })) => Err(claims::Refused::Off),
+            Err(SessionError::Api(ApiError::Status { status: 409, code })) if code.as_deref() == Some("conflict") => Err(claims::Refused::Conflict),
+            Err(SessionError::Api(ApiError::Status { status: 409, .. })) => Err(claims::Refused::Lapsed),
+            Err(_) => Err(claims::Refused::Other),
+        }
+    }
+
+    fn issuer(&self) -> Option<String> {
+        Account::from_env(&self.env).ok().map(|a| a.issuer)
     }
 }
 
