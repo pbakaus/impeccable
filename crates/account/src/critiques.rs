@@ -585,7 +585,8 @@ pub fn frame_request<R>(
     let session = frame_session(io, login, wait)?;
     let account = session.account();
     let _admission = crate::store::Store::critique_lock_for(&account.home, Duration::ZERO).ok()?;
-    if !enabled(io) {
+    // Under the lock `uploads off screenshots` also takes: a switch turned off while this job waited stops it here.
+    if !enabled(io) || !crate::uploads::allowed(io, crate::uploads::Kind::Screenshots, None) {
         return None;
     }
     Some(send(&Client::with_deadline(account, wait), session.existing_access_token()?))

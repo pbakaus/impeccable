@@ -97,6 +97,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let original = session.state.clone();
     let login = original.login;
     let root = scan.root.clone();
+    let about = std::path::PathBuf::from(&scan.root);
     let env = io.env.clone();
     let Some(wait) = remaining(started) else {
         return;
@@ -187,6 +188,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let home = account.home.clone();
     let env = io.env.clone();
     let expected = digest.clone();
+    let here = io.cwd.clone();
     let Some(wait) = remaining(started) else {
         return;
     };
@@ -204,7 +206,8 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             cache_lock.try_lock().ok()?;
             let cached = std::fs::read_to_string(&path).ok().as_deref() == Some(&expected);
             let admission = crate::store::Store::design_lock_for(&home, Duration::ZERO).ok()?;
-            if !enabled_generation(&env, generation) {
+            // Under the lock `uploads off design` also takes, so a switch turned off meanwhile stops this upload.
+            if !enabled_generation(&env, generation) || !crate::uploads::allowed_in(&env, &here, crate::uploads::Kind::Design, Some(&about)) {
                 return None;
             }
             Some((path, cache_lock, admission, cached))

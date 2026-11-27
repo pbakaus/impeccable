@@ -158,7 +158,8 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 crate::loop_install::after_login(io);
                 sign_in_summary(io);
                 // Every upload kind starts off (REN-2530): the person learns where to choose.
-                io.err(impeccable_account::uploads::AFTER_LOGIN);
+                let line = impeccable_account::uploads::after_login(io);
+                io.err(&line);
             }
             code
         }

@@ -100,12 +100,32 @@ pub fn clear(account: &Account) {
 /// Whether `kind` may upload from `io.cwd` (and `root`, when the upload is about another folder): its switch is on
 /// for this account service and no telemetry opt-out applies there.
 pub fn allowed(io: &Io, kind: Kind, root: Option<&Path>) -> bool {
-    let Ok(account) = Account::from_env(&io.env) else { return false };
+    allowed_in(&io.env, &io.cwd, kind, root)
+}
+
+/// [`allowed`], from the environment and folder alone (for checks made on another thread, under an upload's lock).
+pub fn allowed_in(env: &std::collections::HashMap<String, String>, cwd: &Path, kind: Kind, root: Option<&Path>) -> bool {
+    let Ok(account) = Account::from_env(env) else { return false };
     if !on(&account).contains(&kind) {
         return false;
     }
-    let opted_out = |dir: &Path| impeccable_context::telemetry::opt_out_reason(&io.env, &dir.to_string_lossy()).is_some();
-    !opted_out(&io.cwd) && !root.is_some_and(opted_out)
+    let opted_out = |dir: &Path| impeccable_context::telemetry::opt_out_reason(env, &dir.to_string_lossy()).is_some();
+    !opted_out(cwd) && !root.is_some_and(opted_out)
+}
+
+/// Change the switches under the uploads lock. Turning a kind off also waits for that kind's own upload lock (as
+/// `critiques off` does), so an upload already past its last check finishes first and none starts after `off`
+/// returns.
+fn change(account: &Account, edit: impl FnOnce(Vec<Kind>) -> Vec<Kind>, turning_off: &[Kind]) -> Result<(), String> {
+    let wait = std::time::Duration::from_secs(3);
+    let _design = if turning_off.contains(&Kind::Design) { Some(crate::store::Store::design_lock_for(&account.home, wait)?) } else { None };
+    let _critique = if turning_off.iter().any(|k| matches!(k, Kind::Critiques | Kind::Screenshots)) {
+        Some(crate::store::Store::critique_lock_for(&account.home, wait)?)
+    } else {
+        None
+    };
+    let _lock = crate::store::Store::uploads_lock_for(&account.home, wait)?;
+    save(account, &edit(on(account)))
 }
 
 /// The line a signed-in person reads, at most once a day per kind, when `kind` didn't go because its switch is off.
@@ -131,8 +151,19 @@ pub fn skipped(io: &mut Io, kind: Kind, quiet: bool) {
     io.err(&format!("Not sent to Impeccable: {} is off. To choose what's sent: impeccable uploads\n", kind.id()));
 }
 
-/// The line `login` ends with.
+/// The line `login` ends with while every kind is off.
 pub const AFTER_LOGIN: &str = "Nothing is sent to Impeccable from this machine until you choose what: impeccable uploads\n";
+
+/// The line `login` ends with: what's on for this account service, or that nothing is (a repeat sign-in keeps the
+/// choices it made).
+pub fn after_login(io: &Io) -> String {
+    let now = Account::from_env(&io.env).map(|a| on(&a)).unwrap_or_default();
+    if now.is_empty() {
+        AFTER_LOGIN.to_string()
+    } else {
+        format!("Sent to Impeccable from this machine: {}. To change: impeccable uploads\n", names(&now))
+    }
+}
 
 /// Whether this is a person at their own terminal: stdin and stderr are terminals, and not CI.
 pub fn at_terminal(io: &Io) -> bool {
@@ -192,8 +223,7 @@ pub fn run_with(args: &[String], io: &mut Io, terminal: bool, ask: &mut dyn FnMu
         }
         ["off", rest @ ..] if rest.len() == 1 => {
             let Some(kinds) = pick(rest.first()) else { return unknown(io, rest[0]) };
-            let left: Vec<Kind> = on(&account).into_iter().filter(|k| !kinds.contains(k)).collect();
-            if let Err(e) = save(&account, &left) {
+            if let Err(e) = change(&account, |now| now.into_iter().filter(|k| !kinds.contains(k)).collect(), &kinds) {
                 io.err(&format!("impeccable uploads: {e}\n"));
                 return 1;
             }
@@ -216,9 +246,11 @@ pub fn run_with(args: &[String], io: &mut Io, terminal: bool, ask: &mut dyn FnMu
                 io.err("Nothing changed.\n");
                 return 1;
             }
-            let mut now = on(&account);
-            now.extend(kinds.iter().filter(|k| !now.contains(k)).copied().collect::<Vec<_>>());
-            if let Err(e) = save(&account, &now) {
+            let adding = kinds.clone();
+            if let Err(e) = change(&account, move |mut now| {
+                now.extend(adding.iter().filter(|k| !now.contains(k)).copied().collect::<Vec<_>>());
+                now
+            }, &[]) {
                 io.err(&format!("impeccable uploads: {e}\n"));
                 return 1;
             }
@@ -263,6 +295,27 @@ mod tests {
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
+    }
+
+    // Catches two `off`s at once each rewriting the whole list, so the second turns back on what the first turned
+    // off (Greptile on #1682), and login saying nothing goes when a repeat sign-in kept kinds on.
+    #[test]
+    fn offs_at_once_both_stick_and_login_says_what_is_on() {
+        let (dir, env) = home();
+        let account = Account::from_env(&env).unwrap();
+        seed(&account, &Kind::ALL);
+        let (io, _) = Io::captured("", dir.clone(), env.clone());
+        assert!(after_login(&io).starts_with("Sent to Impeccable from this machine: scan, "));
+        let jobs: Vec<_> = Kind::ALL.into_iter().map(|k| {
+            let (env, dir) = (env.clone(), dir.clone());
+            std::thread::spawn(move || {
+                let (mut io, _) = Io::captured("", dir, env);
+                run_with(&args(&["off", k.id()]), &mut io, false, &mut |_, _| false)
+            })
+        }).collect();
+        assert!(jobs.into_iter().all(|j| j.join().unwrap() == 0));
+        assert!(on(&account).is_empty(), "{:?}", on(&account));
+        assert_eq!(after_login(&io), AFTER_LOGIN);
     }
 
     // Catches a switch that starts on, an agent (no terminal) turning one on, and a no that still saves.
