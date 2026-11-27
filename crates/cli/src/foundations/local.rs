@@ -151,7 +151,7 @@ fn in_repo(root: &Path) -> bool {
 
 /// `None` when `root` isn't in a git work tree; `Some(Err)` when git failed
 /// or ran past its deadline.
-fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
+pub(crate) fn git_ls_files(root: &Path) -> Option<Result<Vec<String>, ()>> {
     let child = Command::new("git")
         .arg("-C")
         .arg(root)

@@ -427,6 +427,7 @@ fn the_deployed_site_is_found_in_committed_files_and_kept_for_a_day() {
         ("own", Some("https://acme.dev/"), "acme.dev", true),
         ("codehost", Some("https://github.com/acme/app"), "github.com", false),
         ("none", None, "acme.dev", false),
+        ("untracked", Some("https://acme.dev/"), "acme.dev", false),
     ] {
         let dir = std::env::temp_dir()
             .join(format!("impeccable-foundations-site-{name}-{}", std::process::id()));
@@ -437,6 +438,10 @@ fn the_deployed_site_is_found_in_committed_files_and_kept_for_a_day() {
         };
         std::fs::write(dir.join("package.json"), pkg).unwrap();
         git(&dir, &["init", "-q"]);
+        // Only a committed file names the site.
+        if name != "untracked" {
+            git(&dir, &["add", "package.json"]);
+        }
         let home = dir.parent().unwrap().join(format!("{}-home", dir.file_name().unwrap().to_string_lossy()));
         std::fs::create_dir_all(&home).unwrap();
         let key = dir.canonicalize().unwrap().to_string_lossy().into_owned();

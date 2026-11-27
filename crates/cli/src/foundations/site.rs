@@ -9,7 +9,7 @@
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -56,17 +56,9 @@ pub fn check(root: &Path, env: &HashMap<String, String>) -> Items {
             items: BTreeMap::new(),
         });
     if now.saturating_sub(held.probed) < FRESH {
-        return held.standing(now, FRESH);
+        return held.standing(now, STAND_IN);
     }
-    let probed = probe(&host);
-    let mut entry = Entry {
-        host,
-        probed: now,
-        items: held.items.clone(),
-    };
-    for (id, state) in &probed {
-        entry.items.insert(id.to_string(), (state.to_string(), now));
-    }
+    let entry = settle(held, &probe(&host), now);
     let out = entry.standing(now, STAND_IN);
     cache.insert(key, entry);
     if let Some(p) = path {
@@ -75,7 +67,21 @@ pub fn check(root: &Path, env: &HashMap<String, String>) -> Items {
     out
 }
 
-#[derive(Clone)]
+/// The kept answers after a probe: what it settled is new; the rest stand
+/// in by their own age. A probe that settled nothing (offline) doesn't count
+/// as one, so the next run asks again instead of waiting a day.
+fn settle(held: Entry, probed: &Items, now: u64) -> Entry {
+    let mut entry = Entry {
+        probed: if probed.is_empty() { held.probed } else { now },
+        ..held
+    };
+    for (id, state) in probed {
+        entry.items.insert(id.to_string(), (state.to_string(), now));
+    }
+    entry
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Entry {
     host: String,
     probed: u64,
@@ -157,7 +163,12 @@ fn write_cache(path: &Path, cache: &HashMap<String, Entry>) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let tmp = path.with_extension("json.tmp");
+    // One temp file per process, so concurrent scans never write into each other's.
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = path.with_extension(format!("json.{}.{nanos}.tmp", std::process::id()));
     if std::fs::write(&tmp, serde_json::Value::Object(body).to_string()).is_ok() {
         let _ = std::fs::rename(tmp, path);
     }
@@ -174,7 +185,15 @@ fn unix_now() -> u64 {
 
 /// The deployed site's host, from the first committed file that names one.
 pub fn site_host(root: &Path) -> Option<String> {
+    // Only files git tracks: an untracked local file names no deployed site.
+    let tracked: std::collections::HashSet<String> = super::local::git_ls_files(root)?
+        .ok()?
+        .into_iter()
+        .collect();
     let read = |p: &str| -> Option<String> {
+        if !tracked.contains(p) {
+            return None;
+        }
         let path = root.join(p);
         if !std::fs::symlink_metadata(&path).ok()?.is_file() {
             return None;
@@ -310,42 +329,45 @@ pub fn public_host(raw: &str) -> Option<String> {
 // --- Asking the site -------------------------------------------------------
 
 fn probe(host: &str) -> Items {
+    // A committed file can name an address on this machine's network: ask
+    // nothing of a host that resolves to one.
+    if public_addrs(host, 443).is_none() {
+        return Items::new();
+    }
     let (tx, rx) = mpsc::channel::<Items>();
-    let jobs: [fn(&str) -> Items; 3] = [
-        |h| {
+    // Each job sends an item as soon as it settles, so a slow request never
+    // hides one that already finished when the budget runs out.
+    let jobs: [fn(&str, &mpsc::Sender<Items>); 3] = [
+        |h, tx| {
             let tls = tls_leaf(h);
-            let mut out = Items::new();
             if let Some(s) = judge_certificate(&tls, unix_now() as i64) {
-                out.insert("certificate-renews", s);
+                let _ = tx.send(Items::from([("certificate-renews", s)]));
             }
-            let https = get(&format!("https://{h}/"), true);
-            let http = get(&format!("http://{h}/"), false);
-            if let Some(s) = judge_https(h, &tls, &https, &http) {
-                out.insert("https-enforced", s);
-            }
+            let https = get(h, &format!("https://{h}/"), true);
             if let Got::Answer(r) = &https {
-                out.insert("security-headers", judge_headers(r));
+                let _ = tx.send(Items::from([("security-headers", judge_headers(r))]));
             }
-            out
+            let http = get(h, &format!("http://{h}/"), false);
+            if let Some(s) = judge_https(h, &tls, &https, &http) {
+                let _ = tx.send(Items::from([("https-enforced", s)]));
+            }
         },
-        |h| {
-            let got = get(&format!("https://{h}/.well-known/security.txt"), true);
-            judge_security_txt(&got)
-                .map(|s| Items::from([("security-txt", s)]))
-                .unwrap_or_default()
+        |h, tx| {
+            let got = get(h, &format!("https://{h}/.well-known/security.txt"), true);
+            if let Some(s) = judge_security_txt(&got) {
+                let _ = tx.send(Items::from([("security-txt", s)]));
+            }
         },
-        |h| {
-            judge_email(h, &doh_txt)
-                .map(|s| Items::from([("email-authentication", s)]))
-                .unwrap_or_default()
+        |h, tx| {
+            if let Some(s) = judge_email(h, &doh_txt) {
+                let _ = tx.send(Items::from([("email-authentication", s)]));
+            }
         },
     ];
     for job in jobs {
         let tx = tx.clone();
         let host = host.to_string();
-        std::thread::spawn(move || {
-            let _ = tx.send(job(&host));
-        });
+        std::thread::spawn(move || job(&host, &tx));
     }
     drop(tx);
     let deadline = Instant::now() + BUDGET;
@@ -358,6 +380,47 @@ fn probe(host: &str) -> Items {
     }
     out
 }
+
+/// An address on the public internet: not loopback, private, link-local,
+/// shared (CGNAT), documentation or unspecified.
+pub fn is_public(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v) => {
+            let [a, b, ..] = v.octets();
+            !(v.is_loopback()
+                || v.is_private()
+                || v.is_link_local()
+                || v.is_unspecified()
+                || v.is_broadcast()
+                || v.is_documentation()
+                || a == 0
+                || (a == 100 && (64..128).contains(&b)))
+        }
+        IpAddr::V6(v) => {
+            if let Some(v4) = v.to_ipv4_mapped() {
+                return is_public(IpAddr::V4(v4));
+            }
+            let first = v.segments()[0];
+            !(v.is_loopback()
+                || v.is_unspecified()
+                || (first & 0xfe00) == 0xfc00
+                || (first & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+/// Every address `host` resolves to, only when all of them are public.
+fn public_addrs(host: &str, port: u16) -> Option<Vec<SocketAddr>> {
+    let addrs: Vec<SocketAddr> = (host, port).to_socket_addrs().ok()?.collect();
+    (!addrs.is_empty() && addrs.iter().all(|a| is_public(a.ip()))).then_some(addrs)
+}
+
+/// The same site: the host itself or its www twin.
+fn same_site(a: &str, b: &str) -> bool {
+    a == b || a == format!("www.{b}") || b == format!("www.{a}")
+}
+
+const HOPS: usize = 3;
 
 pub struct Response {
     pub status: u16,
@@ -381,33 +444,61 @@ pub enum Got {
     Nothing,
 }
 
-fn get(url: &str, follow: bool) -> Got {
+/// One page of the site. With `follow`, up to three redirects are followed
+/// by hand, and only within the site (`host` or its www twin), so the
+/// answer judged is always the site's own.
+fn get(host: &str, url: &str, follow: bool) -> Got {
     let agent = ureq::AgentBuilder::new()
         .timeout(REQUEST)
-        .redirects(if follow { 5 } else { 0 })
+        .redirects(0)
         .user_agent("impeccable-foundations")
-        .build();
-    let resp = match agent.get(url).call() {
-        Ok(r) => r,
-        Err(ureq::Error::Status(_, r)) => r,
-        Err(_) => return Got::Nothing,
-    };
-    let status = resp.status();
-    let headers = resp
-        .headers_names()
-        .into_iter()
-        .filter_map(|n| {
-            resp.header(&n)
-                .map(|v| (n.to_ascii_lowercase(), v.to_string()))
+        // Every address ureq connects to is checked, including after a redirect.
+        .resolver(|netloc: &str| -> std::io::Result<Vec<SocketAddr>> {
+            let addrs: Vec<SocketAddr> = netloc.to_socket_addrs()?.collect();
+            if addrs.is_empty() || !addrs.iter().all(|a| is_public(a.ip())) {
+                return Err(std::io::Error::other("not a public address"));
+            }
+            Ok(addrs)
         })
-        .collect();
-    let mut body = String::new();
-    let _ = resp.into_reader().take(16 * 1024).read_to_string(&mut body);
-    Got::Answer(Response {
-        status,
-        headers,
-        body,
-    })
+        .build();
+    let Ok(mut at) = url::Url::parse(url) else {
+        return Got::Nothing;
+    };
+    for _ in 0..=HOPS {
+        let resp = match agent.get(at.as_str()).call() {
+            Ok(r) => r,
+            Err(ureq::Error::Status(_, r)) => r,
+            Err(_) => return Got::Nothing,
+        };
+        let status = resp.status();
+        if follow && (300..400).contains(&status) {
+            let next = resp.header("location").and_then(|l| at.join(l).ok());
+            match next {
+                Some(n) if same_site(host, n.host_str().unwrap_or("")) => {
+                    at = n;
+                    continue;
+                }
+                // A redirect off the site: nothing about this site is proven.
+                _ => return Got::Nothing,
+            }
+        }
+        let headers = resp
+            .headers_names()
+            .into_iter()
+            .filter_map(|n| {
+                resp.header(&n)
+                    .map(|v| (n.to_ascii_lowercase(), v.to_string()))
+            })
+            .collect();
+        let mut body = String::new();
+        let _ = resp.into_reader().take(16 * 1024).read_to_string(&mut body);
+        return Got::Answer(Response {
+            status,
+            headers,
+            body,
+        });
+    }
+    Got::Nothing
 }
 
 pub enum Tls {
@@ -435,14 +526,14 @@ fn tls_leaf(host: &str) -> Tls {
     let Ok(mut conn) = rustls::ClientConnection::new(Arc::new(config), name) else {
         return Tls::Nothing;
     };
-    let Some(addr) = (host, 443)
-        .to_socket_addrs()
-        .ok()
-        .and_then(|mut a| a.next())
-    else {
+    let Some(addrs) = public_addrs(host, 443) else {
         return Tls::Nothing;
     };
-    let Ok(mut sock) = TcpStream::connect_timeout(&addr, REQUEST) else {
+    // The first address that answers, as a browser would.
+    let Some(mut sock) = addrs
+        .iter()
+        .find_map(|a| TcpStream::connect_timeout(a, REQUEST).ok())
+    else {
         return Tls::Nothing;
     };
     let _ = sock.set_read_timeout(Some(REQUEST));
@@ -557,12 +648,26 @@ pub fn judge_headers(r: &Response) -> &'static str {
         )
     }) || r
         .header("content-security-policy")
-        .is_some_and(|v| v.to_ascii_lowercase().contains("frame-ancestors"));
+        .is_some_and(frames_limited);
     if nosniff && referrer && frames {
         "checked"
     } else {
         "failing"
     }
+}
+
+/// A CSP whose `frame-ancestors` directive names sources and none is `*`.
+fn frames_limited(csp: &str) -> bool {
+    csp.split(';').any(|d| {
+        let mut words = d.split_whitespace();
+        words
+            .next()
+            .is_some_and(|n| n.eq_ignore_ascii_case("frame-ancestors"))
+            && {
+                let sources: Vec<&str> = words.collect();
+                !sources.is_empty() && !sources.contains(&"*")
+            }
+    })
 }
 
 pub fn judge_security_txt(got: &Got) -> Option<&'static str> {
@@ -825,6 +930,72 @@ mod tests {
             unreachable!()
         };
         assert_eq!(judge_headers(&r), "failing");
+        // Any site may frame it: no protection, whatever the word says.
+        let open = [
+            all[0],
+            all[1],
+            (
+                "content-security-policy",
+                "default-src 'self'; frame-ancestors *",
+            ),
+        ];
+        let Got::Answer(r) = resp(200, &open, "") else {
+            unreachable!()
+        };
+        assert_eq!(judge_headers(&r), "failing");
+        assert!(!frames_limited("default-src 'self' frame-ancestors-x"));
+        assert!(frames_limited("frame-ancestors 'none'"));
+    }
+
+    // Catches a committed file aiming the probes at this machine's network,
+    // and a redirect to another site judged as this one.
+    #[test]
+    fn only_public_addresses_and_the_site_itself_are_asked() {
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "192.168.0.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "::1",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:10.0.0.1",
+        ] {
+            assert!(!is_public(private.parse().unwrap()), "{private}");
+        }
+        for public in ["93.184.216.34", "2606:4700::1111"] {
+            assert!(is_public(public.parse().unwrap()), "{public}");
+        }
+        assert!(same_site("acme.dev", "www.acme.dev"));
+        assert!(same_site("www.acme.dev", "acme.dev"));
+        assert!(!same_site("acme.dev", "evil.dev"));
+    }
+
+    // Catches an offline run wiping what an earlier one proved: a probe that
+    // settled nothing keeps the old answers standing and asks again next run.
+    #[test]
+    fn an_offline_probe_keeps_the_last_answers() {
+        let day = 24 * 3600;
+        let held = Entry {
+            host: "acme.dev".into(),
+            probed: 1_000_000,
+            items: BTreeMap::from([(
+                "security-txt".to_string(),
+                ("failing".to_string(), 1_000_000),
+            )]),
+        };
+        let now = 1_000_000 + 2 * day;
+        let kept = settle(held.clone(), &Items::new(), now);
+        assert_eq!(kept, held);
+        assert_eq!(
+            kept.standing(now, STAND_IN).get("security-txt"),
+            Some(&"failing")
+        );
+        let moved = settle(held, &Items::from([("https-enforced", "checked")]), now);
+        assert_eq!(moved.probed, now);
+        assert_eq!(moved.standing(now, STAND_IN).len(), 2);
     }
 
     // Catches an app's HTML fallback read as a security.txt, and a server
