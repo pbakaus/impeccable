@@ -834,6 +834,23 @@ impl<'a> StaticElement<'a> {
         s
     }
 
+    /// `text_content` without descending into `<template>` elements: a
+    /// template's content is never laid out (#1693).
+    pub fn text_content_outside_templates(&self) -> String {
+        fn walk(n: NodeRef<'_, Node>, s: &mut String) {
+            for c in n.children() {
+                match c.value() {
+                    Node::Text(t) => s.push_str(&t.text),
+                    Node::Element(e) if e.name.local.as_ref() == "template" => {}
+                    _ => walk(c, s),
+                }
+            }
+        }
+        let mut s = String::new();
+        walk(self.node, &mut s);
+        s
+    }
+
     /// JS `el.querySelectorAll(selector)`: `[]` for an unsupported selector.
     pub fn query_selector_all(&self, selector: &str) -> Vec<StaticElement<'a>> {
         match self.doc.compile(selector) {
