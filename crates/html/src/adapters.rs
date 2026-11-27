@@ -891,19 +891,12 @@ fn static_stripe_width_px(value: &str) -> Option<f64> {
     if let Some(px) = css_length_to_px(value) {
         return Some(px);
     }
-    let v = js::to_lower_case(js::trim(value));
-    let split = v.find(|c: char| c.is_ascii_alphabetic())?;
-    let n: f64 = v[..split].parse().ok()?;
-    let per_unit = match &v[split..] {
-        "pt" => 96.0 / 72.0,
-        "pc" => 16.0,
-        "in" => 96.0,
-        "cm" => 96.0 / 2.54,
-        "mm" => 96.0 / 25.4,
-        "q" => 96.0 / 101.6,
-        _ => return None,
-    };
-    Some(n * per_unit)
+    let v = js::trim(value);
+    let n = parse_float(v);
+    if n.is_nan() {
+        return None;
+    }
+    measures::absolute_length_px(v, n)
 }
 
 /// The first value token of a computed longhand that a shorthand or `var()`
