@@ -185,9 +185,12 @@ pub fn record_choice(env: &Env, on: bool, overwrite: bool) -> Result<Recorded, R
     std::fs::create_dir_all(&dir).map_err(write_err)?;
     let target = write_target(&path);
     let _guard = lock(&target).ok_or_else(|| RecordError::Write(format!("{}: another process is writing it", path)))?;
-    let mut m = match safe_read(&path) {
-        None => Map::new(),
-        Some(text) => match serde_json::from_str::<Value>(&text) {
+    // Only a missing file starts empty: one that exists but can't be read (a
+    // root-owned file from a sudo run) holds settings a rewrite would drop.
+    let mut m = match std::fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
+        Err(e) => return Err(RecordError::Unreadable(format!("{} could not be read ({})", impeccable_common::jsp::to_posix(&path), e))),
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
             Ok(Value::Object(m)) => m,
             Ok(_) => return Err(RecordError::Unreadable(format!("{} is not a JSON object", impeccable_common::jsp::to_posix(&path)))),
             Err(e) => return Err(RecordError::Unreadable(format!("{} is not valid JSON ({})", impeccable_common::jsp::to_posix(&path), e))),
@@ -1303,6 +1306,28 @@ mod tests {
         assert!(notice_directive(&e, false, "impeccable telemetry").is_none());
         let left: Vec<_> = std::fs::read_dir(format!("{}/.impeccable", home)).unwrap().map(|d| d.unwrap().file_name()).collect();
         assert_eq!(left, ["config.json"]);
+    }
+
+    // Catches an unreadable config being treated as missing and replaced, dropping
+    // the user's other settings.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_config_is_never_replaced() {
+        use std::os::unix::fs::PermissionsExt;
+        let cwd = temp_dir("unreadable");
+        let home = format!("{}/home", cwd);
+        let config = format!("{}/.impeccable/config.json", home);
+        std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
+        std::fs::write(&config, r#"{"other": 1}"#).unwrap();
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads through any mode, so there is nothing to prove there.
+        if std::fs::read_to_string(&config).is_ok() {
+            return;
+        }
+        let e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+        assert!(matches!(record_choice(&e, true, false), Err(RecordError::Unreadable(_))));
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), r#"{"other": 1}"#);
     }
 
     // Catches a save replacing a config symlinked from a dotfiles folder with a plain file.
