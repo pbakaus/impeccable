@@ -525,7 +525,7 @@ fn connect_agents(io: &Io, only: Option<&str>) -> Result<(String, usize, usize, 
             Ok(manual) => {
                 connected += 1;
                 out.push_str(&format!("{label}: connected.\n"));
-                if let Some(step) = &sign_in { out.push_str(&format!("  Sign in: {step}\n")); }
+                if let Some(step) = sign_in.as_ref().filter(|_| impeccable_account::OFFER_SIGN_IN) { out.push_str(&format!("  Sign in: {step}\n")); }
                 if !manual.is_empty() {
                     if d.follow_up.is_some() { out.push_str(&format!("  {}\n", manual.join("; "))); }
                     else { out.push_str(&format!("  Then in {label}: {}.\n", manual.join("; "))); }
@@ -814,7 +814,7 @@ pub(crate) fn connect_mcp(io: &Io, only: Option<&str>) -> (Result<String>, Value
                     connected += 1;
                     let what = if manual_mcp(&agent).is_some() { "MCP setup needs a manual step" } else if added { "MCP server added" } else { "MCP server already there" };
                     out.push_str(&format!("{label}: {what}.\n"));
-                    if let Some(step) = &sign_in { out.push_str(&format!("  Sign in: {step}\n")); }
+                    if let Some(step) = sign_in.as_ref().filter(|_| impeccable_account::OFFER_SIGN_IN) { out.push_str(&format!("  Sign in: {step}\n")); }
                     let manual = manual_mcp(&agent);
                     if let Some(step) = &manual { out.push_str(&format!("  {step}\n")); }
                     rows.push(json!({ "agent": harness, "label": label, "result": "connected", "added": added, "signIn": sign_in, "manualMcp": manual }));
@@ -1342,6 +1342,9 @@ fn cli(agent: &Agent, args: &[&str]) -> Command {
     cmd.args(args).stdin(Stdio::null());
     match &agent.env {
         Some((k, v)) => {
+            // An agent installed but never run has no home yet, and Codex refuses a CODEX_HOME
+            // that isn't there. A failure here shows as the agent's own refusal.
+            let _ = std::fs::create_dir_all(v);
             cmd.env(k, v);
         }
         None => {

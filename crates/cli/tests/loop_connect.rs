@@ -220,8 +220,9 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
     let out = b.run(&["loop", "connect"]);
     assert!(out.status.success(), "{}", text(&out));
     let said = text(&out);
-    // No agent signs in on its own: one CLI sign-in serves every agent's server.
-    assert!(said.contains("Sign in: run impeccable login.") && !said.contains("/mcp") && !said.contains("mcp login"), "{said}");
+    // No agent signs in on its own, and until launch connect suggests no sign-in either
+    // (impeccable_account::OFFER_SIGN_IN).
+    assert!(!said.contains("Sign in") && !said.contains("/mcp") && !said.contains("mcp login"), "{said}");
 
     // The MCP server: the local one, for both agents, in their own files.
     assert_eq!(claude_entry(&b.home().join(".claude.json")), b.claude_server());
@@ -1187,8 +1188,7 @@ exit 0
     assert!(String::from_utf8_lossy(&out.stderr).contains("Added global MCP server"));
     let said = text(&b.run(&["loop", "connect", "--agent", "claude"]));
     assert!(
-        said.contains("Claude Code: connected.")
-            && said.contains("Sign in: run impeccable login."),
+        said.contains("Claude Code: connected.") && !said.contains("Sign in"),
         "{said}"
     );
     assert!(!said.contains("Codex"), "{said}");
@@ -2045,4 +2045,28 @@ fn disconnect_puts_back_the_entry_a_journal_owned_server_replaced() {
     assert!(again.status.success(), "{}", text(&again));
     let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
     assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
+}
+
+#[test]
+fn codex_installed_but_never_run_still_connects() {
+    // Catches: connect passing a CODEX_HOME that doesn't exist yet, which Codex refuses.
+    let b = Box::new("codex-fresh");
+    b.install_loop();
+    let _ = fs::remove_dir_all(b.home().join(".codex"));
+    script(
+        &b.root.join("bin/codex"),
+        r#"#!/bin/sh
+[ -d "$CODEX_HOME" ] || { echo "no CODEX_HOME" >&2; exit 1; }
+f="$CODEX_HOME/config.toml"
+case "$2" in
+add) printf '\n[mcp_servers.%s]\ncommand = "%s"\nargs = ["mcp"]\n\n[mcp_servers.%s.env]\n%s\n' "$3" "$7" "$3" "$(echo "$5" | sed 's/=/ = "/; s/$/"/')" >> "$f";;
+esac
+exit 0
+"#,
+    );
+    let out = b.run(&["loop", "connect", "--mcp-only", "--agent", "codex", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", text(&out)));
+    assert_eq!(v["agents"][0]["result"], "connected", "{v} {}", text(&out));
+    assert!(b.home().join(".codex").is_dir());
 }
