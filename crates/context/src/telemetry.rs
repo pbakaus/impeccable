@@ -122,15 +122,14 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
 
 /// Whether the user was already told about usage data: an opt-out (`off`, from
 /// `telemetry_disabled` for the roots in play), or a `telemetry` value in the
-/// user config, which the notice writes as `true` once shown.
+/// user config, which install's answer or `context`'s notice writes.
 pub fn choice_recorded(env: &Env, off: bool) -> bool {
     off || config_choice(&user_config_path(env)).is_some()
 }
 
-/// What an install or update at a terminal prints, once. It never asks: staying
-/// on needs nothing, and opting out is the command it names.
+/// What an install or update at a terminal prints, once, above its question.
 pub fn notice() -> &'static str {
-    "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping.\nDetails: impeccable.style/privacy · Opt out: npx impeccable telemetry off\nOpting out also turns off world building and auto updates.\n"
+    "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping.\nDetails: impeccable.style/privacy\nOpting out also turns off world building and auto updates.\n"
 }
 
 /// What the agent says, once, for an install that never showed `notice`.

@@ -65,25 +65,50 @@ pub(crate) fn after_install(
     offer_sign_in(io, engines, rule_pack);
 }
 
-/// Tells a person at the terminal about anonymous usage data after install or
-/// update, once, without asking anything (see `notice_once`). With no terminal the
-/// agent may be the only reader, so `context` has the agent say it instead.
-pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
-    let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
-    let at_terminal = terminal && end(args, terminal, io.env_truthy("CI")) != End::Nothing;
-    notice_once(io, at_terminal);
-}
+const TELEMETRY_QUESTION: &str = "Share anonymous usage data?";
 
-/// Prints the notice for a user nobody has told yet and records them as told,
-/// which keeps telemetry on until they run the opt-out the notice names.
-fn notice_once(io: &mut Io, at_terminal: bool) {
+/// Asks a person at the terminal, once, whether to share anonymous usage data after
+/// install or update, with yes preselected. `-y`, CI and a run with no terminal ask
+/// nothing and record nothing, so `context` has the agent mention it instead; so does
+/// a cancelled or unclear answer.
+pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
     use impeccable_context::telemetry;
-    if !at_terminal || telemetry::choice_recorded(&io.env, telemetry::telemetry_disabled(&io.env, &io.cwd.to_string_lossy())) {
+    let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if end(args, terminal, io.env_truthy("CI")) != End::Offer || telemetry_decided(io) {
         return;
     }
     io.err(&format!("\n{}", telemetry::notice()));
-    // A config the user must fix keeps it unrecorded; the next session says it.
-    let _ = telemetry::record_choice(&io.env, true);
+    let on = match impeccable_common::steps::Steps::new(io) {
+        Some(mut steps) => {
+            let options = [("Yes, keep it on", Some("recommended")), ("No, opt out", None)];
+            let Ok(choice) = steps.choose(io, TELEMETRY_QUESTION, &options, 0) else { return };
+            choice == 0
+        }
+        None => {
+            let Some(on) = answer(io, TELEMETRY_QUESTION) else { return };
+            on
+        }
+    };
+    record_telemetry(io, on);
+}
+
+/// Whether the user already answered or opted out, so install never asks twice.
+fn telemetry_decided(io: &Io) -> bool {
+    use impeccable_context::telemetry;
+    telemetry::choice_recorded(&io.env, telemetry::telemetry_disabled(&io.env, &io.cwd.to_string_lossy()))
+}
+
+/// Records the answer and says how to change it. A config the user must fix keeps it
+/// unrecorded, and the agent mentions it next session.
+fn record_telemetry(io: &mut Io, on: bool) {
+    if impeccable_context::telemetry::record_choice(&io.env, on).is_err() {
+        return;
+    }
+    io.err(if on {
+        "Thanks! Change it any time: npx impeccable telemetry off\n"
+    } else {
+        "Telemetry is off. Turn it back on any time: npx impeccable telemetry on\n"
+    });
 }
 
 /// The offer prints after install's own "Done!", so its init step is said again,
@@ -183,6 +208,12 @@ fn no_agent_found(report: &serde_json::Value) -> bool {
 /// showed (an extra Enter at install's pickers) are dropped first, so they can't
 /// answer it: a yes here signs in or installs an app.
 fn ask(io: &mut Io, question: &str) -> bool {
+    answer(io, question) == Some(true)
+}
+
+/// The `[Y/n]` answer: `Some(true)` for Enter or yes, `Some(false)` for no, `None` for
+/// anything else or no input at all.
+fn answer(io: &mut Io, question: &str) -> Option<bool> {
     #[cfg(unix)]
     // SAFETY: tcflush on stdin's descriptor only discards unread terminal input.
     unsafe {
@@ -191,37 +222,48 @@ fn ask(io: &mut Io, question: &str) -> bool {
     io.err(&format!("{question} [Y/n] "));
     let _ = io.stderr.flush();
     let mut line = String::new();
-    std::io::stdin().read_line(&mut line).is_ok_and(|n| {
-        n > 0 && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
-    })
+    match std::io::stdin().read_line(&mut line) {
+        Ok(n) if n > 0 => match line.trim().to_ascii_lowercase().as_str() {
+            "" | "y" | "yes" => Some(true),
+            "n" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Catches the notice asking or repeating, reaching a user who opted out, or
-    // marking someone as told when no person was at the terminal.
+    // Catches the question reaching an install nobody is at, or one that already
+    // decided, and an answer that is not recorded or that install would ask again.
     #[test]
-    fn the_usage_notice_shows_once_at_a_terminal_and_never_asks() {
+    fn install_asks_about_usage_data_once_and_records_the_answer() {
         let home = std::env::temp_dir().join(format!("impeccable-notice-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
         let config = home.join(".impeccable/config.json");
-        let run = |at_terminal: bool, extra: &[(&str, &str)]| {
+        let io_with = |extra: &[(&str, &str)]| {
             let mut env = std::collections::HashMap::from([("HOME".to_string(), home.to_string_lossy().into_owned()), ("USERPROFILE".to_string(), home.to_string_lossy().into_owned())]);
             env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
-            let (mut io, cap) = Io::captured("", home.clone(), env);
-            notice_once(&mut io, at_terminal);
-            let err = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
-            err
+            Io::captured("", home.clone(), env)
         };
-        assert_eq!(run(false, &[]), "", "no terminal: the agent says it instead");
-        assert_eq!(run(true, &[("DO_NOT_TRACK", "1")]), "");
-        assert!(!config.exists(), "nothing recorded");
-        assert_eq!(run(true, &[]), format!("\n{}", impeccable_context::telemetry::notice()));
-        assert_eq!(std::fs::read_to_string(&config).unwrap(), "{\n  \"telemetry\": true\n}\n", "told, and staying on");
-        assert_eq!(run(true, &[]), "", "shown once");
+        let stderr = |cap: &impeccable_common::Captured| String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+        // No terminal here (an agent's run): nothing asked, nothing recorded.
+        let (mut io, cap) = io_with(&[]);
+        telemetry_notice(&[], &mut io);
+        assert_eq!(stderr(&cap), "");
+        assert!(!config.exists());
+        assert!(!telemetry_decided(&io_with(&[]).0));
+        assert!(telemetry_decided(&io_with(&[("DO_NOT_TRACK", "1")]).0), "an opt-out is never asked about");
+        for (on, said) in [(false, "Telemetry is off."), (true, "Thanks!")] {
+            let (mut io, cap) = io_with(&[]);
+            record_telemetry(&mut io, on);
+            assert!(stderr(&cap).starts_with(said));
+            assert_eq!(std::fs::read_to_string(&config).unwrap(), format!("{{\n  \"telemetry\": {on}\n}}\n"));
+            assert!(telemetry_decided(&io_with(&[]).0), "never asked twice");
+        }
         let _ = std::fs::remove_dir_all(&home);
     }
 
