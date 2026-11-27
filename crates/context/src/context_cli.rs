@@ -2140,7 +2140,8 @@ mod update_check_tests {
         std::fs::write(&cache, format!(r#"{{"lastCheck":{},"latestVersion":"99.0.0"}}"#, now_ms() as i64)).unwrap();
         let boot = || {
             let t = tmp.to_string_lossy().into_owned();
-            let env = Env::from([("HOME".to_string(), t.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), t), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("IMPECCABLE_NO_STALENESS_CHECK".to_string(), "1".to_string())]);
+            // Windows reads the home from USERPROFILE: without it the marker would land in the real profile.
+            let env = Env::from([("HOME".to_string(), t.clone()), ("USERPROFILE".to_string(), t.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), t), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("IMPECCABLE_NO_STALENESS_CHECK".to_string(), "1".to_string())]);
             let (mut io, cap) = impeccable_common::Io::captured("", tmp.clone(), env);
             assert_eq!(super::run(&["--target".to_string(), "apps/web".to_string()], &mut io), 0);
             let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
