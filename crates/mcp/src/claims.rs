@@ -215,7 +215,9 @@ pub fn installation(home: &Path) -> Option<String> {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    None
+    // Still no handle there: a write that was cut off (or a file someone emptied) left it, not a process writing
+    // now. Replaced whole, so it can't keep every later start from claiming.
+    write_private(&path, made.as_bytes()).then_some(made)
 }
 
 /// A new 0600 file at `path`, written only when nothing is there yet.
@@ -812,6 +814,18 @@ mod tests {
         let handles: Vec<_> = (0..8).map(|_| { let h = home.clone(); std::thread::spawn(move || installation(&h)) }).collect();
         let got: std::collections::BTreeSet<_> = handles.into_iter().map(|t| t.join().unwrap().unwrap()).collect();
         assert_eq!(got.len(), 1, "{got:?}");
+    }
+
+    // Catches an installation file left empty by a cut-off write keeping every later start from claiming.
+    #[test]
+    fn an_empty_installation_file_is_replaced() {
+        let b = Box_::new("empty-installation");
+        let home = b.root.join("impeccable");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(home.join("installation"), "").unwrap();
+        let made = installation(&home).unwrap();
+        assert!(handle_ok(&made));
+        assert_eq!(installation(&home), Some(made));
     }
 
     /// The account service's `/mcp` as one canned answer, remembering the instance each call carried.
