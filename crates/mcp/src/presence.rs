@@ -253,11 +253,26 @@ pub fn agents(dir: Option<&Path>, procs: impl FnOnce() -> HashMap<u32, Proc>) ->
     out
 }
 
-/// `impeccable agents running [--json]`.
+/// `impeccable agents running [--json] [--url <local page>]`. With `--url`, the sessions working on that page and the
+/// one it belongs to ([`crate::page_agent`]).
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    let usage = |io: &mut Io| {
+        let _ = writeln!(io.stderr, "Usage: impeccable agents running [--json] [--url <local page>]");
+        2
+    };
+    if let Some(at) = args.iter().position(|a| a == "--url") {
+        let (Some(url), true) = (args.get(at + 1), args.iter().enumerate().all(|(i, a)| a == "--json" || i == at || i == at + 1)) else {
+            return usage(io);
+        };
+        let Some(found) = crate::page_agent::resolve(url, &io.env) else {
+            let _ = writeln!(io.stderr, "Not a page on this machine: {url}");
+            return 2;
+        };
+        let _ = writeln!(io.stdout, "{found}");
+        return 0;
+    }
     if args.iter().any(|a| a != "--json") {
-        let _ = writeln!(io.stderr, "Usage: impeccable agents running [--json]");
-        return 2;
+        return usage(io);
     }
     let list = agents(dir(&io.env).as_deref(), snapshot);
     if args.iter().any(|a| a == "--json") {
