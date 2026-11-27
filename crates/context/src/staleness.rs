@@ -173,9 +173,13 @@ fn native_evidence_at(dir: &str) -> Vec<NativeEvidence> {
     evidence
 }
 
-/// Whether `dir` carries native project markers (#1644).
+/// Whether `dir` carries native project markers, counting a native peer
+/// dependency, which a React Native component package declares (#1644).
 pub(crate) fn has_native_evidence(dir: &str) -> bool {
     !native_evidence_at(dir).is_empty()
+        || read_json(&jsp::join(&[dir, "package.json"])).is_some_and(|pkg| {
+            NATIVE_EVIDENCE_DEPENDENCIES.iter().any(|(name, _, _)| pkg.get("peerDependencies").and_then(|d| d.get(name)).is_some())
+        })
 }
 
 /// JS: checkNativePlatformEvidence

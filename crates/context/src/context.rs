@@ -1642,6 +1642,8 @@ mod ui_target_tests {
         t.put("pod/package.json", r#"{"dependencies":{"next":"1"}}"#);
         t.put("pod/ios/Podfile", "");
         t.put("pod/App.tsx", "");
+        t.put("peer/package.json", r#"{"dependencies":{"react":"1"},"peerDependencies":{"react-native":"*"}}"#);
+        t.put("peer/Button.tsx", "");
         t.put("sw/App.swift", "");
         t.put("up/src/App.tsx", "");
         assert!(is_web_target(&at("a/index.html"), &root));
@@ -1652,6 +1654,7 @@ mod ui_target_tests {
         assert!(!is_web_target(&at("rn/App.tsx"), &root));
         assert!(!is_web_target(&at("expo/App.tsx"), &root));
         assert!(!is_web_target(&at("pod/App.tsx"), &root));
+        assert!(!is_web_target(&at("peer/Button.tsx"), &root));
         assert!(!is_web_target(&at("sw/App.swift"), &root));
         // The only package.json sits above the stop root.
         t.put("package.json", r#"{"dependencies":{"next":"1"}}"#);

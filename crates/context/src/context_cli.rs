@@ -320,6 +320,10 @@ fn hook_ran_recently(roots: &[String], env: &Env) -> bool {
 }
 
 fn current_hook_wiring(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> bool {
+    // The hook skips a native-declared project, so it covers none of its files.
+    if is_native(ctx.declared_platform.as_deref()) {
+        return false;
+    }
     let provider_dir = match provider.id.as_str() {
         "claude-code" => ".claude", "codex" | "agents" => ".agents",
         "cursor" => ".cursor", "grok" => ".grok", "github" => ".github",
@@ -1903,6 +1907,22 @@ mod hook_not_installed_tests {
         assert!(manual_detector_required(&fixture, &fixture.project));
         fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
         assert!(!manual_detector_required(&fixture, &fixture.project));
+    }
+
+    #[test]
+    fn a_hook_cache_does_not_cover_a_web_target_in_a_native_project() {
+        // The hook skips a native-declared project, so its cache covers no web target (#1644).
+        let fixture = Fixture::new("source");
+        fixture.put("project/PRODUCT.md", "# P\n\n## Platform\nios\n");
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        fixture.put("project/site/index.html", "<p>x</p>");
+        let options = TargetOptions { target_path: Some("site/index.html".to_string()) };
+        let ctx = load_context(&fixture.project, &options, &fixture.env);
+        assert_eq!(ctx.platform.as_deref(), Some("web"));
+        let provider = crate::provider::detect(&fixture.env, &fixture.project);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
     }
 
     #[test]
