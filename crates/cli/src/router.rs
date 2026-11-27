@@ -388,6 +388,7 @@ fn detect(
             &full.root,
             &full,
             impeccable_account::health::foundations_wanted(io),
+            &io.env,
         );
         let scan = health_scan(full, foundations, started);
         let quiet = args
@@ -459,7 +460,7 @@ pub(crate) fn scan_after_login(
         return "failed";
     };
     let (findings, files) = (full.findings.len(), full.files_scanned);
-    let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io));
+    let foundations = crate::foundations::from_scan(&full.root, &full, health::foundations_wanted(io), &io.env);
     // Counted as Home counts them, so the two say the same number.
     let to_fix = foundations.values().filter(|s| *s == "failing").count();
     let scan = health_scan(full, foundations, started);

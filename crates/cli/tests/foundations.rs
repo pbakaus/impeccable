@@ -5,6 +5,11 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 fn foundations(dir: &Path) -> Value {
+    // Nothing answers here: the registry's items stay unsettled.
+    foundations_with(dir, "http://127.0.0.1:9")
+}
+
+fn foundations_with(dir: &Path, registry: &str) -> Value {
     let home = dir.parent().unwrap().join(format!(
         "{}-home",
         dir.file_name().unwrap().to_string_lossy()
@@ -22,6 +27,7 @@ fn foundations(dir: &Path) -> Value {
         .env("IMPECCABLE_HOME", &home)
         .env("HOME", &home)
         .env("CI", "1")
+        .env("IMPECCABLE_NPM_REGISTRY", registry)
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -412,4 +418,62 @@ fn a_capped_walk_proves_no_detector_pass() {
     for id in ["readable-contrast", "no-generic-ai-patterns"] {
         assert_eq!(got["items"].get(id), None, "{id}: {}", got["items"]);
     }
+}
+
+/// A registry that knows `react` (latest 19) and nothing else.
+fn fake_registry() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let mut stream = stream;
+            let mut buf = [0u8; 2048];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let (status, body) = if req.starts_with("GET /-/package/react/dist-tags ") {
+                ("200 OK", r#"{"latest":"19.1.0"}"#)
+            } else {
+                ("404 Not Found", r#"{"error":"Not found"}"#)
+            };
+            let _ = write!(
+                stream,
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    format!("http://{addr}")
+}
+
+#[test]
+fn the_registry_settles_invented_and_far_behind_packages() {
+    // Catches an invented name passing, a private scoped one failing, and a
+    // dependency three majors behind called current.
+    let root = std::env::temp_dir().join(format!(
+        "impeccable-foundations-registry-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    git(&root, &["init", "-q"]);
+    std::fs::write(
+        root.join("package.json"),
+        r#"{"dependencies":{"react":"^16.8.0","@acme/ui":"^1.0.0","zz-not-a-real-pkg":"^1.0.0"}}"#,
+    )
+    .unwrap();
+    let registry = fake_registry();
+    let v = foundations_with(&root, &registry);
+    assert_eq!(v["items"]["real-packages"], "failing", "{v}");
+    assert_eq!(v["items"]["current-dependencies"], "failing", "{v}");
+    std::fs::write(root.join("package.json"), r#"{"dependencies":{"react":"^18.0.0","@acme/ui":"^1.0.0"}}"#).unwrap();
+    let v = foundations_with(&root, &registry);
+    assert_eq!(v["items"]["real-packages"], "checked", "{v}");
+    assert_eq!(v["items"]["current-dependencies"], "checked", "{v}");
+    // Nothing answering: neither is claimed.
+    std::fs::write(root.join("package.json"), r#"{"dependencies":{"vite":"^5.0.0"}}"#).unwrap();
+    let v = foundations(&root);
+    let _ = std::fs::remove_dir_all(&root);
+    assert!(v["items"].get("real-packages").is_none(), "{v}");
+    assert!(v["items"].get("current-dependencies").is_none(), "{v}");
 }
