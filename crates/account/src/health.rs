@@ -253,6 +253,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
             "items": scan.foundations,
         });
         name_body(&mut foundation_body, repo.label.as_deref(), repo.place.as_deref());
+        Was::put(repo.was.as_ref(), &mut foundation_body);
         let foundation_result = Client::with_deadline(&account, Duration::from_secs(2))
             .post_json(
                 &format!("{}/cli/v1/foundations", account.issuer),
@@ -260,6 +261,9 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
                 foundation_body,
             );
         synced.foundations = foundation_result.is_ok();
+        if synced.foundations {
+            Was::settled(repo.was.as_ref());
+        }
         match foundation_result {
             Ok(answer) => crate::receipt::saved_first(
                 io,
@@ -291,6 +295,7 @@ fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
         Ok(answer) => {
             synced.health = true;
+            Was::settled(repo.was.as_ref());
             crate::receipt::saved(io, crate::receipt::landed(&answer, crate::receipt::page(&account, "design-health", None)), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
@@ -660,6 +665,7 @@ struct Repo {
     stream: String,
     label: Option<String>,
     place: Option<String>,
+    was: Option<Was>,
 }
 
 impl Repo {
@@ -687,7 +693,8 @@ impl Repo {
         let stream = hex(&hash(&[&key, &branch]));
         let label = repo_name(&top, configured.is_some(), remote.as_deref());
         let place = configured.is_none().then(|| place(&top, env)).flatten();
-        Some(Repo { key, stream, label, place })
+        let was = remote.is_some().then(|| Was::of(&top, env)).flatten();
+        Some(Repo { key, stream, label, place, was })
     }
 }
 
@@ -721,6 +728,7 @@ pub(crate) struct CritiqueRepo {
     pub head_sha: Option<String>,
     /// The checked-out branch's short name; `None` when HEAD is detached.
     pub branch: Option<String>,
+    pub was: Option<Was>,
 }
 
 /// [`critique_repo`] plus the repository top it read, so a caller needs no second git lookup.
@@ -743,7 +751,10 @@ pub(crate) fn critique_repo_at(
         None => (git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?, None, None),
     };
     let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
-    repo_identity(&top, remote, env).map(|(key, label, place)| CritiqueRepo { top, key, label, place, head_sha, branch })
+    let pushed = matches!(&remote, Ok(Some(r)) if resolve_remote(r).is_some());
+    let (key, label, place) = repo_identity(&top, remote, env)?;
+    let was = pushed.then(|| Was::of(&top, env)).flatten();
+    Some(CritiqueRepo { top, key, label, place, head_sha, branch, was })
 }
 
 /// GitHub owner/name using the same bounded origin read and resolver as uploads.
@@ -865,9 +876,7 @@ fn output_within(mut command: Command, timeout: Duration, drain: bool) -> Result
 /// by the repo's path, never in the work tree (whose files the repo
 /// controls). A moved repo starts a new trend.
 fn local_repo_id(top: &str, env: &std::collections::HashMap<String, String>) -> Option<String> {
-    let canonical = Path::new(top).canonicalize().ok()?;
-    let name = hex(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
-    let file = impeccable_home(env)?.join("health").join("repos").join(name);
+    let file = local_id_file(top, env)?;
     if let Some(id) = read_id(&file) {
         return Some(id);
     }
@@ -875,6 +884,45 @@ fn local_repo_id(top: &str, env: &std::collections::HashMap<String, String>) -> 
     SystemRandom::new().fill(&mut bytes).ok()?;
     std::fs::create_dir_all(file.parent()?).ok()?;
     publish_id(&file, &hex(&bytes))
+}
+
+/// Where [`local_repo_id`] keeps the id of the repository at `top`.
+fn local_id_file(top: &str, env: &std::collections::HashMap<String, String>) -> Option<std::path::PathBuf> {
+    let canonical = Path::new(top).canonicalize().ok()?;
+    let name = hex(&Sha256::digest(canonical.to_string_lossy().as_bytes()));
+    Some(impeccable_home(env)?.join("health").join("repos").join(name))
+}
+
+/// The key a repository had before it gained an `origin` (REN-2047): the
+/// key its saved local id gave it. Uploads send it as `was` beside the new
+/// key, so the service can move the person's own stream to it. The first
+/// answered upload settles it either way, and the saved id is then removed.
+#[derive(Clone)]
+pub(crate) struct Was {
+    key: String,
+    file: std::path::PathBuf,
+}
+
+impl Was {
+    /// Only reads: a pushed repository never gets a local id of its own.
+    fn of(top: &str, env: &std::collections::HashMap<String, String>) -> Option<Was> {
+        let file = local_id_file(top, env)?;
+        let id = read_id(&file)?;
+        Some(Was { key: hex(&Sha256::digest(id.as_bytes())), file })
+    }
+
+    pub(crate) fn put(was: Option<&Was>, body: &mut Value) {
+        if let Some(was) = was {
+            body["was"] = was.key.clone().into();
+        }
+    }
+
+    /// The service answered an upload that carried it.
+    pub(crate) fn settled(was: Option<&Was>) {
+        if let Some(was) = was {
+            let _ = std::fs::remove_file(&was.file);
+        }
+    }
 }
 
 fn read_id(file: &Path) -> Option<String> {
@@ -1046,6 +1094,7 @@ fn payload(scan: &Scan, repo: &Repo, scan_id: &str, fingerprint_version: u32) ->
         "fingerprints": prints,
     });
     name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
+    Was::put(repo.was.as_ref(), &mut body);
     if prints.len() > MAX_FINGERPRINTS || body.to_string().len() > MAX_BYTES {
         body["fingerprints"] = Value::Null;
         body["truncated"] = true.into();
@@ -1206,6 +1255,7 @@ mod tests {
             stream: "b".repeat(64),
             label: Some("repo".into()),
             place: None,
+            was: None,
         }
     }
 

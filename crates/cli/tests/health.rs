@@ -117,6 +117,7 @@ fn a_full_scan_uploads_counts_the_service_accepts_and_detect_is_unchanged() {
     let first = run(&env, &root, &["detect", "--json", "."]);
     let body = scans(&fake).pop().expect("one upload");
     assert_eq!(body["coverage"], "full");
+    assert!(body.get("was").is_none(), "a repository that never had a local key names none");
     // The repo's name from its remote, not its folder's.
     assert_eq!(body["label"], "my-site", "{body}");
     assert_eq!(body["filesScanned"], 4);
@@ -421,6 +422,40 @@ fn an_ignored_rule_starts_a_new_ruleset_however_it_is_spelled() {
     assert_ne!(all[0]["rules"], all[1]["rules"], "the ignore took effect");
     assert_ne!(all[0]["rulesetId"], all[1]["rulesetId"]);
     assert_eq!(all[1]["rulesetId"], all[2]["rulesetId"]);
+}
+
+#[test]
+fn a_repository_that_gains_an_origin_names_its_local_key_once() {
+    // Catches (REN-2047): a local repository pushed for the first time starting a
+    // second Foundations stream and city, with nothing telling the service which one it was.
+    let fake = Fake::start();
+    {
+        let mut k = fake.knobs.lock().unwrap();
+        k.health = true;
+        k.foundations = true;
+    }
+    let env = fake.env("health-was");
+    // As a person starts: a repository with a commit and no remote, signed in from inside it,
+    // so login's own scan gives it its local key.
+    let root = repo(&env, None);
+    git(&root, &["add", "-A"]);
+    git(&root, &["-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "init"]);
+    login_in(&env, &root);
+    let local = scans(&fake)[0]["repoKey"].clone();
+    assert!(scans(&fake)[0].get("was").is_none(), "no origin yet, so nothing to hand over");
+
+    git(&root, &["remote", "add", "origin", "https://github.com/acme/my-site"]);
+    run(&env, &root, &["detect", "--json", "."]);
+    let pushed = scans(&fake).pop().unwrap();
+    assert_ne!(pushed["repoKey"], local);
+    assert_eq!(pushed["was"], local, "{pushed}");
+    assert_eq!(fake.record.lock().unwrap().foundations.last().unwrap()["was"], local);
+
+    // The service answered, so the next scan names no earlier key.
+    run(&env, &root, &["detect", "--json", "."]);
+    let next = scans(&fake).pop().unwrap();
+    assert_eq!(next["repoKey"], pushed["repoKey"]);
+    assert!(next.get("was").is_none(), "{next}");
 }
 
 #[test]
