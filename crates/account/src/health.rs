@@ -693,7 +693,7 @@ impl Repo {
 
 /// One short git question, given at most [`git_deadline`] and never
 /// fsmonitor, which can hang. `None` on any failure.
-fn git(dir: &str, args: &[&str]) -> Option<String> {
+pub(crate) fn git(dir: &str, args: &[&str]) -> Option<String> {
     git_with_timeout(dir, args, git_deadline())
 }
 

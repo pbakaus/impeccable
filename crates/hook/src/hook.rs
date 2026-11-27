@@ -139,7 +139,7 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let project_cwd =
         resolve_cache_cwd(rt, primary_files.first().map(String::as_str), &session_cwd);
     audit.insert("cwd".into(), Value::String(project_cwd.clone()));
-    let target_files = expand_scan_targets(rt, &primary_files, &project_cwd);
+    let mut target_files = expand_scan_targets(rt, &primary_files, &project_cwd);
     let session_value = session_id_of(&event);
     audit.insert(
         "session".into(),
@@ -176,13 +176,19 @@ pub fn run_hook(rt: &Runtime, stdin: &str) -> RunResult {
         );
     }
 
-    let platform = resolve_project_platform(rt, &project_cwd);
-    if is_native_platform(platform.as_deref()) {
+    // Native source in a native project is left alone; its web code is
+    // scanned with the stylesheets it pulls in, as a web project's is (#1644).
+    let project = resolve_project_platform(rt, &project_cwd);
+    if project.is_native() {
+        let kept: Vec<String> = primary_files.iter().filter(|file| !project.skips(file)).cloned().collect();
+        target_files = if kept.is_empty() { Vec::new() } else { expand_scan_targets(rt, &kept, &project_cwd) };
+    }
+    if target_files.is_empty() {
         return result(
             &audit,
             vec![
                 ("skipped", Value::from("native-platform")),
-                ("platform", Value::String(platform.unwrap_or_default())),
+                ("platform", Value::String(project.platform.unwrap_or_default())),
                 ("durationMs", ms_since(started)),
             ],
         );
@@ -761,26 +767,25 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ],
         );
     }
-    // Native projects skip the whole Stop pass, the build-completion reminder
-    // included. Resolving the platform reads PRODUCT.md, so it is paid only
-    // when there is a build state to remind about or touched files to scan.
-    let mut platform_memo: Option<Option<String>> = None;
-    let native_skip = |audit: &Map<String, Value>, cwd: &str, platform_memo: &mut Option<Option<String>>| -> Option<RunResult> {
-        let platform = platform_memo.get_or_insert_with(|| resolve_project_platform(rt, cwd)).clone();
-        is_native_platform(platform.as_deref()).then(|| result(
+    // Native projects skip the build-completion reminder, and the scan below
+    // keeps only their web code. Resolving the platform reads PRODUCT.md, so
+    // it is paid only when there is a build state to remind about or touched
+    // files to scan.
+    let mut platform_memo: Option<ProjectPlatform> = None;
+    let native_skip = |audit: &Map<String, Value>, platform: Option<String>| -> RunResult {
+        result(
             audit,
             vec![
                 ("skipped", Value::from("native-platform")),
                 ("platform", Value::String(platform.unwrap_or_default())),
                 ("durationMs", ms_since(started)),
             ],
-        ))
+        )
     };
-    if std::path::Path::new(&session_cwd).join(".impeccable/build/state.json").is_file() {
-        if let Some(skip) = native_skip(&audit, &session_cwd, &mut platform_memo) { return skip; }
-    }
+    let native_build = std::path::Path::new(&session_cwd).join(".impeccable/build/state.json").is_file()
+        && platform_memo.get_or_insert_with(|| resolve_project_platform(rt, &session_cwd)).is_native();
     let mut cache = read_cache(&session_cwd);
-    if matches!(harness, "claude" | "codex" | "gemini" | "hermes") {
+    if !native_build && matches!(harness, "claude" | "codex" | "gemini" | "hermes") {
         if let Some(message) = crate::build_completion::reminder(rt, &session_cwd, &session_id, stop_hook_active, &mut cache) {
             return RunResult {
                 stdout: payload(&message, "Stop", harness),
@@ -801,7 +806,13 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // alone, as before.
     // Shell writes never reach the per-edit pass, so Stop also scans UI files
     // modified since the session started, when the event says when that was.
-    let session_start = crate::stop_discovery::session_start_ms(&event);
+    let stop_started = std::time::SystemTime::now();
+    // Discovery covers this turn: a file changed before the session's last
+    // Stop pass was that pass's to report, or no write of this session's (#1670).
+    let session_start = crate::stop_discovery::session_start_ms(&event).map(|start| {
+        let last = if named_session { crate::hook_sessions::last_stop_ms(rt, &session_id, stop_started) } else { None };
+        last.map_or(start, |last| last.max(start))
+    });
     let home = rt.resolve(&[&rt.homedir()]);
     let mut first_root = resolve_stop_cwd(rt, &session_cwd, &session_id);
     // A session started inside a project (`src/`) keys to that project, as the
@@ -835,6 +846,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let mut first_skip: Option<RunResult> = None;
     let mut scanned = 0usize;
     let mut discovered_scanned = 0usize;
+    let mut discovery_capped = false;
     let mut pre_existing = 0usize;
     let mut new_findings = 0usize;
     let mut unknown = 0usize;
@@ -878,11 +890,29 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             audit.insert("discovered".into(), Value::from(total));
             root_audit.insert("discovered".into(), Value::from(discovered.len()));
         }
-        let touched: Vec<(String, bool)> = cached
+        let mut touched: Vec<(String, bool)> = cached
             .into_iter()
             .map(|file| (file, false))
             .chain(discovered.into_iter().map(|file| (file, true)))
             .collect();
+        // Native source in a native project is left alone; its web code is
+        // scanned (#1644). Files the per-edit pass recorded already passed
+        // that rule (a web file's stylesheets included), so only discovered
+        // files are checked. Resolving the platform reads PRODUCT.md, so it
+        // is paid only once there are touched files.
+        if !touched.is_empty() {
+            let project = match (at_session_cwd, &platform_memo) {
+                (true, Some(p)) => p.clone(),
+                _ => resolve_project_platform(rt, root),
+            };
+            if project.is_native() {
+                touched.retain(|(file, found)| !*found || !project.skips(file));
+                if touched.is_empty() {
+                    first_skip.get_or_insert(native_skip(&root_audit, project.platform));
+                    continue;
+                }
+            }
+        }
         if touched.is_empty() {
             first_skip.get_or_insert_with(|| result(
                 &root_audit,
@@ -923,16 +953,12 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             ));
             continue;
         }
-        let mut root_memo = if at_session_cwd { platform_memo.clone() } else { None };
-        if let Some(skip) = native_skip(&root_audit, root, &mut root_memo) {
-            first_skip.get_or_insert(skip);
-            continue;
-        }
         let mut scans = HashMap::new();
         let mut groups: Vec<Group> = Vec::new();
         let mut dirty = false;
         for (file_path, found) in &touched {
             if *found && discovered_scanned >= STOP_MAX_FILES {
+                discovery_capped = true;
                 break;
             }
             if !*found && scanned >= STOP_MAX_FILES {
@@ -1011,6 +1037,11 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
         passes.push(RootPass { cwd: root.clone(), config: root_config, cache: root_cache, groups, scans, dirty });
+    }
+    // A capped pass leaves the window where it was: the files it scanned are
+    // cached now, so the next pass reaches the ones it left.
+    if named_session && session_start.is_some() && !discovery_capped {
+        crate::hook_sessions::record_stop(rt, &session_id, stop_started);
     }
     if passes.is_empty() {
         // Every root fell out at a gate: report the first, as a single root did.

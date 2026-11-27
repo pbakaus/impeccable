@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "Usage: impeccable agents running [--json]\n",
+  "stderr": "Usage: impeccable agents running [--json] [--url <local page>]\n",
   "exit": 2,
   "signal": null,
   "files": {}

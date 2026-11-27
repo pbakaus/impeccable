@@ -191,13 +191,7 @@ impl Sys {
 
     /// JS: isHomeDir(root)
     pub fn is_home_dir(&self, root: &str) -> bool {
-        if root == self.home {
-            return true;
-        }
-        match (util::realpath(root), util::realpath(&self.home)) {
-            (Some(a), Some(b)) => a == b,
-            _ => false,
-        }
+        impeccable_context::util::is_home_dir(root, &self.home)
     }
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
@@ -246,10 +240,10 @@ impl Sys {
             .collect()
     }
 
-    /// JS: findProjectRoot()
+    /// JS: findProjectRoot(), stopping at home: a `.git` there is not a project (#1692).
     pub fn find_project_root(&self) -> String {
         let mut dir = self.cwd.clone();
-        while dir != jsp::dirname(&dir) {
+        while dir != jsp::dirname(&dir) && !self.is_home_dir(&dir) {
             if util::exists(&jsp::join(&[&dir, ".git"])) {
                 return dir;
             }
@@ -999,6 +993,23 @@ mod tests {
         assert_eq!(sys.provider_skills_dir_candidates("/project", ".claude", None), vec![jsp::join(&["/project", ".claude", "skills"])]);
         let plain = Sys { env: Env::new(), cwd: home.clone(), home: home.clone() };
         assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", Some(Scope::User)), vec![jsp::join(&[&home, ".claude", "skills"])]);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_git_repo_in_home_is_not_the_project_root() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-root-{}", std::process::id()));
+        let home = tmp.join("home");
+        for d in [".git", "proj/sub", "repo/.git", "repo/src"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let at = |cwd: std::path::PathBuf| {
+            let (cwd, home) = (cwd.to_string_lossy().to_string(), home.to_string_lossy().to_string());
+            Sys { env: Env::new(), cwd, home }.find_project_root()
+        };
+        assert_eq!(at(home.join("proj/sub")), home.join("proj/sub").to_string_lossy());
+        assert_eq!(at(home.join("repo/src")), home.join("repo").to_string_lossy());
+        assert_eq!(at(home.clone()), home.to_string_lossy());
         std::fs::remove_dir_all(&tmp).ok();
     }
 

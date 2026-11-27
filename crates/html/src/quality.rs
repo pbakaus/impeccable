@@ -450,8 +450,9 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
     if !matches!(lower(style, "display").as_str(), "flex" | "inline-flex")
         || lower(style, "flexDirection").starts_with("column")
         || lower(style, "alignItems") != "center"
-        || el.text_content().chars().filter(|c| c.is_alphabetic()).count() > TRACKED_LABEL_MAX_CHARS
-        || el.query_selector("br").is_some()
+        || el.text_content_outside_templates().chars().filter(|c| c.is_alphabetic()).count()
+            > TRACKED_LABEL_MAX_CHARS
+        || el.query_selector_all("br").iter().any(|br| !in_template_below(br, el))
     {
         return false;
     }
@@ -474,7 +475,7 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
     let Some((line, height)) = band(el) else {
         return false;
     };
-    let content = el.children().iter().try_fold(line, |tallest, c| {
+    let content = rendered_children(el).iter().try_fold(line, |tallest, c| {
         if !matches!(lower(c.style(), "alignSelf").as_str(), "" | "auto" | "center")
             || is_offset_static(c.style())
         {
@@ -598,6 +599,31 @@ fn is_transparent_wrapper_static(el: &StaticElement<'_>, style: &StyleValues) ->
     !has_nonblank_direct_text(el)
 }
 
+/// Whether a `<template>` between `el` and its descendant `d` keeps `d` from
+/// being laid out (#1693).
+fn in_template_below(d: &StaticElement<'_>, el: &StaticElement<'_>) -> bool {
+    let mut cur = d.parent_element();
+    while let Some(p) = cur {
+        if p.id() == el.id() {
+            return false;
+        }
+        if p.tag_lower() == "template" {
+            return true;
+        }
+        cur = p.parent_element();
+    }
+    false
+}
+
+/// `el.children()` minus `<template>`: `flatten_fragments` carries a template's
+/// content as ordinary descendants, but a browser never lays it out, so it
+/// neither reaches an edge nor insets one (#1693).
+fn rendered_children<'a>(el: &StaticElement<'a>) -> Vec<StaticElement<'a>> {
+    let mut children = el.children();
+    children.retain(|c| c.tag_lower() != "template");
+    children
+}
+
 /// Whether `el` keeps the container's text off side `s`.
 ///
 /// An element that holds one element and no text of its own is a pass-through
@@ -652,7 +678,7 @@ fn insulates_side(
     if depth == 0 || el.has_direct_text_longer_than(4) || is_offset_static(style) {
         return false;
     }
-    let children = el.children();
+    let children = rendered_children(el);
     match children.as_slice() {
         [only] => insulates_side(
             only,
@@ -805,7 +831,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
     {
         let upper_tag = js::to_upper_case(tag);
         let el_position = sv(style, "position");
-        let children = el.children();
+        let children = rendered_children(el);
         if !FLUSH_SKIP_TAGS.contains(&upper_tag.as_str())
             && !q.has_direct_text
             && el_position != "fixed"
@@ -914,7 +940,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 if !flush_sides.is_empty() {
                     let has_text_child = children
                         .iter()
-                        .any(|c| utf16_len(js::trim(&c.text_content())) > 4);
+                        .any(|c| utf16_len(js::trim(&c.text_content_outside_templates())) > 4);
                     if has_text_child {
                         let cls_all = js::trim(el.class_name());
                         let cls = if cls_all.is_empty() {

@@ -35,6 +35,8 @@ pub struct Metadata {
     pub critiques: bool,
     /// `worlds:read`, for `impeccable world` (`crate::world`).
     pub worlds: bool,
+    /// `journeys:start`, for `impeccable journeys` (`crate::journeys`).
+    pub journeys: bool,
     /// The MCP scopes this sign-in also asks for, so `impeccable mcp` serves an
     /// agent's MCP tools under it: empty unless the service says its CLI sign-in
     /// serves `/mcp` (`impeccable_cli_mcp`), and then only those it lists.
@@ -114,6 +116,10 @@ pub fn metadata(client: &Client, account: &Account) -> Result<Metadata, String> 
                 .get("scopes_supported")
                 .and_then(|v| v.as_array())
                 .is_some_and(|a| a.iter().any(|s| s == WORLDS_SCOPE)),
+            journeys: doc
+                .get("scopes_supported")
+                .and_then(|v| v.as_array())
+                .is_some_and(|a| a.iter().any(|s| s == JOURNEYS_SCOPE)),
             mcp: if doc.get("impeccable_cli_mcp") == Some(&serde_json::Value::Bool(true)) {
                 let listed = doc.get("scopes_supported").and_then(|v| v.as_array());
                 MCP_SCOPES
@@ -144,6 +150,9 @@ pub const FOUNDATIONS_SCOPE: &str = "foundations:write";
 /// Reading a catalog world's seed (`crate::world`).
 pub const WORLDS_SCOPE: &str = "worlds:read";
 
+/// Starting and following journeys (`crate::journeys`).
+pub const JOURNEYS_SCOPE: &str = "journeys:start";
+
 /// Request feature scopes only where the service advertises them.
 pub(crate) fn scopes(meta: &Metadata) -> String {
     let mut scopes = SCOPES.to_string();
@@ -155,6 +164,7 @@ pub(crate) fn scopes(meta: &Metadata) -> String {
         (meta.critiques, CRITIQUES_SCOPE),
         (meta.taste, TASTE_READ_SCOPE),
         (meta.worlds, WORLDS_SCOPE),
+        (meta.journeys, JOURNEYS_SCOPE),
     ] {
         if offered {
             scopes.push(' ');
@@ -628,6 +638,7 @@ mod scope_tests {
             critiques: false,
             taste,
             worlds: false,
+            journeys: false,
             mcp,
         };
         let asked = |m: &Metadata| scopes(m).split(' ').map(str::to_string).collect::<Vec<_>>();
@@ -640,7 +651,7 @@ mod scope_tests {
 
     #[test]
     fn feature_scopes_compose_only_when_advertised() {
-        for mask in 0..128 {
+        for mask in 0..256 {
             let meta = Metadata {
                 authorization_endpoint: String::new(),
                 token_endpoint: String::new(),
@@ -652,6 +663,7 @@ mod scope_tests {
                 critiques: mask & 16 != 0,
                 taste: mask & 32 != 0,
                 worlds: mask & 64 != 0,
+                journeys: mask & 128 != 0,
                 mcp: Vec::new(),
             };
             let requested = scopes(&meta);
@@ -665,6 +677,7 @@ mod scope_tests {
                 (16, CRITIQUES_SCOPE),
                 (32, TASTE_READ_SCOPE),
                 (64, WORLDS_SCOPE),
+                (128, JOURNEYS_SCOPE),
             ] {
                 assert_eq!(requested.contains(&scope), mask & bit != 0);
             }

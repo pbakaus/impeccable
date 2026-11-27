@@ -32,6 +32,9 @@ sha2 = "0.10"
 semver = "1"
 url = "2"
 ureq = { version = "2", default-features = false, features = ["tls"] }
+# Already in the tree through ureq: the outside foundations read the site's certificate.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "0.26"
 libc = "0.2"
 toml_edit = "0.22"
 

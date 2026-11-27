@@ -800,14 +800,14 @@ fn main_flow(rt: &Runtime, stdin: &str) -> Out {
     if !config.enabled {
         return skip(&audit, "config-disabled");
     }
-    let platform = resolve_project_platform(rt, &cwd);
-    if is_native_platform(platform.as_deref()) {
+    let project = resolve_project_platform(rt, &cwd);
+    if project.skips(&file_path) {
         return allow(
             ext(
                 &audit,
                 vec![
                     ("skipped", Value::from("native-platform")),
-                    ("platform", Value::String(platform.unwrap_or_default())),
+                    ("platform", Value::String(project.platform.unwrap_or_default())),
                     ("durationMs", ms(started)),
                 ],
             ),

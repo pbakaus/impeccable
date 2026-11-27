@@ -546,12 +546,14 @@ dependencies = [
  "libc",
  "regex",
  "ring",
+ "rustls",
  "semver",
  "serde_json",
  "sha2",
  "toml_edit",
  "ureq",
  "url",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]

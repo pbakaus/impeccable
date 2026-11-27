@@ -15,6 +15,7 @@
 pub mod asset;
 pub mod browser;
 pub mod host_setup;
+pub mod page_agent;
 pub mod presence;
 
 use impeccable_account::{config::Account, http::ApiError, session::{Session, SessionError}};

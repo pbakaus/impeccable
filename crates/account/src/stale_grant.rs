@@ -47,6 +47,7 @@ fn offered(m: &oauth::Metadata, scope: &str) -> bool {
         oauth::DESIGN_SCOPE => m.design,
         oauth::CRITIQUES_SCOPE => m.critiques,
         oauth::WORLDS_SCOPE => m.worlds,
+        oauth::JOURNEYS_SCOPE => m.journeys,
         "setup:write" => m.setup,
         other => m.mcp.contains(&other),
     }

@@ -1,7 +1,7 @@
 //! JS: pin.mjs -> `impeccable pin <pin|unpin> <command>`
 
 use crate::jsp;
-use crate::util::{exists, read_json, safe_read};
+use crate::util::{exists, is_home_dir, read_json, safe_read};
 use impeccable_common::Io;
 
 /// Bundled copy of `skill/scripts/command-metadata.json` (build-time copy;
@@ -21,9 +21,10 @@ pub const VALID_COMMANDS: [&str; 24] = [
 const PIN_MARKER: &str = "<!-- impeccable-pinned-skill -->";
 const OPENCODE_PIN_MARKER: &str = "<!-- impeccable-pinned-command -->";
 
-fn find_project_root(start: &str) -> String {
+/// A `.git` or `package.json` in `home` is not a project (#1696).
+fn find_project_root(start: &str, home: &str) -> String {
     let mut dir = jsp::resolve(start, &[]);
-    while dir != "/" {
+    while dir != "/" && !is_home_dir(&dir, home) {
         if exists(&jsp::join(&[&dir, "package.json"]))
             || exists(&jsp::join(&[&dir, ".git"]))
             || exists(&jsp::join(&[&dir, "skills-lock.json"]))
@@ -229,7 +230,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         return 1;
     }
     let cwd = io.cwd.to_string_lossy().into_owned();
-    let root = find_project_root(&cwd);
+    let root = find_project_root(&cwd, &crate::util::homedir(&io.env));
     if action == "pin" {
         let metadata = load_metadata(io);
         let harness_dirs = find_harness_dirs(&root);
@@ -319,4 +320,25 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         }
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_git_repo_in_home_is_not_the_project_root() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-pin-root-{}", std::process::id()));
+        let home = tmp.join("home");
+        for d in [".git", "proj/sub", "repo/.git", "repo/src"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let h = home.to_string_lossy().to_string();
+        let at = |p: std::path::PathBuf| find_project_root(&p.to_string_lossy(), &h);
+        let want = |p: std::path::PathBuf| jsp::resolve(&p.to_string_lossy(), &[]);
+        assert_eq!(at(home.join("proj/sub")), want(home.join("proj/sub")));
+        assert_eq!(at(home.join("repo/src")), want(home.join("repo")));
+        assert_eq!(at(home.clone()), want(home.clone()));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
 }

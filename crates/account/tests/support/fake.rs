@@ -36,6 +36,8 @@ pub struct Knobs {
     pub worlds: bool,
     /// The service's CLI sign-in also serves /mcp (`impeccable_cli_mcp`), listing the MCP scopes.
     pub cli_mcp: bool,
+    /// Journeys switched on: `scopes_supported` lists `journeys:start`.
+    pub journeys: bool,
     /// The grant lacks `health:write` (the person unchecked it): uploads 403.
     pub health_denied: bool,
     /// Extra routes, answered before the built-in ones:
@@ -91,6 +93,8 @@ pub struct Record {
     pub setup_landings: Vec<String>,
     /// The query of each `GET /cli/v1/agents`.
     pub agents_reads: Vec<String>,
+    /// Each JSON body sent to an extra route ([`Fake::route`]), with its path.
+    pub bodies: Vec<(String, serde_json::Value)>,
     codes: HashMap<String, (String, String, String)>,
     grant_scopes: HashMap<u64, String>,
     live_refresh: HashSet<String>,
@@ -333,6 +337,9 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
         if path.starts_with("/cli/") && !authorized {
             (401, vec![], vec![])
         } else {
+            if let Ok(sent) = serde_json::from_slice(&body) {
+                record.lock().unwrap().bodies.push((path.to_string(), sent));
+            }
             c
         }
     } else {
@@ -419,6 +426,7 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         if k.design { scopes.push("design:write"); }
                         if k.critiques { scopes.push("critiques:write"); }
                         if k.worlds { scopes.push("worlds:read"); }
+                        if k.journeys { scopes.push("journeys:start"); }
                         if k.cli_mcp {
                             for s in ["needs-you:read", "needs-you:write", "personas:read", "personas:write", "taste:read", "taste:write", "journeys:start", "artifacts:write"] {
                                 if !scopes.contains(&s) { scopes.push(s); }
@@ -445,7 +453,8 @@ fn serve(mut stream: TcpStream, issuer: &str, knobs: &Mutex<Knobs>, record: &Mut
                         "taste:read" => k.taste || k.cli_mcp,
                         "design:write" => k.design,
                         "worlds:read" => k.worlds,
-                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "journeys:start" | "artifacts:write" => k.cli_mcp,
+                        "journeys:start" => k.journeys || k.cli_mcp,
+                        "needs-you:read" | "needs-you:write" | "personas:read" | "personas:write" | "taste:write" | "artifacts:write" => k.cli_mcp,
                         _ => false,
                     })
                 };
