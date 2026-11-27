@@ -51,7 +51,10 @@ pub fn check(root: &Path, env: &HashMap<String, String>) -> Report {
     let Ok(text) = std::fs::read_to_string(root.join("package.json")) else {
         return Report::default();
     };
-    let deps = deps(&text);
+    // A name the project installs from another registry never goes to npm.
+    let Some(deps) = askable(deps(&text), &npmrc(root)) else {
+        return Report::default();
+    };
     if deps.is_empty() {
         return Report::default();
     }
@@ -87,12 +90,61 @@ pub fn check(root: &Path, env: &HashMap<String, String>) -> Report {
         .filter(|(_, (_, at))| now.saturating_sub(*at) < STAND_IN)
         .map(|(n, (a, _))| (n, a))
         .collect();
-    judge(&deps, &answers, own_registry(root))
+    judge(&deps, &answers)
 }
 
-/// The registry items from what it answered. `private` is a project whose
-/// `.npmrc` points at another registry: an unscoped name it lacks may live there.
-pub fn judge(deps: &[Dep], answers: &HashMap<String, Answer>, private: bool) -> Report {
+/// What the project's `.npmrc` routes away from npm: every package
+/// (`registry=`), or the scopes with a registry of their own.
+#[derive(Default, Debug, PartialEq)]
+pub struct Npmrc {
+    pub elsewhere: bool,
+    pub scopes: Vec<String>,
+}
+
+pub fn parse_npmrc(text: &str) -> Npmrc {
+    let mut out = Npmrc::default();
+    for l in text.lines().map(str::trim) {
+        let Some((key, url)) = l.split_once('=') else {
+            continue;
+        };
+        let (key, url) = (key.trim(), url.trim());
+        if url.is_empty() || url.contains("registry.npmjs.org") {
+            continue;
+        }
+        if key == "registry" {
+            out.elsewhere = true;
+        } else if let Some(scope) = key.strip_suffix(":registry").filter(|k| k.starts_with('@')) {
+            out.scopes.push(scope.to_string());
+        }
+    }
+    out
+}
+
+fn npmrc(root: &Path) -> Npmrc {
+    std::fs::read_to_string(root.join(".npmrc"))
+        .map(|t| parse_npmrc(&t))
+        .unwrap_or_default()
+}
+
+/// The dependencies npm may be asked about: none when every package comes
+/// from another registry, and never a scope that has its own.
+pub fn askable(deps: Vec<Dep>, rc: &Npmrc) -> Option<Vec<Dep>> {
+    if rc.elsewhere {
+        return None;
+    }
+    Some(
+        deps.into_iter()
+            .filter(|d| {
+                !rc.scopes
+                    .iter()
+                    .any(|s| d.name.starts_with(&format!("{s}/")))
+            })
+            .collect(),
+    )
+}
+
+/// The registry items from what it answered.
+pub fn judge(deps: &[Dep], answers: &HashMap<String, Answer>) -> Report {
     let mut report = Report::default();
     let scoped = |n: &str| n.starts_with('@');
     // A scoped name npm lacks is a private package, not an invented one.
@@ -108,7 +160,7 @@ pub fn judge(deps: &[Dep], answers: &HashMap<String, Answer>, private: bool) -> 
     let unknown_unscoped = judged
         .iter()
         .any(|d| !scoped(&d.name) && !answers.contains_key(&d.name));
-    if !report.missing.is_empty() && !private {
+    if !report.missing.is_empty() {
         report.items.insert("real-packages", "failing");
     } else if report.missing.is_empty() && !unknown_unscoped {
         report.items.insert("real-packages", "checked");
@@ -171,16 +223,36 @@ fn show((major, minor): (u64, u64)) -> String {
 /// number (`^16.2` → 16, `>=1 <3` → 1, `~0.5.1` → 0.5). A tag (`beta`), `*`
 /// or `latest` names none.
 pub fn range_line(spec: &str) -> Option<(u64, u64)> {
-    let s = spec.trim();
-    let start = s.find(|c: char| c.is_ascii_digit())?;
-    // Only operators and a `v` may come before the number.
-    if !s[..start]
-        .chars()
-        .all(|c| matches!(c, '^' | '~' | '>' | '=' | '<' | 'v' | ' '))
-    {
-        return None;
+    // The lowest line any alternative allows; one unreadable alternative
+    // makes the whole range unknown.
+    spec.split("||")
+        .map(alternative_line)
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .min()
+}
+
+/// One comparator set's lowest allowed line, from its lower bound; a set
+/// with only upper bounds (`<5`) names none.
+fn alternative_line(set: &str) -> Option<(u64, u64)> {
+    let set = set.trim();
+    if let Some((low, _)) = set.split_once(" - ") {
+        return bound(low.trim());
     }
-    parse_line(&s[start..])
+    set.split_whitespace()
+        .filter(|c| !c.starts_with('<'))
+        .map(bound)
+        .collect::<Option<Vec<_>>>()?
+        .into_iter()
+        .min()
+}
+
+/// A single lower bound or exact version: `^16.2`, `>=1`, `~0.5.1`, `v2`.
+fn bound(c: &str) -> Option<(u64, u64)> {
+    let v = c.trim_start_matches(['^', '~', '>', '=', 'v']);
+    v.starts_with(|ch: char| ch.is_ascii_digit())
+        .then_some(())?;
+    parse_line(v)
 }
 
 /// `major.minor` of a version, the minor 0 when absent or a wildcard.
@@ -203,12 +275,26 @@ pub fn deps(package_json: &str) -> Vec<Dep> {
         };
         for (key, spec) in map {
             let Some(spec) = spec.as_str() else { continue };
-            if let Some(dep) = dep(key, spec) {
-                out.insert(dep.name.clone(), dep);
+            let Some(dep) = dep(key, spec) else { continue };
+            // An alias can declare the same package twice: the oldest line is the one to judge.
+            match out.get(&dep.name) {
+                Some(had) if older(had.line, dep.line) => {}
+                _ => {
+                    out.insert(dep.name.clone(), dep);
+                }
             }
         }
     }
     out.into_values().collect()
+}
+
+/// Whether line `a` is older than `b`; an unreadable line is never older.
+fn older(a: Option<(u64, u64)>, b: Option<(u64, u64)>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => a <= b,
+        (Some(_), None) => true,
+        _ => false,
+    }
 }
 
 fn dep(key: &str, spec: &str) -> Option<Dep> {
@@ -259,18 +345,6 @@ fn valid_name(name: &str) -> bool {
         Some(rest) => rest.split_once('/').is_some_and(|(s, n)| ok(s) && ok(n)),
         None => ok(name) && name.len() <= 214,
     }
-}
-
-/// Whether the project's `.npmrc` installs unscoped packages from elsewhere.
-fn own_registry(root: &Path) -> bool {
-    std::fs::read_to_string(root.join(".npmrc")).is_ok_and(|t| {
-        t.lines().any(|l| {
-            let l = l.trim();
-            l.strip_prefix("registry")
-                .map(|r| r.trim_start().strip_prefix('=').unwrap_or("").trim())
-                .is_some_and(|url| !url.is_empty() && !url.contains("registry.npmjs.org"))
-        })
-    })
 }
 
 // --- Asking the registry ---------------------------------------------------
@@ -368,7 +442,12 @@ fn write_cache(path: &Path, cache: &HashMap<String, (Answer, u64)>) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let tmp = path.with_extension("json.tmp");
+    // One temp file per process, so concurrent scans never write into each other's.
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let tmp = path.with_extension(format!("json.{}.{nanos}.tmp", std::process::id()));
     if std::fs::write(&tmp, serde_json::Value::Object(body).to_string()).is_ok() {
         let _ = std::fs::rename(tmp, path);
     }
@@ -404,6 +483,12 @@ mod tests {
         assert_eq!(range_line("~0.5.1"), Some((0, 5)));
         assert_eq!(range_line("v2"), Some((2, 0)));
         assert_eq!(range_line("beta"), None);
+        // An upper bound is never an allowed release.
+        assert_eq!(range_line("<5"), None);
+        assert_eq!(range_line(">=3 <5"), Some((3, 0)));
+        assert_eq!(range_line("1 - 2"), Some((1, 0)));
+        assert_eq!(range_line("^4 || ^2.1"), Some((2, 1)));
+        assert_eq!(range_line("^4 || <3"), None);
         let found = deps(
             r#"{"dependencies":{"react":"^16.8.0","local":"file:../x","ws":"workspace:*","gh":"user/repo","any":"*","old":"npm:left-pad@^1.0.0"},"devDependencies":{"@acme/ui":"^2"}}"#,
         );
@@ -414,6 +499,37 @@ mod tests {
                 d("left-pad", Some((1, 0))),
                 d("react", Some((16, 8))),
             ]
+        );
+        // An alias of a newer line never hides the old declaration.
+        assert_eq!(
+            deps(r#"{"dependencies":{"react":"^16","react-modern":"npm:react@^19"}}"#),
+            vec![d("react", Some((16, 0)))]
+        );
+    }
+
+    // Catches a private package's name sent to public npm: a project whose
+    // .npmrc installs everything elsewhere asks npm nothing, and a scope
+    // with its own registry is never asked about.
+    #[test]
+    fn private_registries_are_never_asked() {
+        let rc =
+            parse_npmrc("@acme:registry=https://npm.acme.dev/\n//npm.acme.dev/:_authToken=${T}\n");
+        assert_eq!(
+            rc,
+            Npmrc {
+                elsewhere: false,
+                scopes: vec!["@acme".into()]
+            }
+        );
+        assert_eq!(
+            askable(vec![d("@acme/ui", None), d("react", None)], &rc),
+            Some(vec![d("react", None)])
+        );
+        let all = parse_npmrc("registry=https://npm.internal.example/\n");
+        assert_eq!(askable(vec![d("react", None)], &all), None);
+        assert_eq!(
+            parse_npmrc("registry=https://registry.npmjs.org/\n"),
+            Npmrc::default()
         );
     }
 
@@ -427,24 +543,16 @@ mod tests {
             ("@acme/ui".to_string(), Answer::Missing),
             ("zz-made-up".to_string(), Answer::Missing),
         ]);
-        let r = judge(&deps, &answers, false);
+        let r = judge(&deps, &answers);
         assert_eq!(r.items.get("real-packages"), Some(&"failing"));
         assert_eq!(r.missing, vec!["zz-made-up".to_string()]);
-        // Another registry in .npmrc may hold it: not proof.
-        assert_eq!(
-            judge(&deps, &answers, true).items.get("real-packages"),
-            None
-        );
         answers.insert("zz-made-up".into(), latest("1.0.0"));
         assert_eq!(
-            judge(&deps, &answers, false).items.get("real-packages"),
+            judge(&deps, &answers).items.get("real-packages"),
             Some(&"checked")
         );
         answers.remove("zz-made-up");
-        assert_eq!(
-            judge(&deps, &answers, false).items.get("real-packages"),
-            None
-        );
+        assert_eq!(judge(&deps, &answers).items.get("real-packages"), None);
     }
 
     // Catches one major behind read as failing, two read as passing, 0.x
@@ -459,7 +567,7 @@ mod tests {
             ("react".to_string(), latest("19.1.0")),
             ("vite".to_string(), latest("7.0.0")),
         ]);
-        let r = judge(&deps, &answers, false);
+        let r = judge(&deps, &answers);
         assert_eq!(r.items.get("current-dependencies"), Some(&"failing"));
         assert_eq!(r.behind, vec![("vite".into(), "5".into(), "7".into())]);
         let ok = HashMap::from([
@@ -467,14 +575,11 @@ mod tests {
             ("vite".to_string(), latest("6.0.0")),
         ]);
         assert_eq!(
-            judge(&deps, &ok, false).items.get("current-dependencies"),
+            judge(&deps, &ok).items.get("current-dependencies"),
             Some(&"checked")
         );
         // One of two unknown is more than a tenth: no verdict.
         let half = HashMap::from([("react".to_string(), latest("19.1.0"))]);
-        assert_eq!(
-            judge(&deps, &half, false).items.get("current-dependencies"),
-            None
-        );
+        assert_eq!(judge(&deps, &half).items.get("current-dependencies"), None);
     }
 }
