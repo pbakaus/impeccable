@@ -53,7 +53,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use impeccable_core::browser::driver::{collect_browser_findings, serialize_findings};
-use impeccable_core::browser::dom::{Dom, ElId};
+use impeccable_core::browser::dom::{query_all_deep, query_one_deep, Dom, ElId};
 use impeccable_core::browser::page_checks::measure_hidden_text_dom;
 use impeccable_core::browser::snapshot::{Facts, SnapshotDom};
 use impeccable_core::checks::measures::{check_content_hidden_at_rest, ContentHiddenInput};
@@ -1614,7 +1614,7 @@ fn tag_widget_vendor(dom: &SnapshotDom, r: &mut RawResult) {
         return;
     }
     let Some(selector) = r.selector.as_deref() else { return };
-    let Ok(Some(el)) = dom.query_one(None, selector) else { return };
+    let Ok(Some(el)) = query_one_deep(dom, selector) else { return };
     if let Some(vendor) = impeccable_core::third_party::widget_vendor(dom, el) {
         r.snippet = impeccable_core::third_party::tag_detail(&r.snippet, vendor);
         r.third_party = Some(vendor.to_string());
@@ -1645,7 +1645,7 @@ fn scan_identities(dom: &SnapshotDom, results: &[RawResult]) -> Map<String, Valu
             continue;
         }
         let Some(el) = r.scan_el else { continue };
-        let Ok(matches) = dom.query_all(None, selector) else { continue };
+        let Ok(matches) = query_all_deep(dom, selector) else { continue };
         if matches.len() < 2 {
             continue;
         }
@@ -1658,7 +1658,7 @@ fn scan_identities(dom: &SnapshotDom, results: &[RawResult]) -> Map<String, Valu
 
 /// The one element `selector` matches in `dom`, if it matches exactly one.
 fn sole_match(dom: &SnapshotDom, selector: &str) -> Option<ElId> {
-    match dom.query_all(None, selector).ok()?.as_slice() {
+    match query_all_deep(dom, selector).ok()?.as_slice() {
         [el] => Some(*el),
         _ => None,
     }
@@ -1700,7 +1700,7 @@ fn visual_scan_element(dom: &SnapshotDom, selector: &str, analyses: &[Value]) ->
     if !selector.contains('#') {
         return None;
     }
-    let matches = dom.query_all(None, selector).ok()?;
+    let matches = query_all_deep(dom, selector).ok()?;
     if matches.len() < 2 {
         return matches.first().copied();
     }
@@ -2135,7 +2135,7 @@ fn repeated_match(dom: &dyn Dom, selector: &str, el: ElId) -> Option<Value> {
     if !selector.contains('#') {
         return None;
     }
-    let matches = dom.query_all(None, selector).ok()?;
+    let matches = query_all_deep(dom, selector).ok()?;
     if matches.len() < 2 {
         return None;
     }

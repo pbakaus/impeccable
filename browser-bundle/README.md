@@ -8,7 +8,7 @@ is a call into the wasm rule core built from `crates/core` (`docs/ENGINE.md`).
 
 Two consumers:
 
-- `crates/browser` embeds `05-natives.js` and `15-snapshot.js` (the snapshot
+- `crates/browser` embeds `05-natives.js`, `12-query.js` and `15-snapshot.js` (the snapshot
   producer the URL engine injects; no WebAssembly runs in the page). It also
   runs `05-natives.js` on every new document before the page's own scripts,
   which stashes the built-ins where a site's own global `Map` or a reassigned

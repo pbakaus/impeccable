@@ -215,7 +215,7 @@ function createInPageVisualIO(wasm) {
     },
     readPixel: (drawable, plan, px, py) => io.readPixel(drawable, plan, px, py),
     querySelector(selector) {
-      try { return document.querySelector(selector); } catch { return null; }
+      try { return __impeccableQueryAll(selector)[0] || null; } catch { return null; }
     },
     scroll: () => ({ x: window.scrollX, y: window.scrollY }),
     scrollTo: (x, y) => window.scrollTo(x, y),

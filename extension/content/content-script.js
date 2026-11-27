@@ -171,7 +171,7 @@
     }, { threshold: 0.5 });
     for (const candidate of candidates) {
       let el = null;
-      try { el = document.querySelector(candidate.selector); } catch { el = null; }
+      try { el = snapshot.queryAll(candidate.selector)[0] || null; } catch { el = null; }
       if (!el) continue;
       lazyPending.set(el, candidate);
       lazyObserver.observe(el);

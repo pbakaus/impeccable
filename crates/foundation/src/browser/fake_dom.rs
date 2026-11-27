@@ -498,7 +498,8 @@ impl Dom for FakeDom {
             if c == a {
                 return true;
             }
-            cur = self.els[c as usize].parent;
+            let e = &self.els[c as usize];
+            cur = e.parent.or(e.shadow_host);
         }
         false
     }
@@ -595,6 +596,9 @@ impl Dom for FakeDom {
     }
     fn text_slot(&self, el: ElId) -> Option<ElId> {
         self.els[el as usize].text_slot
+    }
+    fn shadow_host(&self, el: ElId) -> Option<ElId> {
+        self.els[el as usize].shadow_host
     }
     fn shadow_children(&self, el: ElId) -> Vec<ElId> {
         (1..self.els.len() as ElId)

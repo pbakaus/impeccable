@@ -648,6 +648,7 @@ function lazyCandidatesHarness() {
           return { json: JSON.stringify({ sequence }), sequence, elements: { 1: elements[0], 2: elements[1] }, stats: { elements: 2, bytes: 2, ms: 0 } };
         },
         idOf: el => elements.indexOf(el) + 1,
+        queryAll: selector => [elements[selector === '#a' ? 0 : 1]],
         answer: (_ask, cap) => ({ sequence: cap.sequence }),
         visualIO: cap => ({ loadImage: () => generation === 1 ? blocked : Promise.resolve({ sequence: cap.sequence }) }),
       },

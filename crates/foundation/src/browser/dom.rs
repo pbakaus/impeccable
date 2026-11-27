@@ -94,9 +94,13 @@ pub trait Dom {
     fn scroll_y(&self) -> f64;
     /// `location.hostname`.
     fn hostname(&self) -> String;
-    /// `document.elementFromPoint(x, y)`.
+    /// `document.elementFromPoint(x, y)`, looking inside open shadow roots:
+    /// the innermost element. A check reads it through
+    /// [`element_from_point_for`].
     fn element_from_point(&self, x: f64, y: f64) -> Option<ElId>;
-    /// `document.elementsFromPoint(x, y)`.
+    /// `document.elementsFromPoint(x, y)` with each open shadow root's stack
+    /// spliced in before its host. A check reads it through
+    /// [`elements_from_point_for`].
     fn elements_from_point(&self, x: f64, y: f64) -> Vec<ElId>;
     /// `CSS.escape(s)`.
     fn css_escape(&self, s: &str) -> String;
@@ -167,7 +171,9 @@ pub trait Dom {
     fn first_element_child(&self, el: ElId) -> Option<ElId> {
         self.children(el).first().copied()
     }
-    /// `a.contains(b)` (true when `a === b`).
+    /// `a.contains(b)` (true when `a === b`), composed: it climbs out of shadow
+    /// trees through their hosts, because a hit-test stack can name elements
+    /// inside a shadow tree and their light ancestors must still contain them.
     fn contains(&self, a: ElId, b: ElId) -> bool;
     fn matches(&self, el: ElId, selector: &str) -> Result<bool, SelectorError>;
     fn closest(&self, el: ElId, selector: &str) -> Result<Option<ElId>, SelectorError>;
@@ -345,10 +351,11 @@ pub trait Dom {
     /// slot a light-DOM child is assigned to, else its parent, else the host
     /// of the shadow tree whose top-level node it is. A fill drawn by a
     /// component's shadow tree sits between a slotted heading and the host,
-    /// and only this walk passes through it. The default is `parent`, which
-    /// is the light tree: a probe that cannot see shadow trees.
+    /// and only this walk passes through it. The default is `parent`, then
+    /// the host of a shadow tree's top-level node: a probe that does not
+    /// compose slots (the live page's `JsDom`) still climbs out to the host.
     fn flat_parent(&self, el: ElId) -> Option<ElId> {
-        self.parent(el)
+        self.parent(el).or_else(|| self.shadow_host(el))
     }
     /// The slot this element's direct text is assigned to, where the element
     /// is a shadow host whose own text is slotted into its shadow tree. That
@@ -364,6 +371,12 @@ pub trait Dom {
     /// (the default).
     fn shadow_children(&self, _el: ElId) -> Vec<ElId> {
         Vec::new()
+    }
+    /// The host of the open shadow tree `el` is a top-level node of
+    /// (`el.parentNode.host` when the parent node is a ShadowRoot). `None` for
+    /// any other element, and from a probe that cannot see shadow trees.
+    fn shadow_host(&self, _el: ElId) -> Option<ElId> {
+        None
     }
     /// Whether the probe reads open shadow trees ([`Dom::flat_parent`]), so
     /// that an element with no assigned slot is not slotted anywhere. A
@@ -582,9 +595,16 @@ pub fn pf0(s: &str) -> f64 {
 }
 
 /// `el.closest(sel)` where the JS wrapped the call in `try/catch` and treated
-/// a throw as "no match".
+/// a throw as "no match". Composed: when `el`'s own tree has no match the
+/// search goes on from the host of that shadow tree, and so on outward.
 pub fn closest_or_none(dom: &dyn Dom, el: ElId, selector: &str) -> Option<ElId> {
-    dom.closest(el, selector).unwrap_or(None)
+    let mut cur = el;
+    loop {
+        if let Ok(Some(found)) = dom.closest(cur, selector) {
+            return Some(found);
+        }
+        cur = tree_host(dom, cur)?;
+    }
 }
 
 /// `el.matches(sel)` with a throw read as false.
@@ -592,13 +612,132 @@ pub fn matches_or_false(dom: &dyn Dom, el: ElId, selector: &str) -> bool {
     dom.matches(el, selector).unwrap_or(false)
 }
 
-/// Iterate `el, el.parentElement, ...` while the node is an element.
+/// Iterate `el, el.parentElement, ...` while the node is an element, passing
+/// from a shadow tree's top-level node to its host.
 pub fn ancestors_inclusive(dom: &dyn Dom, el: ElId) -> Vec<ElId> {
     let mut out = Vec::new();
     let mut cur = Some(el);
     while let Some(c) = cur {
         out.push(c);
-        cur = dom.parent(c);
+        cur = composed_parent(dom, c);
+    }
+    out
+}
+
+/// The parent in the composed tree: the parent element, else the host when
+/// `el` is a top-level node of an open shadow tree.
+pub fn composed_parent(dom: &dyn Dom, el: ElId) -> Option<ElId> {
+    dom.parent(el).or_else(|| dom.shadow_host(el))
+}
+
+/// The host of the shadow tree `el` lives in; `None` for a light-DOM element.
+pub fn tree_host(dom: &dyn Dom, el: ElId) -> Option<ElId> {
+    let mut top = el;
+    while let Some(p) = dom.parent(top) {
+        top = p;
+    }
+    dom.shadow_host(top)
+}
+
+/// The trees `el` sees into: its own and every tree it is nested in, as the
+/// host of each (`None` for the document).
+fn scopes_of(dom: &dyn Dom, el: ElId) -> Vec<Option<ElId>> {
+    let mut scopes = vec![None];
+    let mut host = tree_host(dom, el);
+    while let Some(h) = host {
+        scopes.push(Some(h));
+        host = tree_host(dom, h);
+    }
+    scopes
+}
+
+/// `node` retargeted to one of `scopes`, as the DOM retargets an event:
+/// while `node` sits in a shadow tree outside them, it becomes its host.
+fn retarget_to(dom: &dyn Dom, node: ElId, scopes: &[Option<ElId>]) -> ElId {
+    let mut node = node;
+    while let Some(h) = tree_host(dom, node).filter(|h| !scopes.contains(&Some(*h))) {
+        node = h;
+    }
+    node
+}
+
+/// `node` retargeted to the tree `el` lives in.
+pub fn retarget(dom: &dyn Dom, node: ElId, el: ElId) -> ElId {
+    retarget_to(dom, node, &scopes_of(dom, el))
+}
+
+/// `el.getRootNode().elementsFromPoint(x, y)`: the probe's stack looks
+/// inside every open shadow tree, and a check reads it from the tree of the
+/// element it asks about, so text in the light DOM sees a component's host
+/// where it always did, and text inside the component sees the component.
+pub fn elements_from_point_for(dom: &dyn Dom, x: f64, y: f64, el: ElId) -> Vec<ElId> {
+    let scopes = scopes_of(dom, el);
+    let mut out: Vec<ElId> = Vec::new();
+    for n in dom.elements_from_point(x, y) {
+        let n = retarget_to(dom, n, &scopes);
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    out
+}
+
+/// `el.getRootNode().elementFromPoint(x, y)`; see [`elements_from_point_for`].
+pub fn element_from_point_for(dom: &dyn Dom, x: f64, y: f64, el: ElId) -> Option<ElId> {
+    dom.element_from_point(x, y).map(|n| retarget(dom, n, el))
+}
+
+/// `host.shadowRoot.querySelectorAll(selector)`.
+pub fn query_shadow_root(dom: &dyn Dom, host: ElId, selector: &str) -> Result<Vec<ElId>, SelectorError> {
+    let mut out = Vec::new();
+    for top in dom.shadow_children(host) {
+        if dom.matches(top, selector)? {
+            out.push(top);
+        }
+        out.extend(dom.query_all(Some(top), selector)?);
+    }
+    Ok(out)
+}
+
+/// `querySelectorAll` for a selector that may pass through shadow hosts with
+/// ` >>> ` (`topo-card >>> span.lbl`, Playwright-style). Without the
+/// separator it is `dom.query_all(None, selector)`.
+pub fn query_all_deep(dom: &dyn Dom, selector: &str) -> Result<Vec<ElId>, SelectorError> {
+    let mut parts = selector.split(" >>> ");
+    let mut found = dom.query_all(None, parts.next().unwrap_or(""))?;
+    for part in parts {
+        let mut next = Vec::new();
+        for host in found {
+            next.extend(query_shadow_root(dom, host, part)?);
+        }
+        found = next;
+    }
+    Ok(found)
+}
+
+/// `querySelector` counterpart of [`query_all_deep`].
+pub fn query_one_deep(dom: &dyn Dom, selector: &str) -> Result<Option<ElId>, SelectorError> {
+    if !selector.contains(" >>> ") {
+        return dom.query_one(None, selector);
+    }
+    Ok(query_all_deep(dom, selector)?.into_iter().next())
+}
+
+/// Every element the element pass visits: the light DOM in document order,
+/// each host followed by its open shadow tree.
+pub fn elements_deep(dom: &dyn Dom) -> Vec<ElId> {
+    fn push(dom: &dyn Dom, el: ElId, out: &mut Vec<ElId>) {
+        out.push(el);
+        for top in dom.shadow_children(el) {
+            push(dom, top, out);
+            for e in dom.query_all(Some(top), "*").unwrap_or_default() {
+                push(dom, e, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for el in dom.query_all(None, "*").unwrap_or_default() {
+        push(dom, el, &mut out);
     }
     out
 }

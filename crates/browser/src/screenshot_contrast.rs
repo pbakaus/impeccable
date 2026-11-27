@@ -389,16 +389,20 @@ pub fn measure_visual_contrast_candidate(
 /// (a repeated id), and then the `n`th match is the one, while the page still
 /// has `count` of them; `querySelector`'s first match would be a copy the
 /// candidate never came from. `null` for an invalid selector or no match.
-pub(crate) const PICK_CANDIDATE_JS: &str = r#"((selector, match) => {
+pub(crate) const PICK_CANDIDATE_JS: &str = concat!(
+    "((selector, match) => {\n",
+    include_str!("../../../browser-bundle/12-query.js"),
+    r#"
   let matches;
   try {
-    matches = document.querySelectorAll(selector);
+    matches = __impeccableQueryAll(selector);
   } catch (e) {
     return null;
   }
   if (Array.isArray(match) && matches.length === match[1] && matches[match[0]]) return matches[match[0]];
   return matches[0] || null;
-})"#;
+})"#
+);
 
 const BRING_INTO_VIEW_JS: &str = r#"(async (el) => {
   if (!el) return null;
@@ -638,6 +642,13 @@ fn hidden_reading(
       ].join('\n');
       document.head.appendChild(style);
     }}
+    // A document style does not reach into a shadow tree, so a target there
+    // gets a copy in its own root.
+    const root = el.getRootNode();
+    if (root !== document && root.host && !root.getElementById('impeccable-visual-contrast-hide-style')) {{
+      root.appendChild(style.cloneNode(true));
+    }}
+    window.__impeccableContrastTarget = el;
     el.setAttribute('data-impeccable-visual-contrast-target', token);
     if (backgroundClipText) el.setAttribute('data-impeccable-bgclip-text', 'true');
     if (keepHalo) el.setAttribute('data-impeccable-keep-halo', 'true');
@@ -653,11 +664,15 @@ fn hidden_reading(
     // finally: remove the marker attributes (errors swallowed).
     let cleanup_expr = format!(
         r#"(({{ token }}) => {{
-      for (const el of document.querySelectorAll('[data-impeccable-visual-contrast-target]')) {{
+      const target = window.__impeccableContrastTarget;
+      delete window.__impeccableContrastTarget;
+      for (const el of [...document.querySelectorAll('[data-impeccable-visual-contrast-target]'), target].filter(Boolean)) {{
         if (el.getAttribute('data-impeccable-visual-contrast-target') !== token) continue;
         el.removeAttribute('data-impeccable-visual-contrast-target');
         el.removeAttribute('data-impeccable-bgclip-text');
         el.removeAttribute('data-impeccable-keep-halo');
+        const root = el.getRootNode();
+        if (root !== document && root.host) root.getElementById('impeccable-visual-contrast-hide-style')?.remove();
       }}
     }})({})"#,
         json!({ "token": token })

@@ -574,6 +574,11 @@ impl Snapshot {
                 self.shadow_kids.entry(host).or_default().push(i as u32 + 1);
             }
         }
+        for kids in self.shadow_kids.values() {
+            for (pos, kid) in kids.iter().enumerate() {
+                self.els[*kid as usize - 1].index_in_parent = pos;
+            }
+        }
     }
 
     #[inline]
@@ -609,19 +614,25 @@ impl Snapshot {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
     }
-    pub fn previous_element_sibling(&self, id: u32) -> Option<u32> {
+    /// The element siblings of `id` in order: its parent's children, or the
+    /// top-level nodes of its shadow tree.
+    fn siblings(&self, id: u32) -> Option<&Vec<u32>> {
         let n = self.node(id);
-        let p = self.node(n.parent?);
-        if n.index_in_parent == 0 {
+        match n.parent {
+            Some(p) => Some(&self.node(p).children),
+            None => self.shadow_kids.get(&n.shadow_host?),
+        }
+    }
+    pub fn previous_element_sibling(&self, id: u32) -> Option<u32> {
+        let i = self.node(id).index_in_parent;
+        if i == 0 {
             None
         } else {
-            p.children.get(n.index_in_parent - 1).copied()
+            self.siblings(id)?.get(i - 1).copied()
         }
     }
     pub fn next_element_sibling(&self, id: u32) -> Option<u32> {
-        let n = self.node(id);
-        let p = self.node(n.parent?);
-        p.children.get(n.index_in_parent + 1).copied()
+        self.siblings(id)?.get(self.node(id).index_in_parent + 1).copied()
     }
     /// The interned style value for `prop`, `None` when the capture did not
     /// record that property.
@@ -910,6 +921,12 @@ impl Dom for SnapshotDom {
             .map(|kids| kids.iter().copied().filter(|k| self.valid(*k)).collect())
             .unwrap_or_default()
     }
+    fn shadow_host(&self, el: ElId) -> Option<ElId> {
+        if !self.valid(el) {
+            return None;
+        }
+        self.snap.node(el).shadow_host.filter(|h| self.valid(*h))
+    }
     fn shadow_trees_recorded(&self) -> bool {
         self.snap.shadow_trees_recorded
     }
@@ -971,7 +988,8 @@ impl Dom for SnapshotDom {
             if c == a {
                 return true;
             }
-            cur = self.snap.node(c).parent;
+            let node = self.snap.node(c);
+            cur = node.parent.or(node.shadow_host);
         }
         false
     }
@@ -1288,9 +1306,44 @@ mod tests {
         assert_eq!(d.text_slot(4), None);
         assert!(!d.query_all(None, "*").unwrap().contains(&5));
         assert!(crate::browser::dom::flat_contains(&d, 3, 6));
-        assert!(!d.contains(3, 6));
+        assert!(d.contains(3, 6));
+        assert_eq!(d.shadow_host(5), Some(3));
+        assert_eq!(d.shadow_host(4), None);
         assert!(!snap(SMALL).shadow_trees_recorded());
         assert_eq!(snap(SMALL).flat_parent(5), Some(4));
+    }
+
+    /// A selector can pass through hosts with ` >>> `, and the top-level nodes
+    /// of a shadow tree are each other's siblings, as in a ShadowRoot.
+    #[test]
+    fn deep_queries_and_shadow_siblings() {
+        use crate::browser::dom::{elements_deep, query_all_deep, query_one_deep, retarget};
+        let d = snap(r#"{
+          "v": 1, "innerWidth": 1280, "innerHeight": 800, "shadow": true,
+          "styleProps": ["display"], "strings": ["block"],
+          "documentElement": 1, "body": 2,
+          "els": [
+            {"t":"HTML","c":[2],"s":[0]},
+            {"t":"BODY","p":1,"c":[3,6],"s":[0]},
+            {"t":"TOPO-CARD","p":2,"c":[],"s":[0]},
+            {"t":"SPAN","a":[["class","lbl"]],"c":["a"],"s":[0],"sh":3},
+            {"t":"SPAN","a":[["class","lbl"]],"c":["b"],"s":[0],"sh":3},
+            {"t":"P","p":2,"c":[],"s":[0]}
+          ]
+        }"#);
+        assert_eq!(query_all_deep(&d, "topo-card >>> span.lbl"), Ok(vec![4, 5]));
+        assert_eq!(query_one_deep(&d, "topo-card >>> span.lbl"), Ok(Some(4)));
+        assert_eq!(query_all_deep(&d, "p"), Ok(vec![6]));
+        assert_eq!(query_all_deep(&d, "p >>> span"), Ok(vec![]));
+        assert_eq!(d.next_element_sibling(4), Some(5));
+        assert_eq!(d.previous_element_sibling(5), Some(4));
+        assert_eq!(d.previous_element_sibling(4), None);
+        assert_eq!(d.matches(5, "span:nth-of-type(2)"), Ok(true));
+        assert_eq!(elements_deep(&d), vec![1, 2, 3, 4, 5, 6]);
+        // A hit on the shadow span reads as its host from the light DOM.
+        assert_eq!(retarget(&d, 4, 6), 3);
+        assert_eq!(retarget(&d, 4, 5), 4);
+        assert_eq!(retarget(&d, 6, 4), 6);
     }
 
     /// The wire name is `prettyWrap`; a capture without it, or with `null`,
