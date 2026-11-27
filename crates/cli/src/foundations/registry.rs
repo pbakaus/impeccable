@@ -166,18 +166,19 @@ pub fn judge(deps: &[Dep], answers: &HashMap<String, Answer>) -> Report {
         report.items.insert("real-packages", "checked");
     }
 
+    // Every dependency the registry knows of counts; one whose range names no
+    // line (a tag, an unreadable range) is unjudged, so it counts as unknown.
     let ranged: Vec<&&Dep> = judged
         .iter()
-        .filter(|d| d.line.is_some() && answers.get(&d.name) != Some(&Answer::Missing))
+        .filter(|d| answers.get(&d.name) != Some(&Answer::Missing))
         .collect();
     let mut lags = Vec::new();
     let mut unknown = 0;
     for d in &ranged {
-        match answers.get(&d.name) {
-            Some(Answer::Latest(v)) => match parse_line(v) {
+        match (d.line, answers.get(&d.name)) {
+            (Some(declared), Some(Answer::Latest(v))) => match parse_line(v) {
                 Some(latest) => {
-                    let declared = d.line.expect("ranged");
-                    lags.push((lag(declared, latest), d.name.clone(), declared, latest));
+                    lags.push((lag(declared, latest), d.name.clone(), declared, latest))
                 }
                 None => unknown += 1,
             },
@@ -232,8 +233,9 @@ pub fn range_line(spec: &str) -> Option<(u64, u64)> {
         .min()
 }
 
-/// One comparator set's lowest allowed line, from its lower bound; a set
-/// with only upper bounds (`<5`) names none.
+/// One comparator set's lowest allowed line, from its strongest lower bound
+/// (every comparator in a set must hold); a set with only upper bounds (`<5`)
+/// names none.
 fn alternative_line(set: &str) -> Option<(u64, u64)> {
     let set = set.trim();
     if let Some((low, _)) = set.split_once(" - ") {
@@ -255,7 +257,7 @@ fn alternative_line(set: &str) -> Option<(u64, u64)> {
         .map(bound)
         .collect::<Option<Vec<_>>>()?
         .into_iter()
-        .min()
+        .max()
 }
 
 /// A single lower bound or exact version: `^16.2`, `>=1`, `~0.5.1`, `v2`.
@@ -502,6 +504,8 @@ mod tests {
         assert_eq!(range_line("^4 || <3"), None);
         assert_eq!(range_line(">= 1.2.3 < 2"), Some((1, 2)));
         assert_eq!(range_line("^ 3"), Some((3, 0)));
+        // Every comparator in a set holds: its strongest lower bound wins.
+        assert_eq!(range_line(">=1 >=3 <4"), Some((3, 0)));
         let found = deps(
             r#"{"dependencies":{"react":"^16.8.0","local":"file:../x","ws":"workspace:*","gh":"user/repo","any":"*","old":"npm:left-pad@^1.0.0"},"devDependencies":{"@acme/ui":"^2"}}"#,
         );
@@ -594,5 +598,8 @@ mod tests {
         // One of two unknown is more than a tenth: no verdict.
         let half = HashMap::from([("react".to_string(), latest("19.1.0"))]);
         assert_eq!(judge(&deps, &half).items.get("current-dependencies"), None);
+        // A range naming no line is unjudged, never a silent pass.
+        let tagged = [d("react", Some((18, 0))), d("vite", None)];
+        assert_eq!(judge(&tagged, &ok).items.get("current-dependencies"), None);
     }
 }
