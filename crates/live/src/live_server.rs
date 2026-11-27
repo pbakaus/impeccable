@@ -3103,18 +3103,33 @@ mod server_record_tests {
     // host, carrying the token. Only a numeric port is dialed, and only here.
     #[test]
     fn stop_and_poll_never_dial_a_host_named_in_the_record() {
-        // A listener that answers anything, counting the requests it gets.
+        // A listener that answers anything, counting the requests it gets. The
+        // guard stops and joins it when the test ends, failed assertions too.
+        struct Stop(std::sync::Arc<std::sync::atomic::AtomicBool>, Option<std::thread::JoinHandle<()>>);
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                let _ = self.1.take().map(|h| h.join());
+            }
+        }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let addr = listener.local_addr().unwrap();
         let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let seen = hits.clone();
-        std::thread::spawn(move || {
-            for mut conn in listener.incoming().flatten() {
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (seen, stop_flag) = (hits.clone(), done.clone());
+        let _listener = Stop(done, Some(std::thread::spawn(move || {
+            while !stop_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                let Ok((mut conn, _)) = listener.accept() else {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                    continue;
+                };
                 seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = conn.set_nonblocking(false);
                 let _ = std::io::Read::read(&mut conn, &mut [0u8; 4096]);
                 let _ = std::io::Write::write_all(&mut conn, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
             }
-        });
+        })));
         let root = std::env::temp_dir().join(format!("impeccable-server-record-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".impeccable/live")).unwrap();
