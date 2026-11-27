@@ -33,6 +33,38 @@ Notation: `stdout>` / `stderr>` are literal writes; `exit N`; template strings u
 
 ---
 
+### Static HTML media environment
+
+Static HTML scans resolve CSS for one environment, matching the default rendered
+scan: `screen`, a light color scheme, and a 1280 × 800 CSS-pixel viewport. This
+applies to inline and local linked stylesheets, their `media` attributes, and
+nested `@media` blocks. An empty `@media` query matches all media. Nonmatching
+and unsupported queries do not contribute styles, custom properties, or CSS
+pattern findings. A static HTML scan covers one state. Plain CSS/JS text scans
+are unchanged.
+
+Supported conditions are `screen`/`all` media types (other media types do not
+match), `not`/`only`, comma-separated alternatives, grouped `and`/`or` conditions,
+light/dark `prefers-color-scheme`, `orientation`, and `width`/`height` conditions.
+The desktop defaults also match `prefers-reduced-motion: no-preference`,
+`prefers-contrast: no-preference`, `hover: hover`, `any-hover: hover`,
+`pointer: fine`, `any-pointer: fine`, and `forced-colors: none`. Their other
+valid values do not match; `none` and `no-preference` are false in boolean form.
+Dimensions support min/max, equality, and range syntax in px or initial-font
+em/rem (16px). Unsupported features, units, functions, and malformed conditions
+are excluded, including when negated. Use a rendered scan at the desired viewport
+for other environments. Existing `@supports` and `@layer` behavior is unchanged.
+
+For local linked stylesheets, literal assignments to `this.media` or `media`
+in `onload` supply the media value after loading. The last assignment wins,
+with optional `this.onload=null` statements allowed. The loadCSS form
+`if(media!='all')media='all'` also resolves to `all`. The static scan keeps
+the original media attribute for other handlers.
+
+The recorded `collectStaticCssRules` function vectors retain their historical
+behavior. Runtime scans filter media before the collector and custom-property
+resolution; those frozen vectors are not regenerated.
+
 ### PART 1 — the `impeccable` binary and the detect engine
 
 #### `cli/bin/cli.js` -> `impeccable <command>` (root dispatcher)
