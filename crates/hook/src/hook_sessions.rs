@@ -137,6 +137,10 @@ pub fn record_stop(rt: &Runtime, session: &str, started: SystemTime) {
             let _ = file.set_modified(started);
         }
     }
+    // The sweep dates a session by its dir: a session still stopping is live.
+    if let Ok(dir) = std::fs::File::open(base.join(&session_name)) {
+        let _ = dir.set_modified(started);
+    }
 }
 
 /// Records that `session`'s per-edit pass wrote the hook cache under `root`.
