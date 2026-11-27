@@ -253,6 +253,12 @@ pub fn opt_string(s: &Option<String>) -> Value {
     }
 }
 
+/// True when `dir` is `home`, by string or by resolved path (a symlinked home).
+pub fn is_home_dir(dir: &str, home: &str) -> bool {
+    dir == home
+        || matches!((std::fs::canonicalize(dir), std::fs::canonicalize(home)), (Ok(a), Ok(b)) if a == b)
+}
+
 /// `os.homedir()` as Node computes it on posix: $HOME first.
 pub fn homedir(env: &Env) -> String {
     if cfg!(windows) {

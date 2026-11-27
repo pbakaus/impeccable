@@ -635,6 +635,13 @@ const cases = [
   { id: 'pin-polish', verb: 'pin', workspace: 'ctx-pin', args: ['pin', 'polish'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-audit-skips-existing', verb: 'pin', workspace: 'ctx-pin', args: ['pin', 'audit'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-live-from-subdir', verb: 'pin', workspace: 'ctx-pin', cwd: 'sub/deeper', setup: (ws) => fs.mkdirSync(path.join(ws, 'sub/deeper'), { recursive: true }), args: ['pin', 'live'], env: env(), files: ['.*/skills/**'] },
+  // #1696: a .git and package.json in the home dir are not a project, so a
+  // pin from a marker-less folder below home never writes into home's harness.
+  {
+    id: 'pin-git-home-not-project-root', verb: 'pin', workspace: 'ctx-empty', cwd: 'proj/sub',
+    setup: (ws) => { fs.mkdirSync(path.join(ws, '.git')); fs.mkdirSync(path.join(ws, 'proj/sub'), { recursive: true }); write(ws, '.claude/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'); },
+    args: ['pin', 'polish'], env: env({ HOME: WS, USERPROFILE: WS }), files: ['.*/skills/**'],
+  },
   { id: 'pin-unpin-nothing-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'polish'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-unpin-skips-non-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'audit'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-then-unpin', verb: 'pin', workspace: 'ctx-pin', env: env(), files: ['.*/skills/**'], steps: [{ args: ['pin', 'critique'] }, { args: ['pin', 'critique'] }, { args: ['unpin', 'critique'] }, { args: ['unpin', 'critique'] }] },
