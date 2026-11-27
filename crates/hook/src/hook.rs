@@ -889,15 +889,17 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             .chain(discovered.into_iter().map(|file| (file, true)))
             .collect();
         // Native source in a native project is left alone; its web code is
-        // scanned (#1644). Resolving the platform reads PRODUCT.md, so it is
-        // paid only once there are touched files.
+        // scanned (#1644). Files the per-edit pass recorded already passed
+        // that rule (a web file's stylesheets included), so only discovered
+        // files are checked. Resolving the platform reads PRODUCT.md, so it
+        // is paid only once there are touched files.
         if !touched.is_empty() {
             let project = match (at_session_cwd, &platform_memo) {
                 (true, Some(p)) => p.clone(),
                 _ => resolve_project_platform(rt, root),
             };
             if project.is_native() {
-                touched.retain(|(file, _)| !project.skips(file));
+                touched.retain(|(file, found)| !*found || !project.skips(file));
                 if touched.is_empty() {
                     first_skip.get_or_insert(native_skip(&root_audit, project.platform));
                     continue;

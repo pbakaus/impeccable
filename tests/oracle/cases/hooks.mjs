@@ -162,12 +162,16 @@ export default [
     ],
   },
   {
-    id: 'hook-native-platform-ui-package', verb: 'hook', workspace: 'hook-project', files: CACHE_FILES,
+    id: 'hook-native-platform-ui-package', workspace: 'hook-project', files: CACHE_FILES,
     setup: (ws) => {
       fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n');
       fs.writeFileSync(`${ws}/package.json`, JSON.stringify({ name: 'site', private: true, dependencies: { next: '15.0.0' } }) + '\n');
     },
-    stdin: claudeEdit('src/components/Card.tsx'),
+    // The Stop pass keeps the stylesheet the edit pulled in.
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/components/Card.tsx') },
+      { verb: 'hook', stdin: stop() },
+    ],
   },
   {
     id: 'hook-config-disabled', verb: 'hook', workspace: 'hook-project',
