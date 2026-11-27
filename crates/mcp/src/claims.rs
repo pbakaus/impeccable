@@ -203,8 +203,42 @@ pub fn installation(home: &Path) -> Option<String> {
             return Some(text.to_string());
         }
     }
+    // Made with create_new on the file itself, so two processes starting together agree: the loser reads the
+    // winner's handle.
     let made = random_handle()?;
-    write_private(&path, made.as_bytes()).then_some(made)
+    for _ in 0..20 {
+        if create_private(&path, made.as_bytes()) {
+            return Some(made);
+        }
+        if let Some(text) = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| handle_ok(t)) {
+            return Some(text);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    None
+}
+
+/// A new 0600 file at `path`, written only when nothing is there yet.
+#[cfg(unix)]
+fn create_private(path: &Path, bytes: &[u8]) -> bool {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let Some(dir) = path.parent() else { return false };
+    if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).is_err() {
+        return false;
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+        .and_then(|mut f| f.write_all(bytes))
+        .is_ok()
+}
+#[cfg(not(unix))]
+fn create_private(_path: &Path, _bytes: &[u8]) -> bool {
+    false
 }
 
 /// The claim this process holds.
@@ -213,12 +247,33 @@ struct Held {
     claim: String,
     generation: String,
     user: Option<String>,
+    /// When the server last confirmed the lease, and how long it runs: past that, the claim is gone even when the
+    /// server couldn't be reached to say so.
+    renewed: std::time::Instant,
+    lease: Duration,
+}
+
+impl Held {
+    fn live(&self) -> bool {
+        self.renewed.elapsed() < self.lease
+    }
 }
 
 /// What the renewal thread and the serving thread share.
 struct Shared {
     door: Box<dyn Door>,
     held: Option<Held>,
+    /// The door said it's off (`NEEDS_YOU_CLAIMS`): nothing more is tried.
+    off: bool,
+}
+
+impl Shared {
+    /// The claim is gone: Loop must not wake this session on it, and the next Needs-you call claims again.
+    fn lose(&mut self, proof: &Path, why: &Result<Value, Refused>) {
+        self.held = None;
+        self.off |= why == &Err(Refused::Off);
+        let _ = std::fs::remove_file(proof);
+    }
 }
 
 /// Where this session's files go, and who it is.
@@ -270,7 +325,7 @@ impl Observer {
         let installation = installation(&place.home)?;
         let every = place.renew_every;
         let mut me = Observer {
-            shared: Arc::new(Mutex::new(Shared { door, held: None })),
+            shared: Arc::new(Mutex::new(Shared { door, held: None, off: false })),
             harness: harness.name,
             session,
             place,
@@ -295,7 +350,7 @@ impl Observer {
 
     /// The instance handle to send as `Impeccable-Instance`, while a claim is held.
     pub fn instance(&self) -> Option<String> {
-        self.lock().held.is_some().then(|| self.instance.clone())
+        self.lock().held.as_ref().is_some_and(Held::live).then(|| self.instance.clone())
     }
 
     /// The harness's own session id.
@@ -325,7 +380,20 @@ impl Observer {
             }
             self.name = Some(name);
         }
-        if self.lock().held.is_none() {
+        self.reclaim();
+    }
+
+    /// A Needs-you call, named or not: a claim that isn't held (or ran out) is taken again, under the name it has.
+    pub fn reclaim(&mut self) {
+        let lost = {
+            let mut s = self.lock();
+            if s.held.as_ref().is_some_and(|h| !h.live()) {
+                let gone = Err(Refused::Lapsed);
+                s.lose(&self.proof_path(), &gone);
+            }
+            s.held.is_none()
+        };
+        if lost {
             self.claim();
         }
     }
@@ -336,6 +404,9 @@ impl Observer {
     }
 
     fn claim(&mut self) {
+        if self.lock().off {
+            self.done = true;
+        }
         let Some(name) = self.name.clone().filter(|_| !self.done) else { return };
         if self.not_before.is_some_and(|t| std::time::Instant::now() < t) {
             return;
@@ -356,10 +427,9 @@ impl Observer {
                     _ => return,
                 };
                 let Some(claim) = v["claim"].as_str().map(str::to_string) else { return };
-                let held = Held { claim, generation, user: v["userId"].as_str().map(str::to_string) };
-                if let Some(lease) = v["leaseSeconds"].as_u64().filter(|s| *s >= 3) {
-                    self.every = self.every.min(Duration::from_secs(lease) / RENEW_SHARE);
-                }
+                let lease = v["leaseSeconds"].as_u64().filter(|s| *s >= 3).map(Duration::from_secs).unwrap_or(LEASE_FALLBACK);
+                self.every = self.every.min(lease / RENEW_SHARE);
+                let held = Held { claim, generation, user: v["userId"].as_str().map(str::to_string), renewed: std::time::Instant::now(), lease };
                 self.lock().held = Some(held.clone());
                 let rebind = json!({ "claim": held.claim, "generation": held.generation, "name": name, "project": self.place.project });
                 write_private(&self.rebind_path(), rebind.to_string().as_bytes());
@@ -400,10 +470,15 @@ impl Observer {
             let mut s = shared.lock().unwrap_or_else(|p| p.into_inner());
             let Some(held) = s.held.clone() else { continue };
             let body = json!({ "action": "renew", "claim": held.claim, "generation": held.generation, "instance": instance });
-            if s.door.post(&body) == Err(Refused::Lapsed) {
-                // Gone: Loop must not wake this session on it, and the next Needs-you call claims again.
-                s.held = None;
-                let _ = std::fs::remove_file(&proof);
+            let answer = s.door.post(&body);
+            match &answer {
+                Ok(_) => {
+                    if let Some(h) = s.held.as_mut() { h.renewed = std::time::Instant::now(); }
+                }
+                Err(Refused::Lapsed | Refused::Off) => s.lose(&proof, &answer),
+                // Unreachable: the claim holds only as long as its last confirmed lease.
+                Err(_) if !held.live() => s.lose(&proof, &answer),
+                Err(_) => {}
             }
         }));
     }
@@ -414,9 +489,9 @@ impl Observer {
         let Some(held) = s.held.clone() else { return };
         for chunk in deliveries.chunks(RECEIPT_MAX) {
             let body = json!({ "action": "receipt", "claim": held.claim, "generation": held.generation, "instance": self.instance, "deliveries": chunk });
-            if s.door.post(&body) == Err(Refused::Lapsed) {
-                s.held = None;
-                let _ = std::fs::remove_file(self.proof_path());
+            let answer = s.door.post(&body);
+            if matches!(answer, Err(Refused::Lapsed | Refused::Off)) {
+                s.lose(&self.proof_path(), &answer);
                 return;
             }
         }
@@ -694,6 +769,49 @@ mod tests {
         o.not_before = Some(std::time::Instant::now());
         o.named("t1jp");
         assert_eq!((o.take_note(), actions(&held).len()), (None, 2));
+    }
+
+    // Catches a claim (and Loop's proof) outliving its lease when renewals can't reach the server, and a session
+    // that never takes it back afterwards.
+    #[test]
+    fn an_unconfirmed_lease_runs_out_and_the_next_call_claims_again() {
+        let b = Box_::new("unreachable");
+        b.record(&format!("claude-{SESSION}.json"), json!({ "pid": 4242, "startSec": 1_764_000_000u64, "startUsec": 123_456 }), 0o600);
+        let door = fake(|body| if body["action"] == "renew" { Err(Refused::Other) } else { granted(body) });
+        let mut o = Observer::start(Box::new(door.clone()), &harness(Some("t1jp")), b.place()).unwrap();
+        assert!(o.instance().is_some() && o.proof_path().exists());
+        o.lock().held.as_mut().unwrap().lease = Duration::from_millis(1);
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!((o.instance(), o.proof_path().exists()), (None, false));
+        o.reclaim();
+        assert_eq!(actions(&door).iter().filter(|a| *a == "claim").count(), 2);
+        assert!(o.instance().is_some());
+    }
+
+    // Catches renewals and receipts carrying on after the switch went off.
+    #[test]
+    fn the_switch_going_off_ends_the_claim() {
+        let b = Box_::new("switched-off");
+        b.record(&format!("claude-{SESSION}.json"), json!({ "pid": 4242, "startSec": 1_764_000_000u64, "startUsec": 123_456 }), 0o600);
+        let door = fake(|body| if body["action"] == "renew" { Err(Refused::Off) } else { granted(body) });
+        let mut o = Observer::start(Box::new(door.clone()), &harness(Some("t1jp")), b.place()).unwrap();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!((o.instance(), o.proof_path().exists()), (None, false));
+        o.named("t1jp");
+        o.reclaim();
+        let log = actions(&door);
+        assert_eq!(log.iter().filter(|a| *a == "claim").count(), 1, "{log:?}");
+        assert_eq!(log.iter().filter(|a| *a == "renew").count(), 1, "{log:?}");
+    }
+
+    // Catches two processes starting together each making an installation handle.
+    #[test]
+    fn processes_starting_together_agree_on_the_installation() {
+        let b = Box_::new("installation");
+        let home = b.root.join("impeccable");
+        let handles: Vec<_> = (0..8).map(|_| { let h = home.clone(); std::thread::spawn(move || installation(&h)) }).collect();
+        let got: std::collections::BTreeSet<_> = handles.into_iter().map(|t| t.join().unwrap().unwrap()).collect();
+        assert_eq!(got.len(), 1, "{got:?}");
     }
 
     /// The account service's `/mcp` as one canned answer, remembering the instance each call carried.

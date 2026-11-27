@@ -215,8 +215,12 @@ fn serve_all(
                 o.named(&from);
             }
         }
-        upstream.set_instance(observer.as_ref().and_then(claims::Observer::instance));
         let tool = request.pointer("/params/name").and_then(Value::as_str).map(str::to_string);
+        // A call that names nothing still takes back a claim that lapsed, under the name the inbox has.
+        if let (Some(o), true, None) = (observer.as_mut(), is_needs_you_call(&request), named_by(&request)) {
+            o.reclaim();
+        }
+        upstream.set_instance(observer.as_ref().and_then(claims::Observer::instance));
         asked_as(&mut request, agent.as_deref());
         if listed_with.is_some_and(|was| was != relay_there()) {
             frame(out, &json!({ "jsonrpc": "2.0", "method": "notifications/tools/list_changed" }));
@@ -261,11 +265,10 @@ fn serve_all(
                     });
                 }
             }
+            let mut handed = Vec::new();
             if let (Some(o), Some(tool)) = (observer.as_mut(), tool.as_deref().filter(|t| t.starts_with("needs_you."))) {
-                if let Some(result) = reply.get("result") {
-                    if tool == "needs_you.answer" {
-                        o.received(&claims::deliveries(result));
-                    }
+                if let Some(result) = reply.get("result").filter(|_| tool == "needs_you.answer") {
+                    handed = claims::deliveries(result);
                 }
                 if let Some(note) = o.take_note() {
                     if let Some(content) = reply.pointer_mut("/result/content").and_then(Value::as_array_mut) {
@@ -273,7 +276,12 @@ fn serve_all(
                     }
                 }
             }
-            frame(out, &reply);
+            // Received means handed over: the receipt follows the written, flushed reply, never precedes it.
+            if frame(out, &reply) && !handed.is_empty() {
+                if let Some(o) = observer.as_mut() {
+                    o.received(&handed);
+                }
+            }
         }
         if std::mem::take(&mut observe_after) {
             if let Some((env, cwd)) = here {
@@ -389,9 +397,14 @@ fn browsed(request: &Value, socket: &std::path::Path, agent: &str, link: &mut Op
     })
 }
 
-fn frame(out: &mut dyn Write, v: &Value) {
-    let _ = writeln!(out, "{v}");
-    let _ = out.flush();
+/// Write one frame; whether it reached the agent's pipe.
+fn frame(out: &mut dyn Write, v: &Value) -> bool {
+    writeln!(out, "{v}").is_ok() && out.flush().is_ok()
+}
+
+fn is_needs_you_call(request: &Value) -> bool {
+    request.get("method").and_then(Value::as_str) == Some("tools/call")
+        && request.pointer("/params/name").and_then(Value::as_str).is_some_and(|n| n.starts_with("needs_you."))
 }
 
 /// The reply to one request; None for a notification.
