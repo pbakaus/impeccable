@@ -306,6 +306,59 @@ impl Session {
         let url = format!("{}{path}", self.account().issuer);
         self.call(|client, token| client.get_json(&url, Some(token)))
     }
+
+    /// [`Session::get`] that is over by `by`: waiting for another command's
+    /// sign-in step, a token refresh and the read all come out of that time.
+    /// The read runs on the caller's client, which the caller bounds, or after
+    /// a refresh on one bounded by what is left.
+    pub fn get_by(
+        &mut self,
+        path: &str,
+        by: std::time::Instant,
+    ) -> Result<serde_json::Value, SessionError> {
+        let url = format!("{}{path}", self.account().issuer);
+        let fresh = self.secret.access_expires_at > now() + SKEW_SECS;
+        if !fresh {
+            self.renew_by(by)?;
+        }
+        let read = |s: &Session, renewed: bool| {
+            let token = Some(s.secret.access_token.as_str());
+            if renewed {
+                Client::with_deadline(s.account(), left(by)).get_json(&url, token)
+            } else {
+                s.client.get_json(&url, token)
+            }
+        };
+        match read(self, !fresh) {
+            Err(ApiError::Status { status: 401, .. }) => {
+                self.renew_by(by)?;
+                read(self, true).map_err(SessionError::Api)
+            }
+            other => other.map_err(SessionError::Api),
+        }
+    }
+
+    /// A refresh that waits for the lock no later than `by`. The rotation
+    /// itself gets at least [`RENEWAL`]: one cut short after the service has
+    /// rotated spends the refresh token.
+    fn renew_by(&mut self, by: std::time::Instant) -> Result<(), SessionError> {
+        let lock = self
+            .store
+            .lock_for(left(by))
+            .map_err(SessionError::Local)?;
+        let bounded = Client::with_deadline(self.account(), left(by).max(RENEWAL));
+        let kept = std::mem::replace(&mut self.client, bounded);
+        let renewed = self.refresh_holding(&lock);
+        self.client = kept;
+        renewed
+    }
+}
+
+/// The least time a token rotation is given.
+const RENEWAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn left(by: std::time::Instant) -> std::time::Duration {
+    by.saturating_duration_since(std::time::Instant::now())
 }
 
 /// What `/cli/v1/entitlement` says about this account.

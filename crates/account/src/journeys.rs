@@ -573,6 +573,15 @@ impl Door {
         self.session.get(path).map_err(stop_of)
     }
 
+    /// A read over by `by`, a token refresh included. Out of time waiting for
+    /// another command's sign-in step, it is a read that didn't answer.
+    fn get_by(&mut self, path: &str, by: Instant) -> Result<Value, Stop> {
+        self.session.get_by(path, by).map_err(|e| match e {
+            SessionError::Local(_) if Instant::now() >= by => Stop::Unreachable,
+            e => stop_of(e),
+        })
+    }
+
     fn post(&mut self, path: &str, body: Value) -> Result<Value, Stop> {
         let url = format!("{}{path}", self.account.issuer);
         self.session
@@ -996,21 +1005,34 @@ fn watch(
 ) -> Result<Done, Stop> {
     let started = Instant::now();
     let total = limit.unwrap_or(JOURNEY_TIMEOUT);
-    // `journeys status --wait` keeps to its time: no read runs far past it.
-    door.within(match limit {
-        Some(wait) => wait.clamp(Duration::from_secs(2), Duration::from_secs(10)),
-        None => Duration::from_secs(10),
-    });
     let path = format!("{JOURNEYS}/{id}");
     let mut last: Option<Status> = None;
     let mut shown = 0;
     let mut misses = 0;
     let mut waiting_since: Option<Instant> = None;
+    let mut first = true;
+    // The deadline the client was last built with.
+    let mut bound: Option<Duration> = None;
     loop {
         if ctrl_c() {
             return Err(Stop::Stopped);
         }
-        match door.get(&path) {
+        let Some(budget) = read_budget(total.saturating_sub(started.elapsed()), first) else {
+            if limit.is_none() {
+                return Err(Stop::Timeout);
+            }
+            // Time is up: where it stands, or that Impeccable didn't answer in time.
+            return match &last {
+                Some(status) => Ok(going(status, ctx, say, io)),
+                None => Err(Stop::Unreachable),
+            };
+        };
+        first = false;
+        if bound.is_none_or(|b| budget < b) {
+            door.within(budget);
+            bound = Some(budget);
+        }
+        match door.get_by(&path, Instant::now() + budget) {
             Err(Stop::Unreachable) => {
                 misses += 1;
                 if misses >= MISSES {
@@ -1054,21 +1076,22 @@ fn watch(
                 last = Some(status);
             }
         }
-        if started.elapsed() >= total {
-            if limit.is_none() {
-                return Err(Stop::Timeout);
-            }
-            // Time is up: where it stands, or that Impeccable didn't answer in time.
-            return match &last {
-                Some(status) => Ok(going(status, ctx, say, io)),
-                None => Err(Stop::Unreachable),
-            };
-        }
         let wake = Instant::now() + POLL.min(total.saturating_sub(started.elapsed()));
         while Instant::now() < wake && !ctrl_c() {
             std::thread::sleep(Duration::from_millis(50));
         }
     }
+}
+
+/// How long the next read may take with `left` of the watch to go. The first
+/// always runs (`journeys status` without `--wait` is one look); after it,
+/// none starts once the time is up and none runs past it.
+fn read_budget(left: Duration, first: bool) -> Option<Duration> {
+    let most = Duration::from_secs(10);
+    if first {
+        return Some(left.clamp(Duration::from_secs(2), most));
+    }
+    (!left.is_zero()).then(|| left.min(most))
 }
 
 /// A journey that has ended: exit 0 when it reached its goal, else 1.
@@ -1464,6 +1487,21 @@ mod tests {
         );
         assert_eq!(given(&["watch"]), None);
         assert_eq!(given(&[]), Some(vec![]));
+    }
+
+    #[test]
+    fn a_watch_reads_once_then_never_past_its_time() {
+        // Catches: `status --wait` starting a read after its time is up or allowing one longer than what is left, or plain `status` skipping its one look.
+        let s = Duration::from_secs;
+        for (left, first, budget) in [
+            (s(0), true, Some(s(2))),
+            (s(60), true, Some(s(10))),
+            (s(3), false, Some(s(3))),
+            (s(60), false, Some(s(10))),
+            (s(0), false, None),
+        ] {
+            assert_eq!(read_budget(left, first), budget, "{left:?} first={first}");
+        }
     }
 
     #[test]
