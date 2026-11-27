@@ -670,6 +670,14 @@ mod tests {
         // Resolved beside DESIGN.md alone, the repo-root file is taken for a dead one.
         let alone = check_design_dead_paths(Some(design), Some(&path), &root, None);
         assert!(alone[0].summary.contains("`.claude/skills/design-system/references/x.md`"), "{}", alone[0].summary);
+        // Colour drift reads a token file found only at the repo root, and the one beside DESIGN.md wins when both exist.
+        use super::check_design_colour_drift;
+        let colours = "---\ncolors:\n  brand: \"#c8552b\"\n  gold: \"#d4af37\"\n---\n# D\n\nTokens: `styles/tokens.css`.\n";
+        let drift = |root: &str| check_design_colour_drift(Some(colours), Some(&path), root, Some(root)).iter().map(|f| f.summary.clone()).collect::<Vec<_>>();
+        write(&root, "styles/tokens.css", ":root { --brand: #c8552b; }\n");
+        assert_eq!(drift(&root), ["apps/web/DESIGN.md declares a colour the token files it names no longer contain: `gold #d4af37`."]);
+        write(&root, "apps/web/styles/tokens.css", ":root { --gold: #d4af37; }\n");
+        assert_eq!(drift(&root), ["apps/web/DESIGN.md declares a colour the token files it names no longer contain: `brand #c8552b`."]);
     }
 
     #[test]
