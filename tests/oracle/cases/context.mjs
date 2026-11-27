@@ -192,7 +192,7 @@ const CATALOG = `${REPO}/tests/fixtures/concept-catalog`;
 // time the real mode prose in skill/reference/ changes.
 const MODE_RULES_SKILL = `${REPO}/tests/fixtures/mode-rules-skill`;
 const seedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: CATALOG, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
-const degradedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', ...extra });
+const degradedEnv = (extra = {}) => env({ IMPECCABLE_SKILL_DIR: MODE_RULES_SKILL, IMPECCABLE_CATALOG_DIR: `${WS}/no-such-catalog`, IMPECCABLE_API_URL: 'http://127.0.0.1:9/api', IMPECCABLE_API_TIMEOUT: '300', DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, ...extra });
 
 // Two dealt catalog worlds as concept-seed records them in roll.json.
 const WORLDS = [
@@ -250,6 +250,7 @@ const cases = [
     })),
   },
   { id: 'context-empty', verb: 'context', workspace: 'ctx-empty', env: env(), files: IMPECCABLE_FILES },
+  { id: 'context-telemetry-notice', verb: 'context', workspace: 'ctx-empty', env: env({ DO_NOT_TRACK: null, IMPECCABLE_NO_TELEMETRY: null, CI: null, IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
   // The Windows .cmd launcher exports its own path as IMPECCABLE_SELF. A path
   // with spaces is printed with PowerShell's call operator (#744).
   { id: 'context-cmd-launcher-spaced-path', verb: 'context', workspace: 'ctx-empty', env: env({ IMPECCABLE_SELF: 'C:\\Users\\Oracle User\\skill\\scripts\\impeccable.cmd' }) },
@@ -427,6 +428,9 @@ const cases = [
   { id: 'context-android', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nAndroid\n\n## Positioning\nNative android.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-adaptive-word', verb: 'context', workspace: 'ctx-empty', setup: (ws) => write(ws, 'PRODUCT.md', '# P\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nadaptive\n\n## Positioning\nAdaptive keyword.\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-native-evidence-web', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, 'ios/Podfile', "platform :ios, '15.0'\n"), env: env(), files: IMPECCABLE_FILES },
+  // #1644: a native `## Platform` does not steer a web `--target`; a React Native one still gets it.
+  { id: 'context-native-web-target', verb: 'context', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'PRODUCT.md', '# Product\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nios\n\n## Users\nPeople who track habits.\n'); write(ws, 'src/index.html', '<!doctype html>\n<title>Site</title>\n<h1>Habits</h1>\n'); }, args: ['--target', 'src/index.html'], env: env({ IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
+  { id: 'context-native-rn-target', verb: 'context', workspace: 'ctx-empty', setup: (ws) => { write(ws, 'PRODUCT.md', '# Product\n\n<!-- impeccable:product-schema 1 -->\n\n## Platform\n\nios\n\n## Users\nPeople who track habits.\n'); write(ws, 'package.json', JSON.stringify({ name: 'app', private: true, dependencies: { 'react-native': '0.74.0' } }, null, 2) + '\n'); write(ws, 'src/App.tsx', 'export default function App() { return null; }\n'); }, args: ['--target', 'src/App.tsx'], env: env({ IMPECCABLE_NO_STALENESS_CHECK: '1' }), files: IMPECCABLE_FILES },
   { id: 'context-build-path-unset-with-surfaces', verb: 'context', workspace: 'ctx-product-only', setup: (ws) => write(ws, '.impeccable/surfaces/src-app-tsx.md', '---\nversion: 1\nslug: "src-app-tsx"\nprimary_target: "src/App.tsx"\nrelated_targets: []\n---\n\n# Surface brief: App\n'), env: env(), files: IMPECCABLE_FILES },
   { id: 'context-project-roots-match-nothing', verb: 'context', workspace: 'ctx-monorepo', setup: (ws) => write(ws, '.impeccable/config.json', JSON.stringify({ projectRoots: ['services/*'] }, null, 2) + '\n'), env: env(), files: IMPECCABLE_FILES },
   // #1014: target selection offers only workspaces with a UI signal and counts
@@ -558,6 +562,12 @@ const cases = [
     },
     args: ['--json'], env: env(),
   },
+  {
+    // Package names, Tailwind utilities, file-name patterns and formats are not files (issue 1674); a missing file still is.
+    id: 'doctor-design-dead-path-names', verb: 'doctor', workspace: 'ctx-signals',
+    setup: (ws) => write(ws, 'DESIGN.md', '# D\n\nIcons: `@phosphor-icons/react`, `motion/react`. Overlay `white/70`, `hover:bg-bg-sunken/50`, `ring-ring/65`. Covers: `public/covers/{type}-{subject}.svg`. Counter: `current/max`, `412/50,000`. Cards: `src/Card.tsx`.\n'),
+    args: ['--json'], env: env(),
+  },
   // `design-compact` (REN-2129, S3): proposes a long DESIGN.md as its map and writes only with --write, never over an
   // archive that exists. The long fixture's frontmatter carries a comment, a quoted hex and a rule the map keeps.
   ...(() => {
@@ -626,6 +636,13 @@ const cases = [
   { id: 'pin-polish', verb: 'pin', workspace: 'ctx-pin', args: ['pin', 'polish'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-audit-skips-existing', verb: 'pin', workspace: 'ctx-pin', args: ['pin', 'audit'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-live-from-subdir', verb: 'pin', workspace: 'ctx-pin', cwd: 'sub/deeper', setup: (ws) => fs.mkdirSync(path.join(ws, 'sub/deeper'), { recursive: true }), args: ['pin', 'live'], env: env(), files: ['.*/skills/**'] },
+  // #1696: a .git and package.json in the home dir are not a project, so a
+  // pin from a marker-less folder below home never writes into home's harness.
+  {
+    id: 'pin-git-home-not-project-root', verb: 'pin', workspace: 'ctx-empty', cwd: 'proj/sub',
+    setup: (ws) => { fs.mkdirSync(path.join(ws, '.git')); fs.mkdirSync(path.join(ws, 'proj/sub'), { recursive: true }); write(ws, '.claude/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\n'); },
+    args: ['pin', 'polish'], env: env({ HOME: WS, USERPROFILE: WS }), files: ['.*/skills/**'],
+  },
   { id: 'pin-unpin-nothing-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'polish'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-unpin-skips-non-pinned', verb: 'pin', workspace: 'ctx-pin', args: ['unpin', 'audit'], env: env(), files: ['.*/skills/**'] },
   { id: 'pin-then-unpin', verb: 'pin', workspace: 'ctx-pin', env: env(), files: ['.*/skills/**'], steps: [{ args: ['pin', 'critique'] }, { args: ['pin', 'critique'] }, { args: ['unpin', 'critique'] }, { args: ['unpin', 'critique'] }] },

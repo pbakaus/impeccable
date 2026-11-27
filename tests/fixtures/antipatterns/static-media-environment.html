@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Static scan media environment</title>
+  <style>
+    body { margin: 40px; background: #fff; color: #111; font: 16px/1.5 Georgia, serif; }
+    main { display: grid; grid-template-columns: 480px 480px; gap: 40px; }
+    section { width: 480px; }
+    article { width: 440px; min-height: 120px; padding: 16px; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 24px; }
+    h3 { font-size: 20px; }
+    p { color: #111; background: #fff; }
+    /* Each case has its own ink so pair deduplication cannot hide a media regression. */
+    @media screen { #flag-screen p { color: #eeeeee; } }
+    @media (prefers-color-scheme: light) { #flag-light p { color: #ededed; } }
+    @media (min-width: 1280px) { #flag-width p { color: #ececec; } }
+    @media print, screen and (width <= 1280px) { #flag-list p { color: #ebebeb; } }
+    @media print { #pass-print p { color: #eaeaea; } }
+    @media (prefers-color-scheme: dark) { #pass-dark p { color: #e9e9e9; } }
+    @media (max-width: 1279px) { #pass-narrow p { color: #e8e8e8; } }
+    @media (unrecognized-feature: yes) { #pass-unknown p { color: #e7e7e7; } }
+    @media not (unrecognized-feature: yes) { #pass-negated-unknown p { color: #e6e6e6; } }
+  </style>
+</head>
+<body>
+  <h1>Static scan media environment</h1>
+  <main>
+    <section>
+      <h2>Should flag</h2>
+      <article id="flag-screen">
+        <h3>flag-screen</h3>
+        <p>This text checks screen.</p>
+      </article>
+      <article id="flag-light">
+        <h3>flag-light</h3>
+        <p>This text checks (prefers-color-scheme: light).</p>
+      </article>
+      <article id="flag-width">
+        <h3>flag-width</h3>
+        <p>This text checks (min-width: 1280px).</p>
+      </article>
+      <article id="flag-list">
+        <h3>flag-list</h3>
+        <p>This text checks print, screen and (width &lt;= 1280px).</p>
+      </article>
+    </section>
+    <section>
+      <h2>Should pass</h2>
+      <article id="pass-print">
+        <h3>pass-print</h3>
+        <p>This text checks print.</p>
+      </article>
+      <article id="pass-dark">
+        <h3>pass-dark</h3>
+        <p>This text checks (prefers-color-scheme: dark).</p>
+      </article>
+      <article id="pass-narrow">
+        <h3>pass-narrow</h3>
+        <p>This text checks (max-width: 1279px).</p>
+      </article>
+      <article id="pass-unknown">
+        <h3>pass-unknown</h3>
+        <p>This text checks (unrecognized-feature: yes).</p>
+      </article>
+      <article id="pass-negated-unknown">
+        <h3>pass-negated-unknown</h3>
+        <p>This text checks not (unrecognized-feature: yes).</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

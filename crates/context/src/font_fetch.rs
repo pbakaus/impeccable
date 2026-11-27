@@ -39,6 +39,7 @@ pub struct Face {
 pub fn faces(css: &str) -> Vec<Face> {
     static BLOCK: once_cell::sync::Lazy<regex::Regex> =
         once_cell::sync::Lazy::new(|| regex::Regex::new(r"/\*\s*([a-z0-9-]+)\s*\*/\s*@font-face\s*\{([^}]*)\}").unwrap());
+    static WEIGHT: once_cell::sync::Lazy<regex::Regex> = once_cell::sync::Lazy::new(|| regex::Regex::new(r"^\d{1,4}( \d{1,4})?$").unwrap());
     let field = |block: &str, name: &str| {
         regex::Regex::new(&format!(r"{name}:\s*([^;]+);")).ok().and_then(|r| r.captures(block)).map(|c| c[1].trim().to_string()).unwrap_or_default()
     };
@@ -48,7 +49,10 @@ pub fn faces(css: &str) -> Vec<Face> {
             let block = c.get(2)?.as_str();
             let src = field(block, "src");
             let url = src.strip_prefix("url(")?.split(')').next()?.trim_matches(['"', '\'']).to_string();
-            Some(Face { subset: c[1].to_string(), style: field(block, "font-style"), weight: field(block, "font-weight"), url, range: field(block, "unicode-range") })
+            let face = Face { subset: c[1].to_string(), style: field(block, "font-style"), weight: field(block, "font-weight"), url, range: field(block, "unicode-range") };
+            // The weight becomes part of a file name: take only the shapes Google serves, so a tampered response
+            // cannot name a path like `400\..\x` (#1584).
+            WEIGHT.is_match(&face.weight).then_some(face)
         })
         .collect()
 }
@@ -227,6 +231,16 @@ mod tests {
         assert_eq!(file_name("Space Grotesk", &got[1]), "space-grotesk-600-italic-latin.woff2");
         assert_eq!(variable_name("Space Grotesk", &got[1]), "space-grotesk-italic-latin.woff2");
         assert!(rule("Space Grotesk", &got[1], "assets/fonts/x.woff2").contains("src: url(\"assets/fonts/x.woff2\") format(\"woff2\");\n  unicode-range: U+0000-00FF, U+0131;"));
+    }
+
+    #[test]
+    fn drops_a_face_whose_weight_would_leave_the_font_directory() {
+        let face = |weight: &str| format!("/* latin */\n@font-face {{\n  font-style: normal;\n  font-weight: {weight};\n  src: url(https://fonts.gstatic.com/a.woff2) format('woff2');\n  unicode-range: U+0000-00FF;\n}}\n");
+        for weight in ["400\\..\\..\\x", "400/../../x", "../x"] {
+            assert!(faces(&face(weight)).is_empty(), "{weight}");
+        }
+        // A variable font's range of weights is the one other shape Google serves.
+        assert_eq!(faces(&face("100 900"))[0].weight, "100 900");
     }
 
     #[test]

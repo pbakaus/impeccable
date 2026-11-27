@@ -730,18 +730,15 @@ pub fn run(args: &[String], io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -
         return 0;
     }
 
-    let Some((info, _)) = read_live_server_info(&cwd, &env) else {
+    let Some((info, port)) = read_live_server_info(&cwd, &env)
+        .and_then(|(info, _)| info.port.map(|port| (info, port)))
+    else {
         io.err(&format!(
             "No running live server found. Start one with: {}\n",
             script_cmd(&env, &cwd, "live")
         ));
         return 1;
     };
-    let port = info
-        .raw
-        .get("port")
-        .map(js_display)
-        .unwrap_or_else(|| "undefined".to_string());
     let token = info
         .raw
         .get("token")

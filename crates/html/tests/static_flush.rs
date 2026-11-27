@@ -23,6 +23,82 @@ fn page(style: &str, body: &str) -> String {
     format!("<!DOCTYPE html><html><head><style>{style}</style></head><body>{body}</body></html>")
 }
 
+const BARE_LIST: &str =
+    ".list { background: #f3f3f3; border: 1px solid #ccc; padding: 0; margin: 0; list-style: none; }";
+const LIST_STYLE: &str = ".list { background: #f3f3f3; border: 1px solid #ccc; padding: 0; margin: 0; list-style: none; }
+     .list > li { padding: 12px 16px; }";
+
+/// A list whose only child is a `<template>` renders nothing, so there is no
+/// text to reach an edge (#1693).
+#[test]
+fn a_template_only_list_is_not_flagged() {
+    let html = page(
+        LIST_STYLE,
+        "<ul class=\"list\"><template><li>Item name here</li></template></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// Template text does not make a rendered, empty `<li>` count as a text child.
+#[test]
+fn template_text_beside_an_empty_item_is_not_flagged() {
+    let html = page(
+        BARE_LIST,
+        "<ul class=\"list\"><template><li>Item name here</li></template><li></li></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A wrapper that holds only a template is not a text-bearing child.
+#[test]
+fn a_template_inside_a_wrapper_is_not_flagged() {
+    let html = page(
+        LIST_STYLE,
+        "<ul class=\"list\"><div><template><li>Item name here</li></template></div></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A wrapper holding a template and one padded block is a single-child
+/// pass-through: the template is not a second child that could reach the edge.
+#[test]
+fn a_template_beside_a_padded_block_in_a_wrapper_is_not_flagged() {
+    let html = page(
+        ".card { background: #f3f3f3; padding: 0; }",
+        "<div class=\"card\"><div><template><p>Template text</p></template>\
+         <p style=\"padding: 16px\">Real text here</p></div></div>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A label centred in a min-height flex row stays inset when a `<template>`
+/// beside it holds a `<br>` or a long label: neither is laid out.
+#[test]
+fn a_template_does_not_undo_a_centred_row() {
+    let style = ".row { display: flex; align-items: center; min-height: 44px; padding: 0 8px; border: 1px solid #ccc; font-size: 16px; }";
+    for extra in ["<br>", "<span>A much longer loop label that runs on and on</span>"] {
+        let html = page(
+            style,
+            &format!("<div class=\"row\"><span>Instagram</span><template>{extra}</template></div>"),
+        );
+        assert_eq!(scan(&html), Vec::<String>::new(), "{extra}");
+    }
+}
+
+/// A template beside a rendered, unpadded item cannot inset it: the item's own
+/// text still sits flush.
+#[test]
+fn a_template_beside_an_unpadded_item_still_flags() {
+    let html = page(
+        BARE_LIST,
+        "<ul class=\"list\"><template><li style=\"padding: 12px 16px\">Item name here</li></template><li>Static flush item</li></ul>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<ul> \"list\": children flush against border+bg on all sides (no inset)".to_string()]
+    );
+}
+
 /// `div.row > h3 > button.py-4`: the shape every component library emits for
 /// an accordion. The direct child carries nothing; the padding that holds the
 /// label off the rules is one step below it.

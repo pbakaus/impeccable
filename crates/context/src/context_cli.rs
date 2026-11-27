@@ -458,7 +458,7 @@ fn hook_consent_declined_at(root: &str) -> bool {
 /// directive and doctor so both report the same state.
 pub fn check_hook_not_installed(ctx: &Ctx, cwd: &str, env: &Env, provider: &Provider) -> Vec<Finding> {
     let manifests = hook_manifests_for(&provider.id);
-    if manifests.is_empty() || is_native(ctx.platform.as_deref()) {
+    if manifests.is_empty() || is_native(ctx.declared_platform.as_deref()) {
         return vec![];
     }
     let active_root = jsp::resolve(if ctx.project_root.is_empty() { cwd } else { &ctx.project_root }, &[]);
@@ -801,11 +801,11 @@ fn update_check_disabled_by_config(cwd: &str) -> bool {
 }
 
 /// JS: computeUpdateDirective()
-pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider) -> Option<String> {
+pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider, telemetry_off: bool) -> Option<String> {
     if env.get("IMPECCABLE_NO_UPDATE_CHECK").map(|v| !v.is_empty()).unwrap_or(false) {
         return None;
     }
-    if update_check_disabled_by_config(cwd) {
+    if update_check_disabled_by_config(cwd) || telemetry_off {
         return None;
     }
     let local = read_local_skill_version(provider)?;
@@ -928,7 +928,7 @@ pub fn run_with_hook_repair(
         None => options.clone(),
     };
     let ctx = load_context(&cwd, &load_options, &env);
-    if !is_native(ctx.platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
+    if !is_native(ctx.declared_platform.as_deref()) && hook_enabled_at(&ctx.project_root, &env) {
         let mut notices = Vec::new();
         for root in hook_manifest_search_roots(&ctx, &cwd, &env) {
             match repair(&root) {
@@ -941,7 +941,10 @@ pub fn run_with_hook_repair(
             io.out(&format!("{}\n", notices.join(" ")));
         }
     }
-    let update_directive = compute_update_directive(&cwd, &env, &provider);
+    // An opt-out where context runs, or in the workspace `--target` selects.
+    let telemetry_off = crate::telemetry::telemetry_disabled(&env, &cwd) || resolved_target_path.as_deref().is_some_and(|t| crate::telemetry::telemetry_disabled(&env, t));
+    let update_directive = compute_update_directive(&cwd, &env, &provider, telemetry_off);
+    let telemetry_directive = crate::telemetry::notice_directive(&env, telemetry_off, &provider.verb_cmd("telemetry"));
     let cmd = &provider.command;
 
     if !ctx.has_product {
@@ -989,6 +992,9 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
+        if let Some(t) = telemetry_directive {
+            parts.push(t);
+        }
         append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
         io.out(&parts.render());
         return 0;
@@ -1016,6 +1022,9 @@ pub fn run_with_hook_repair(
             "WORLD_DISCOVERY_REQUIRED: PRODUCT.md exists but no DESIGN.md or incumbent visual implementation was found. For a new build or redesign, load reference/new-work.md and establish the visual world with the human or structured simulated user before developing the task concept. Scoped fixes to existing code do not need this flow.".to_string()
         });
     }
+    if ctx.platform != ctx.declared_platform {
+        parts.push(format!("PLATFORM_TARGET_WEB: PRODUCT.md's `## Platform` is `{}`, but the target `{}` is web code, so this session treats it as `web`: the native platform reference is not loaded and commands take their web path, the detector included.", ctx.declared_platform.as_deref().unwrap_or(""), options.target_path.as_deref().unwrap_or("")));
+    }
     for (name, path, content) in load_native_platform_references(ctx.platform.as_deref(), &provider) {
         parts.doc(format!("# NATIVE PLATFORM REFERENCE: {} (reference/{}.md)", name.to_uppercase(), name), &path, &content);
     }
@@ -1030,6 +1039,9 @@ pub fn run_with_hook_repair(
     }
     if let Some(u) = update_directive {
         parts.push(u);
+    }
+    if let Some(t) = telemetry_directive {
+        parts.push(t);
     }
     append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
     io.out(&parts.render());
@@ -1605,6 +1617,7 @@ mod user_scope_hook_tests {
             surface_brief_candidates: vec![],
             has_visual_implementation: false,
             platform: None,
+            declared_platform: None,
             project_root: project.clone(),
             repo_root: project.clone(),
             is_monorepo: false,
@@ -1902,6 +1915,27 @@ mod hook_not_installed_tests {
     }
 
     #[test]
+    fn a_hook_cache_covers_a_web_target_in_a_native_project() {
+        // The hook scans a native project's web code, so its cache covers a web target (#1644).
+        let fixture = Fixture::new("source");
+        fixture.put("project/PRODUCT.md", "# P\n\n## Platform\nios\n");
+        fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
+        fixture.put("project/site/index.html", "<p>x</p>");
+        let options = TargetOptions { target_path: Some("site/index.html".to_string()) };
+        let ctx = load_context(&fixture.project, &options, &fixture.env);
+        assert_eq!(ctx.platform.as_deref(), Some("web"));
+        let provider = crate::provider::detect(&fixture.env, &fixture.project);
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(!parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
+        // Without the cache the web target still gets the manual detector.
+        std::fs::remove_file(fixture.root.join("project/.impeccable/hook.cache.json")).unwrap();
+        let mut parts = super::Parts::default();
+        super::append_detector_fallback(&mut parts, &ctx, &fixture.project, &fixture.env, &provider);
+        assert!(parts.render().contains("MANUAL_DETECTOR_REQUIRED"));
+    }
+
+    #[test]
     fn an_enclosing_cache_does_not_cover_a_project_with_the_hook_off() {
         let fixture = Fixture::new("codex");
         fixture.put("project/.impeccable/hook.cache.json", &recent_cache());
@@ -2086,5 +2120,41 @@ mod seeded_world_tests {
                 assert!(out.contains("follow the redesign flow in reference/new-work.md"), "{out}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::*;
+
+    // Catches an opt-out in the workspace `--target` selects still showing the
+    // notice or checking for updates, and the notice showing more than once.
+    #[test]
+    fn telemetry_notice_shows_once_and_never_over_an_opt_out() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::create_dir_all(tmp.join("apps/web/.impeccable")).unwrap();
+        std::fs::write(tmp.join("SKILL.md"), "---\nversion: 1.0.0\n---\n").unwrap();
+        let cache = tmp.join("update-check.json").to_string_lossy().into_owned();
+        std::fs::write(&cache, format!(r#"{{"lastCheck":{},"latestVersion":"99.0.0"}}"#, now_ms() as i64)).unwrap();
+        let boot = || {
+            let t = tmp.to_string_lossy().into_owned();
+            // Windows reads the home from USERPROFILE: without it the marker would land in the real profile.
+            let env = Env::from([("HOME".to_string(), t.clone()), ("USERPROFILE".to_string(), t.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), t), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("IMPECCABLE_NO_STALENESS_CHECK".to_string(), "1".to_string())]);
+            let (mut io, cap) = impeccable_common::Io::captured("", tmp.clone(), env);
+            assert_eq!(super::run(&["--target".to_string(), "apps/web".to_string()], &mut io), 0);
+            let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+            (out.contains("UPDATE_AVAILABLE"), out.contains("TELEMETRY_NOTICE"))
+        };
+        let project = tmp.join("apps/web/.impeccable/config.json");
+        std::fs::write(&project, r#"{"telemetry": false}"#).unwrap();
+        assert_eq!(boot(), (false, false));
+        assert!(!tmp.join(".impeccable/config.json").exists(), "an opted-out user is not marked as told");
+        std::fs::remove_file(&project).unwrap();
+        assert_eq!(boot(), (true, true));
+        assert_eq!(std::fs::read_to_string(tmp.join(".impeccable/config.json")).unwrap(), "{\n  \"telemetry\": true\n}\n");
+        assert!(!boot().1, "told once, never again");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

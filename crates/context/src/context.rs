@@ -88,7 +88,11 @@ pub struct Ctx {
     pub surface_brief_reason: &'static str,
     pub surface_brief_candidates: Vec<BriefSummary>,
     pub has_visual_implementation: bool,
+    /// The platform for this invocation: PRODUCT.md's, except that a native
+    /// value gives way to `web` for a web `--target` (#1644).
     pub platform: Option<String>,
+    /// PRODUCT.md's `## Platform` as declared.
+    pub declared_platform: Option<String>,
     pub project_root: String,
     pub repo_root: String,
     pub is_monorepo: bool,
@@ -125,8 +129,11 @@ pub fn load_context(cwd: &str, options: &TargetOptions, env: &Env) -> Ctx {
     let abs_cwd = jsp::resolve(cwd, &[]);
     let product = resolved.product_path.as_deref().and_then(safe_read);
     let design = resolved.design_path.as_deref().and_then(safe_read);
-    let platform = extract_platform(product.as_deref());
+    let declared_platform = extract_platform(product.as_deref());
     let target = if has_target_option(options) { options.target_path.as_deref() } else { None };
+    let web_target = matches!(declared_platform.as_deref(), Some("ios" | "android" | "adaptive"))
+        && target.is_some_and(|t| is_web_target(&jsp::resolve(&abs_cwd, &[t]), &resolved.repo_root));
+    let platform = if web_target { Some("web".to_string()) } else { declared_platform.clone() };
     let sr = resolve_surface_brief(&resolved.project_root, target);
     let brief = sr.brief.clone();
     Ctx {
@@ -153,6 +160,7 @@ pub fn load_context(cwd: &str, options: &TargetOptions, env: &Env) -> Ctx {
             .collect(),
         has_visual_implementation: has_visual_implementation(&resolved.project_root),
         platform,
+        declared_platform,
         project_root: resolved.project_root,
         repo_root: resolved.repo_root,
         is_monorepo: resolved.is_monorepo,
@@ -641,6 +649,15 @@ fn is_flutter_pubspec(body: &str) -> bool {
     FLUTTER_PUBSPEC_RE.is_match(body)
 }
 
+/// Whether a package.json depends on a UI framework.
+fn has_ui_dependency(pkg: &Value) -> bool {
+    ["dependencies", "devDependencies", "peerDependencies"]
+        .iter()
+        .filter_map(|f| pkg.get(*f).and_then(|v| v.as_object()))
+        .flat_map(|deps| deps.keys())
+        .any(|k| UI_DEPENDENCIES.contains(&k.as_str()) || UI_DEPENDENCY_PREFIXES.iter().any(|p| k.starts_with(p)))
+}
+
 /// A workspace shows a UI signal when its package.json depends on a UI
 /// framework, it has its own PRODUCT.md or DESIGN.md, a fixed UI entry path
 /// exists (HTML entry, native app marker), or a one-level listing of the
@@ -648,15 +665,8 @@ fn is_flutter_pubspec(body: &str) -> bool {
 /// Xcode project). Every check is a read, a stat or a single directory
 /// listing, so the boot never walks a workspace tree (Tier-1 budget).
 pub fn has_ui_signal(root: &str) -> bool {
-    if let Some(pkg) = read_json(&jsp::join(&[root, "package.json"])) {
-        for field in ["dependencies", "devDependencies", "peerDependencies"] {
-            let Some(deps) = pkg.get(field).and_then(|v| v.as_object()) else { continue };
-            if deps.keys().any(|k| {
-                UI_DEPENDENCIES.contains(&k.as_str()) || UI_DEPENDENCY_PREFIXES.iter().any(|p| k.starts_with(p))
-            }) {
-                return true;
-            }
-        }
+    if read_json(&jsp::join(&[root, "package.json"])).is_some_and(|pkg| has_ui_dependency(&pkg)) {
+        return true;
     }
     if first_existing(root, &all_context_names()).is_some() {
         return true;
@@ -1282,6 +1292,33 @@ pub fn extract_platform(product: Option<&str>) -> Option<String> {
     None
 }
 
+/// #1644: whether `--target` is web code, so a native `## Platform` should not
+/// steer it. Web markup extensions always are; a js/ts file is when its nearest
+/// package.json (not above `stop_root`) has a UI dependency and no native
+/// evidence, and a directory is when its own package.json does (a walk up
+/// from a directory could pass native source, such as an Xcode app folder).
+pub fn is_web_target(target_abs: &str, stop_root: &str) -> bool {
+    let ext = jsp::extname(target_abs).to_lowercase();
+    if matches!(ext.as_str(), ".html" | ".htm" | ".vue" | ".svelte" | ".astro") {
+        return true;
+    }
+    let is_target_dir = is_dir(target_abs);
+    if !is_target_dir && !matches!(ext.as_str(), ".js" | ".jsx" | ".ts" | ".tsx" | ".mjs" | ".cjs") {
+        return false;
+    }
+    let mut dir = if is_target_dir { target_abs.to_string() } else { jsp::dirname(target_abs) };
+    loop {
+        if let Some(pkg) = read_json(&jsp::join(&[&dir, "package.json"])) {
+            return has_ui_dependency(&pkg) && !crate::staleness::has_native_evidence(&dir);
+        }
+        let parent = jsp::dirname(&dir);
+        if is_target_dir || !is_path_inside(&dir, stop_root) || parent == dir {
+            return false;
+        }
+        dir = parent;
+    }
+}
+
 // ─── hasVisualImplementation ───────────────────────────────────────────────
 
 static RE_BLOCK_COMMENT: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)/\*.*?\*/").unwrap());
@@ -1589,5 +1626,38 @@ mod ui_target_tests {
         let (cands, skipped) = discover_ui_target_candidates(&t.root(), &env());
         assert_eq!(paths(&cands), ["packages/core", "packages/tsconfig"]);
         assert_eq!(skipped, 0);
+    }
+    #[test]
+    fn web_target_overrides_only_unambiguous_web_code() {
+        let t = Tmp::new("web-target");
+        let root = t.root();
+        let at = |rel: &str| jsp::join(&[&root, rel]);
+        t.put("a/index.html", "<p>x</p>");
+        t.put("web/package.json", r#"{"dependencies":{"next":"1"}}"#);
+        t.put("web/src/App.tsx", "");
+        t.put("rn/package.json", r#"{"dependencies":{"react-dom":"1","react-native":"1"}}"#);
+        t.put("rn/App.tsx", "");
+        t.put("expo/package.json", r#"{"dependencies":{"vite":"1","expo":"1"}}"#);
+        t.put("expo/App.tsx", "");
+        t.put("pod/package.json", r#"{"dependencies":{"next":"1"}}"#);
+        t.put("pod/ios/Podfile", "");
+        t.put("pod/App.tsx", "");
+        t.put("peer/package.json", r#"{"dependencies":{"react":"1"},"peerDependencies":{"react-native":"*"}}"#);
+        t.put("peer/Button.tsx", "");
+        t.put("sw/App.swift", "");
+        t.put("up/src/App.tsx", "");
+        assert!(is_web_target(&at("a/index.html"), &root));
+        assert!(is_web_target(&at("web/src/App.tsx"), &root));
+        assert!(is_web_target(&at("web"), &root));
+        // A directory only counts through its own package.json.
+        assert!(!is_web_target(&at("web/src"), &root));
+        assert!(!is_web_target(&at("rn/App.tsx"), &root));
+        assert!(!is_web_target(&at("expo/App.tsx"), &root));
+        assert!(!is_web_target(&at("pod/App.tsx"), &root));
+        assert!(!is_web_target(&at("peer/Button.tsx"), &root));
+        assert!(!is_web_target(&at("sw/App.swift"), &root));
+        // The only package.json sits above the stop root.
+        t.put("package.json", r#"{"dependencies":{"next":"1"}}"#);
+        assert!(!is_web_target(&at("up/src/App.tsx"), &at("up")));
     }
 }
