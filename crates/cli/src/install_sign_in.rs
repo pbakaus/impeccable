@@ -65,9 +65,10 @@ pub(crate) fn after_install(
     offer_sign_in(io, engines, rule_pack);
 }
 
-const TELEMETRY_QUESTION: &str = "Share anonymous usage data?";
+const TELEMETRY_QUESTION: &str = "Help improve Impeccable?";
+const OPT_OUT_COST: &str = "turns off world building and auto updates";
 
-/// Asks a person at the terminal, once, whether to share anonymous usage data after
+/// Asks a person at the terminal, once, whether to share usage data after
 /// install or update, with yes preselected. `-y`, CI and a run with no terminal ask
 /// nothing and record nothing, so `context` has the agent mention it instead; so does
 /// a cancelled or unclear answer.
@@ -80,11 +81,12 @@ pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
     io.err(&format!("\n{}", telemetry::notice()));
     let on = match impeccable_common::steps::Steps::new(io) {
         Some(mut steps) => {
-            let options = [("Yes, keep it on", Some("recommended")), ("No, opt out", None)];
+            let options = [("Yes", Some("recommended")), ("No, opt out", Some(OPT_OUT_COST))];
             let Ok(choice) = steps.choose(io, TELEMETRY_QUESTION, &options, 0) else { return };
             choice == 0
         }
         None => {
+            io.err(&format!("Saying no {OPT_OUT_COST}.\n"));
             let Some(on) = answer(io, TELEMETRY_QUESTION) else { return };
             on
         }
@@ -110,7 +112,7 @@ fn record_telemetry(io: &mut Io, on: bool) {
         return;
     }
     io.err(if on {
-        "Thanks! Change it any time: npx impeccable telemetry off\n"
+        "You're all set. Change it any time: npx impeccable telemetry off\n"
     } else {
         "Telemetry is off. Turn it back on any time: npx impeccable telemetry on\n"
     });
@@ -262,7 +264,7 @@ mod tests {
         assert!(!config.exists());
         assert!(!telemetry_decided(&io_with(&[]).0));
         assert!(telemetry_decided(&io_with(&[("DO_NOT_TRACK", "1")]).0), "an opt-out is never asked about");
-        for (on, said) in [(false, "Telemetry is off."), (true, "Thanks!")] {
+        for (on, said) in [(false, "Telemetry is off."), (true, "You're all set.")] {
             let (mut io, cap) = io_with(&[]);
             record_telemetry(&mut io, on);
             assert!(stderr(&cap).starts_with(said));

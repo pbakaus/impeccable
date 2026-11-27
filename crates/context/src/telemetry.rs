@@ -129,11 +129,11 @@ pub fn choice_recorded(env: &Env, off: bool) -> bool {
 
 /// What an install or update at a terminal prints, once, above its question.
 pub fn notice() -> &'static str {
-    "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping.\nDetails: impeccable.style/privacy\nOpting out also turns off world building and auto updates.\n"
+    "Impeccable learns which design directions people pick, so it can suggest\nbetter ones and stay free. It never sends your code, files, or project names.\nThanks for helping! Details: impeccable.style/privacy\n"
 }
 
 /// What the agent says, once, for an install that never showed `notice`.
-pub const AGENT_NOTICE: &str = "Impeccable collects anonymous usage data to stay free and keep improving. Thanks for helping. If you'd rather opt out, tell me and I'll turn it off, though that also turns off world building and auto updates (details at impeccable.style/privacy).";
+pub const AGENT_NOTICE: &str = "Impeccable learns which design directions people pick, so it can suggest better ones and stay free. It never sends your code, files, or project names. Thanks for helping! If you'd rather opt out, just tell me. That also turns off world building and auto updates (details at impeccable.style/privacy).";
 
 /// `context`'s one-time notice for a user nobody has told yet, `verb` being how
 /// this install runs `impeccable telemetry`. Printing it records the user as told
@@ -148,7 +148,7 @@ pub fn notice_directive(env: &Env, off: bool, verb: &str) -> Option<String> {
     if let Ok(Recorded::Kept) = record_choice(env, true, false) {
         return None;
     }
-    Some(format!("TELEMETRY_NOTICE: The user has not been told about Impeccable's anonymous usage data yet. End your first reply to the user with this paragraph, word for word, after your own content: \"{AGENT_NOTICE}\" Do not ask about it, wait for an answer, or say it again. Carry on with the task. If the user asks to opt out, run `{verb} off`."))
+    Some(format!("TELEMETRY_NOTICE: The user has not been told about the usage data Impeccable collects yet. End your first reply to the user with this paragraph, word for word, after your own content: \"{AGENT_NOTICE}\" Do not ask about it, wait for an answer, or say it again. Carry on with the task. If the user asks to opt out, run `{verb} off`."))
 }
 
 /// What `record_choice` did with the user config.
