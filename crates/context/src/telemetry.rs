@@ -183,7 +183,8 @@ pub fn record_choice(env: &Env, on: bool, overwrite: bool) -> Result<Recorded, R
     let dir = jsp::join(&[&crate::util::homedir(env), ".impeccable"]);
     let write_err = |e: std::io::Error| RecordError::Write(format!("{}: {}", path, e));
     std::fs::create_dir_all(&dir).map_err(write_err)?;
-    let _guard = lock(&path).ok_or_else(|| RecordError::Write(format!("{}: another process is writing it", path)))?;
+    let target = write_target(&path);
+    let _guard = lock(&target).ok_or_else(|| RecordError::Write(format!("{}: another process is writing it", path)))?;
     let mut m = match safe_read(&path) {
         None => Map::new(),
         Some(text) => match serde_json::from_str::<Value>(&text) {
@@ -196,8 +197,23 @@ pub fn record_choice(env: &Env, on: bool, overwrite: bool) -> Result<Recorded, R
         return Ok(Recorded::Kept);
     }
     m.insert("telemetry".into(), Value::Bool(on));
-    replace_file(&path, &format!("{}\n", crate::util::json_pretty(&Value::Object(m)))).map_err(write_err)?;
+    replace_file(&target, &format!("{}\n", crate::util::json_pretty(&Value::Object(m)))).map_err(write_err)?;
     Ok(Recorded::Written)
+}
+
+/// The file a write replaces: a symlinked config's target, so a config linked from a
+/// dotfiles folder stays linked.
+fn write_target(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if !std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()) {
+        return path.to_string();
+    }
+    // A dangling link has no canonical path; its target, read relative to the link, is
+    // where the file will be created.
+    std::fs::canonicalize(p)
+        .ok()
+        .or_else(|| std::fs::read_link(p).ok().map(|t| p.parent().map_or(t.clone(), |d| d.join(&t))))
+        .map_or_else(|| path.to_string(), |t| t.to_string_lossy().into_owned())
 }
 
 /// Writes a sibling temp file and renames it over `path`, so a reader never sees a
@@ -1287,6 +1303,24 @@ mod tests {
         assert!(notice_directive(&e, false, "impeccable telemetry").is_none());
         let left: Vec<_> = std::fs::read_dir(format!("{}/.impeccable", home)).unwrap().map(|d| d.unwrap().file_name()).collect();
         assert_eq!(left, ["config.json"]);
+    }
+
+    // Catches a save replacing a config symlinked from a dotfiles folder with a plain file.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_config_stays_linked() {
+        let cwd = temp_dir("symlink");
+        let home = format!("{}/home", cwd);
+        let dotfiles = format!("{}/dotfiles/impeccable.json", cwd);
+        std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
+        std::fs::create_dir_all(format!("{}/dotfiles", cwd)).unwrap();
+        std::fs::write(&dotfiles, r#"{"other": 1}"#).unwrap();
+        let link = format!("{}/.impeccable/config.json", home);
+        std::os::unix::fs::symlink(&dotfiles, &link).unwrap();
+        let e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+        assert!(matches!(record_choice(&e, false, true), Ok(Recorded::Written)));
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(serde_json::from_str::<Value>(&std::fs::read_to_string(&dotfiles).unwrap()).unwrap(), json!({ "other": 1, "telemetry": false }));
     }
 
     #[test]
