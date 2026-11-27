@@ -354,6 +354,11 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
         Err(Stop::OptOut) if !quiet => return opt_out_nudge(io, root.unwrap_or(&io.cwd)),
         Err(stop) => return stopped(stop),
     };
+    // Its own switch, off until the person turns it on (REN-2530).
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Critiques, root) {
+        crate::uploads::skipped(io, crate::uploads::Kind::Critiques, quiet);
+        return None;
+    }
     let Some(mut body) = payload(snapshot, report) else {
         return not_saved("the report's scores were missing or invalid (IMPECCABLE_CRITIQUE_META); save it again with the metadata critique.md shows");
     };
@@ -390,7 +395,9 @@ fn upload(io: &mut Io, snapshot: &SavedReport, report: Report, quiet: bool) -> O
             if let Some(top) = &top {
                 crate::health::refresh_after_report(io, top);
             }
-            if let Some(url) = snapshot.meta.get("url").and_then(Value::as_str).filter(|u| {
+            // Screenshots have their own switch; the job checks it again before it opens a browser.
+            let screenshots = crate::uploads::allowed(io, crate::uploads::Kind::Screenshots, root);
+            if let Some(url) = snapshot.meta.get("url").and_then(Value::as_str).filter(|_| screenshots).filter(|u| {
                 url::Url::parse(u).is_ok_and(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
             }) {
                 impeccable_common::proc::spawn_refresh_args(
@@ -443,6 +450,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         } else {
             "Critique sync: off.\n"
         });
+        if enabled(io) {
+            if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Critiques) { io.out(&line); }
+        }
         return 0;
     }
     let admission = impeccable_home(&io.env).and_then(|home| {
@@ -471,6 +481,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         } else {
             "Critique sync: off.\n"
         });
+        if choice == "on" {
+            if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Critiques) { io.out(&line); }
+        }
         return 0;
     }
     let result = Account::from_env(&io.env)

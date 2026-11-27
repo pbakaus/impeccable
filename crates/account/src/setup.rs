@@ -67,7 +67,8 @@ fn marker(io: &Io) -> Option<(Account, String)> {
     })
 }
 pub fn wanted(io: &Io) -> bool {
-    if io.env.get("CI").is_some_and(|v| !v.is_empty())
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Setup, None)
+        || io.env.get("CI").is_some_and(|v| !v.is_empty())
         || impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
             .is_some()
     {
@@ -246,7 +247,8 @@ pub fn begin(io: &Io) -> Option<Attempt> {
 
 impl Attempt {
     fn enabled(&self, io: &Io) -> bool {
-        read(io)
+        crate::uploads::allowed(io, crate::uploads::Kind::Setup, None)
+            && read(io)
             .is_some_and(|l| l["sync"] != false && l["epoch"].as_u64().unwrap_or(0) == self.epoch)
             && !io.env.get("CI").is_some_and(|v| !v.is_empty())
             && impeccable_context::telemetry::opt_out_reason(&io.env, &io.cwd.to_string_lossy())
@@ -334,6 +336,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
         } else {
             "Setup status: off.\n"
         });
+        if verb == "on" {
+            if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Setup) { io.out(&line); }
+        }
         return 0;
     }
     let result = Account::from_env(&io.env).ok().and_then(|a| {

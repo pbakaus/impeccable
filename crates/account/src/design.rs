@@ -39,6 +39,9 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
             } else {
                 "DESIGN.md sync: off.\n"
             });
+            if on {
+                if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Design) { io.out(&line); }
+            }
             0
         }
         Err(e) => {
@@ -66,6 +69,10 @@ fn remaining(started: std::time::Instant) -> Option<Duration> {
 }
 
 pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+    // Its own switch (REN-2530), checked here as well as by the caller.
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Design, Some(std::path::Path::new(&scan.root))) {
+        return;
+    }
     let started = std::time::Instant::now();
     let env = io.env.clone();
     let Some(local) =
@@ -514,6 +521,7 @@ mod notice_regressions {
         let lock = store.lock().unwrap();
         store.save(&lock, &state, &secret).unwrap();
         drop(lock);
+        crate::uploads::seed(&account, &[crate::uploads::Kind::Design]);
         let (repo, text, sidecar) = prepare(&root.to_string_lossy(), &env, Repo::of).unwrap();
         let marker = hex(&hash(&[&account.issuer, "1", &repo.key, "0"]));
         let path = home.join("health/repos").join(format!("{marker}.design"));

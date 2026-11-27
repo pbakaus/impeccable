@@ -97,16 +97,18 @@ pub struct Scan {
 /// keychain, git or the network). `CI`, a telemetry opt-out in the working
 /// directory, sync off (or an unreadable `health.json`) or no sign-in: no.
 pub fn wanted(io: &Io) -> bool {
-    if !wanted_at_sign_in(io) {
-        return false;
-    }
-    let cwd = io.cwd.to_string_lossy();
-    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+    use crate::uploads::{allowed, Kind};
+    ready(io) && (allowed(io, Kind::Health, None) || allowed(io, Kind::Design, None))
 }
 
-/// [`wanted`] without the telemetry opt-out, which a sign-in's one scan of
-/// its repository doesn't need: signing in is the consent for it.
+/// Whether the sign-in's one scan of its repository may upload: its own switch (`scan`), which a telemetry opt-out
+/// beats like every other (REN-2534).
 pub fn wanted_at_sign_in(io: &Io) -> bool {
+    ready(io) && crate::uploads::allowed(io, crate::uploads::Kind::Scan, None)
+}
+
+/// Signed in, sync on and not CI: whether a scan's upload would be up to its switches and the opt-outs.
+pub fn ready(io: &Io) -> bool {
     if !io.env.get("CI").is_none_or(|v| v.is_empty()) {
         return false;
     }
@@ -178,15 +180,25 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
         }
         return Synced::default();
     }
-    design::after_scan(io, scan, quiet);
+    let root = Path::new(&scan.root);
+    if crate::uploads::allowed(io, crate::uploads::Kind::Design, Some(root)) {
+        design::after_scan(io, scan, quiet);
+    }
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Health, Some(root)) {
+        crate::uploads::skipped(io, crate::uploads::Kind::Health, quiet);
+        return Synced::default();
+    }
     upload(io, scan, quiet)
 }
 
-/// The uploads for the one scan a sign-in makes of its repository. Signing
-/// in is the consent for this scan, so a telemetry opt-out doesn't stop it;
+/// The uploads for the one scan a sign-in makes of its repository, under its
+/// own switch (`scan`) and the telemetry opt-out like every upload;
 /// DESIGN.md contents are never part of it (the next `detect` syncs them).
 /// The caller has checked [`wanted_at_sign_in`] and [`can_record`].
 pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Scan, Some(Path::new(&scan.root))) {
+        return Synced::default();
+    }
     let (synced, urls) = crate::receipt::capture(|| upload(io, scan, true));
     for url in urls { crate::receipt::saved(io, Some(url), false); }
     synced
@@ -463,6 +475,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 return 1;
             }
             io.out("Design health: on.\n");
+            if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Health) { io.out(&line); }
             0
         }
         Some("off") if args.len() == 1 => {
@@ -1460,6 +1473,7 @@ mod taste_notice_tests {
         let env = fake.env("taste-foreground-notice");
         crate::login(&env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
         let account = Account::from_env(&env).unwrap();
+        crate::uploads::seed(&account, &crate::uploads::Kind::ALL);
         let root = account.home.join("repo");
         std::fs::create_dir_all(&root).unwrap();
         assert!(Command::new("git").arg("init").arg(&root).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success());

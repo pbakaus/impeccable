@@ -28,6 +28,7 @@ pub mod store;
 pub mod switches;
 pub mod taste;
 mod upload_notice;
+pub mod uploads;
 pub mod world;
 
 use config::Account;
@@ -153,6 +154,8 @@ pub fn logout(env: &HashMap<String, String>) -> Result<Option<Account>, String> 
         // Always a tombstone, even with nothing stored: a sign-in still
         // waiting in the browser sees the generation move and stops.
         store.sign_out(&lock, state.as_ref(), store::Backend::File)?;
+        // The next sign-in, perhaps someone else's, chooses what's sent again (REN-2530).
+        uploads::clear(&account);
         pro::reset_holding(&lock, &account);
         let revoke = state
             .and_then(|s| s.revocation_endpoint)
