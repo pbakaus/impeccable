@@ -49,6 +49,7 @@ pub(crate) fn after_install(
     engines: &impeccable_detect::Engines,
     rule_pack: Option<&'static dyn impeccable_core::rule_pack::RulePack>,
 ) {
+    telemetry_notice(args, io);
     let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
     match end(args, terminal, io.env_truthy("CI")) {
         End::Nothing => return,
@@ -62,6 +63,59 @@ pub(crate) fn after_install(
         End::Offer => {}
     }
     offer_sign_in(io, engines, rule_pack);
+}
+
+const TELEMETRY_QUESTION: &str = "Help improve Impeccable?";
+const OPT_OUT_COST: &str = "turns off world building and auto updates";
+
+/// Asks a person at the terminal, once, whether to share usage data after
+/// install or update, with yes preselected. `-y`, CI and a run with no terminal ask
+/// nothing and record nothing, so `context` has the agent mention it instead; so does
+/// a cancelled or unclear answer.
+pub(crate) fn telemetry_notice(args: &[String], io: &mut Io) {
+    use impeccable_context::telemetry;
+    let terminal = io.stdin_is_tty && std::io::IsTerminal::is_terminal(&std::io::stderr());
+    if end(args, terminal, io.env_truthy("CI")) != End::Offer || telemetry_decided(io) {
+        return;
+    }
+    io.err(&format!("\n{}", telemetry::notice()));
+    let on = match impeccable_common::steps::Steps::new(io) {
+        Some(mut steps) => {
+            let options = [("Yes", Some("recommended")), ("No, opt out", Some(OPT_OUT_COST))];
+            let Ok(choice) = steps.choose(io, TELEMETRY_QUESTION, &options, 0) else { return };
+            choice == 0
+        }
+        None => {
+            io.err(&format!("Saying no {OPT_OUT_COST}.\n"));
+            let Some(on) = answer(io, TELEMETRY_QUESTION) else { return };
+            on
+        }
+    };
+    record_telemetry(io, on);
+}
+
+/// Whether the user already answered or opted out, so install never asks twice.
+fn telemetry_decided(io: &Io) -> bool {
+    use impeccable_context::telemetry;
+    telemetry::choice_recorded(&io.env, telemetry::telemetry_disabled(&io.env, &io.cwd.to_string_lossy()))
+}
+
+/// Records the answer and says how to change it. When it can't be saved, says so: an
+/// opt-out that didn't save leaves telemetry on.
+fn record_telemetry(io: &mut Io, on: bool) {
+    if let Err(e) = impeccable_context::telemetry::record_choice(&io.env, on, true) {
+        io.err(&if on {
+            format!("Couldn't save your answer ({e}), so you may be asked again.\n")
+        } else {
+            format!("Couldn't save your opt-out ({e}), so telemetry is still on. Fix that, then run: npx impeccable telemetry off\n")
+        });
+        return;
+    }
+    io.err(if on {
+        "You're all set. Change it any time: npx impeccable telemetry off\n"
+    } else {
+        "Telemetry is off. Turn it back on any time: npx impeccable telemetry on\n"
+    });
 }
 
 /// The offer prints after install's own "Done!", so its init step is said again,
@@ -161,6 +215,12 @@ fn no_agent_found(report: &serde_json::Value) -> bool {
 /// showed (an extra Enter at install's pickers) are dropped first, so they can't
 /// answer it: a yes here signs in or installs an app.
 fn ask(io: &mut Io, question: &str) -> bool {
+    answer(io, question) == Some(true)
+}
+
+/// The `[Y/n]` answer: `Some(true)` for Enter or yes, `Some(false)` for no, `None` for
+/// anything else or no input at all.
+fn answer(io: &mut Io, question: &str) -> Option<bool> {
     #[cfg(unix)]
     // SAFETY: tcflush on stdin's descriptor only discards unread terminal input.
     unsafe {
@@ -169,14 +229,56 @@ fn ask(io: &mut Io, question: &str) -> bool {
     io.err(&format!("{question} [Y/n] "));
     let _ = io.stderr.flush();
     let mut line = String::new();
-    std::io::stdin().read_line(&mut line).is_ok_and(|n| {
-        n > 0 && matches!(line.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
-    })
+    match std::io::stdin().read_line(&mut line) {
+        Ok(n) if n > 0 => match line.trim().to_ascii_lowercase().as_str() {
+            "" | "y" | "yes" => Some(true),
+            "n" | "no" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Catches the question reaching an install nobody is at, or one that already
+    // decided, and an answer that is not recorded or that install would ask again.
+    #[test]
+    fn install_asks_about_usage_data_once_and_records_the_answer() {
+        let home = std::env::temp_dir().join(format!("impeccable-notice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let config = home.join(".impeccable/config.json");
+        let io_with = |extra: &[(&str, &str)]| {
+            let mut env = std::collections::HashMap::from([("HOME".to_string(), home.to_string_lossy().into_owned()), ("USERPROFILE".to_string(), home.to_string_lossy().into_owned())]);
+            env.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            Io::captured("", home.clone(), env)
+        };
+        let stderr = |cap: &impeccable_common::Captured| String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+        // No terminal here (an agent's run): nothing asked, nothing recorded.
+        let (mut io, cap) = io_with(&[]);
+        telemetry_notice(&[], &mut io);
+        assert_eq!(stderr(&cap), "");
+        assert!(!config.exists());
+        assert!(!telemetry_decided(&io_with(&[]).0));
+        assert!(telemetry_decided(&io_with(&[("DO_NOT_TRACK", "1")]).0), "an opt-out is never asked about");
+        for (on, said) in [(false, "Telemetry is off."), (true, "You're all set.")] {
+            let (mut io, cap) = io_with(&[]);
+            record_telemetry(&mut io, on);
+            assert!(stderr(&cap).starts_with(said));
+            assert_eq!(std::fs::read_to_string(&config).unwrap(), format!("{{\n  \"telemetry\": {on}\n}}\n"));
+            assert!(telemetry_decided(&io_with(&[]).0), "never asked twice");
+        }
+        // An opt-out that can't be saved says so instead of carrying on silently.
+        std::fs::write(&config, "not json").unwrap();
+        let (mut io, cap) = io_with(&[]);
+        record_telemetry(&mut io, false);
+        assert!(stderr(&cap).starts_with("Couldn't save your opt-out"), "{}", stderr(&cap));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "not json");
+        let _ = std::fs::remove_dir_all(&home);
+    }
 
     // Catches the offer reaching a scripted, CI or non-terminal install, or the hint
     // missing from an install an agent ran.

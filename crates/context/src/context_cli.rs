@@ -801,11 +801,11 @@ fn update_check_disabled_by_config(cwd: &str) -> bool {
 }
 
 /// JS: computeUpdateDirective()
-pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider) -> Option<String> {
+pub fn compute_update_directive(cwd: &str, env: &Env, provider: &Provider, telemetry_off: bool) -> Option<String> {
     if env.get("IMPECCABLE_NO_UPDATE_CHECK").map(|v| !v.is_empty()).unwrap_or(false) {
         return None;
     }
-    if update_check_disabled_by_config(cwd) {
+    if update_check_disabled_by_config(cwd) || telemetry_off {
         return None;
     }
     let local = read_local_skill_version(provider)?;
@@ -941,7 +941,10 @@ pub fn run_with_hook_repair(
             io.out(&format!("{}\n", notices.join(" ")));
         }
     }
-    let update_directive = compute_update_directive(&cwd, &env, &provider);
+    // An opt-out where context runs, or in the workspace `--target` selects.
+    let telemetry_off = crate::telemetry::telemetry_disabled(&env, &cwd) || resolved_target_path.as_deref().is_some_and(|t| crate::telemetry::telemetry_disabled(&env, t));
+    let update_directive = compute_update_directive(&cwd, &env, &provider, telemetry_off);
+    let telemetry_directive = crate::telemetry::notice_directive(&env, telemetry_off, &provider.verb_cmd("telemetry"));
     let cmd = &provider.command;
 
     if !ctx.has_product {
@@ -989,6 +992,9 @@ pub fn run_with_hook_repair(
         if let Some(u) = update_directive {
             parts.push(u);
         }
+        if let Some(t) = telemetry_directive {
+            parts.push(t);
+        }
         append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
         io.out(&parts.render());
         return 0;
@@ -1033,6 +1039,9 @@ pub fn run_with_hook_repair(
     }
     if let Some(u) = update_directive {
         parts.push(u);
+    }
+    if let Some(t) = telemetry_directive {
+        parts.push(t);
     }
     append_taste(&mut parts, &env, crate::taste::focus(args, &ctx));
     io.out(&parts.render());
@@ -2111,5 +2120,41 @@ mod seeded_world_tests {
                 assert!(out.contains("follow the redesign flow in reference/new-work.md"), "{out}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::*;
+
+    // Catches an opt-out in the workspace `--target` selects still showing the
+    // notice or checking for updates, and the notice showing more than once.
+    #[test]
+    fn telemetry_notice_shows_once_and_never_over_an_opt_out() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-update-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::create_dir_all(tmp.join("apps/web/.impeccable")).unwrap();
+        std::fs::write(tmp.join("SKILL.md"), "---\nversion: 1.0.0\n---\n").unwrap();
+        let cache = tmp.join("update-check.json").to_string_lossy().into_owned();
+        std::fs::write(&cache, format!(r#"{{"lastCheck":{},"latestVersion":"99.0.0"}}"#, now_ms() as i64)).unwrap();
+        let boot = || {
+            let t = tmp.to_string_lossy().into_owned();
+            // Windows reads the home from USERPROFILE: without it the marker would land in the real profile.
+            let env = Env::from([("HOME".to_string(), t.clone()), ("USERPROFILE".to_string(), t.clone()), ("IMPECCABLE_SKILL_DIR".to_string(), t), ("IMPECCABLE_UPDATE_CACHE".to_string(), cache.clone()), ("IMPECCABLE_NO_STALENESS_CHECK".to_string(), "1".to_string())]);
+            let (mut io, cap) = impeccable_common::Io::captured("", tmp.clone(), env);
+            assert_eq!(super::run(&["--target".to_string(), "apps/web".to_string()], &mut io), 0);
+            let out = String::from_utf8(cap.stdout.borrow().clone()).unwrap();
+            (out.contains("UPDATE_AVAILABLE"), out.contains("TELEMETRY_NOTICE"))
+        };
+        let project = tmp.join("apps/web/.impeccable/config.json");
+        std::fs::write(&project, r#"{"telemetry": false}"#).unwrap();
+        assert_eq!(boot(), (false, false));
+        assert!(!tmp.join(".impeccable/config.json").exists(), "an opted-out user is not marked as told");
+        std::fs::remove_file(&project).unwrap();
+        assert_eq!(boot(), (true, true));
+        assert_eq!(std::fs::read_to_string(tmp.join(".impeccable/config.json")).unwrap(), "{\n  \"telemetry\": true\n}\n");
+        assert!(!boot().1, "told once, never again");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

@@ -186,6 +186,9 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             if code == 0 && rest.first().map(String::as_str) == Some("install") {
                 register_browser_host(&rest[1..], io);
             }
+            if code == 0 && matches!(rest.first().map(String::as_str), Some("install" | "update")) {
+                crate::install_sign_in::telemetry_notice(&rest[1..], io);
+            }
             code
         }
         "loop" => crate::loop_install::run(rest, io),
@@ -208,7 +211,14 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
             }
             code
         }
-        "help" | "link" | "update" | "check" => impeccable_skills::run(args, io),
+        "update" => {
+            let code = impeccable_skills::run(args, io);
+            if code == 0 {
+                crate::install_sign_in::telemetry_notice(rest, io);
+            }
+            code
+        }
+        "help" | "link" | "check" => impeccable_skills::run(args, io),
         // skill scripts
         "context" => {
             let code = impeccable_hook::run_context(rest, io);

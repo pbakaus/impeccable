@@ -65,8 +65,13 @@ pub fn user_config_path(env: &Env) -> String {
     jsp::join(&[&crate::util::homedir(env), ".impeccable", "config.json"])
 }
 
+/// A config file's `"telemetry"` choice, when it holds one.
+fn config_choice(path: &str) -> Option<bool> {
+    safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| v.get("telemetry").and_then(Value::as_bool))
+}
+
 fn config_says_off(path: &str) -> bool {
-    safe_read(path).and_then(|t| serde_json::from_str::<Value>(&t).ok()).and_then(|v| v.get("telemetry").and_then(Value::as_bool)) == Some(false)
+    config_choice(path) == Some(false)
 }
 
 /// Why telemetry is off, or `None` when it is on: `DO_NOT_TRACK` or
@@ -115,9 +120,130 @@ pub fn telemetry_disabled(env: &Env, cwd: &str) -> bool {
     opt_out_reason(env, cwd).is_some()
 }
 
-/// Sent on the roll request when telemetry is off: the roll still happens
-/// (it is the feature), and the server records nothing for it.
-pub const TELEMETRY_HEADER: &str = "X-Impeccable-Telemetry";
+/// Whether the user was already told about usage data: an opt-out (`off`, from
+/// `telemetry_disabled` for the roots in play), or a `telemetry` value in the
+/// user config, which install's answer or `context`'s notice writes.
+pub fn choice_recorded(env: &Env, off: bool) -> bool {
+    off || config_choice(&user_config_path(env)).is_some()
+}
+
+/// What an install or update at a terminal prints, once, above its question.
+pub fn notice() -> &'static str {
+    "Impeccable learns which design directions people pick, so it can suggest\nbetter ones and stay free. It never sends your code, files, or project names.\nThanks for helping! Details: impeccable.style/privacy\n"
+}
+
+/// What the agent says, once, for an install that never showed `notice`.
+pub const AGENT_NOTICE: &str = "Impeccable learns which design directions people pick, so it can suggest better ones and stay free. It never sends your code, files, or project names. Thanks for helping! If you'd rather opt out, just tell me. That also turns off world building and auto updates (details at impeccable.style/privacy).";
+
+/// `context`'s one-time notice for a user nobody has told yet, `verb` being how
+/// this install runs `impeccable telemetry`. Printing it records the user as told
+/// (`"telemetry": true`), so no later boot repeats it and the agent never has to
+/// stop the user to ask. None in CI (`1`, `true`, `yes` or `on`, as install reads
+/// it), once told, or when an answer lands while it records. A config it cannot
+/// write still gets the notice, which then repeats until the file is fixed.
+pub fn notice_directive(env: &Env, off: bool, verb: &str) -> Option<String> {
+    if crate::util::truthy_env(env, "CI") || choice_recorded(env, off) {
+        return None;
+    }
+    if let Ok(Recorded::Kept) = record_choice(env, true, false) {
+        return None;
+    }
+    Some(format!("TELEMETRY_NOTICE: The user has not been told about the usage data Impeccable collects yet. End your first reply to the user with this paragraph, word for word, after your own content: \"{AGENT_NOTICE}\" Do not ask about it, wait for an answer, or say it again. Carry on with the task. If the user asks to opt out, run `{verb} off`."))
+}
+
+/// What `record_choice` did with the user config.
+#[derive(Debug, PartialEq)]
+pub enum Recorded {
+    Written,
+    /// A choice was already there and `overwrite` was false.
+    Kept,
+}
+
+/// Why `record_choice` changed nothing.
+pub enum RecordError {
+    /// The user config does not parse to an object: the user's to fix, never overwritten.
+    Unreadable(String),
+    Write(String),
+}
+
+impl std::fmt::Display for RecordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RecordError::Unreadable(e) | RecordError::Write(e) => f.write_str(e),
+        }
+    }
+}
+
+/// Writes `"telemetry": on` into the user config, keeping its other keys. Only an
+/// answer overwrites a choice already there; the notice's "told" marker never undoes
+/// an opt-out another process saved. The read and the write share the config's lock,
+/// and the file is replaced whole, so a concurrent `telemetry off` is never lost.
+pub fn record_choice(env: &Env, on: bool, overwrite: bool) -> Result<Recorded, RecordError> {
+    let path = user_config_path(env);
+    let dir = jsp::join(&[&crate::util::homedir(env), ".impeccable"]);
+    let write_err = |e: std::io::Error| RecordError::Write(format!("{}: {}", path, e));
+    std::fs::create_dir_all(&dir).map_err(write_err)?;
+    let target = write_target(&path);
+    let _guard = lock(&target).ok_or_else(|| RecordError::Write(format!("{}: another process is writing it", path)))?;
+    // Only a missing file starts empty: one that exists but can't be read (a
+    // root-owned file from a sudo run) holds settings a rewrite would drop.
+    let mut m = match std::fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
+        Err(e) => return Err(RecordError::Unreadable(format!("{} could not be read ({})", impeccable_common::jsp::to_posix(&path), e))),
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(Value::Object(m)) => m,
+            Ok(_) => return Err(RecordError::Unreadable(format!("{} is not a JSON object", impeccable_common::jsp::to_posix(&path)))),
+            Err(e) => return Err(RecordError::Unreadable(format!("{} is not valid JSON ({})", impeccable_common::jsp::to_posix(&path), e))),
+        },
+    };
+    if !overwrite && m.get("telemetry").is_some_and(Value::is_boolean) {
+        return Ok(Recorded::Kept);
+    }
+    m.insert("telemetry".into(), Value::Bool(on));
+    replace_file(&target, &format!("{}\n", crate::util::json_pretty(&Value::Object(m)))).map_err(write_err)?;
+    Ok(Recorded::Written)
+}
+
+/// The file a write replaces: a symlinked config's target, so a config linked from a
+/// dotfiles folder stays linked.
+fn write_target(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if !std::fs::symlink_metadata(p).is_ok_and(|m| m.file_type().is_symlink()) {
+        return path.to_string();
+    }
+    // A dangling link has no canonical path; its target, read relative to the link, is
+    // where the file will be created.
+    std::fs::canonicalize(p)
+        .ok()
+        .or_else(|| std::fs::read_link(p).ok().map(|t| p.parent().map_or(t.clone(), |d| d.join(&t))))
+        .map_or_else(|| path.to_string(), |t| t.to_string_lossy().into_owned())
+}
+
+/// Writes a sibling temp file and renames it over `path`, so a reader never sees a
+/// half-written file.
+fn replace_file(path: &str, contents: &str) -> std::io::Result<()> {
+    let temp = format!("{}.tmp-{}", path, unique_suffix());
+    if let Err(e) = std::fs::write(&temp, contents) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
+    }
+    // A rename over a file an unlocked reader has open can fail for a moment on
+    // Windows; retry briefly before giving up.
+    let mut attempt = 0;
+    loop {
+        match std::fs::rename(&temp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt >= 19 => {
+                let _ = std::fs::remove_file(&temp);
+                return Err(e);
+            }
+            Err(_) => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+}
 
 pub fn agent(url: &str, timeout: Duration) -> ureq::Agent {
     crate::http::agent_builder(url).timeout_connect(timeout).timeout(timeout).build()
@@ -342,22 +468,7 @@ impl Ledger {
     }
 
     fn write_file(&self, path: &str, ledger: &Map<String, Value>) {
-        let temp = format!("{}.tmp-{}", path, unique_suffix());
-        if std::fs::write(&temp, json_compact(&Value::Object(ledger.clone()))).is_err() {
-            let _ = std::fs::remove_file(&temp);
-            return;
-        }
-        // A rename over a file an unlocked reader has open can fail for a
-        // moment on Windows; retry briefly before giving up.
-        for attempt in 0..20 {
-            if std::fs::rename(&temp, path).is_ok() {
-                return;
-            }
-            if attempt < 19 {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-        }
-        let _ = std::fs::remove_file(&temp);
+        let _ = replace_file(path, &json_compact(&Value::Object(ledger.clone())));
     }
 
     /// Read, change, write `key`'s ledger under its lock. The questions
@@ -731,56 +842,34 @@ pub const PRIVACY_URL: &str = "https://impeccable.style/privacy";
 
 fn status_line(env: &Env, cwd: &str) -> String {
     match opt_out_reason(env, cwd) {
-        Some(reason) => format!("telemetry: off ({}). Rolls still work; the roll API is told not to record them, and no choice is sent.\n", reason),
+        Some(reason) => format!("telemetry: off ({}). Impeccable does not contact the roll API or check for updates: new designs get no catalog worlds, and no choice is sent.\n", reason),
         None => format!("telemetry: on. The roll request and the choice ping carry the seed key, scope, mode, round, pool revision, the card kind and catalog id that won, and the client version; never your project's names or code. Turn it off with `impeccable telemetry off`, DO_NOT_TRACK=1, or IMPECCABLE_NO_TELEMETRY=1. Details: {}\n", PRIVACY_URL),
     }
 }
 
 /// `impeccable telemetry off|on|status`: `off` records `"telemetry": false`
-/// in the user config (`user_config_path`), `on` removes it, `status` says
+/// in the user config (`user_config_path`), `on` records `"telemetry": true`, `status` says
 /// whether telemetry is on and, when off, why. Other keys in the file are
 /// kept.
 pub fn run(args: &[String], io: &mut impeccable_common::Io) -> i32 {
     let env = io.env.clone();
     let cwd = io.cwd.to_string_lossy().into_owned();
-    let path = user_config_path(&env);
-    // A missing file is an empty config; one that does not parse to an
-    // object is the user's to fix, never overwritten.
-    let read = || -> Result<Map<String, Value>, String> {
-        let Some(text) = safe_read(&path) else { return Ok(Map::new()) };
-        match serde_json::from_str::<Value>(&text) {
-            Ok(Value::Object(m)) => Ok(m),
-            Ok(_) => Err(format!("{} is not a JSON object", impeccable_common::jsp::to_posix(&path))),
-            Err(e) => Err(format!("{} is not valid JSON ({})", impeccable_common::jsp::to_posix(&path), e)),
-        }
-    };
-    let write = |m: &Map<String, Value>| -> Result<(), String> {
-        let dir = jsp::join(&[&crate::util::homedir(&env), ".impeccable"]);
-        std::fs::create_dir_all(&dir)
-            .and_then(|_| std::fs::write(&path, format!("{}\n", crate::util::json_pretty(&Value::Object(m.clone())))))
-            .map_err(|e| format!("{}: {}", path, e))
-    };
     match args.first().map(String::as_str) {
         Some("status") | None => {
             io.out(&status_line(&env, &cwd));
             0
         }
         Some(cmd @ ("off" | "on")) => {
-            let mut m = match read() {
-                Ok(m) => m,
-                Err(e) => {
+            match record_choice(&env, cmd == "on", true) {
+                Ok(_) => {}
+                Err(RecordError::Unreadable(e)) => {
                     io.err(&format!("telemetry: {}; fix or remove it, then run `impeccable telemetry {}` again. Nothing was changed.\n", e, cmd));
                     return 1;
                 }
-            };
-            if cmd == "off" {
-                m.insert("telemetry".into(), Value::Bool(false));
-            } else {
-                m.remove("telemetry");
-            }
-            if let Err(e) = write(&m) {
-                io.err(&format!("telemetry: could not write the user config ({})\n", e));
-                return 1;
+                Err(RecordError::Write(e)) => {
+                    io.err(&format!("telemetry: could not write the user config ({})\n", e));
+                    return 1;
+                }
             }
             io.out(&status_line(&env, &cwd));
             0
@@ -1196,6 +1285,70 @@ mod tests {
     }
 
     #[test]
+    fn the_notice_never_undoes_an_opt_out_and_still_shows_when_it_cannot_save() {
+        let cwd = temp_dir("notice");
+        let home = format!("{}/home", cwd);
+        let e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+        let config = format!("{}/.impeccable/config.json", home);
+        std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
+        // An opt-out saved by another process after `context` checked: the notice's
+        // "told" marker leaves it alone, and no notice prints over it.
+        std::fs::write(&config, r#"{"telemetry": false}"#).unwrap();
+        assert!(matches!(record_choice(&e, true, false), Ok(Recorded::Kept)));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), r#"{"telemetry": false}"#);
+        // A config the user must fix: the notice still shows, the file is untouched.
+        std::fs::write(&config, "[1]").unwrap();
+        assert!(notice_directive(&e, false, "impeccable telemetry").is_some_and(|d| d.contains(AGENT_NOTICE)));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "[1]");
+        // Untold: shown once, written whole, no temp or lock file left behind.
+        std::fs::remove_file(&config).unwrap();
+        assert!(notice_directive(&e, false, "impeccable telemetry").is_some());
+        assert!(notice_directive(&e, false, "impeccable telemetry").is_none());
+        let left: Vec<_> = std::fs::read_dir(format!("{}/.impeccable", home)).unwrap().map(|d| d.unwrap().file_name()).collect();
+        assert_eq!(left, ["config.json"]);
+    }
+
+    // Catches an unreadable config being treated as missing and replaced, dropping
+    // the user's other settings.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_config_is_never_replaced() {
+        use std::os::unix::fs::PermissionsExt;
+        let cwd = temp_dir("unreadable");
+        let home = format!("{}/home", cwd);
+        let config = format!("{}/.impeccable/config.json", home);
+        std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
+        std::fs::write(&config, r#"{"other": 1}"#).unwrap();
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads through any mode, so there is nothing to prove there.
+        if std::fs::read_to_string(&config).is_ok() {
+            return;
+        }
+        let e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+        assert!(matches!(record_choice(&e, true, false), Err(RecordError::Unreadable(_))));
+        std::fs::set_permissions(&config, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), r#"{"other": 1}"#);
+    }
+
+    // Catches a save replacing a config symlinked from a dotfiles folder with a plain file.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_config_stays_linked() {
+        let cwd = temp_dir("symlink");
+        let home = format!("{}/home", cwd);
+        let dotfiles = format!("{}/dotfiles/impeccable.json", cwd);
+        std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
+        std::fs::create_dir_all(format!("{}/dotfiles", cwd)).unwrap();
+        std::fs::write(&dotfiles, r#"{"other": 1}"#).unwrap();
+        let link = format!("{}/.impeccable/config.json", home);
+        std::os::unix::fs::symlink(&dotfiles, &link).unwrap();
+        let e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+        assert!(matches!(record_choice(&e, false, true), Ok(Recorded::Written)));
+        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(serde_json::from_str::<Value>(&std::fs::read_to_string(&dotfiles).unwrap()).unwrap(), json!({ "other": 1, "telemetry": false }));
+    }
+
+    #[test]
     fn the_telemetry_verb_records_the_choice_in_the_user_config() {
         let cwd = temp_dir("verb");
         let home = format!("{}/home", cwd);
@@ -1208,6 +1361,13 @@ mod tests {
             (code, out)
         };
         assert!(call(&["status"]).1.starts_with("telemetry: on."));
+        let recorded = |pairs: &[(&str, &str)]| {
+            let mut e = env(&[("HOME", home.as_str()), ("USERPROFILE", home.as_str())]);
+            e.extend(env(pairs));
+            choice_recorded(&e, telemetry_disabled(&e, &cwd))
+        };
+        assert!(!recorded(&[]), "no choice before the verb runs");
+        assert!(recorded(&[("DO_NOT_TRACK", "1")]), "an env opt-out is a choice");
         std::fs::create_dir_all(format!("{}/.impeccable", home)).unwrap();
         std::fs::write(format!("{}/.impeccable/config.json", home), r#"{"other": 1}"#).unwrap();
         let (code, out) = call(&["off"]);
@@ -1216,9 +1376,11 @@ mod tests {
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/.impeccable/config.json", home)).unwrap()).unwrap();
         assert_eq!(cfg, json!({ "other": 1, "telemetry": false }));
         assert!(call(&["status"]).1.starts_with("telemetry: off"));
+        assert!(recorded(&[]));
         assert!(call(&["on"]).1.starts_with("telemetry: on."));
         let cfg: Value = serde_json::from_str(&std::fs::read_to_string(format!("{}/.impeccable/config.json", home)).unwrap()).unwrap();
-        assert_eq!(cfg, json!({ "other": 1 }));
+        assert_eq!(cfg, json!({ "other": 1, "telemetry": true }));
+        assert!(recorded(&[]), "keeping it on is a choice too");
         assert_eq!(call(&["maybe"]).0, 1);
     }
 
