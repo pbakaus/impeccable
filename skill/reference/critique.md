@@ -239,7 +239,7 @@ Persistence is not the end of the run. After it, the response continues with the
 
 ### Since Last Run
 
-Only when an earlier run left a snapshot: the newest `.impeccable/critique/*__<slug>.md` whose `target_identity` is this target (two paths can share a slug), unless its frontmatter says `closed: true`. Open it only now, with the report delivered; this list **never** changes the report's scores or findings. Check each row of its `All Findings` table (its Priority Issues when it predates the table) where it points in the current code; for what only the rendered page shows, use what this run's assessments saw, since the critique's server is already stopped. List each earlier ID and what it said as `fixed`, `partly fixed` or `still open`, judged by that check, not by whether this run found it again.
+Only when an earlier run left a snapshot: the newest `.impeccable/critique/*__<slug>.md` whose `target_identity` is this target (two paths can share a slug), unless its frontmatter says `closed: true`. Open it only now, with the report delivered; this list **never** changes the report's scores or findings. Check each row of its `All Findings` table (its Priority Issues when it predates the table) where it points in the current code; for what only the rendered page shows, look at the page if it is still up, else at what this run's assessments saw. List each earlier ID and what it said as `fixed`, `partly fixed`, `still open`, or `unchecked` when nothing showed that state; judge by that check, not by whether this run found it again.
 
 ### Persist the Snapshot
 
