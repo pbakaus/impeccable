@@ -212,7 +212,7 @@ Provocative questions that might unlock better solutions:
 - "What would a confident version of this look like?"
 
 #### All Findings
-Snapshot only; in chat, give the count in one line. Every finding that survived synthesis, one row each: `| ID | P | H | Where | What | Fix |`.
+In chat, give its count in one line, or the whole table when this run saves no snapshot. Every finding that survived synthesis, one row each: `| ID | P | H | Where | What | Fix |`.
 
 <codex>
 #### Run Notes
