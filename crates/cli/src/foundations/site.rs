@@ -329,11 +329,6 @@ pub fn public_host(raw: &str) -> Option<String> {
 // --- Asking the site -------------------------------------------------------
 
 fn probe(host: &str) -> Items {
-    // A committed file can name an address on this machine's network: ask
-    // nothing of a host that resolves to one.
-    if public_addrs(host, 443).is_none() {
-        return Items::new();
-    }
     let (tx, rx) = mpsc::channel::<Items>();
     // Each job sends an item as soon as it settles, so a slow request never
     // hides one that already finished when the budget runs out.
@@ -367,7 +362,14 @@ fn probe(host: &str) -> Items {
     for job in jobs {
         let tx = tx.clone();
         let host = host.to_string();
-        std::thread::spawn(move || job(&host, &tx));
+        // A committed file can name an address on this machine's network:
+        // ask nothing of a host that resolves to one. The lookup runs inside
+        // the job, so a slow resolver can't outlast the budget.
+        std::thread::spawn(move || {
+            if public_addrs(&host, 443).is_some() {
+                job(&host, &tx);
+            }
+        });
     }
     drop(tx);
     let deadline = Instant::now() + BUDGET;
