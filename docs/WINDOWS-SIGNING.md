@@ -30,14 +30,23 @@ Run the normal `bun run release:engine` flow, then review and approve the
 commit and workflow before approving: the environment approval grants that job
 the ability to sign as the company.
 
-The build job uploads Windows output as `unsigned-windows-x64`. A separate
-Windows runner downloads that artifact from the same run, signs exactly
-`impeccable.exe`, and requires a valid Authenticode signature, the expected
-publisher, and a timestamp before uploading `impeccable-windows-x64`. That
-runner does not check out repository code or execute the downloaded engine.
+The build job uploads `unsigned-windows-x64` and `unsigned-windows-arm64`.
+Each target gets a separate x64 signing runner. It downloads the artifact
+from the same run and signs `impeccable.exe`. Before uploading
+`impeccable-windows-<arch>`, it requires a valid Authenticode signature, the
+expected publisher, and a timestamp. The runner does not check out repository
+code or execute the downloaded engine.
 Only its job receives an OIDC token; only the publish job can write releases.
 Publication waits for successful signing and downloads only `impeccable-*`
 artifacts, so it cannot package the unsigned intermediate.
+
+The two signing legs run independently, but publication needs both: a failed
+`windows-arm64` signing job holds back the whole engine release until it is
+re-run and passes. Signing and publication run only on an `engine-v*` tag
+push. A manual `workflow_dispatch` run builds and smokes every target,
+`windows-arm64` on the hosted `windows-11-arm` runner included, and stops
+there. The hosted ARM64 runner appears in the release workflow only, not in
+`ci.yml`.
 
 RFC 3161 timestamping is required because Azure issues short-lived signing
 certificates. Don't pin a leaf certificate thumbprint: Azure rotates them.

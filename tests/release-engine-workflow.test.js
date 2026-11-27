@@ -6,7 +6,56 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const workflow = Bun.YAML.parse(readFileSync(new URL('../.github/workflows/release-engine.yml', import.meta.url), 'utf8'));
+const ci = Bun.YAML.parse(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'));
 const action = (job, name) => job.steps.find(step => step.uses?.startsWith(`${name}@`));
+
+describe('engine release targets', () => {
+  test('the hosted Windows ARM64 runner is used by the release workflow only', () => {
+    // Catches: every PR paying for (and waiting on) a hosted windows-11-arm runner.
+    for (const [name, job] of Object.entries(ci.jobs)) {
+      expect(JSON.stringify(job), name).not.toContain('windows-11-arm');
+      expect(JSON.stringify(job), name).not.toContain('aarch64-pc-windows-msvc');
+    }
+    // The oracle job reads this output; the plan computes it, so the job must export it.
+    expect(ci.jobs.changes.outputs.oracle).toBe('${{ steps.plan.outputs.oracle }}');
+  });
+
+  test('CI runs the native CLI test against a real engine, never a skip', () => {
+    // Catches: cli-native registered only in the core suite, which has no engine and skips it.
+    const nativeStep = job => job.steps.find(step => step.run === 'node --test tests/cli-native.test.mjs');
+
+    // Every PR, natively on Windows x64, with the pinned release the shim downloads.
+    const windows = ci.jobs['launcher-windows'];
+    expect(windows['runs-on']).toBe('namespace-profile-impeccable-windows');
+    const fetch = windows.steps.findIndex(step => step.run === 'node scripts/fetch-engine.mjs');
+    const winNative = nativeStep(windows);
+    expect(fetch).toBeGreaterThanOrEqual(0);
+    expect(windows.steps.indexOf(winNative)).toBeGreaterThan(fetch);
+    expect(winNative.env.IMPECCABLE_BIN).toBe('${{ github.workspace }}\\skill\\scripts\\bin\\windows-x64\\impeccable.exe');
+
+    // Engine changes, on Linux, with this checkout's source build.
+    const oracle = ci.jobs.oracle;
+    const build = oracle.steps.findIndex(step => step.run === 'cargo build --release -p impeccable');
+    const linuxNative = nativeStep(oracle);
+    expect(oracle.steps.indexOf(linuxNative)).toBeGreaterThan(build);
+    expect(linuxNative.env.IMPECCABLE_BIN).toBe('${{ github.workspace }}/target/release/impeccable');
+  });
+
+  test('builds and probes Windows ARM64 on a native runner', () => {
+    const build = workflow.jobs.build;
+    expect(build.strategy.matrix.include).toContainEqual({
+      os: 'windows-11-arm', target: 'aarch64-pc-windows-msvc', short: 'windows-arm64',
+    });
+    expect(build.strategy.matrix.include).toContainEqual({
+      os: 'namespace-profile-impeccable-windows', target: 'x86_64-pc-windows-msvc', short: 'windows-x64',
+    });
+    expect(build['runs-on']).toBe('${{ matrix.os }}');
+    const smoke = build.steps.find(step => step.name === 'Smoke the binary');
+    expect(smoke.if).toBe('${{ !matrix.cross }}');
+    expect(smoke.run).toContain('target/${{ matrix.target }}/release/impeccable');
+    expect(smoke.run).toContain('engine-probe');
+  });
+});
 
 describe('engine release signing boundary', () => {
   test('only the protected signing job receives an OIDC token', () => {
@@ -26,6 +75,9 @@ describe('engine release signing boundary', () => {
     const tagPush = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/engine-v')";
     expect(workflow.jobs['sign-windows'].if).toBe(tagPush);
     expect(workflow.jobs.publish.if).toBe(tagPush);
+    // The guard sits on the job, so it covers every leg of the signing matrix.
+    expect(workflow.jobs['sign-windows'].strategy.matrix.short).toContain('windows-arm64');
+    expect(JSON.stringify(workflow.jobs['sign-windows'].steps)).not.toContain('github.event_name');
     // The manual trigger takes no inputs, so nothing a dispatcher types reaches a step.
     expect(workflow.on.workflow_dispatch).toBeNull();
     // The build job holds no environment, no write or OIDC permission and no secret.
@@ -36,15 +88,32 @@ describe('engine release signing boundary', () => {
   });
 
   test('publication waits for signing and cannot collect the unsigned artifact', () => {
-    const unsignedName = 'unsigned-windows-x64';
-    expect(action(workflow.jobs.build, 'actions/upload-artifact').with.name).toContain(unsignedName);
+    const windowsTargets = workflow.jobs.build.strategy.matrix.include
+      .filter(target => target.short.startsWith('windows-')).map(target => target.short).sort();
+    expect(windowsTargets).toEqual(['windows-arm64', 'windows-x64']);
+    expect(action(workflow.jobs.build, 'actions/upload-artifact').with.name).toBe(
+      "${{ runner.os == 'Windows' && format('unsigned-{0}', matrix.short) || format('impeccable-{0}', matrix.short) }}",
+    );
     const sign = workflow.jobs['sign-windows'];
-    expect(action(sign, 'actions/download-artifact').with.name).toBe(unsignedName);
-    expect(action(sign, 'actions/upload-artifact').with.name).toBe('impeccable-windows-x64');
+    expect([...sign.strategy.matrix.short].sort()).toEqual(windowsTargets);
+    expect(sign.strategy['fail-fast']).toBe(false);
+    expect(action(sign, 'actions/download-artifact').with.name).toBe('unsigned-${{ matrix.short }}');
+    expect(action(sign, 'actions/upload-artifact').with.name).toBe('impeccable-${{ matrix.short }}');
     expect(workflow.jobs.publish.needs).toEqual(['build', 'sign-windows']);
     expect(action(workflow.jobs.publish, 'actions/download-artifact').with.pattern).toBe('impeccable-*');
-    expect(unsignedName.startsWith('impeccable-')).toBe(false);
     expect(workflow.jobs.publish.steps.find(step => step.name === 'Lay out release assets with checksums').run).toContain('sha256sum');
+  });
+
+  test('the x64 signing runner verifies signatures without running either engine', () => {
+    const sign = workflow.jobs['sign-windows'];
+    expect(sign['runs-on']).toBe('windows-latest');
+    for (const step of sign.steps) {
+      if (step.run) {
+        expect(step.name).toBe('Verify signed engine');
+        expect(step.run).toContain('Get-AuthenticodeSignature');
+        expect(step.run).not.toMatch(/engine-probe|Start-Process|Invoke-Expression|&\s/);
+      }
+    }
   });
 
   test('artifact downloads stay on the same-run runtime-token path', () => {
