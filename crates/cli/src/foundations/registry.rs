@@ -239,7 +239,18 @@ fn alternative_line(set: &str) -> Option<(u64, u64)> {
     if let Some((low, _)) = set.split_once(" - ") {
         return bound(low.trim());
     }
-    set.split_whitespace()
+    // `>= 1.2` is one comparator: an operator alone joins the version after it.
+    let mut comparators: Vec<String> = Vec::new();
+    let mut pending = String::new();
+    for w in set.split_whitespace() {
+        pending.push_str(w);
+        if !w.chars().all(|c| matches!(c, '<' | '>' | '=' | '^' | '~')) {
+            comparators.push(std::mem::take(&mut pending));
+        }
+    }
+    comparators
+        .iter()
+        .map(String::as_str)
         .filter(|c| !c.starts_with('<'))
         .map(bound)
         .collect::<Option<Vec<_>>>()?
@@ -489,6 +500,8 @@ mod tests {
         assert_eq!(range_line("1 - 2"), Some((1, 0)));
         assert_eq!(range_line("^4 || ^2.1"), Some((2, 1)));
         assert_eq!(range_line("^4 || <3"), None);
+        assert_eq!(range_line(">= 1.2.3 < 2"), Some((1, 2)));
+        assert_eq!(range_line("^ 3"), Some((3, 0)));
         let found = deps(
             r#"{"dependencies":{"react":"^16.8.0","local":"file:../x","ws":"workspace:*","gh":"user/repo","any":"*","old":"npm:left-pad@^1.0.0"},"devDependencies":{"@acme/ui":"^2"}}"#,
         );
