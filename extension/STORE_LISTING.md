@@ -5,6 +5,9 @@ field; paste them as they are. Keep this file in step with the manifest
 (`extension/manifest.json`) and the rule registry (the count comes from
 `extension/detector/antipatterns.json` after `bun run build:extension`).
 
+Each section below that answers a Chrome Web Store policy ends with that policy, in our own
+words, with its address. Read the policy page itself before changing a section.
+
 > Draft: the lines about journeys (permissions, remote code, data usage) are not
 > final. The repository owner reviews store copy before any of it is pasted.
 
@@ -94,8 +97,14 @@ English
 ## Privacy policy URL
 https://impeccable.style/privacy
 
+> Policy: an extension that handles user data must post an accurate, current privacy policy that says how data is collected, used and shared, and with whom.
+> https://developer.chrome.com/docs/webstore/program-policies/privacy
+
 ## Single purpose description
 Check and test your site's design: find design problems on any page, and watch personas try your site.
+
+> Policy: one purpose, "narrow and easy to understand", with no bundle of unrelated features.
+> https://developer.chrome.com/docs/webstore/program-policies/quality-guidelines
 
 ## Permission justifications (Privacy practices tab)
 
@@ -112,8 +121,19 @@ Check and test your site's design: find design problems on any page, and watch p
 - **downloads**: Cancels and removes any download the journey's tab starts; a journey never saves files.
 - **declarativeNetRequestWithHostAccess**: While a journey runs and has not been allowed to change anything, blocks requests that would change something (form posts and other writes) that the journey's own page cannot be held from: a tab it opens, a frame from another site inside it, and its site's background workers. The rules are removed as soon as writes are allowed, the person takes over, or the journey ends.
 
+> Policy: ask for the narrowest permissions the features need, and none for features not built yet.
+> https://developer.chrome.com/docs/webstore/program-policies/permissions
+
 ## Remote code
 The extension's own code, including the rule engine (WebAssembly), ships inside the package. A journey runs only the extension's own page helpers (`walks/page-helpers.js`, generated, readable source): the server names one and gives its data, to read and act on the journey's tab, never typing into or reading a field the page marks as a password, card or one-time code (by its `type` or `autocomplete`), and taking screenshots with those fields blacked out (checked as drawn before each screenshot, which is not taken otherwise). A field that may hold a password (one named for a password, or a text field a "show password" button put in its place) is blacked out and never read too. A card or code field the page does not mark is not known as one. A journey marks each password field it sees on the journey's tab (`data-impeccable-secret-field`), each field that may hold one (`data-impeccable-secret-maybe`), and the forms round them (`data-impeccable-secret-form`, `data-impeccable-secret-form-name`), so one the person shows as text stays covered in screenshots; the marks stay with that page. Cookie banners are declined with DuckDuckGo's autoconsent rules (MPL-2.0), bundled in `walks/consent-rules.js`. Until every server names helpers, an older server may still send short page scripts that run in the journey's tab only, and such a journey pauses while a password field or a field that may hold one is filled (for the latter, until the person presses Continue); nothing from the network runs in the extension itself.
 
+> Policy: logic from a remote source may run only through a documented API made for it; the Debugger API is one of the two named.
+> https://developer.chrome.com/docs/webstore/program-policies/mv3-requirements
+
 ## Data usage
 Scans run locally; no page content, findings, or identifiers leave the browser. During a journey the person started, what the server asks for of the journey's tab (screenshots, page content and its address) is sent to Impeccable's server to run the journey and show its results to that person; nothing from any other tab is read or sent. When a journey pauses itself at a sign-in page, it takes one screenshot of that page with every field drawn blank and sends it with the page's title, if the server asks for it. Nothing else of the journey's tab is taken or sent while it is paused. Outside a journey the extension sends nothing to any server. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.
+
+> Policy: user data may be collected, used and sent only as the disclosed single purpose needs, never sold or used for advertising, and the handling must be disclosed in the product itself, not only in a policy.
+> https://developer.chrome.com/docs/webstore/program-policies/limited-use
+> https://developer.chrome.com/docs/webstore/program-policies/disclosure-requirements
+> https://developer.chrome.com/docs/webstore/program-policies/user-data-faq

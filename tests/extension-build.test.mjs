@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import vm from 'node:vm';
+import { storeManifest } from '../scripts/lib/extension-manifests.js';
 import { webcrypto } from 'node:crypto';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -772,4 +773,13 @@ describe('deferred rule-core preparation after background restart', () => {
     release({ ok: true });
     assert.equal((await ready).superseded, true);
   });
+});
+
+// The listing describes the store build (scripts/lib/extension-manifests.js `storeManifest`): the store rejects an
+// item whose permissions it does not justify.
+it('the store listing justifies every permission the store build asks for, and has notes for its version', () => {
+  const manifest = storeManifest(JSON.parse(readFileSync(path.join(ROOT, 'extension/manifest.json'), 'utf8')));
+  const listing = readFileSync(path.join(ROOT, 'extension/STORE_LISTING.md'), 'utf8');
+  assert.deepEqual(manifest.permissions.filter((permission) => !listing.includes(`- **${permission}**:`)), []);
+  assert.ok(listing.includes(`version notes for ${manifest.version}`));
 });
