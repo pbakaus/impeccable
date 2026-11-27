@@ -43,6 +43,9 @@ const ACCOUNT_VAR: &str = "IMPECCABLE_ACCOUNT_URL";
 struct Target {
     account: &'static str,
     command: String,
+    /// Windows only: the engine's own folder, pinned in every entry. There is no launcher to
+    /// carry it, so an agent started without `IMPECCABLE_HOME` would miss a custom one's sign-in.
+    home: Option<String>,
 }
 thread_local! {
     static TARGET: std::cell::RefCell<Option<Target>> = const { std::cell::RefCell::new(None) };
@@ -98,7 +101,10 @@ fn plist_string(path: &Path, key: &str) -> Option<String> {
 fn init_target(io: &Io) -> Result<()> {
     let account = account_for(io);
     let command = mcp_command(io)?;
-    TARGET.set(Some(Target { account: *account.as_ref().unwrap_or(&ACCOUNTS[0]), command }));
+    let home = (!cfg!(unix))
+        .then(|| impeccable_account::config::impeccable_home(&io.env).map(|h| h.display().to_string()))
+        .flatten();
+    TARGET.set(Some(Target { account: *account.as_ref().unwrap_or(&ACCOUNTS[0]), command, home }));
     account.map(|_| ())
 }
 
@@ -371,8 +377,9 @@ impl AgentDescription {
     /// table as the same keys). The account service is always pinned, production included, so
     /// a variable in the agent's own environment never moves it.
     fn mcp_entry(&self) -> Value {
-        let Target { account, command } = target();
-        let env = json!({ ACCOUNT_VAR: account });
+        let Target { account, command, home } = target();
+        let mut env = json!({ ACCOUNT_VAR: account });
+        if let Some(home) = home { env["IMPECCABLE_HOME"] = json!(home); }
         match self.harness {
             "claude" => json!({"type": "stdio", "command": command, "args": ["mcp"], "env": env}),
             "copilot" => json!({"type": "local", "command": command, "args": ["mcp"], "env": env, "tools": ["*"]}),
@@ -663,7 +670,7 @@ pub(crate) fn status_text(v: &Value) -> String {
         }
     }
     let detected = v["agents"].as_array().is_some_and(|a| a.iter().any(|x| x["detected"] == true));
-    if let Some(step) = v["agents"].as_array().into_iter().flatten().find_map(|a| a["signIn"].as_str()).filter(|_| detected) {
+    if let Some(step) = v["agents"].as_array().into_iter().flatten().find_map(|a| a["signIn"].as_str()).filter(|_| detected && impeccable_account::OFFER_SIGN_IN) {
         out.push_str(&format!("Sign in: {step}\n"));
     }
     out
