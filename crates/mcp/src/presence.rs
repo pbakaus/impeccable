@@ -70,6 +70,10 @@ fn base(arg: &str) -> &str {
 }
 
 /// The harness a process is, from its program or (for `node <script>`) its script.
+pub fn harness_name(p: &Proc) -> Option<&'static str> {
+    harness_of(p)
+}
+
 fn harness_of(p: &Proc) -> Option<&'static str> {
     let program = base(p.args.first()?);
     let named = |n: &str| HARNESSES.iter().find(|(exe, _)| *exe == n).map(|(_, h)| *h);
@@ -90,7 +94,7 @@ pub fn harness_process(procs: &HashMap<u32, Proc>, pid: u32) -> Option<&Proc> {
 
 /// The session's name as the harness was started with it (Claude Code's `--name` / `-n`).
 /// `ps` gives the arguments split at spaces, so a quoted name reads as the words up to the next option.
-fn session_name(p: &Proc) -> Option<String> {
+pub fn session_name(p: &Proc) -> Option<String> {
     let at = p.args.iter().position(|a| a == "--name" || a == "-n")?;
     let words: Vec<&str> = p.args[at + 1..].iter().map(String::as_str).take_while(|w| !w.starts_with('-')).collect();
     clean(&words.join(" "))
@@ -197,7 +201,10 @@ pub fn agents(dir: Option<&Path>, procs: impl FnOnce() -> HashMap<u32, Proc>) ->
     let mut out = Vec::new();
     let mut entries: Vec<PathBuf> = dir
         .and_then(|d| std::fs::read_dir(d).ok())
-        .map(|it| it.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect())
+        // `session-*.json` are the claims' rebind files (crate::claims), not presence records.
+        .map(|it| it.flatten().map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "json") && !p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("session-")))
+            .collect())
         .unwrap_or_default();
     entries.sort();
     let records: Vec<(PathBuf, Value)> = entries

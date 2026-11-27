@@ -164,12 +164,26 @@ impl Client {
         bearer: &str,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, ApiError> {
+        self.post_json_with(url, bearer, body, &[])
+    }
+
+    /// [`Client::post_json`] with extra request headers.
+    pub fn post_json_with(
+        &self,
+        url: &str,
+        bearer: &str,
+        body: serde_json::Value,
+        headers: &[(&str, &str)],
+    ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
-        let req = self
+        let mut req = self
             .agent
             .post(url)
             .set("accept", "application/json")
             .set("authorization", &bearer_header(bearer)?);
+        for (name, value) in headers {
+            req = req.set(name, value);
+        }
         json_body(req.send_json(body))
     }
 
