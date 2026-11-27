@@ -801,7 +801,13 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     // alone, as before.
     // Shell writes never reach the per-edit pass, so Stop also scans UI files
     // modified since the session started, when the event says when that was.
-    let session_start = crate::stop_discovery::session_start_ms(&event);
+    let stop_started = std::time::SystemTime::now();
+    // Discovery covers this turn: a file changed before the session's last
+    // Stop pass was that pass's to report, or no write of this session's (#1670).
+    let session_start = crate::stop_discovery::session_start_ms(&event).map(|start| {
+        let last = if named_session { crate::hook_sessions::last_stop_ms(rt, &session_id, stop_started) } else { None };
+        last.map_or(start, |last| last.max(start))
+    });
     let home = rt.resolve(&[&rt.homedir()]);
     let mut first_root = resolve_stop_cwd(rt, &session_cwd, &session_id);
     // A session started inside a project (`src/`) keys to that project, as the
@@ -835,6 +841,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
     let mut first_skip: Option<RunResult> = None;
     let mut scanned = 0usize;
     let mut discovered_scanned = 0usize;
+    let mut discovery_capped = false;
     let mut pre_existing = 0usize;
     let mut new_findings = 0usize;
     let mut unknown = 0usize;
@@ -933,6 +940,7 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
         let mut dirty = false;
         for (file_path, found) in &touched {
             if *found && discovered_scanned >= STOP_MAX_FILES {
+                discovery_capped = true;
                 break;
             }
             if !*found && scanned >= STOP_MAX_FILES {
@@ -1011,6 +1019,11 @@ pub fn run_stop_hook(rt: &Runtime, stdin: &str) -> RunResult {
             }
         }
         passes.push(RootPass { cwd: root.clone(), config: root_config, cache: root_cache, groups, scans, dirty });
+    }
+    // A capped pass leaves the window where it was: the files it scanned are
+    // cached now, so the next pass reaches the ones it left.
+    if named_session && session_start.is_some() && !discovery_capped {
+        crate::hook_sessions::record_stop(rt, &session_id, stop_started);
     }
     if passes.is_empty() {
         // Every root fell out at a gate: report the first, as a single root did.
