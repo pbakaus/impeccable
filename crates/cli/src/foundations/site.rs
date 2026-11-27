@@ -591,6 +591,11 @@ pub fn judge_security_txt(got: &Got) -> Option<&'static str> {
 /// SPF and DMARC: DMARC at the host or its nearest parent that has one (down
 /// to two labels), SPF where DMARC was found or at the host.
 pub fn judge_email(host: &str, txt: &dyn Fn(&str) -> Option<Vec<String>>) -> Option<&'static str> {
+    // A host's subdomain shares its records with the host's other customers:
+    // the person can't add any, and the walk up would find the host's own.
+    if HOSTED.iter().any(|d| host.ends_with(&format!(".{d}"))) {
+        return None;
+    }
     let labels: Vec<&str> = host.split('.').collect();
     let has = |records: &[String], prefix: &str| {
         records
@@ -615,6 +620,26 @@ pub fn judge_email(host: &str, txt: &dyn Fn(&str) -> Option<Vec<String>>) -> Opt
         "failing"
     })
 }
+
+/// Hosting platforms whose subdomains people deploy to without a domain of their own.
+const HOSTED: [&str; 16] = [
+    "vercel.app",
+    "netlify.app",
+    "pages.dev",
+    "workers.dev",
+    "github.io",
+    "gitlab.io",
+    "fly.dev",
+    "onrender.com",
+    "herokuapp.com",
+    "web.app",
+    "firebaseapp.com",
+    "railway.app",
+    "up.railway.app",
+    "surge.sh",
+    "azurewebsites.net",
+    "amplifyapp.com",
+];
 
 /// A DNS JSON answer's TXT strings; NXDOMAIN is a clean "none".
 pub fn parse_doh(body: &str) -> Option<Vec<String>> {
@@ -848,6 +873,7 @@ mod tests {
             Some("failing")
         );
         assert_eq!(judge_email("acme.dev", &|_: &str| None), None);
+        assert_eq!(judge_email("acme.vercel.app", &dns), None);
         assert_eq!(
             parse_doh(r#"{"Status":0,"Answer":[{"type":16,"data":"\"v=spf1 \" \"-all\""}]}"#),
             Some(vec!["v=spf1 -all".to_string()])
