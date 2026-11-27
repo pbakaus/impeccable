@@ -450,8 +450,9 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
     if !matches!(lower(style, "display").as_str(), "flex" | "inline-flex")
         || lower(style, "flexDirection").starts_with("column")
         || lower(style, "alignItems") != "center"
-        || el.text_content().chars().filter(|c| c.is_alphabetic()).count() > TRACKED_LABEL_MAX_CHARS
-        || el.query_selector("br").is_some()
+        || el.text_content_outside_templates().chars().filter(|c| c.is_alphabetic()).count()
+            > TRACKED_LABEL_MAX_CHARS
+        || el.query_selector_all("br").iter().any(|br| !in_template_below(br, el))
     {
         return false;
     }
@@ -474,7 +475,7 @@ fn centres_clear_of_edges(el: &StaticElement<'_>, style: &StyleValues) -> bool {
     let Some((line, height)) = band(el) else {
         return false;
     };
-    let content = el.children().iter().try_fold(line, |tallest, c| {
+    let content = rendered_children(el).iter().try_fold(line, |tallest, c| {
         if !matches!(lower(c.style(), "alignSelf").as_str(), "" | "auto" | "center")
             || is_offset_static(c.style())
         {
@@ -596,6 +597,22 @@ fn is_transparent_wrapper_static(el: &StaticElement<'_>, style: &StyleValues) ->
     // on the edge. Only a wrapper holding no text of its own can be seen
     // through.
     !has_nonblank_direct_text(el)
+}
+
+/// Whether a `<template>` between `el` and its descendant `d` keeps `d` from
+/// being laid out (#1693).
+fn in_template_below(d: &StaticElement<'_>, el: &StaticElement<'_>) -> bool {
+    let mut cur = d.parent_element();
+    while let Some(p) = cur {
+        if p.id() == el.id() {
+            return false;
+        }
+        if p.tag_lower() == "template" {
+            return true;
+        }
+        cur = p.parent_element();
+    }
+    false
 }
 
 /// `el.children()` minus `<template>`: `flatten_fragments` carries a template's

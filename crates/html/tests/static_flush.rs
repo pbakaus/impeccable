@@ -71,6 +71,20 @@ fn a_template_beside_a_padded_block_in_a_wrapper_is_not_flagged() {
     assert_eq!(scan(&html), Vec::<String>::new());
 }
 
+/// A label centred in a min-height flex row stays inset when a `<template>`
+/// beside it holds a `<br>` or a long label: neither is laid out.
+#[test]
+fn a_template_does_not_undo_a_centred_row() {
+    let style = ".row { display: flex; align-items: center; min-height: 44px; padding: 0 8px; border: 1px solid #ccc; font-size: 16px; }";
+    for extra in ["<br>", "<span>A much longer loop label that runs on and on</span>"] {
+        let html = page(
+            style,
+            &format!("<div class=\"row\"><span>Instagram</span><template>{extra}</template></div>"),
+        );
+        assert_eq!(scan(&html), Vec::<String>::new(), "{extra}");
+    }
+}
+
 /// A template beside a rendered, unpadded item cannot inset it: the item's own
 /// text still sits flush.
 #[test]
