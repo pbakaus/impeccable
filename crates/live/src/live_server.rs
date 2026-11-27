@@ -443,13 +443,10 @@ fn mkdtemp(prefix: &str) -> Option<String> {
 fn stop(argv: &[String], cwd: &str, io: &mut Io) -> i32 {
     let keep_inject = argv.iter().any(|a| a == "--keep-inject");
     let env = io.env.clone();
-    let stopped = match read_live_server_info(cwd, &env) {
-        Some((info, _)) => {
-            let port = info
-                .raw
-                .get("port")
-                .map(js_display)
-                .unwrap_or_else(|| "undefined".to_string());
+    let stopped = match read_live_server_info(cwd, &env)
+        .and_then(|(info, _)| info.port.map(|port| (info, port)))
+    {
+        Some((info, port)) => {
             let token = info
                 .raw
                 .get("token")
@@ -3094,5 +3091,54 @@ mod background_tests {
         enter_live_root(&mut child_argv, &mut child).unwrap();
         let _ = std::fs::remove_dir_all(&ws);
         assert_eq!(child.cwd, parent.cwd);
+    }
+}
+
+#[cfg(test)]
+mod server_record_tests {
+    use super::*;
+
+    // #1584: a committed server.json whose port is a string like
+    // `1@host:port/x?` turned `http://localhost:{port}` into a request to that
+    // host, carrying the token. Only a numeric port is dialed, and only here.
+    #[test]
+    fn stop_and_poll_never_dial_a_host_named_in_the_record() {
+        // A listener that answers anything, counting the requests it gets.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = hits.clone();
+        std::thread::spawn(move || {
+            for mut conn in listener.incoming().flatten() {
+                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = std::io::Read::read(&mut conn, &mut [0u8; 4096]);
+                let _ = std::io::Write::write_all(&mut conn, b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            }
+        });
+        let root = std::env::temp_dir().join(format!("impeccable-server-record-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".impeccable/live")).unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        let env: Env = [("HOME".to_string(), "/nonexistent-home".to_string())].into_iter().collect();
+        let record = serde_json::json!({ "port": format!("1@{addr}/x?"), "token": "t" }).to_string();
+        let server_json = root.join(".impeccable/live/server.json");
+
+        std::fs::write(&server_json, &record).unwrap();
+        let (mut io, captured) = Io::captured("", root.clone(), env.clone());
+        stop(&["--keep-inject".to_string()], &root.to_string_lossy(), &mut io);
+        drop(io);
+        assert!(String::from_utf8_lossy(&captured.stdout.borrow()).contains("No running live server found."));
+
+        std::fs::write(&server_json, &record).unwrap();
+        let (mut io, _) = Io::captured("", root.clone(), env.clone());
+        crate::live_poll::run(&["--timeout=1".to_string()], &mut io, &mut |_, _| None);
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0, "a verb dialed the host named in server.json");
+
+        // Control: the same record with the listener's own port is dialed.
+        std::fs::write(&server_json, serde_json::json!({ "port": addr.port(), "token": "t" }).to_string()).unwrap();
+        let (mut io, _) = Io::captured("", root.clone(), env);
+        stop(&["--keep-inject".to_string()], &root.to_string_lossy(), &mut io);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(hits.load(std::sync::atomic::Ordering::SeqCst) >= 1);
     }
 }
