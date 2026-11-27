@@ -98,10 +98,15 @@ fn telemetry_decided(io: &Io) -> bool {
     telemetry::choice_recorded(&io.env, telemetry::telemetry_disabled(&io.env, &io.cwd.to_string_lossy()))
 }
 
-/// Records the answer and says how to change it. A config the user must fix keeps it
-/// unrecorded, and the agent mentions it next session.
+/// Records the answer and says how to change it. When it can't be saved, says so: an
+/// opt-out that didn't save leaves telemetry on.
 fn record_telemetry(io: &mut Io, on: bool) {
-    if impeccable_context::telemetry::record_choice(&io.env, on).is_err() {
+    if let Err(e) = impeccable_context::telemetry::record_choice(&io.env, on, true) {
+        io.err(&if on {
+            format!("Couldn't save your answer ({e}), so you may be asked again.\n")
+        } else {
+            format!("Couldn't save your opt-out ({e}), so telemetry is still on. Fix that, then run: npx impeccable telemetry off\n")
+        });
         return;
     }
     io.err(if on {
@@ -264,6 +269,12 @@ mod tests {
             assert_eq!(std::fs::read_to_string(&config).unwrap(), format!("{{\n  \"telemetry\": {on}\n}}\n"));
             assert!(telemetry_decided(&io_with(&[]).0), "never asked twice");
         }
+        // An opt-out that can't be saved says so instead of carrying on silently.
+        std::fs::write(&config, "not json").unwrap();
+        let (mut io, cap) = io_with(&[]);
+        record_telemetry(&mut io, false);
+        assert!(stderr(&cap).starts_with("Couldn't save your opt-out"), "{}", stderr(&cap));
+        assert_eq!(std::fs::read_to_string(&config).unwrap(), "not json");
         let _ = std::fs::remove_dir_all(&home);
     }
 
