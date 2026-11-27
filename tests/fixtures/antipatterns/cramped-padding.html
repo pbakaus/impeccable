@@ -130,6 +130,8 @@
     /* ── PASS: an inline highlight that wraps is two one-line fragments ── */
     .pass-highlight-copy { width: 240px; font-size: 14px; line-height: 26px; margin: 0; }
     .pass-highlight { background: #fef08a; padding: 0 5px; }
+    .flag-template-list, .pass-template-list, .pass-template-text-list { width: 420px; padding: 0; margin: 0; list-style: none; background: #f3f3f3; border: 1px solid #cccccc; font-size: 14px; }
+    .pass-template-list > li { padding: 12px 16px; }
   </style>
 </head>
 <body>
@@ -204,6 +206,12 @@
   const value = "cramped";
   return value;
 }</pre>
+      </div>
+
+      <h3>List with a template beside an unpadded item</h3>
+      <div class="case">
+        <span class="case-label">420px list, border and background, padding 0: the rendered item has no padding, and the template's padded item is never laid out</span>
+        <ul class="flag-template-list"><template><li style="padding: 12px 16px">Item name here</li></template><li>Static flush item</li></ul>
       </div>
     </div>
 
@@ -312,6 +320,16 @@
       <div class="case">
         <span class="case-label">an inline highlight with no vertical padding wraps onto two lines: each fragment is one 21px line, not one 43px box</span>
         <div class="pass-highlight-copy">Every estimate is checked against the <span class="pass-highlight">carrier's own estimating guide before it ships</span> to the customer.</div>
+      </div>
+
+      <h3>List items rendered from a template</h3>
+      <div class="case">
+        <span class="case-label">420px list, border and background, padding 0, only child a template: nothing is laid out</span>
+        <ul class="pass-template-list"><template><li>Item name here</li></template></ul>
+      </div>
+      <div class="case">
+        <span class="case-label">420px list with a template beside an empty rendered item: the template text is not a text child</span>
+        <ul class="pass-template-text-list"><template><li>Item name here</li></template><li></li></ul>
       </div>
     </div>
   </div>

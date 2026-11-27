@@ -598,6 +598,15 @@ fn is_transparent_wrapper_static(el: &StaticElement<'_>, style: &StyleValues) ->
     !has_nonblank_direct_text(el)
 }
 
+/// `el.children()` minus `<template>`: `flatten_fragments` carries a template's
+/// content as ordinary descendants, but a browser never lays it out, so it
+/// neither reaches an edge nor insets one (#1693).
+fn rendered_children<'a>(el: &StaticElement<'a>) -> Vec<StaticElement<'a>> {
+    let mut children = el.children();
+    children.retain(|c| c.tag_lower() != "template");
+    children
+}
+
 /// Whether `el` keeps the container's text off side `s`.
 ///
 /// An element that holds one element and no text of its own is a pass-through
@@ -652,7 +661,7 @@ fn insulates_side(
     if depth == 0 || el.has_direct_text_longer_than(4) || is_offset_static(style) {
         return false;
     }
-    let children = el.children();
+    let children = rendered_children(el);
     match children.as_slice() {
         [only] => insulates_side(
             only,
@@ -805,7 +814,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
     {
         let upper_tag = js::to_upper_case(tag);
         let el_position = sv(style, "position");
-        let children = el.children();
+        let children = rendered_children(el);
         if !FLUSH_SKIP_TAGS.contains(&upper_tag.as_str())
             && !q.has_direct_text
             && el_position != "fixed"
@@ -914,7 +923,7 @@ pub fn check_quality(q: &QualityInput<'_, '_>) -> Vec<RuleHit> {
                 if !flush_sides.is_empty() {
                     let has_text_child = children
                         .iter()
-                        .any(|c| utf16_len(js::trim(&c.text_content())) > 4);
+                        .any(|c| utf16_len(js::trim(&c.text_content_outside_templates())) > 4);
                     if has_text_child {
                         let cls_all = js::trim(el.class_name());
                         let cls = if cls_all.is_empty() {
