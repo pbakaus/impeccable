@@ -10,6 +10,7 @@ pub(super) fn hooks_file(s: &Spec) -> PathBuf {
         "claude" => "settings.json",
         "codex" | "cursor" => "hooks.json",
         "copilot" => "hooks/impeccable-loop.json",
+        "antigravity" => "config/hooks.json",
         "opencode" => "plugin/impeccable-loop.ts",
         _ => unreachable!(),
     })
@@ -24,11 +25,26 @@ pub(super) fn dedicated_wake_file(s: &Spec) -> Option<PathBuf> {
     }
 }
 
+/// The folder of the engine's own files that an apply creates when it's missing (and an undo removes when empty):
+/// the dedicated wake file's, or Antigravity's `config` (its hooks and MCP files both live there).
+pub(super) fn own_dir(s: &Spec) -> Option<PathBuf> {
+    if s.harness == "antigravity" && (!s.hooks.is_empty() || !s.mcp_entries.is_empty()) {
+        return Some(s.root.join("config"));
+    }
+    dedicated_wake_file(s).and_then(|p| p.parent().map(Path::to_path_buf))
+}
+
+/// Whether `path` is a harness rule file (its instruction block lives there).
+pub(super) fn is_rule_file(path: &Path) -> bool {
+    path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") || path.ends_with("GEMINI.md")
+}
+
 pub(super) fn json_entries_file(s: &Spec, path: &Path) -> bool {
     match s.harness.as_str() {
         "cursor" => path.ends_with("mcp.json") || path.ends_with("cli-config.json"),
         "copilot" => path.ends_with("mcp-config.json"),
         "opencode" => path.ends_with("opencode.json"),
+        "antigravity" => path.ends_with("config/mcp_config.json"),
         _ => false,
     }
 }
@@ -47,7 +63,7 @@ pub(super) fn render(
     if s.harness == "codex" && path.ends_with("config.toml") {
         return render_codex_config(s, before);
     }
-    let is_rule = path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md");
+    let is_rule = is_rule_file(path);
     if is_rule {
         return render_rule(s, before);
     }
@@ -73,10 +89,10 @@ pub(super) fn render(
             obj.insert("version".into(), json!(1));
             changed = true;
         }
-        if !obj.contains_key("hooks") {
+        if !obj.contains_key(s.hooks_key()) {
             changed = true;
         }
-        let hooks = obj.entry("hooks").or_insert(json!({}));
+        let hooks = obj.entry(s.hooks_key()).or_insert(json!({}));
         if !hooks.is_object() {
             return Err(("invalid_settings", "hooks must be an object".into(), 4));
         }
@@ -120,10 +136,13 @@ pub(super) fn remove_owned(
     if s.harness == "opencode" && path.ends_with("plugin/impeccable-loop.ts") {
         return Ok((s.wake_plugin.as_deref().map(str::as_bytes) == Some(current)).then(|| original.unwrap_or_default().to_vec()));
     }
-    if (s.instruction.is_some() || path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md"))
+    if (s.instruction.is_some() || is_rule_file(path))
         && String::from_utf8_lossy(current).contains(&format!("impeccable:{}", s.owner))
     {
         return remove_rule_block(s, current, original).map(Some);
+    }
+    if s.harness == "antigravity" && json_entries_file(s, path) {
+        return render_json_entries(s, path, Some(current), original, true).map(Some);
     }
     if ["cursor", "copilot", "opencode"].contains(&s.harness.as_str()) {
         if json_entries_file(s, path) {
@@ -131,7 +150,7 @@ pub(super) fn remove_owned(
         }
         return remove_json_hooks(s, current, original);
     }
-    if s.harness == "claude" && !s.hooks.is_empty() {
+    if ["claude", "antigravity"].contains(&s.harness.as_str()) && !s.hooks.is_empty() {
         return remove_json_hooks(s, current, original);
     }
     if s.harness == "codex" && (!s.hooks.is_empty() || !s.mcp_approvals.is_empty()) {
@@ -180,7 +199,7 @@ pub(super) fn instruction_drift(
 
 /// The harness's rule file for this account root.
 pub(super) fn rule_file(s: &Spec) -> PathBuf {
-    s.root.join(if s.harness == "claude" { "CLAUDE.md" } else { "AGENTS.md" })
+    s.root.join(match s.harness.as_str() { "claude" => "CLAUDE.md", "antigravity" => "GEMINI.md", _ => "AGENTS.md" })
 }
 
 /// Whether this installation's resources are on disk, judged from the files
@@ -199,7 +218,7 @@ pub(super) fn installed_on_disk(s: &Spec) -> Option<PathBuf> {
         .iter()
         .any(|h| {
             value
-                .get("hooks")
+                .get(s.hooks_key())
                 .and_then(|v| v.get(&h.event))
                 .and_then(Value::as_array)
                 .is_some_and(|a| a.contains(&h.entry(&s.harness)))
@@ -216,12 +235,12 @@ pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) 
     let original = original.and_then(|b| parse_unique_json(b).ok());
     let mut out = Vec::new();
     for h in &s.hooks {
-        let Some(entries) = value.get("hooks").and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
+        let Some(entries) = value.get(s.hooks_key()).and_then(|v| v.get(&h.event)).and_then(Value::as_array) else {
             continue;
         };
         let ours = h.entry(&s.harness);
         let same_command = |e: &Value| {
-            (["cursor", "copilot"].contains(&s.harness.as_str())
+            (["cursor", "copilot", "antigravity"].contains(&s.harness.as_str())
                 && e.get(if s.harness == "copilot" { "bash" } else { "command" }).and_then(Value::as_str) == Some(h.command.as_str()))
                 || e.get("hooks").and_then(Value::as_array).is_some_and(|hs| {
                     hs.iter().any(|c| {
@@ -233,7 +252,7 @@ pub(super) fn drifted_hooks(s: &Spec, settings: &[u8], original: Option<&[u8]>) 
         let preexisting = |e: &Value| {
             original
                 .as_ref()
-                .and_then(|o| o.get("hooks"))
+                .and_then(|o| o.get(s.hooks_key()))
                 .and_then(|v| v.get(&h.event))
                 .and_then(Value::as_array)
                 .is_some_and(|a| a.contains(e))
@@ -334,12 +353,12 @@ fn remove_json_hooks(
     let Some(root) = cur.as_object_mut() else {
         return Ok(None);
     };
-    let Some(container) = root.get_mut("hooks").and_then(Value::as_object_mut) else {
+    let Some(container) = root.get_mut(s.hooks_key()).and_then(Value::as_object_mut) else {
         return Ok(None);
     };
     let changed = remove_hook_entries(s, container, orig.as_ref());
     if container.is_empty() {
-        root.remove("hooks");
+        root.remove(s.hooks_key());
         if ["cursor", "copilot"].contains(&s.harness.as_str())
             && orig.as_ref().and_then(|v| v.get("version")).is_none()
             && root.get("version") == Some(&json!(1))
@@ -376,7 +395,7 @@ fn remove_hook_entries(
         };
         let entry = h.entry(&s.harness);
         let existed = original
-            .and_then(|v| v.get("hooks"))
+            .and_then(|v| v.get(s.hooks_key()))
             .and_then(|v| v.get(key))
             .and_then(Value::as_array)
             .is_some_and(|a| a.contains(&entry));

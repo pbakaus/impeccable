@@ -1702,3 +1702,68 @@ fn partial_http_server_cleanup_reports_the_edited_entry() {
         assert_eq!(remaining[section], json!({"edited": edited}));
     }
 }
+
+#[test]
+fn antigravity_hooks_are_one_named_hook_beside_the_persons_and_undo_takes_only_it() {
+    // Catches (REN-2509): Loop's Antigravity hooks written under a `hooks` key Antigravity never
+    // reads, or undo touching the design detector's own named hook.
+    let home = temp();
+    let root = temp();
+    fs::create_dir_all(root.join("config")).unwrap();
+    let file = root.join("config/hooks.json");
+    let theirs = json!({"impeccable": {"Stop": [{"type": "command", "command": "detector", "timeout": 30}]}});
+    fs::write(&file, serde_json::to_vec_pretty(&theirs).unwrap()).unwrap();
+    let mut s = spec("antigravity", root.clone());
+    s.instruction = None;
+    let mut post = hook("PostToolUse", "loop-hook antigravity register");
+    post.matcher = Some("call_mcp_tool|mcp_.*".into());
+    post.timeout = Some(10);
+    let mut stop = hook("Stop", "loop-hook antigravity lifecycle");
+    stop.timeout = Some(3600);
+    s.hooks = vec![post, stop];
+    validate(&s).unwrap();
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let written: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert_eq!(written["impeccable"], theirs["impeccable"]);
+    assert!(written.get("hooks").is_none());
+    assert_eq!(
+        written["impeccable-loop"],
+        json!({
+            "PostToolUse": [{"matcher": "call_mcp_tool|mcp_.*", "hooks": [{"type": "command", "command": "loop-hook antigravity register", "timeout": 10}]}],
+            "Stop": [{"type": "command", "command": "loop-hook antigravity lifecycle", "timeout": 3600}]
+        })
+    );
+    assert_eq!(status(&s, Some(&j)).unwrap()["installed"], true);
+    assert!(undo(&s, Some(&j), &home).unwrap()["conflicts"].as_array().unwrap().is_empty());
+    let after: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert_eq!(after, theirs);
+}
+
+#[test]
+fn antigravity_server_and_line_install_into_a_fresh_root_and_undo_keeps_the_persons_servers() {
+    // Catches (Greptile on #1700): a missing `config` folder failing the plan, GEMINI.md parsed as
+    // JSON, undo leaving `impeccable` behind once the person added a server, and a URL entry
+    // reaching a harness that has no URL shape.
+    let home = temp();
+    let root = temp();
+    fs::write(root.join("GEMINI.md"), b"My notes\n").unwrap();
+    let mut s = spec("antigravity", root.clone());
+    s.mcp_entries.insert("impeccable".into(), json!({"command": "/x/mcp", "args": ["mcp"], "env": {}, "disabled": false}));
+    validate(&s).unwrap();
+    let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
+    let rules = fs::read_to_string(root.join("GEMINI.md")).unwrap();
+    assert!(rules.starts_with("My notes") && rules.contains(&format!("impeccable:{}", s.owner)), "{rules}");
+    let file = root.join("config/mcp_config.json");
+    let mut config: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    config["mcpServers"]["mine"] = json!({"command": "mine"});
+    fs::write(&file, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+    let result = undo(&s, Some(&j), &home).unwrap();
+    assert!(result["conflicts"].as_array().unwrap().is_empty(), "{result}");
+    let after: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert_eq!(after["mcpServers"], json!({"mine": {"command": "mine"}}));
+    assert_eq!(fs::read_to_string(root.join("GEMINI.md")).unwrap(), "My notes\n");
+
+    let mut url = spec("antigravity", temp());
+    url.mcp_entries.insert("impeccable".into(), json!("https://example.test/mcp"));
+    assert!(validate(&url).is_err());
+}

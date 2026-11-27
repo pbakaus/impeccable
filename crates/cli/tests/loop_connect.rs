@@ -37,6 +37,8 @@ impl Box {
             "PATH".into(),
             format!("{}:/usr/bin:/bin", root.join("bin").display()),
         );
+        // This Mac's own Antigravity app stays out of every test that doesn't ask for it.
+        env.insert("IMPECCABLE_ANTIGRAVITY_BIN".into(), root.join("no-antigravity").display().to_string());
         // Fakes in the image of the real CLIs: Claude 2.1.x prints text on `get` and takes no
         // --scope there; Codex answers `get --json` with its transport object.
         // Fakes in the image of the real CLIs, writing the same files: Claude keeps user
@@ -1025,7 +1027,7 @@ fn status_and_json_connect_tell_loop_what_each_agent_needs() {
     assert_eq!(before["loop"]["installed"], true);
     assert_eq!(before["loop"]["version"], "0.1.1");
     for a in before["agents"].as_array().unwrap() {
-        if a["agent"] == "cursor" || a["agent"] == "copilot" || a["agent"] == "opencode" {
+        if a["agent"] == "cursor" || a["agent"] == "copilot" || a["agent"] == "opencode" || a["agent"] == "antigravity" {
             assert_eq!(
                 a["detected"], false,
                 "the fixture installs only Claude and Codex"
@@ -2045,4 +2047,77 @@ fn disconnect_puts_back_the_entry_a_journal_owned_server_replaced() {
     assert!(again.status.success(), "{}", text(&again));
     let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
     assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
+}
+
+#[test]
+fn antigravity_connects_through_the_local_server_and_a_named_hook() {
+    // Catches (REN-2509): Antigravity had no Loop connection at all.
+    for (name, app_only) in [("agy", false), ("agy-app-only", true)] {
+        let mut b = Box::new(name);
+        b.env.remove("IMPECCABLE_ANTIGRAVITY_BIN");
+        // The first Loop whose helper knows Antigravity (connect's gate).
+        b.install_loop_version("27.0.0");
+        let executable = if app_only {
+            let server = b.home().join("Applications/Antigravity.app/Contents/Resources/bin/language_server");
+            fs::create_dir_all(server.parent().unwrap()).unwrap();
+            script(&server, "#!/bin/sh\nexit 99\n");
+            server
+        } else {
+            script(&b.root.join("bin/agy"), "#!/bin/sh\nexit 99\n");
+            b.root.join("bin/agy")
+        };
+        let root = b.home().join(".gemini");
+        fs::create_dir_all(root.join("config")).unwrap();
+        let detector = serde_json::json!({"impeccable": {"Stop": [{"type": "command", "command": "detector", "timeout": 30}]}});
+        fs::write(root.join("config/hooks.json"), detector.to_string()).unwrap();
+        let out = b.run(&["loop", "connect", "--agent", "antigravity", "--no-taste", "--json"]);
+        assert!(out.status.success(), "{}", text(&out));
+
+        let read_json = |p: &Path| -> serde_json::Value { serde_json::from_slice(&fs::read(p).unwrap()).unwrap() };
+        assert_eq!(
+            read_json(&root.join("config/mcp_config.json"))["mcpServers"]["impeccable"],
+            serde_json::json!({"command": b.launcher(), "args": ["mcp"], "env": {"IMPECCABLE_ACCOUNT_URL": ACCOUNT}, "disabled": false})
+        );
+        let hooks = read_json(&root.join("config/hooks.json"));
+        assert_eq!(hooks["impeccable"], detector["impeccable"], "the detector's own named hook stays");
+        let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+        let loop_hooks = &hooks["impeccable-loop"];
+        let post = &loop_hooks["PostToolUse"][0];
+        assert_eq!(post["matcher"], "call_mcp_tool|mcp_.*");
+        let register = post["hooks"][0]["command"].as_str().unwrap();
+        assert!(register.ends_with(&format!("exec '{}' antigravity register", helper.display())), "{register}");
+        assert_eq!(loop_hooks["Stop"][0]["timeout"], 3600);
+        assert!(loop_hooks["Stop"][0]["command"].as_str().unwrap().ends_with("antigravity lifecycle"));
+        assert_eq!(loop_hooks["SessionStart"].as_array().unwrap().len(), 2);
+        assert!(read(&root.join("GEMINI.md")).contains(INSTRUCTION));
+        let record_file = b.support().join("antigravity-install.json");
+        let record = read_json(&record_file);
+        assert_eq!(record["enabled"], true);
+        assert_eq!(record["harness"], "antigravity");
+        assert_eq!(record["executable"], executable.display().to_string());
+        assert_eq!(fs::metadata(&record_file).unwrap().permissions().mode() & 0o777, 0o600);
+        let status: serde_json::Value = serde_json::from_slice(&b.run(&["loop", "status", "--json"]).stdout).unwrap();
+        let row = status["agents"].as_array().unwrap().iter().find(|a| a["agent"] == "antigravity").unwrap().clone();
+        assert_eq!((row["mcp"].clone(), row["hooks"].clone(), row["connected"].clone()), ("registered".into(), true.into(), true.into()), "{row}");
+
+        assert!(b.run(&["loop", "disconnect"]).status.success());
+        assert_eq!(read_json(&root.join("config/hooks.json")), detector);
+        assert!(!root.join("config/mcp_config.json").exists(), "the file connect created goes with it");
+        assert!(!read(&root.join("GEMINI.md")).contains(INSTRUCTION));
+    }
+}
+
+#[test]
+fn an_older_loop_gives_antigravity_its_server_but_no_hooks() {
+    // Catches: hooks naming an agent an older Loop's helper doesn't know.
+    let mut b = Box::new("agy-old-loop");
+    b.env.remove("IMPECCABLE_ANTIGRAVITY_BIN");
+    // A station-built Loop from before the helper knew Antigravity.
+    b.install_loop_version("26.1125.0905");
+    script(&b.root.join("bin/agy"), "#!/bin/sh\nexit 99\n");
+    let out = b.run(&["loop", "connect", "--agent", "antigravity", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert!(b.home().join(".gemini/config/mcp_config.json").exists());
+    let hooks = fs::read_to_string(b.home().join(".gemini/config/hooks.json")).unwrap_or_default();
+    assert!(!hooks.contains("loop-hook"), "{hooks}");
 }

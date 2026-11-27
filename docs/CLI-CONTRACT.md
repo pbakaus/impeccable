@@ -2565,14 +2565,15 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   alone and is an error naming the file. `loop status` reports an entry that isn't exactly the
   local server for today's account as `different`, so Loop shows the agent as not connected,
   and adds `account` and `signedIn` to its object.
-- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode) the
+- `impeccable loop connect` gives each detected agent (Claude Code, Codex, Cursor, GitHub Copilot CLI, opencode, Antigravity) the
   `impeccable` MCP server, Loop's hooks and, in the Impeccable block of its rule file
   (see **The Impeccable block** below), the loop switch's line: "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool." An installation an older CLI made, whose engine-managed
   block (`<!-- impeccable:impeccable-loop start -->`) carried that line, loses that
   block through the engine on the next connect, and the line moves into the
   Impeccable block. Disconnect takes the line out with the hooks. For Codex it also sets
   `default_tools_approval_mode = "approve"` on `[mcp_servers.impeccable]`. When the
-  installed Loop's `CFBundleShortVersionString` is 0.1.1 or later it adds a
+  installed Loop's `CFBundleShortVersionString` (read as three numbers, so a station
+  build's `26.MMDD.HHMM` with a leading-zero `HHMM` counts) is 0.1.1 or later it adds a
   synchronous `SessionStart` hook, `loop-hook <agent> context`, which tells a new
   session that Loop will wake it. An older or unreadable bundle gets no such hook.
   From Loop 0.1.3, whose own hook reading accepts it, every hook command is
@@ -2749,14 +2750,26 @@ diagnostics; the POSIX wget fallback retains those diagnostics for every failure
   only that macOS is blocking Loop and to run `impeccable loop update`.
   The JSON form is `{loop:{installed, version, blocked}, agents:[{agent, label, detected,
   mcp, hooks, instruction, connected}]}`.
-- `impeccable loop connect --agent claude|codex|cursor|copilot|opencode` connects only that agent. Its text
+- Antigravity (REN-2509) resolves `agy` (override: `IMPECCABLE_ANTIGRAVITY_BIN`), else an app-only
+  install's `Applications/Antigravity.app/Contents/Resources/bin/language_server` under the home folder,
+  then `/`; it uses `~/.gemini`. The engine journals the local server's entry,
+  `mcpServers.impeccable: {command, args, env, disabled: false}`, in `config/mcp_config.json` (removed
+  with the hooks on disconnect, the file too when connect created it). From the first Loop whose helper
+  knows the agent (held at 27.0.0 until that station build is known), `config/hooks.json` gets one named hook, `impeccable-loop`, beside any others (the
+  design detector's `impeccable` stays): `SessionStart` `lifecycle` (10 s) and `context` (5 s),
+  `PostToolUse` grouped with matcher `call_mcp_tool|mcp_.*` and `register` (10 s), and `Stop`
+  `lifecycle` (3600 s), each `'<helper>' antigravity <kind>` in the guarded form. Older Loops get the
+  server and the line but no hooks (`hooksRequired: false`). The Loop and taste lines go in
+  `~/.gemini/GEMINI.md`. `antigravity-install.json` uses the Global layout: `{enabled, harness:
+  "antigravity", executable}`, the app's `language_server` for an app-only install.
+- `impeccable loop connect --agent claude|codex|cursor|copilot|opencode|antigravity` connects only that agent. Its text
   report keeps the sign-in and follow-up lines. An agent CLI's own output goes
   to stderr, so stdout carries the report or the one JSON object and nothing else.
   `--json` never prompts and prints one object on stdout,
   `{ok, agents:[{agent, label, result: connected|not_found|failed, signIn, then,
   error}]}`, or `{ok:false, error}` when nothing could be tried (no Loop, an
   unknown agent). It exits 0 only when every agent asked for connected.
-- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode] [--json]` gives each
+- `impeccable loop connect --mcp-only [--agent claude|codex|cursor|copilot|opencode|antigravity] [--json]` gives each
   detected agent (or the one named) the `impeccable` MCP server and nothing else:
   no hooks, no instruction or taste block, no Loop records, and no platform check,
   so it works on any OS without the Loop app. The entry, its account and replacement are

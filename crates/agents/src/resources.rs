@@ -41,7 +41,7 @@ pub(super) fn apply(
             ));
         }
     }
-    if let Some(old) = old.filter(|o| ["cursor", "copilot", "opencode"].contains(&o.spec.harness.as_str())) {
+    if let Some(old) = old.filter(|o| ["cursor", "copilot", "opencode", "antigravity"].contains(&o.spec.harness.as_str())) {
         for path in targets(&old.spec)
             .into_iter()
             .filter(|p| render::json_entries_file(&old.spec, p))
@@ -185,7 +185,7 @@ pub(super) fn apply(
             }
         }
     }
-    let new_dirs = render::dedicated_wake_file(s).and_then(|p| p.parent().map(Path::to_path_buf))
+    let new_dirs = render::own_dir(s)
         .filter(|p| matches!(fs::symlink_metadata(p), Err(e) if e.kind() == io::ErrorKind::NotFound))
         .map(|p| canonical_target(&p)).transpose()?.into_iter().collect::<Vec<_>>();
     let mut created_dirs = old.map(|j| j.created_dirs.clone()).unwrap_or_default();
@@ -380,7 +380,7 @@ pub(super) fn build_resource_records(
                     let entry = h.entry(&s.harness);
                     let present = pre
                         .as_ref()
-                        .and_then(|v| v.get("hooks"))
+                        .and_then(|v| v.get(s.hooks_key()))
                         .and_then(|v| v.get(&h.event))
                         .and_then(Value::as_array)
                         .is_some_and(|a| a.contains(&entry));
@@ -426,7 +426,7 @@ pub(super) fn build_resource_records(
                     );
                 }
             }
-            if path.ends_with("CLAUDE.md") || path.ends_with("AGENTS.md") {
+            if render::is_rule_file(&path) {
                 let marker = format!("impeccable:{}", s.owner);
                 let start = format!("<!-- {marker} start -->");
                 let end = format!("<!-- {marker} end -->");
