@@ -558,6 +558,12 @@ const cases = [
     },
     args: ['--json'], env: env(),
   },
+  {
+    // Package names, Tailwind utilities, file-name patterns and formats are not files (issue 1674); a missing file still is.
+    id: 'doctor-design-dead-path-names', verb: 'doctor', workspace: 'ctx-signals',
+    setup: (ws) => write(ws, 'DESIGN.md', '# D\n\nIcons: `@phosphor-icons/react`, `motion/react`. Overlay `white/70`, `hover:bg-bg-sunken/50`, `ring-ring/65`. Covers: `public/covers/{type}-{subject}.svg`. Counter: `current/max`, `412/50,000`. Cards: `src/Card.tsx`.\n'),
+    args: ['--json'], env: env(),
+  },
   // `design-compact` (REN-2129, S3): proposes a long DESIGN.md as its map and writes only with --write, never over an
   // archive that exists. The long fixture's frontmatter carries a comment, a quoted hex and a rule the map keeps.
   ...(() => {
