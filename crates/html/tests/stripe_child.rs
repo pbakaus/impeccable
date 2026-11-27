@@ -45,6 +45,23 @@ h2 { display: inline-flex; width: 320px; height: 28px; border-radius: 12px; }
     assert_eq!(raw_side_tab_snippets(&heading.replace("<h2>", "<div>").replace("</h2>", "</div>").replace("h2 {", "div {")).len(), 1);
 }
 
+/// A stripe width in an absolute unit reads at 96px to the inch: 3pt and 1mm
+/// are 4px and 3.8px, a stripe; 1in is 96px, a panel.
+#[test]
+fn an_absolute_unit_stripe_width_reads_in_px() {
+    let card = r#"<!DOCTYPE html><html><head><style>
+.card { display: flex; flex-direction: row; width: 320px; height: 100px; border-radius: 12px; }
+.stripe { width: WIDTH; background: #f59e0b; }
+.body { flex: 1; }
+</style></head><body>
+<div class="card"><div class="stripe"></div><div class="body">Content</div></div>
+</body></html>"#;
+    for width in ["3pt", "1mm", "3PT"] {
+        assert_eq!(raw_side_tab_snippets(&card.replace("WIDTH", width)).len(), 1, "{width}");
+    }
+    assert!(raw_side_tab_snippets(&card.replace("WIDTH", "1in")).is_empty());
+}
+
 #[test]
 fn winning_auto_longhand_is_not_replaced_by_inset() {
     let html = r#"<html><body><div style="position:relative;width:320px;height:100px">

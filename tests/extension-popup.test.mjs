@@ -426,6 +426,39 @@ test('the side panel’s steps list keeps its rows as a step comes, and the curr
     [before.length + 1, true, ['7']]);
 });
 
+test('the side panel’s Sees tips give the figure for the picked persona’s age band, and name them only when the card gives an age', async () => {
+  const personas = [{ name: 'Zoe', role: 'A 24-year-old design student', slug: 'zoe' }, { name: 'Ben', role: 'A 70-year-old retired builder', slug: 'ben' }, { name: 'Ada', role: 'A mum with a 3-year-old', slug: 'ada' }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas });
+  const facts = () => ['normal', 'older'].map((sees) => h.app.querySelector(`[data-act="sees-${sees}"]`).attributes['aria-description']);
+  const seen = [];
+  for (const [i, who] of personas.entries()) {
+    await h.press(`pick-${i}`);
+    seen.push(facts().map((fact) => [fact.match(/\d+ in \d+/)[0], fact.includes(who.name)]));
+  }
+  assert.deepEqual(seen, [
+    [['5 in 10', true], ['1 in 100', true]],
+    [['8 in 10', true], ['4 in 10', true]],
+    [['6 in 10', false], ['2 in 10', false]],
+  ]);
+});
+
+// Catches the Sees figures staying general when a persona just made gets its age from the profile after reaching home.
+test('the side panel’s Sees figures follow a profile that arrives after the persona reaches home', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const personas = [{ name: 'Maya', role: '', slug: 'default:maya', default: true }];
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas, create: { ok: true, persona: { name: 'Nora', role: 'Night nurse', slug: 'nora', mine: true } } });
+  await h.press('make-persona');
+  h.app.querySelector('textarea').value = 'A night-shift nurse checking HR forms on break.';
+  await h.press('make');
+  await h.press('confirm');
+  const fact = () => h.app.querySelector('[data-act="sees-normal"]').attributes['aria-description'];
+  assert.equal(fact().includes('Nora'), false);
+  personas[1] = { ...personas[1], about: 'A 24-year-old nurse on nights.' };
+  t.mock.timers.tick(3000);
+  for (let n = 0; n < 5; n += 1) await tick();
+  assert.deepEqual([fact().match(/\d+ in \d+/)[0], fact().includes('Nora')], ['5 in 10', true]);
+});
+
 test('the side panel plans before it walks: Send asks for a plan, a risky one asks to go ahead, Start walk sends its id, Edit brings the words back', async (t) => {
   // Alex, their own, has no face yet: the panel's waits for it run on these timers.
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -498,21 +531,45 @@ for (const [label, create] of [['made', { ok: true, persona: { name: 'Rosa', rol
   });
 }
 
-// Catches the intro starting over on a redraw (a device pressed), or carrying on from last time when the screen opens again.
+// Catches the intro starting over on a redraw (the person's apps arriving), or carrying on from last time when the screen opens again.
 test('the persona intro carries on through a redraw and starts over when Create a persona opens again', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
-  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+  const hold = {};
+  let answer;
+  hold.apps = new Promise((resolve) => { answer = resolve; });
+  const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }], apps: { ok: true, apps: [] }, hold });
   // How long until the last face comes in.
   const lastFace = () => parseInt(h.app.querySelectorAll('img.intro-pic').at(-1).attributes.style.split(':')[1], 10);
   await h.press('make-persona');
   const start = lastFace();
   t.mock.timers.tick(3000);
-  await h.press('device-phone');
+  answer();
+  for (let n = 0; n < 5; n += 1) await tick();
   assert.equal(lastFace(), start - 3000);
   await h.press('back');
   await h.press('make-persona');
   assert.equal(lastFace(), start);
 });
+
+// Catches the box under the intro shown (and pressable) while the intro plays, never coming back, or held back where
+// motion is reduced, from the start or from partway through.
+for (const reduced of ['never', 'from the start', 'partway']) {
+  test(`Create a persona's box waits out the intro, reduced motion ${reduced}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
+    const motion = { matches: reduced === 'from the start', changed: [] };
+    globalThis.matchMedia = () => ({ get matches() { return motion.matches; }, addEventListener: (_, listener) => motion.changed.push(listener) });
+    t.after(() => { delete globalThis.matchMedia; });
+    const h = await sidePanel({ view: STUBS.idle, status: signedIn, personas: [{ name: 'Maya', role: '', slug: 'default:maya', default: true }] });
+    const held = () => 'inert' in h.app.querySelector('.box').attributes;
+    await h.press('make-persona');
+    t.mock.timers.tick(3000);
+    if (reduced === 'partway') { assert.equal(held(), true); motion.matches = true; for (const listener of motion.changed) listener(); }
+    t.mock.timers.tick(12000);
+    assert.deepEqual([Boolean(h.app.querySelector('.intro')), held()], [true, reduced === 'never']);
+    t.mock.timers.tick(5000);
+    assert.equal(held(), false, 'the intro over, the box is within reach');
+  });
+}
 
 // Catches a persona just made keeping its letter after the server has drawn its photo: the panel never asked again.
 test('the side panel asks for the personas again until each of the person’s own has its face, swaps it in where the letter was, and stops', async (t) => {

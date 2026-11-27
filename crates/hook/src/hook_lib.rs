@@ -397,15 +397,38 @@ pub fn resolve_stop_cwd(rt: &Runtime, session_cwd: &str, session_id: &str) -> St
     session_cwd.to_string()
 }
 
+/// A project's declared platform, and the repo root a web-file check stops at.
+#[derive(Clone)]
+pub struct ProjectPlatform {
+    pub platform: Option<String>,
+    repo_root: String,
+}
+
+impl ProjectPlatform {
+    pub fn is_native(&self) -> bool {
+        is_native_platform(self.platform.as_deref())
+    }
+
+    /// Whether the hook leaves `file` alone: native source in a native
+    /// project. Web code there is still scanned, as context treats a web
+    /// target (#1644).
+    pub fn skips(&self, file: &str) -> bool {
+        self.is_native() && !impeccable_context::context::is_web_target(file, &self.repo_root)
+    }
+}
+
 /// JS: resolveProjectPlatform(cwd) — `extractPlatform(loadContext(cwd).product)`.
 /// Only the platform is observable, so this reads PRODUCT.md through the same
 /// resolution and skips loadContext's surface-brief and visual-implementation
 /// work.
-pub fn resolve_project_platform(rt: &Runtime, cwd: &str) -> Option<String> {
+pub fn resolve_project_platform(rt: &Runtime, cwd: &str) -> ProjectPlatform {
     let options = impeccable_context::target_args::TargetOptions::default();
     let resolved = impeccable_context::context::resolve_context(cwd, &options, &rt.env);
     let product = resolved.product_path.as_deref().and_then(safe_read);
-    impeccable_context::context::extract_platform(product.as_deref())
+    ProjectPlatform {
+        platform: impeccable_context::context::extract_platform(product.as_deref()),
+        repo_root: resolved.repo_root,
+    }
 }
 
 /// JS: isNativePlatform(platform)

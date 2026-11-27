@@ -13,7 +13,9 @@
 //! never read-modify-write a shared list, so parallel first edits each land
 //! once (`create_new`, and losing that race is success). The Stop pass lists
 //! the session's dir and keeps an entry only when its content hashes back to
-//! its name, which drops partial writes and anything that is not ours.
+//! its name, which drops partial writes and anything that is not ours. The
+//! dir also holds the Stop marker (`stop_marker`), which dates the session's
+//! last Stop pass (#1670).
 //!
 //! The directories get the same checks as the claim dirs (`hook_claim`): a
 //! real directory, not a symlink, owned by the current user with no group or
@@ -52,6 +54,98 @@ const MAX_ENTRY_BYTES: u64 = 4096;
 
 fn index_dir(rt: &Runtime) -> Option<PathBuf> {
     user_dir(rt, OVERRIDE_ENV, DIR_NAME)
+}
+
+/// The Stop marker, a `<64 hex>` file so `sweep_expired` removes it with its
+/// session dir. Its mtime is when the session's last Stop pass began; its
+/// content, the start of the pass before (ms, or empty), which never hashes
+/// back to the name, so `recorded_roots` never reads it as a root.
+fn stop_marker(base: &Path, session_name: &str) -> PathBuf {
+    base.join(session_name).join(sha256_hex("stop"))
+}
+
+/// A marker younger than this was written by a sibling copy of the same Stop
+/// (a plugin hook next to a project hook).
+const SIBLING_MS: u64 = 5_000;
+
+fn ms(t: SystemTime) -> u64 {
+    t.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
+}
+
+/// When the session's previous Stop pass began, in ms, for a pass starting
+/// at `started`. A sibling copy that already wrote the marker for this pass
+/// left the earlier start in it, so both copies get one window.
+pub fn last_stop_ms(rt: &Runtime, session: &str, started: SystemTime) -> Option<u64> {
+    if session.is_empty() {
+        return None;
+    }
+    let base = index_dir(rt)?;
+    let session_name = sha256_hex(session);
+    for d in [base.clone(), base.join(&session_name)] {
+        match std::fs::symlink_metadata(&d) {
+            Ok(meta) if is_safe_dir(&meta) => {}
+            _ => return None,
+        }
+    }
+    let marker = stop_marker(&base, &session_name);
+    let meta = std::fs::symlink_metadata(&marker).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let last = ms(meta.modified().ok()?);
+    if last + SIBLING_MS <= ms(started) {
+        return Some(last);
+    }
+    read_entry(&marker)?.trim().parse().ok()
+}
+
+/// Marks that a Stop pass of `session` began at `started`, keeping the
+/// previous start for a sibling copy. A no-op on any failure.
+pub fn record_stop(rt: &Runtime, session: &str, started: SystemTime) {
+    if session.is_empty() {
+        return;
+    }
+    let Some(base) = index_dir(rt) else { return };
+    let session_name = sha256_hex(session);
+    let Some(base) = safe_user_dir(base) else { return };
+    let Some(created) = ensure_safe_dir(&base.join(&session_name)) else { return };
+    if created {
+        sweep_expired(&base, &session_name);
+    }
+    let marker = stop_marker(&base, &session_name);
+    let previous = match std::fs::symlink_metadata(&marker) {
+        Ok(meta) if meta.is_file() => {
+            let Ok(last) = meta.modified().map(ms) else { return };
+            if last + SIBLING_MS > ms(started) {
+                return; // a sibling copy recorded this pass
+            }
+            last.to_string()
+        }
+        Ok(_) => return,
+        Err(_) => String::new(),
+    };
+    // Written beside it and renamed over it, so a sibling never reads a
+    // half-written marker. The temp name is `<64 hex>` too, for the sweep.
+    let temp = base.join(&session_name).join(sha256_hex("stop.tmp"));
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    private_file_mode(&mut opts);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut opts, libc::O_NOFOLLOW);
+    let Ok(mut file) = opts.open(&temp) else { return };
+    if file.write_all(previous.as_bytes()).is_err() || file.set_modified(started).is_err() {
+        drop(file);
+        let _ = std::fs::remove_file(&temp);
+        return;
+    }
+    drop(file);
+    if std::fs::rename(&temp, &marker).is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    // The sweep dates a session by its dir: a session still stopping is live.
+    if let Ok(dir) = std::fs::File::open(base.join(&session_name)) {
+        let _ = dir.set_modified(started);
+    }
 }
 
 /// Records that `session`'s per-edit pass wrote the hook cache under `root`.

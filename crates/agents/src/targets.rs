@@ -23,7 +23,7 @@ pub(super) fn targets(s: &Spec) -> Vec<PathBuf> {
             out.push(path);
         }
     }
-    if !s.http_mcp_servers.is_empty() {
+    if !s.mcp_entries.is_empty() {
         out.push(s.root.join(match s.harness.as_str() { "copilot" => "mcp-config.json", "opencode" => "opencode.json", _ => "mcp.json" }));
     }
     if s.instruction.is_some() {

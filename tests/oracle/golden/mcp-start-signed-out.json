@@ -1,5 +1,5 @@
 {
-  "stdout": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"serverInfo\":{\"name\":\"Impeccable\",\"version\":\"0.1.27\"},\"capabilities\":{\"tools\":{\"listChanged\":true}}}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n",
+  "stdout": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"serverInfo\":{\"name\":\"Impeccable\",\"version\":\"0.1.31\"},\"capabilities\":{\"tools\":{\"listChanged\":true}}}}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n",
   "stderr": "",
   "exit": 0,
   "signal": null,

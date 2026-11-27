@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Static browser media defaults</title>
+  <style>
+    body { margin: 40px; background: #fff; color: #111; font: 16px/1.5 Georgia, serif; }
+    main { display: grid; grid-template-columns: 480px 480px; gap: 40px; }
+    section { width: 480px; }
+    article { width: 440px; min-height: 120px; padding: 16px; }
+    h1 { font-size: 32px; } h2 { font-size: 24px; } h3 { font-size: 20px; }
+    p { color: #111; background: #fff; }
+    @media (prefers-reduced-motion: no-preference) { #flag-motion p { color: #eeeeee; } }
+    @media (prefers-reduced-motion: reduce) { #pass-motion p { color: #dedede; } }
+    @media (prefers-contrast: no-preference) { #flag-contrast p { color: #ededed; } }
+    @media (prefers-contrast: more) { #pass-contrast p { color: #dddddd; } }
+    @media (hover: hover) { #flag-hover p { color: #ececec; } }
+    @media (hover: none) { #pass-hover p { color: #dcdcdc; } }
+    @media (any-hover: hover) { #flag-any-hover p { color: #ebebeb; } }
+    @media (any-hover: none) { #pass-any-hover p { color: #dbdbdb; } }
+    @media (pointer: fine) { #flag-pointer p { color: #eaeaea; } }
+    @media (pointer: coarse) { #pass-pointer p { color: #dadada; } }
+    @media (any-pointer: fine) { #flag-any-pointer p { color: #e9e9e9; } }
+    @media (any-pointer: none) { #pass-any-pointer p { color: #d9d9d9; } }
+    @media (forced-colors: none) { #flag-forced-colors p { color: #e8e8e8; } }
+    @media (forced-colors: active) { #pass-forced-colors p { color: #d8d8d8; } }
+  </style>
+  <link rel="stylesheet" href="static-media-browser-defaults-async.css" media="print" onload="this.onload=null;this.media='all'">
+  <link rel="stylesheet" href="static-media-browser-defaults-print.css" media="print">
+</head>
+<body>
+  <h1>Static browser media defaults</h1>
+  <main>
+    <section><h2>Should flag</h2>
+      <article id="flag-motion"><h3>Default motion</h3><p>Default prefers-reduced-motion applies.</p></article>
+      <article id="flag-contrast"><h3>Default contrast</h3><p>Default prefers-contrast applies.</p></article>
+      <article id="flag-hover"><h3>Default hover</h3><p>Default hover applies.</p></article>
+      <article id="flag-any-hover"><h3>Default any-hover</h3><p>Default any-hover applies.</p></article>
+      <article id="flag-pointer"><h3>Default pointer</h3><p>Default pointer applies.</p></article>
+      <article id="flag-any-pointer"><h3>Default any-pointer</h3><p>Default any-pointer applies.</p></article>
+      <article id="flag-forced-colors"><h3>Default forced-colors</h3><p>Default forced-colors applies.</p></article>
+      <article id="flag-async"><h3>Async stylesheet</h3><p>The loaded stylesheet applies.</p></article>
+    </section>
+    <section><h2>Should pass</h2>
+      <article id="pass-motion"><h3>Alternate motion</h3><p>Alternate prefers-reduced-motion does not apply.</p></article>
+      <article id="pass-contrast"><h3>Alternate contrast</h3><p>Alternate prefers-contrast does not apply.</p></article>
+      <article id="pass-hover"><h3>Alternate hover</h3><p>Alternate hover does not apply.</p></article>
+      <article id="pass-any-hover"><h3>Alternate any-hover</h3><p>Alternate any-hover does not apply.</p></article>
+      <article id="pass-pointer"><h3>Alternate pointer</h3><p>Alternate pointer does not apply.</p></article>
+      <article id="pass-any-pointer"><h3>Alternate any-pointer</h3><p>Alternate any-pointer does not apply.</p></article>
+      <article id="pass-forced-colors"><h3>Alternate forced-colors</h3><p>Alternate forced-colors does not apply.</p></article>
+      <article id="pass-print"><h3>Print stylesheet</h3><p>The print stylesheet does not apply.</p></article>
+    </section>
+  </main>
+</body>
+</html>

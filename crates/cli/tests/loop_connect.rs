@@ -8,7 +8,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-const URL: &str = "https://api.impeccable.style/mcp";
+/// The account service every entry pins when nothing names another.
+const ACCOUNT: &str = "https://api.impeccable.style";
 const INSTRUCTION: &str = "Ask the person through Loop: needs_you.post (Impeccable) for decisions, approvals and steps only they can do, not chat or a question tool.";
 
 struct Box {
@@ -58,8 +59,21 @@ exit 0
             r#"#!/bin/sh
 f="${CODEX_HOME:-$HOME/.codex}/config.toml"
 case "$2" in
-add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
-remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+add)
+  n="$3"; shift 3
+  if [ "$1" = --url ]; then printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$n" "$2" >> "$f"; exit 0; fi
+  env=""
+  while [ "$1" = --env ]; do env="$env$2
+"; shift 2; done
+  [ "$1" = -- ] && shift
+  cmd="$1"; shift
+  args=""; for a in "$@"; do args="$args${args:+, }\"$a\""; done
+  printf '\n[mcp_servers.%s]\ncommand = "%s"\nargs = [%s]\n' "$n" "$cmd" "$args" >> "$f"
+  if [ -n "$env" ]; then
+    printf '\n[mcp_servers.%s.env]\n' "$n" >> "$f"
+    printf '%s' "$env" | while IFS== read -r k v; do [ -n "$k" ] && printf '%s = "%s"\n' "$k" "$v" >> "$f"; done
+  fi;;
+remove) awk -v n="$3" '/^\[/{skip = ($0 == "[mcp_servers." n "]" || index($0, "[mcp_servers." n ".") == 1)} !skip' "$f" > "$f.t" && mv "$f.t" "$f";;
 esac
 exit 0
 "#,
@@ -68,6 +82,21 @@ exit 0
     }
     fn home(&self) -> PathBuf {
         self.root.join("home")
+    }
+    /// The command every agent's entry runs: the launcher in the engine's own folder.
+    fn launcher(&self) -> String {
+        self.home().join(".impeccable/bin/mcp").display().to_string()
+    }
+    /// The local server's entry as Claude Code keeps it.
+    fn claude_server(&self) -> serde_json::Value {
+        serde_json::json!({"type": "stdio", "command": self.launcher(), "args": ["mcp"], "env": {"IMPECCABLE_ACCOUNT_URL": ACCOUNT}})
+    }
+    /// Whether Codex's config holds exactly the local server's table.
+    fn codex_has_server(&self) -> bool {
+        let config = codex_config(self);
+        config.matches("[mcp_servers.impeccable]\n").count() == 1
+            && config.contains(&format!("command = \"{}\"\nargs = [\"mcp\"]\n", self.launcher()))
+            && config.contains(&format!("[mcp_servers.impeccable.env]\nIMPECCABLE_ACCOUNT_URL = \"{ACCOUNT}\"\n"))
     }
     fn install_loop(&self) {
         let macos = self
@@ -156,8 +185,11 @@ fn mcp_only_connects_the_server_without_loop_and_writes_nothing_of_loops() {
     let b = Box::new("mcp-only");
     let out = b.run(&["loop", "connect", "--mcp-only"]);
     assert!(out.status.success(), "{}", text(&out));
-    assert_eq!(claude_entry(&b.home().join(".claude.json"))["url"], URL);
-    assert!(codex_config(&b).contains(URL), "{}", codex_config(&b));
+    assert_eq!(claude_entry(&b.home().join(".claude.json")), b.claude_server());
+    assert!(b.codex_has_server(), "{}", codex_config(&b));
+    // The launcher it names runs this engine.
+    let launched = Command::new(b.launcher()).arg("--version").env_clear().envs(&b.env).output().unwrap();
+    assert!(String::from_utf8_lossy(&launched.stdout).contains(env!("CARGO_PKG_VERSION")), "{}", text(&launched));
     assert!(!b.home().join(".claude/settings.json").exists(), "no hooks");
     assert!(!b.support().exists(), "no Loop records");
     // Again: the entry is already there, nothing is added twice.
@@ -188,22 +220,13 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
     let out = b.run(&["loop", "connect"]);
     assert!(out.status.success(), "{}", text(&out));
     let said = text(&out);
-    assert!(
-        said.contains("/mcp") && said.contains("codex mcp login impeccable"),
-        "{said}"
-    );
+    // No agent signs in on its own: one CLI sign-in serves every agent's server.
+    assert!(said.contains("Sign in: run impeccable login.") && !said.contains("/mcp") && !said.contains("mcp login"), "{said}");
 
-    // The MCP server: the built-in URL, for both agents, in their own files.
-    assert_eq!(
-        claude_entry(&b.home().join(".claude.json")),
-        serde_json::json!({"type":"http","url":URL})
-    );
+    // The MCP server: the local one, for both agents, in their own files.
+    assert_eq!(claude_entry(&b.home().join(".claude.json")), b.claude_server());
     let config = codex_config(&b);
-    assert!(
-        config.contains("[mcp_servers.impeccable]\n")
-            && config.contains(&format!("url = \"{URL}\"")),
-        "{config}"
-    );
+    assert!(b.codex_has_server(), "{config}");
     // Codex runs Loop's tools without asking first, so a question reaches the person.
     assert!(
         config.contains("default_tools_approval_mode = \"approve\""),
@@ -309,10 +332,7 @@ fn connect_adds_the_mcp_server_and_hooks_and_disconnect_removes_exactly_them() {
         personal
     );
     // MCP servers are never removed by disconnect: the exact command is printed instead.
-    assert_eq!(
-        claude_entry(&b.home().join(".claude.json")),
-        serde_json::json!({"type":"http","url":URL})
-    );
+    assert_eq!(claude_entry(&b.home().join(".claude.json")), b.claude_server());
     assert!(codex_config(&b).contains("mcp_servers.impeccable"));
     // But the instruction blocks and the approval connect added are gone.
     assert!(!codex_config(&b).contains("default_tools_approval_mode"));
@@ -476,7 +496,7 @@ fn one_agent_failing_reports_the_other_and_rolls_itself_back() {
     assert!(said.contains("Claude Code: connected"), "{said}");
     assert!(
         said.contains(&format!(
-            "Codex: not connected: {} already has a different MCP server called impeccable; it was left alone. Remove or rename it, then connect again.",
+            "Codex: not connected: {} already has an MCP server called impeccable that isn't Impeccable's (its settings differ); it was left alone. Remove or rename it, then connect again.",
             b.home().join(".codex/config.toml").display()
         )),
         "{said}"
@@ -510,14 +530,87 @@ fn the_cli_is_resolved_once_from_absolute_executable_entries() {
 
 #[test]
 fn an_entry_the_person_already_had_is_kept_on_disconnect() {
-    // connect adds only when absent, so disconnect removes only what it added.
+    // connect leaves an exact entry alone, so disconnect removes only what it added.
     let b = Box::new("theirs-exact");
     b.install_loop();
-    let mine = format!("[mcp_servers.impeccable]\nurl = \"{URL}\"\n");
+    let mine = format!("[mcp_servers.impeccable]\ncommand = \"{}\"\nargs = [\"mcp\"]\n\n[mcp_servers.impeccable.env]\nIMPECCABLE_ACCOUNT_URL = \"{ACCOUNT}\"\n", b.launcher());
     fs::write(b.home().join(".codex/config.toml"), &mine).unwrap();
     assert!(b.run(&["loop", "connect"]).status.success());
     assert!(b.run(&["loop", "disconnect"]).status.success());
     assert_eq!(codex_config(&b), mine, "the person's own entry stays");
+}
+
+#[test]
+fn an_earlier_web_entry_becomes_the_local_server_and_another_server_stays() {
+    // Catches (REN-2507): an agent connected before keeping the web entry, which needs its own
+    // sign-in, or a person's own server called impeccable being overwritten.
+    let b = Box::new("replace-web");
+    b.install_loop();
+    fs::write(b.home().join(".codex/config.toml"), "[mcp_servers.impeccable]\nurl = \"https://api.impeccable.style/mcp\"\n").unwrap();
+    fs::write(b.home().join(".claude.json"), r#"{"mcpServers":{"impeccable":{"type":"http","url":"https://api.staging.impeccable.style/mcp"}}}"#).unwrap();
+    let out = b.run(&["loop", "connect"]);
+    assert!(out.status.success(), "{}", text(&out));
+    assert_eq!(claude_entry(&b.home().join(".claude.json")), b.claude_server());
+    assert!(b.codex_has_server(), "{}", codex_config(&b));
+    assert!(!codex_config(&b).contains("url ="), "{}", codex_config(&b));
+
+    let theirs = Box::new("replace-theirs");
+    theirs.install_loop();
+    let own = r#"{"mcpServers":{"impeccable":{"command":"node","args":["my-server.js"]}}}"#;
+    fs::write(theirs.home().join(".claude.json"), own).unwrap();
+    let out = theirs.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(!out.status.success());
+    assert!(text(&out).contains("isn't Impeccable's"), "{}", text(&out));
+    assert_eq!(fs::read_to_string(theirs.home().join(".claude.json")).unwrap(), own);
+}
+
+#[test]
+fn loops_staging_server_is_the_one_every_entry_names() {
+    // Catches (REN-2507): connect run by hand pointing agents at production while Loop runs on
+    // staging, so their cards never reach it.
+    let b = Box::new("loop-staging");
+    b.install_loop_version("0.2.2");
+    let info = b.home().join("Applications/Impeccable Loop.app/Contents/Info.plist");
+    let plist = fs::read_to_string(&info).unwrap().replace("</dict>", "<key>ImpeccableServer</key><string>https://api.staging.impeccable.style</string></dict>");
+    fs::write(&info, plist).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude", "--json"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let staging = "https://api.staging.impeccable.style";
+    assert_eq!(claude_entry(&b.home().join(".claude.json"))["env"]["IMPECCABLE_ACCOUNT_URL"], staging);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["agents"][0]["signIn"], format!("run IMPECCABLE_ACCOUNT_URL={staging} impeccable login."));
+    // Status agrees: the entry is the one Loop's server needs.
+    let status: serde_json::Value = serde_json::from_slice(&b.run(&["loop", "status", "--json"]).stdout).unwrap();
+    assert_eq!(status["account"], staging);
+    assert_eq!(status["agents"][0]["mcp"], "registered");
+}
+
+#[test]
+fn hand_written_loop_hooks_are_replaced_not_doubled() {
+    // Catches (REN-2507): connect adding its hooks beside the same hooks written by hand, so
+    // every one ran twice.
+    let b = Box::new("legacy-hooks");
+    b.install_loop();
+    let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
+    let plain = |kind: &str| format!("'{}' 'claude' '{kind}'", helper.display());
+    let settings = serde_json::json!({"hooks": {
+        "PostToolUse": [{"hooks": [{"type": "command", "command": plain("register")}]}],
+        "Stop": [
+            {"hooks": [{"type": "command", "command": plain("lifecycle")}]},
+            {"hooks": [{"type": "command", "command": "node /x/scripts/needs-you-hook.mjs claude /x/state lifecycle"}]},
+            {"hooks": [{"type": "command", "command": "echo mine"}]}
+        ]
+    }});
+    fs::write(b.home().join(".claude/settings.json"), serde_json::to_string_pretty(&settings).unwrap()).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "claude"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let after = fs::read_to_string(b.home().join(".claude/settings.json")).unwrap();
+    assert!(!after.contains(&plain("register")) && !after.contains("needs-you-hook.mjs"), "{after}");
+    assert!(after.contains("echo mine"), "{after}");
+    let v: serde_json::Value = serde_json::from_str(&after).unwrap();
+    let commands = |event: &str| v["hooks"][event].as_array().unwrap().iter().flat_map(|e| e["hooks"].as_array().unwrap().clone()).filter_map(|h| h["command"].as_str().map(String::from)).collect::<Vec<_>>();
+    assert_eq!(commands("PostToolUse").iter().filter(|c| c.contains("loop-hook")).count(), 1);
+    assert_eq!(commands("Stop").iter().filter(|c| c.contains("loop-hook")).count(), 1);
 }
 
 #[test]
@@ -718,10 +811,7 @@ fn a_relative_config_folder_connects_that_account_not_the_default() {
         .output()
         .unwrap();
     assert!(out.status.success(), "{}", text(&out));
-    assert_eq!(
-        claude_entry(&work.join("claude-work/.claude.json")),
-        serde_json::json!({"type":"http","url":URL})
-    );
+    assert_eq!(claude_entry(&work.join("claude-work/.claude.json")), b.claude_server());
     assert!(work.join("claude-work/settings.json").exists());
     assert_eq!(
         claude_entry(&b.home().join(".claude.json")),
@@ -730,8 +820,8 @@ fn a_relative_config_folder_connects_that_account_not_the_default() {
     assert!(!b.home().join(".claude/settings.json").exists());
     assert!(fs::read_to_string(work.join("codex-work/config.toml"))
         .unwrap_or_default()
-        .contains(URL));
-    assert!(!codex_config(&b).contains(URL));
+        .contains(&b.launcher()));
+    assert!(!codex_config(&b).contains("mcp_servers"));
 }
 
 #[test]
@@ -1085,7 +1175,7 @@ fn json_stays_one_object_when_codex_talks_and_one_agent_keeps_its_next_steps() {
         r#"#!/bin/sh
 f="${CODEX_HOME:-$HOME/.codex}/config.toml"
 case "$2" in
-add) echo "Added global MCP server 'impeccable'."; printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
+add) echo "Added global MCP server 'impeccable'."; printf '\n[mcp_servers.%s]\ncommand = "%s"\nargs = ["mcp"]\n\n[mcp_servers.%s.env]\n%s\n' "$3" "$7" "$3" "$(echo "$5" | sed 's/=/ = "/; s/$/"/')" >> "$f";;
 esac
 exit 0
 "#,
@@ -1098,8 +1188,7 @@ exit 0
     let said = text(&b.run(&["loop", "connect", "--agent", "claude"]));
     assert!(
         said.contains("Claude Code: connected.")
-            && said.contains("Sign in:")
-            && said.contains("/mcp"),
+            && said.contains("Sign in: run impeccable login."),
         "{said}"
     );
     assert!(!said.contains("Codex"), "{said}");
@@ -1558,16 +1647,13 @@ fn cursor_connect_roundtrip_merges_and_gates_hooks() {
         let out = b.run(&args);
         assert!(out.status.success(), "{}", text(&out));
         let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-        assert!(report["agents"][0]["signIn"]
-            .as_str()
-            .unwrap()
-            .contains("cursor-agent mcp login impeccable"));
+        assert_eq!(report["agents"][0]["signIn"], "run impeccable login.");
         let read = |file: &str| -> serde_json::Value {
             serde_json::from_slice(&fs::read(root.join(file)).unwrap()).unwrap()
         };
         assert_eq!(
             read("mcp.json")["mcpServers"]["impeccable"],
-            serde_json::json!({"url":URL})
+            serde_json::json!({"command": b.launcher(), "args": ["mcp"], "env": {"IMPECCABLE_ACCOUNT_URL": ACCOUNT}})
         );
         assert_eq!(
             read("mcp.json")["mcpServers"]["other"]["url"],
@@ -1661,7 +1747,7 @@ fn cursor_preserves_preexisting_server_and_rules_and_removes_created_configs() {
         fs::create_dir_all(root.join("rules")).unwrap();
         let rules = if preexisting { "" } else { "---\nalwaysApply: true\n---\n\nMy own rule.\n" };
         fs::write(root.join("rules/impeccable.mdc"), rules).unwrap();
-        let mcp = format!("{{\"mcpServers\":{{\"impeccable\":{{\"url\":\"{URL}\"}}}}}}\n");
+        let mcp = format!("{{\"mcpServers\":{{\"impeccable\":{}}}}}\n", serde_json::json!({"command": b.launcher(), "args": ["mcp"], "env": {"IMPECCABLE_ACCOUNT_URL": ACCOUNT}}));
         if preexisting {
             fs::write(root.join("mcp.json"), &mcp).unwrap();
         }
@@ -1702,9 +1788,9 @@ fn copilot_connect_roundtrip_merges_and_gates_hooks() {
         assert!(out.status.success(), "{}", text(&out));
         let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
         assert_eq!(report["agents"][0]["then"], serde_json::json!([FOLLOW_UP]));
-        assert_eq!(report["agents"][0]["signIn"], "on first use.");
+        assert_eq!(report["agents"][0]["signIn"], "run impeccable login.");
         let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp-config.json")).unwrap()).unwrap();
-        assert_eq!(mcp["mcpServers"], serde_json::json!({"other":{"url":"https://other"},"impeccable":{"type":"http","url":URL,"tools":["*"]}}));
+        assert_eq!(mcp["mcpServers"], serde_json::json!({"other":{"url":"https://other"},"impeccable":{"type":"local","command":b.launcher(),"args":["mcp"],"env":{"IMPECCABLE_ACCOUNT_URL":ACCOUNT},"tools":["*"]}}));
         if wake {
             let hooks: serde_json::Value = serde_json::from_slice(&fs::read(root.join("hooks/impeccable-loop.json")).unwrap()).unwrap();
             let helper = b.home().join("Applications/Impeccable Loop.app/Contents/MacOS/loop-hook");
@@ -1768,8 +1854,21 @@ if [ "$1" = app-server ]; then
   exit 0
 fi
 case "$2" in
-add) printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$3" "$5" >> "$f";;
-remove) sed -i '' "/^\[mcp_servers\.$3\]$/,/^url = /d" "$f";;
+add)
+  n="$3"; shift 3
+  if [ "$1" = --url ]; then printf '\n[mcp_servers.%s]\nurl = "%s"\n' "$n" "$2" >> "$f"; exit 0; fi
+  env=""
+  while [ "$1" = --env ]; do env="$env$2
+"; shift 2; done
+  [ "$1" = -- ] && shift
+  cmd="$1"; shift
+  args=""; for a in "$@"; do args="$args${args:+, }\"$a\""; done
+  printf '\n[mcp_servers.%s]\ncommand = "%s"\nargs = [%s]\n' "$n" "$cmd" "$args" >> "$f"
+  if [ -n "$env" ]; then
+    printf '\n[mcp_servers.%s.env]\n' "$n" >> "$f"
+    printf '%s' "$env" | while IFS== read -r k v; do [ -n "$k" ] && printf '%s = "%s"\n' "$k" "$v" >> "$f"; done
+  fi;;
+remove) awk -v n="$3" '/^\[/{skip = ($0 == "[mcp_servers." n "]" || index($0, "[mcp_servers." n ".") == 1)} !skip' "$f" > "$f.t" && mv "$f.t" "$f";;
 esac
 exit 0
 "#,
@@ -1837,7 +1936,7 @@ fn opencode_connect_journals_the_plugin_and_preserves_config_and_rule_fallback()
             let config: serde_json::Value = serde_json::from_slice(&fs::read(&config_file).unwrap()).unwrap();
             assert_eq!(config, serde_json::json!({"$schema":"https://opencode.ai/config.json","theme":"mine","mcp":{
                 "other":{"type":"remote","url":"https://other"},
-                "impeccable":{"type":"remote","url":URL,"enabled":true}
+                "impeccable":{"type":"local","command":[b.launcher(),"mcp"],"environment":{"IMPECCABLE_ACCOUNT_URL":ACCOUNT},"enabled":true}
             }}));
         }
         let plugin_file = root.join("plugin/impeccable-loop.ts");
@@ -1899,4 +1998,51 @@ fn opencode_reconnects_with_a_linked_plugin_directory() {
     assert!(fs::symlink_metadata(root.join("plugin")).unwrap().file_type().is_symlink());
     assert_eq!(fs::read_to_string(target.join("mine.ts")).unwrap(), "// My plugin\n");
     assert_eq!(fs::read_dir(target).unwrap().count(), 1);
+}
+
+#[test]
+fn a_connected_codex_moves_to_another_account_and_keeps_its_approval() {
+    // Catches (#1676 review): replacing Codex's server dropped connect's tool approval, so the
+    // engine's journal no longer matched and every later connect refused.
+    let mut b = Box::new("codex-move");
+    b.install_loop();
+    b.env.insert("IMPECCABLE_ACCOUNT_URL".into(), "https://api.staging.impeccable.style".into());
+    let out = b.run(&["loop", "connect", "--agent", "codex"]);
+    assert!(out.status.success(), "{}", text(&out));
+    b.env.remove("IMPECCABLE_ACCOUNT_URL");
+    for _ in 0..2 {
+        let out = b.run(&["loop", "connect", "--agent", "codex"]);
+        assert!(out.status.success(), "{}", text(&out));
+    }
+    assert!(b.codex_has_server(), "{}", codex_config(&b));
+    assert!(codex_config(&b).contains("default_tools_approval_mode = \"approve\""), "{}", codex_config(&b));
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    assert!(!codex_config(&b).contains("default_tools_approval_mode"), "{}", codex_config(&b));
+}
+
+#[test]
+fn disconnect_puts_back_the_entry_a_journal_owned_server_replaced() {
+    // Catches (#1676 review): an earlier entry replaced by the local server stayed replaced
+    // after disconnect once anything else in the file had changed.
+    let b = cursor_box("cursor-restore");
+    b.install_loop_version("0.2.0");
+    let root = b.home().join(".cursor");
+    fs::create_dir_all(&root).unwrap();
+    let earlier = serde_json::json!({"url": "https://api.impeccable.style/mcp"});
+    fs::write(root.join("mcp.json"), serde_json::json!({"mcpServers": {"impeccable": earlier}}).to_string()).unwrap();
+    let out = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let mut mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
+    mcp["theme"] = "mine".into();
+    fs::write(root.join("mcp.json"), mcp.to_string()).unwrap();
+    assert!(b.run(&["loop", "disconnect"]).status.success());
+    let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"], earlier);
+    assert_eq!(mcp["theme"], "mine");
+    // The entry it put back is no edit of the person's: connecting again works.
+    let again = b.run(&["loop", "connect", "--agent", "cursor", "--no-taste"]);
+    assert!(again.status.success(), "{}", text(&again));
+    let mcp: serde_json::Value = serde_json::from_slice(&fs::read(root.join("mcp.json")).unwrap()).unwrap();
+    assert_eq!(mcp["mcpServers"]["impeccable"]["args"], serde_json::json!(["mcp"]));
 }

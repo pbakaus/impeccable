@@ -12,7 +12,7 @@ function providerTestDir(provider, suffix = '') {
 }
 
 function skillPath(config, skillName, suffix = '') {
-  return path.join(TEST_DIR, `${config.provider}${suffix}/${config.configDir}/skills/${skillName}/SKILL.md`);
+  return path.join(TEST_DIR, `${config.provider}${suffix}/${config.configDir}/${config.skillsDirName || 'skills'}/${skillName}/SKILL.md`);
 }
 
 // Test every provider config
@@ -34,7 +34,7 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
 
     test('should create correct directory structure', () => {
       transform([], TEST_DIR);
-      expect(fs.existsSync(path.join(TEST_DIR, `${config.provider}/${config.configDir}/skills`))).toBe(true);
+      expect(fs.existsSync(path.join(TEST_DIR, `${config.provider}/${config.configDir}/${config.skillsDirName || 'skills'}`))).toBe(true);
     });
 
     test('should replace {{model}} placeholder correctly', () => {
@@ -61,7 +61,7 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
         references: [{ name: 'ref', content: 'Ref content', filePath: '/fake/ref.md' }]
       }];
       transform(skills, TEST_DIR);
-      const refPath = path.join(TEST_DIR, `${config.provider}/${config.configDir}/skills/test/reference/ref.md`);
+      const refPath = path.join(TEST_DIR, `${config.provider}/${config.configDir}/${config.skillsDirName || 'skills'}/test/reference/ref.md`);
       expect(fs.existsSync(refPath)).toBe(true);
     });
 
@@ -72,6 +72,24 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
         const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
         expect(content).toContain('Read AGENTS.md before asking the model.');
         expect(content).not.toContain('.cursorrules');
+      });
+    }
+
+    if (key === 'muse') {
+      test('emits the Muse workspace/custom-skills layout with name + description only', () => {
+        const skills = [{ name: 'test', description: 'Test', body: 'Run {{scripts_path}}/impeccable context.' }];
+        transform(skills, TEST_DIR, { skillsVersion: '9.9.9' });
+        const musePath = path.join(TEST_DIR, 'muse/workspace/custom-skills/test/SKILL.md');
+        expect(fs.existsSync(musePath)).toBe(true);
+        const content = fs.readFileSync(musePath, 'utf-8');
+        expect(content).toContain('workspace/custom-skills/test/scripts/impeccable context');
+        expect(content).toContain('name: test');
+        expect(content).toContain('description: Test');
+        // Version rides under metadata; no harness-specific fields leak in.
+        expect(content).toContain('metadata:');
+        expect(content).toContain('version: 9.9.9');
+        expect(content).not.toContain('user-invocable');
+        expect(content).not.toContain('allowed-tools');
       });
     }
 
@@ -121,7 +139,7 @@ for (const [key, config] of Object.entries(PROVIDERS)) {
       transform(skills, TEST_DIR, { skillsVersion: '1.2.3-test' });
       const content = fs.readFileSync(skillPath(config, 'test'), 'utf-8');
       const parsed = parseFrontmatter(content);
-      if (key === 'codex' || key === 'agents') {
+      if (key === 'codex' || key === 'agents' || key === 'muse') {
         expect(parsed.frontmatter.version).toBeUndefined();
         expect(content).toContain('metadata:\n  version: 1.2.3-test');
       } else {

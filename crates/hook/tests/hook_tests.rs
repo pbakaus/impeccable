@@ -77,7 +77,8 @@ fn build_completion_reminder_skips_native_projects() {
     }).to_string());
     let stop = hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "owner"));
     assert!(stop.stdout.is_empty(), "{}", stop.stdout);
-    assert_eq!(stop.audit["skipped"], "native-platform");
+    // Only the reminder is skipped; the scan still runs over web code (#1644).
+    assert_eq!(stop.audit["skipped"], "no-touched-files");
 }
 
 #[test]
@@ -4284,6 +4285,82 @@ fn stop_skips_files_modified_before_the_session_started() {
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(started)));
     assert_eq!(deep.stdout, "");
     assert_eq!(audit_str(&deep.audit, "skipped"), Some("no-touched-files"));
+}
+
+#[test]
+fn stop_discovery_covers_only_the_turn_since_the_last_stop() {
+    // #1670: a resumed session began days ago. A page changed before its
+    // last Stop is not this turn's, a page written since is.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".test-home/.keep", "");
+    let session = uuid_v7(now_ms() - 3 * 86_400_000);
+    let first = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(audit_str(&first.audit, "skipped"), Some("no-touched-files"));
+    // That Stop ended an earlier turn: a marker this fresh reads as a sibling copy.
+    for dir in std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).unwrap().flatten() {
+        for marker in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            set_mtime(&marker.path().to_string_lossy(), now_ms() - 60_000);
+        }
+    }
+    let old = t.write("old.css", SIDE_TAB_CSS);
+    set_mtime(&old, now_ms() - 3_600_000);
+    let second = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(second.stdout, "", "{:?}", second.audit);
+    t.write("new.css", SIDE_TAB_CSS);
+    let third = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(third.stdout.contains("new.css") && !third.stdout.contains("old.css"), "{}", third.stdout);
+}
+
+#[test]
+fn stop_discovery_keeps_its_window_when_the_file_cap_cut_it_short() {
+    // More shell-written files than one pass scans: the next pass reaches the rest.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".test-home/.keep", "");
+    let session = uuid_v7(now_ms() - 60_000);
+    for i in 0..21 {
+        let css = t.write(&format!("p{i:02}.css"), SIDE_TAB_CSS);
+        set_mtime(&css, now_ms() - 20_000 - i * 100);
+    }
+    let first = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    // The second pass ends a later turn, not a sibling copy of the first.
+    for dir in std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).into_iter().flatten().flatten() {
+        for marker in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            set_mtime(&marker.path().to_string_lossy(), now_ms() - 10_000);
+        }
+    }
+    let second = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    let reported = (0..21).filter(|i| {
+        let name = format!("p{i:02}.css");
+        first.stdout.contains(&name) || second.stdout.contains(&name)
+    }).count();
+    assert_eq!(reported, 21, "{}\n{}", first.stdout, second.stdout);
+}
+
+#[test]
+fn stop_marker_is_published_whole_for_a_sibling_copy() {
+    // The rewrite lands by rename: a sibling reads the held start, never an
+    // empty file, and no temp file is left behind.
+    use impeccable_hook::hook_sessions::{last_stop_ms, record_stop};
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write(".test-home/.keep", "");
+    let r = rt(&cwd);
+    let at = |ms: u64| std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms);
+    let earlier = now_ms() - 60_000;
+    record_stop(&r, "s1", at(earlier));
+    let now = now_ms();
+    record_stop(&r, "s1", at(now));
+    assert_eq!(last_stop_ms(&r, "s1", at(now + 1_000)), Some(earlier), "a sibling keeps the earlier window");
+    assert_eq!(last_stop_ms(&r, "s1", at(now + 60_000)), Some(now), "the next turn starts at this pass");
+    let dirs: Vec<_> = std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).unwrap().flatten().collect();
+    assert_eq!(dirs.len(), 1);
+    assert_eq!(std::fs::read_dir(dirs[0].path()).unwrap().count(), 1, "only the marker");
 }
 
 #[test]
