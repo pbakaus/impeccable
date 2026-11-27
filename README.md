@@ -10,7 +10,7 @@ npx impeccable install
 
 Reload your coding tool, then run `/impeccable init` in your agent (`$impeccable init` on Codex).
 
-Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, and Veto. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
+Works with Claude Code, Cursor, Codex CLI, GitHub Copilot, Devin, Replit Agent, Gemini CLI, Grok Build, OpenCode, Google Antigravity, Kiro, Trae, Rovo Dev, Qoder, Mistral Vibe, Pi, Hermes Agent, DeepSeek Harness, Veto, and Muse. Full docs live at [impeccable.style/docs](https://impeccable.style/docs).
 
 | Without Impeccable | With Impeccable |
 |---|---|
@@ -82,12 +82,31 @@ npx impeccable detect src/                   # scan a directory
 npx impeccable detect https://example.com    # scan a rendered page (uses your installed Chrome or Edge)
 npx impeccable detect --json .               # machine-readable output
 npx impeccable detect --github src/          # GitHub Actions annotations
+npx impeccable detect --sarif src/           # SARIF 2.1.0 for code scanning
 npx impeccable detect --list-rules           # every rule with its id and description
+npx impeccable detect --report-unused-ignores src/  # inline ignores that waive nothing
 ```
 
-Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`.
+GitHub code scanning keeps these alerts on the pull request, lets reviewers dismiss them, and fails only on findings that are new in that PR. `--github` annotates a single Actions run; `--sarif` is the log you upload:
 
-Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - run: npx impeccable detect --sarif src/ > impeccable.sarif || test $? -eq 2
+  - uses: github/codeql-action/upload-sarif@v3
+    with:
+      sarif_file: impeccable.sarif
+      category: impeccable
+```
+
+Exit code `2` (findings) still uploads the log; exit code `1` (a target couldn't be scanned) fails the step, and the log it wrote says `executionSuccessful: false` so it is never read as a clean scan. `category` keeps this upload beside CodeQL instead of replacing it. Run it from the repository root: paths are written relative to `GITHUB_WORKSPACE`, and a file outside it becomes a `file://` URI. A clean scan still prints a log with an empty `results` array, which is what closes alerts that were fixed. HTML findings without a line are anchored to the file. The upload action fills `partialFingerprints.primaryLocationLineHash`; detect leaves it unset.
+
+Source files like JSX and TSX get the pattern rules only. Rules that need a rendered page, such as low contrast and tiny text, run when you scan a URL, so point the CLI at your dev server too: `npx impeccable detect http://localhost:5173`. An HTML file scan reads the pixels of a local background image that is the ground behind text, so white copy on a near-white photo fails a CI gate without a browser. An image that only decorates its box is left alone, and a remote image is never fetched.
+
+Exit code `2` means findings, `1` means a target couldn't be scanned. To allow your brand font everywhere, run `npx impeccable ignores add-value overused-font Inter --reason "Brand font"`. To turn a rule off for one file, add a comment: `<!-- impeccable-disable overused-font: exported brand doc -->`. When that comment no longer matches a finding it will swallow the next one; `npx impeccable detect --report-unused-ignores src/` names each stale waiver so CI fails on it instead. [Run a detector scan](https://impeccable.style/docs/detector) · [Configuration and ignores](https://impeccable.style/docs/config).
 
 **In your browser.** The [Chrome extension](https://chromewebstore.google.com/detail/impeccable/bdkgmiklpdmaojlpflclinlofgjfpabf) overlays the same findings on any live page, yours or anyone else's. [Review with a visual overlay](https://impeccable.style/tutorials/critique-with-overlay).
 
@@ -150,6 +169,7 @@ Download the ZIP for your tool from [impeccable.style](https://impeccable.style)
 | Mistral Vibe | `.vibe/` | `~/.vibe/skills/` |
 | Trae | `.trae/` | `~/.trae/skills/` |
 | Trae China | `.trae-cn/` | `~/.trae-cn/skills/` |
+| Muse | `workspace/` | `~/workspace/custom-skills/` |
 
 For example: `mkdir -p your-project/.claude/skills && cp -r .claude/skills/impeccable your-project/.claude/skills/`.
 
@@ -160,12 +180,13 @@ Notes:
 - Cursor and Gemini CLI may need Agent Skills enabled in settings. See the [Cursor](https://cursor.com/docs/context/skills) and [Gemini CLI](https://geminicli.com/docs/cli/skills/) skills docs.
 - Restart Trae after copying.
 - `impeccable install` and `update` manage a DeepSeek Harness global copy only when `DSH_HOME` is inside your home directory.
+- Muse is user-scope only: copy `workspace/custom-skills/impeccable` into `~/workspace/custom-skills/`. Consumer Muse exposes no native lifecycle hooks or subagent files for installers to emit, so Muse installs ship the skill without the design hook or native subagents; the agent roles run inline from `reference/degraded/`. The layout's sources are community, not Meta; see the Muse note in `docs/HARNESSES.md`.
 
 </details>
 
 ## Project files and git
 
-Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/*.md`. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
+Impeccable writes its working files under `.impeccable/`. A few are shared project artifacts and belong in the repo: `config.json`, `live/config.json`, `design.json`, `surfaces/*.md`, and `critique/ignore.md`. Critique reports stay local unless `reports.commit` is true. Keep `PRODUCT.md` and `DESIGN.md` in the repo too. The rest is screenshots, caches, and runtime state.
 
 <details>
 <summary><b>Copy the <code>.gitignore</code> entries</b></summary>
@@ -175,7 +196,7 @@ Impeccable writes its working files under `.impeccable/`. A few are shared proje
 # Ephemeral output, runtime state, and per-dev overrides.
 # The **/ prefix covers .impeccable at the repo root or in a nested workspace.
 # Shared artifacts stay tracked: config.json, live/config.json,
-# design.json, surfaces/*.md, critique/*.md.
+# design.json, surfaces/*.md, critique/ignore.md.
 **/.impeccable/config.local.json
 **/.impeccable/hook.cache.json
 **/.impeccable/hook.pending.json
@@ -210,7 +231,7 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 **Something broken?** `/impeccable doctor` finds stale context files, unused settings, and broken hooks. [Fix setup problems](https://impeccable.style/docs/doctor).
 
-**Telemetry.** When a new design starts, the skill fetches a set of visual directions from the impeccable.style catalog. Turning telemetry off doesn't stop that request; it stops the anonymous record of which directions were shown and which one you picked, which is how the catalog learns what works. Your project name, files, code, and `PRODUCT.md` are never sent. Disable telemetry with `npx impeccable telemetry off`, `DO_NOT_TRACK=1`, or `"telemetry": false` in `.impeccable/config.json` for the whole project. The full list of what is sent is on the [privacy page](https://impeccable.style/privacy).
+**Telemetry.** When a new design starts, the skill fetches a set of visual directions from the impeccable.style catalog. With telemetry on, it also records anonymously which directions were shown and which one you picked, which is how the catalog learns what works. Turning telemetry off skips the catalog fetch, so new designs get no catalog directions, and it skips the daily update check. Your project name, files, code, and `PRODUCT.md` are never sent. Install and update ask once at a terminal, with yes as the default; if you installed another way, your agent mentions it once without waiting for an answer. Disable telemetry with `npx impeccable telemetry off`, `DO_NOT_TRACK=1`, or `"telemetry": false` in `.impeccable/config.json` for the whole project. The full list of what is sent is on the [privacy page](https://impeccable.style/privacy).
 
 ## Community
 
@@ -222,7 +243,7 @@ The folders that hold decision-round state (`.impeccable/questions/`, `.impeccab
 
 [![CI powered by Namespace](https://namespace.so/oss/badge.svg)](https://namespace.so/github-actions/?utm_source=oss&utm_campaign=impeccable)
 
-Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux runners.
+Thanks to [Namespace](https://namespace.so) for sponsoring Impeccable's CI with fast Linux and Windows runners.
 
 ## License
 

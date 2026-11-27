@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "\n1 file scanned with regex matching only (.svelte).\nRules that need a parsed page (tiny-text, low-contrast and other element rules) did not run on them; findings are an undercount, not a clean bill of health.\nFor the full check, scan the running dev server (npx impeccable detect http://localhost:PORT) or a static site's built .html.\n.svelte files can take the HTML engine instead: add { \"ext\": \".svelte\", \"engine\": \"html\" } under detector.extensions in .impeccable/config.json (trades the regex rules and line numbers for the element rules).\n\n<REPO>/tests/fixtures/antipatterns/side-tab-every-variant.svelte\n  line 17: [side-tab] border-left: 1px solid var(--text)\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n  line 15: [side-tab] .it[aria-pressed='true'] — inset box-shadow 2px stripe (left)\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n\n2 anti-patterns found.\n",
+  "exit": 2,
+  "signal": null,
+  "files": {}
+}

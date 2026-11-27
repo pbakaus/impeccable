@@ -134,28 +134,16 @@ pub fn check_product(product: Option<&str>, product_path: &str) -> Vec<Finding> 
     out
 }
 
-/// JS: checkNativePlatformEvidence
-pub fn check_native_platform_evidence(
-    project_root: &str,
-    platform: Option<&str>,
-    product: Option<&str>,
-    product_path: Option<&str>,
-) -> Vec<Finding> {
-    if project_root.is_empty() {
-        return vec![];
-    }
-    if let Some(p) = platform {
-        if !p.is_empty() && p != "web" {
-            return vec![];
-        }
-    }
+/// Native project markers in `dir`: the files and package.json dependencies
+/// that say a codebase is native.
+fn native_evidence_at(dir: &str) -> Vec<NativeEvidence> {
     let mut evidence: Vec<NativeEvidence> = Vec::new();
     for (rel, platform, reason) in NATIVE_EVIDENCE_PATHS {
-        if exists(&jsp::join(&[project_root, rel])) {
+        if exists(&jsp::join(&[dir, rel])) {
             evidence.push(NativeEvidence { platform, reason });
         }
     }
-    if let Some(pkg) = read_json(&jsp::join(&[project_root, "package.json"])) {
+    if let Some(pkg) = read_json(&jsp::join(&[dir, "package.json"])) {
         // JS: { ...pkg.dependencies, ...pkg.devDependencies } then deps[name] truthy
         let dep_truthy = |name: &str| -> bool {
             let mut v: Option<&Value> = None;
@@ -182,6 +170,34 @@ pub fn check_native_platform_evidence(
             }
         }
     }
+    evidence
+}
+
+/// Whether `dir` carries native project markers, counting a native peer
+/// dependency, which a React Native component package declares (#1644).
+pub(crate) fn has_native_evidence(dir: &str) -> bool {
+    !native_evidence_at(dir).is_empty()
+        || read_json(&jsp::join(&[dir, "package.json"])).is_some_and(|pkg| {
+            NATIVE_EVIDENCE_DEPENDENCIES.iter().any(|(name, _, _)| pkg.get("peerDependencies").and_then(|d| d.get(name)).is_some())
+        })
+}
+
+/// JS: checkNativePlatformEvidence
+pub fn check_native_platform_evidence(
+    project_root: &str,
+    platform: Option<&str>,
+    product: Option<&str>,
+    product_path: Option<&str>,
+) -> Vec<Finding> {
+    if project_root.is_empty() {
+        return vec![];
+    }
+    if let Some(p) = platform {
+        if !p.is_empty() && p != "web" {
+            return vec![];
+        }
+    }
+    let evidence = native_evidence_at(project_root);
     if evidence.is_empty() {
         return vec![];
     }
@@ -474,6 +490,8 @@ pub struct BootFindingGroups {
     pub product: Vec<Finding>,
     pub native_platform: Vec<Finding>,
     pub design_sidecar: Vec<Finding>,
+    /// Files DESIGN.md names that are gone (staleness_deep.rs `check_design_dead_paths`): existence checks only.
+    pub design_drift: Vec<Finding>,
     pub config: Vec<Finding>,
     pub build_path: Vec<Finding>,
     pub surface_briefs: Vec<Finding>,
@@ -490,7 +508,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
         native_platform: if ctx.product.as_deref().map(|p| !p.is_empty()).unwrap_or(false) {
             check_native_platform_evidence(
                 &project_root,
-                ctx.platform.as_deref(),
+                ctx.declared_platform.as_deref(),
                 ctx.product.as_deref(),
                 ctx.product_path.as_deref(),
             )
@@ -498,6 +516,7 @@ pub fn collect_boot_finding_groups(ctx: &Ctx, cwd: &str, extras: &BootExtras) ->
             Vec::new()
         },
         design_sidecar: check_design_sidecar(extras.abs_design_path.as_deref(), &extras.sidecar_candidates, &project_root),
+        design_drift: crate::staleness_deep::check_design_dead_paths(ctx.design.as_deref(), extras.abs_design_path.as_deref(), &project_root, Some(&ctx.repo_root)),
         config: check_config(&project_root, Some(&ctx.repo_root)),
         build_path: check_build_path_unset(&project_root, Some(&ctx.repo_root), ctx.product.as_deref()),
         surface_briefs: check_surface_briefs(&ctx.surface_brief_candidates, &project_root),
@@ -515,6 +534,7 @@ pub fn collect_boot_findings(ctx: &Ctx, cwd: &str, extras: &BootExtras) -> Vec<F
     out.extend(groups.product);
     out.extend(groups.native_platform);
     out.extend(groups.design_sidecar);
+    out.extend(groups.design_drift);
     out.extend(groups.config);
     out.extend(groups.build_path);
     out.extend(groups.surface_briefs);

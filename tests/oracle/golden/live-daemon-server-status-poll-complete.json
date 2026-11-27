@@ -32,7 +32,7 @@
       "signal": null
     },
     {
-      "stdout": "{\"type\":\"timeout\",\"_instructions\":\"No event arrived; poll again immediately.\"}\n",
+      "stdout": "{\"type\":\"timeout\",\"_instructions\":\"No event arrived; poll again immediately. After the third timeout in a row, stop polling: tell the user the page is still live (in the generate lane, that the variants wait there for Accept or Discard) and to tell you here once they act on it, then end your turn; the next live-poll collects whatever they did meanwhile.\"}\n",
       "stderr": "",
       "exit": 0,
       "signal": null

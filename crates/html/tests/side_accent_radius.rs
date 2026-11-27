@@ -1,7 +1,8 @@
-//! The side-accent gate through the static cascade: a card is rounded by the
-//! `border-radius` shorthand, by the corner longhands a utility framework
-//! emits, or not at all, and an unreadable radius is unknown rather than
-//! square.
+//! Side bars through the static cascade: a left or right bar reports only on
+//! a box the cascade rounds, at any width, by the
+//! `border-radius` shorthand, the corner longhands a utility framework emits,
+//! or a utility class. A radius the cascade cannot read is not known to round
+//! the box.
 
 use impeccable_html::{detect_html_source, DetectHtmlOptions};
 use std::path::Path;
@@ -25,68 +26,34 @@ fn side_tab_snippets(card_css: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_square_card_with_a_side_rule_stays_silent() {
+fn a_side_bar_on_a_square_card_is_fine_at_any_width() {
     assert!(side_tab_snippets("border-left:4px solid #6366f1;").is_empty());
-    assert!(side_tab_snippets("border-left:4px solid #6366f1;border-radius:0;").is_empty());
-    // Rounded only where the stripe runs: still square where it counts.
-    assert!(
-        side_tab_snippets("border-left:4px solid #6366f1;border-radius:10px 0 0 10px;").is_empty()
-    );
-    // The same shape written as longhands.
-    assert!(side_tab_snippets(
-        "border-left:4px solid #6366f1;border-top-left-radius:10px;border-bottom-left-radius:10px;"
-    )
-    .is_empty());
+    assert!(side_tab_snippets("border-left:2px solid #9ca3af;border-radius:0;").is_empty());
+    assert!(side_tab_snippets("border-inline-end:3px solid currentColor;").is_empty());
+    assert_eq!(side_tab_snippets("border-inline-end:3px solid currentColor;border-radius:8px;"), vec!["border-right: 3px + border-radius: 8px"]);
+    // A hairline on a square card, a frame, a transparent edge.
+    assert!(side_tab_snippets("border-left:1px solid #ddd;").is_empty());
+    assert!(side_tab_snippets("border:2px solid #ddd;").is_empty());
+    assert!(side_tab_snippets("border-left:3px solid transparent;").is_empty());
 }
 
 #[test]
-fn corner_longhands_round_a_card_the_shorthand_never_names() {
-    // `border-l-4 border-indigo-500 rounded-r-lg` compiles to exactly this.
-    assert_eq!(
-        side_tab_snippets(
-            "border-left-width:4px;border-left-style:solid;border-left-color:#6366f1;\
-border-top-right-radius:.5rem;border-bottom-right-radius:.5rem;"
-        ),
-        vec!["border-left: 4px".to_string()]
-    );
-    // A longhand that rounds a corner the shorthand squared off counts too.
-    assert_eq!(
-        side_tab_snippets(
-            "border-left:4px solid #6366f1;border-radius:0;border-top-right-radius:10px;\
-border-bottom-right-radius:10px;"
-        ),
-        vec!["border-left: 4px".to_string()]
-    );
-}
-
-#[test]
-fn an_unreadable_radius_keeps_the_finding() {
-    // calc(), var() and units this cannot resolve are unknown, not square.
-    for css in [
-        "border-left:4px solid #6366f1;border-radius:calc(0.5rem);",
-        "border-left:4px solid #6366f1;border-radius:var(--r);",
-        "border-left:4px solid #6366f1;border-radius:1vw;",
-        "border-left:4px solid #6366f1;border-top-right-radius:calc(8px);",
+fn a_hairline_reports_on_a_card_the_cascade_rounds() {
+    let bar = "border-left:1px solid #ddd;";
+    for (css, want) in [
+        ("border-radius:10px;", "border-left: 1px + border-radius: 10px"),
+        ("border-radius:10px 0 0 10px;", "border-left: 1px + border-radius: 10px"),
+        // `border-l border-gray-200 rounded-r-lg` compiles to this.
+        ("border-top-right-radius:.5rem;border-bottom-right-radius:.5rem;", "border-left: 1px + border-radius: 8px"),
+        ("font-size:20px;border-radius:0.3em;", "border-left: 1px + border-radius: 6px"),
+        ("--r:0 12px 12px 0;border-radius:var(--r);", "border-left: 1px + border-radius: 12px"),
     ] {
-        assert_eq!(side_tab_snippets(css).len(), 1, "css {css:?}");
+        assert_eq!(side_tab_snippets(&format!("{bar}{css}")), vec![want.to_string()], "{css}");
     }
-    // A unit spelled in capitals is the same unit.
-    assert_eq!(
-        side_tab_snippets("border-left:4px solid #6366f1;border-radius:0.5REM;").len(),
-        1
-    );
-}
-
-#[test]
-fn a_rounded_card_with_a_side_accent_still_reports() {
-    assert_eq!(
-        side_tab_snippets("border-left:4px solid #6366f1;border-radius:10px;"),
-        vec!["border-left: 4px + border-radius: 10px".to_string()]
-    );
-    assert_eq!(
-        side_tab_snippets("border-left:4px solid #6366f1;border-radius:0 10px 10px 0;"),
-        vec!["border-left: 4px".to_string()]
-    );
+    // A later shorthand squares what an earlier longhand rounded.
+    assert!(side_tab_snippets(&format!("{bar}border-top-right-radius:10px;border-radius:0;")).is_empty());
+    // A radius the cascade cannot read is not known to round the card.
+    assert!(side_tab_snippets(&format!("{bar}border-radius:calc(0.5rem);")).is_empty());
 }
 
 fn side_tab_page(css: &str, body: &str) -> Vec<String> {
@@ -115,21 +82,26 @@ const PRODUCER_BODY: &str =
     "<div class=\"c bd\">b</div><div class=\"c sq\">p</div><div class=\"c sh\">s</div>";
 
 /// One visual, three authorings: a border, an absolute ::before bar, an inset
-/// box-shadow. The static engine answers all three the same way.
+/// box-shadow. The static engine answers all three the same way: silent on a
+/// square box, reported on a rounded one at any width, whatever their colour.
 #[test]
 fn every_static_producer_answers_the_same_visual_the_same_way() {
-    let stripes = ".bd{border-left:4px solid #6366f1}\
-.sq{position:relative}.sq::before{content:\"\";position:absolute;left:0;top:0;bottom:0;width:5px;background:#6366f1}\
-.sh{box-shadow:inset 6px 0 0 0 #6366f1}";
-    assert_eq!(side_tab_page(stripes, PRODUCER_BODY), Vec::<String>::new());
-
-    let rounded = format!("{stripes}.bd,.sq,.sh{{border-radius:12px}}");
+    let bars = |w: u8| {
+        format!(
+            ".bd{{border-left:{w}px solid #9ca3af}}\
+.sq{{position:relative}}.sq::before{{content:\"\";position:absolute;left:0;top:0;bottom:0;width:{w}px;background:#9ca3af}}\
+.sh{{box-shadow:inset {w}px 0 0 0 var(--text)}}"
+        )
+    };
+    assert_eq!(side_tab_page(&bars(4), PRODUCER_BODY), Vec::<String>::new());
+    assert_eq!(side_tab_page(&bars(1), PRODUCER_BODY), Vec::<String>::new());
+    let rounded = format!("{}.bd,.sq,.sh{{border-radius:12px}}", bars(1));
     assert_eq!(
         side_tab_page(&rounded, PRODUCER_BODY),
         vec![
-            ".sh — inset box-shadow 6px stripe (left)".to_string(),
-            ".sq::before — absolute 5px pseudo-element stripe (left: 0)".to_string(),
-            "border-left: 4px + border-radius: 12px".to_string(),
+            ".sh — inset box-shadow 1px stripe (left)".to_string(),
+            ".sq::before — absolute 1px pseudo-element stripe (left: 0)".to_string(),
+            "border-left: 1px + border-radius: 12px".to_string(),
         ]
     );
 }
@@ -149,93 +121,38 @@ fn a_top_band_needs_a_rounded_card_in_every_producer() {
 }
 
 /// The radius can come from any rule that matches the element: the cascade
-/// sees a second class the stripe rule never names.
+/// sees a second class the bar rule never names, or the element a state
+/// selector styles.
 #[test]
-fn a_stripe_reads_the_cascade_of_the_element_it_paints() {
+fn a_hairline_reads_the_cascade_of_the_element_it_paints() {
     let css = ".shell{border-radius:12px}\
-.sq::before{content:\"\";position:absolute;right:0;top:0;bottom:0;width:5px;background:#6366f1}";
+.sq::before{content:\"\";position:absolute;right:0;top:0;bottom:0;width:1px;background:#ddd}";
     assert_eq!(
         side_tab_page(css, "<div class=\"c shell sq\">p</div>"),
-        vec![".sq::before — absolute 5px pseudo-element stripe (right: 0)".to_string()]
+        vec![".sq::before — absolute 1px pseudo-element stripe (right: 0)".to_string()]
     );
     assert!(side_tab_page(css, "<div class=\"c sq\">p</div>").is_empty());
+    // The pressed nav button: the radius is on `.it`, the bar on its state.
+    let pressed = ".it{display:grid;padding:7px 12px;border:0;border-radius:6px;background:none}\
+.it:hover{background:var(--hover)}\
+.it[aria-pressed='true']{background:var(--surface-inset);box-shadow:inset 1px 0 0 var(--text);font-weight:600}";
+    assert_eq!(
+        side_tab_page(pressed, "<nav><button class=\"it\" aria-pressed=\"true\">One</button></nav>"),
+        vec![".it[aria-pressed='true'] — inset box-shadow 1px stripe (left)".to_string()]
+    );
 }
 
-/// A stripe rule no element on the page matches reads its host rule's own
+/// A bar rule no element on the page matches reads its host rule's own
 /// declarations, the way the text engine reads a stylesheet.
 #[test]
-fn a_stripe_with_no_matching_element_reads_the_host_rule() {
+fn a_hairline_with_no_matching_element_reads_the_host_rule() {
     let css = ".ghost{border-radius:12px}\
-.ghost::before{content:\"\";position:absolute;left:0;top:0;bottom:0;width:5px;background:#6366f1}\
-.plain::before{content:\"\";position:absolute;left:0;top:0;bottom:0;width:6px;background:#6366f1}";
+.ghost::before{content:\"\";position:absolute;left:0;top:0;bottom:0;width:1px;background:#ddd}\
+.plain::before{content:\"\";position:absolute;left:0;top:0;bottom:0;width:1px;background:#ddd}";
     assert_eq!(
         side_tab_page(css, "<div class=\"c\">x</div>"),
-        vec![".ghost::before — absolute 5px pseudo-element stripe (left: 0)".to_string()]
+        vec![".ghost::before — absolute 1px pseudo-element stripe (left: 0)".to_string()]
     );
-}
-
-/// Shorthand and longhands resolve in cascade order, the way the browser
-/// resolves them: `rounded-lg rounded-r-none` is square away from a left
-/// stripe, and a later shorthand resets an earlier longhand.
-#[test]
-fn radius_longhands_and_shorthand_resolve_in_cascade_order() {
-    assert!(side_tab_snippets(
-        "border-left:4px solid #6366f1;border-radius:12px;border-top-right-radius:0;border-bottom-right-radius:0;"
-    )
-    .is_empty());
-    assert_eq!(
-        side_tab_page(
-            ".c.a{border-left:4px solid #6366f1;border-top-right-radius:0;border-bottom-right-radius:0}.c.a{border-radius:12px}",
-            "<div class=\"c a\">x</div>"
-        ),
-        vec!["border-left: 4px + border-radius: 12px".to_string()]
-    );
-    // A more specific longhand beats a later, less specific shorthand.
-    assert!(side_tab_page(
-        ".c.a{border-left:4px solid #6366f1;border-top-right-radius:0;border-bottom-right-radius:0}.c{border-radius:12px}",
-        "<div class=\"c a\">x</div>"
-    )
-    .is_empty());
-}
-
-/// `em` resolves against the element's own font size, and the snippet prints
-/// the radius in px, the way the browser's computed style does.
-#[test]
-fn em_and_rem_radii_resolve_to_px() {
-    assert!(
-        side_tab_snippets("font-size:12px;border-left:4px solid #6366f1;border-radius:0.3em;")
-            .is_empty()
-    );
-    assert_eq!(
-        side_tab_snippets("font-size:20px;border-left:4px solid #6366f1;border-radius:0.3em;"),
-        vec!["border-left: 4px + border-radius: 6px".to_string()]
-    );
-    assert_eq!(
-        side_tab_snippets("border-left:4px solid #6366f1;border-radius:0.5rem;"),
-        vec!["border-left: 4px + border-radius: 8px".to_string()]
-    );
-}
-
-#[test]
-fn a_var_built_radius_reads_each_corner_once_it_resolves() {
-    // Rounded away from the stripe through a custom property: reports.
-    assert_eq!(
-        side_tab_snippets(
-            "--r:0 12px 12px 0;border-left:4px solid #6366f1;border-radius:var(--r);"
-        ),
-        vec!["border-left: 4px".to_string()]
-    );
-    // Rounded only under the stripe: square where it counts.
-    assert!(side_tab_snippets(
-        "--r:12px 0 0 12px;border-left:4px solid #6366f1;border-radius:var(--r);"
-    )
-    .is_empty());
-    // A later longhand still wins its corner over the var-built shorthand.
-    assert!(side_tab_snippets(
-        "--r:12px;border-left:4px solid #6366f1;border-radius:var(--r);\
-border-top-right-radius:0;border-bottom-right-radius:0;"
-    )
-    .is_empty());
 }
 
 fn side_tabs_on_page(head: &str, body: &str) -> Vec<String> {
@@ -257,84 +174,12 @@ fn side_tabs_on_page(head: &str, body: &str) -> Vec<String> {
     out
 }
 
-const CARD: &str = "width:400px;height:120px;padding:16px;background:#fdfdfd;\
-border-left:4px solid #6366f1;";
-const CARD_BODY: &str = "<div class=\"card\"><h3>Card</h3><p>Body copy.</p></div>";
-
-/// Wherever the cascade cannot see a radius that may reach the card, the side
-/// accent keeps its finding, as it did before the rounded-card gate. A card
-/// whose every stylesheet the engine read, with no radius or a literal square
-/// one, still drops it.
-#[test]
-fn a_radius_the_cascade_cannot_see_keeps_the_finding() {
-    let page = |css: &str| side_tabs_on_page(&format!("<style>{css}</style>"), CARD_BODY);
-    // A radius in a nested rule or in a container query the cascade skips.
-    assert_eq!(
-        page(&format!(".card{{{CARD}&.card{{border-radius:12px}}}}")),
-        vec!["border-left: 4px"]
-    );
-    assert_eq!(
-        page(&format!(
-            ".card{{{CARD}}}@container (min-width:1px){{.card{{border-radius:12px}}}}"
-        )),
-        vec!["border-left: 4px"]
-    );
-    // The same shapes with a literal square radius, or a radius behind a
-    // hover state that cannot round the card at rest, stay silent.
-    assert!(page(&format!(".card{{{CARD}&.card{{border-radius:0}}}}")).is_empty());
-    assert!(page(&format!(".card{{{CARD}&:hover{{border-radius:12px}}}}")).is_empty());
-    assert!(page(&format!(".card{{{CARD}}}")).is_empty());
-}
-
 #[test]
 fn a_rounded_class_with_no_compiled_rule_reads_the_utility_scale() {
-    let css = format!("<style>.card{{{CARD}}}</style>");
-    let body =
-        |classes: &str| format!("<div class=\"{classes}\"><h3>Card</h3><p>Body copy.</p></div>");
-    assert_eq!(
-        side_tabs_on_page(&css, &body("card rounded-xl")),
-        vec!["border-left: 4px"]
-    );
-    // A theme size the scale does not name is unknown.
-    assert_eq!(
-        side_tabs_on_page(&css, &body("card rounded-card")),
-        vec!["border-left: 4px"]
-    );
-    assert!(side_tabs_on_page(&css, &body("card rounded-none")).is_empty());
-    // Rounded only along the left stripe: square where it counts.
-    assert!(side_tabs_on_page(&css, &body("card rounded-l-xl")).is_empty());
-}
-
-#[test]
-fn an_unread_stylesheet_keeps_a_card_it_never_saw_a_radius_for() {
-    let square = format!("<style>.card{{{CARD}}}</style>");
-    for href in ["https://cdn.example.com/ui.css", "missing.css"] {
-        assert_eq!(
-            side_tabs_on_page(
-                &format!("<link rel=\"stylesheet\" href=\"{href}\">{square}"),
-                CARD_BODY
-            ),
-            vec!["border-left: 4px"],
-            "{href}"
-        );
-    }
-    // A font service carries no box rules.
-    assert!(side_tabs_on_page(
-        &format!(
-            "<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Inter\">{square}"
-        ),
-        CARD_BODY
-    )
-    .is_empty());
-    // A radius the engine read wins whatever else the page links.
-    assert!(side_tabs_on_page(
-        &format!(
-            "<link rel=\"stylesheet\" href=\"https://cdn.example.com/ui.css\">\
-<style>.card{{{CARD}border-radius:0}}</style>"
-        ),
-        CARD_BODY
-    )
-    .is_empty());
+    let css = "<style>.card{width:400px;height:120px;border-left:1px solid #ddd}</style>";
+    let body = |classes: &str| format!("<div class=\"{classes}\"><h3>Card</h3><p>Body copy.</p></div>");
+    assert_eq!(side_tabs_on_page(css, &body("card rounded-xl")), vec!["border-left: 1px + border-radius: 12px"]);
+    assert!(side_tabs_on_page(css, &body("card rounded-none")).is_empty());
 }
 
 #[test]
@@ -356,12 +201,54 @@ fn a_row_stripe_reports_only_where_its_selector_matches_a_cell() {
     let branches = "<style>tr.is-error td,td.amount{box-shadow:inset 3px 0 0 #d0342c;background:#fff}</style>";
     assert!(side_tabs_on_page(branches, "<table><tr><td class=\"amount\">1</td></tr></table>").is_empty());
     assert_eq!(side_tabs_on_page(branches, "<table><tr class=\"is-error\"><td>1</td></tr></table>").len(), 1);
-    // A row card rounded by another rule is the card scans' to report, once.
+    // A row card reports once, rounded by another rule or square.
     let row_card = "<div class=\"row-card is-x\">A row card</div>";
     let stripe = ".row-card.is-x{width:400px;height:48px;box-shadow:inset 3px 0 0 #d0342c}";
     let rounded = side_tabs_on_page(&format!("<style>{stripe}.row-card{{border-radius:12px}}</style>"), row_card);
     assert_eq!(rounded.len(), 1, "{rounded:?}");
-    assert!(!rounded[0].contains("row or cell"), "{rounded:?}");
     let square = side_tabs_on_page(&format!("<style>{stripe}</style>"), row_card);
-    assert!(square.len() == 1 && square[0].contains("row or cell"), "{square:?}");
+    assert_eq!(square.len(), 1, "{square:?}");
+}
+
+/// A square quote's rule and a code line's gutter are fine; rounded, the same
+/// rule is a tab.
+#[test]
+fn a_square_quote_rule_or_code_gutter_is_fine() {
+    let css = "blockquote{border-left:4px solid #ddd}.r{border-radius:8px}pre .add{display:block;border-left:3px solid #2a2}";
+    assert!(side_tabs_on_page(&format!("<style>{css}</style>"), "<blockquote>Quote</blockquote><pre><code><span class=\"add\">+ a</span></code></pre>").is_empty());
+    assert_eq!(
+        side_tabs_on_page(&format!("<style>{css}</style>"), "<blockquote class=\"r\">Quote</blockquote>"),
+        vec!["border-left: 4px + border-radius: 8px"]
+    );
+}
+
+/// Review round one: a two-value logical width, a bar only in a hover state,
+/// on rounded boxes; the same bars on square boxes are fine.
+#[test]
+fn logical_pairs_hover_borders_and_mixed_branches() {
+    let page = |css: &str, body: &str| side_tabs_on_page(&format!("<style>{css}</style>"), body);
+    assert_eq!(
+        page(".x{width:400px;height:120px;border-radius:8px;border-left:3px solid red;border-inline-width:0 4px}", "<div class=\"x\">x</div>"),
+        vec!["border-right: 4px + border-radius: 8px"]
+    );
+    assert_eq!(
+        page(".it{width:400px;height:40px;border-radius:6px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>"),
+        vec![".it:hover — border-left 2px stripe (left)"]
+    );
+    // A right bar in a hover state behind a thinner left border.
+    assert_eq!(
+        page(".it{width:400px;height:40px;border-radius:6px}.it:hover{border-left:2px solid #ddd;border-right:4px solid #ddd}", "<button class=\"it\">x</button>"),
+        vec![".it:hover — border-right 4px stripe (right)"]
+    );
+    assert!(page(".it{width:400px;height:40px}.it:hover{border-left:2px solid #ddd}", "<button class=\"it\">x</button>").is_empty());
+    // A radius only in the hover rule rounds the box when the bar shows,
+    // unless the element's own `style` sets its corners.
+    let hover_rounded = ".it{width:400px;height:40px}.it:hover{border-radius:6px;border-left:3px solid red}";
+    assert_eq!(page(hover_rounded, "<button class=\"it\">x</button>"), vec![".it:hover — border-left 3px stripe (left)"]);
+    assert!(page(hover_rounded, "<button class=\"it\" style=\"border-radius:0\">x</button>").is_empty());
+    // A token or one squared corner leaves the hover radius in play.
+    for style in ["--radius:8px", "border-top-left-radius:0"] {
+        assert_eq!(page(hover_rounded, &format!("<button class=\"it\" style=\"{style}\">x</button>")).len(), 1, "{style}");
+    }
+    assert!(page("blockquote, .card{box-shadow:inset 3px 0 0 #ddd}", "<div class=\"card\">x</div>").is_empty());
 }

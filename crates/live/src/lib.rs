@@ -58,9 +58,35 @@ pub mod live_wrap;
 
 use impeccable_common::Io;
 
+/// A variant the person accepted, as the CLI records it (REN-1917): what was
+/// prototyped and how many variants, never the variants themselves.
+pub struct Accepted {
+    pub session_id: String,
+    /// The app root the session ran in.
+    pub root: std::path::PathBuf,
+    /// The page path (`/pricing`), or a file page's name.
+    pub target: String,
+    pub variants: u64,
+    /// When the variant was first accepted (ISO 8601), from the accept receipt.
+    pub accepted_at: String,
+    /// The same time in Unix milliseconds.
+    pub accepted_ms: i64,
+}
+
+/// Called with the caller's `Io` once an accept's result is out: after the
+/// printed JSON, and in `live-poll` after the browser has its reply.
+/// Records an accepted session; returns the page it was saved to when the
+/// caller collected it for machine output (`live-poll --json`).
+pub type OnAccepted<'a> = dyn FnMut(&mut Io, Accepted) -> Option<String> + 'a;
+
 /// Verb dispatcher for every `live*` verb. Unknown live verbs (parts 2/3
 /// until they land) report `not implemented` with exit 70.
 pub fn run(verb: &str, args: &[String], io: &mut Io) -> i32 {
+    run_with_accepted(verb, args, io, &mut |_, _| None)
+}
+
+/// `run`, handing each successful variant accept to `accepted`.
+pub fn run_with_accepted(verb: &str, args: &[String], io: &mut Io, accepted: &mut OnAccepted<'_>) -> i32 {
     match verb {
         "live" => live_boot::run(args, io),
         "live-target" => live_target::run(args, io),
@@ -70,10 +96,10 @@ pub fn run(verb: &str, args: &[String], io: &mut Io) -> i32 {
         "live-inject" | "inject" => live_inject::run(args, io),
         "live-wrap" | "wrap" => live_wrap::run(args, io),
         "live-insert" | "insert" => live_insert::run(args, io),
-        "live-accept" | "accept" => live_accept::run(args, io),
+        "live-accept" | "accept" => live_accept::run_with_accepted(args, io, accepted),
         "live-server" => live_server::run(args, io),
         "live-generate" => live_generate::run(args, io),
-        "live-poll" | "poll" => live_poll::run(args, io),
+        "live-poll" | "poll" => live_poll::run(args, io, accepted),
         "live-commit-manual-edits" | "commit-manual-edits" => {
             live_commit_manual_edits::run(args, io)
         }

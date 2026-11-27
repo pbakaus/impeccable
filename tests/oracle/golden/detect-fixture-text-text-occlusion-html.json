@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/text-occlusion.html\n  [hero-eyebrow-chip] eyebrow chip (tracked-caps) \"Family Italian on the waterfront\" above h1 \"Trattoria da Nonna Lucia\"\n    → A tiny uppercase letter-spaced label sitting immediately above an oversized hero headline — or the same shape rendered as a pill chip — is now the default AI SaaS hero. Drop the eyebrow, integrate the kicker into the headline, or run it as a navigation breadcrumb instead.\n\n1 anti-pattern found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/text-occlusion.html\n  line 109: [hero-eyebrow-chip] eyebrow chip (tracked-caps) \"Family Italian on the waterfront\" above h1 \"Trattoria da Nonna Lucia\"\n    → A tiny uppercase letter-spaced label sitting immediately above an oversized hero headline — or the same shape rendered as a pill chip — is now the default AI SaaS hero. Drop the eyebrow, integrate the kicker into the headline, or run it as a navigation breadcrumb instead.\n\n1 anti-pattern found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

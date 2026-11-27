@@ -17,6 +17,29 @@ describe('live-browser source contracts', () => {
     }
   });
 
+  it('leaves the steer input empty on a steer timeout, never asks to resend it, and confirms its late steer_done (#1566)', () => {
+    const fns = ['scheduleSteerAwaitTimeout', 'steerTimeoutMessage', 'maybeCompleteSteer']
+      .map((name) => SOURCE.match(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))?.[0]);
+    assert.ok(fns.every(Boolean));
+    const ctx = {
+      clearSteerAwaitTimer() {}, setTimeout: (fn) => fn(), STEER_AWAIT_TIMEOUT_MS: 1,
+      steerPendingMessage: 'make it bigger', steerTimedOutIds: new Set(),
+      unlockSteerChat(opts) { ctx.opts = opts; ctx.steerRequestId = null; },
+      showToast(text) { ctx.toast = text; },
+    };
+    runInNewContext(fns.join('\n'), ctx);
+    for (const [id, queued, polling] of [['s1', true, true], ['s2', false, false]]) {
+      Object.assign(ctx, { steerLocked: true, steerRequestId: id, steerQueuedBehindGeneration: () => queued, agentPollingConnected: polling });
+      runInNewContext(`scheduleSteerAwaitTimeout('${id}')`, ctx);
+      assert.equal(ctx.opts.restoreMessage, undefined);
+      assert.doesNotMatch(ctx.opts.error, /send it again/i);
+    }
+    for (const id of ['s1', 's2']) {
+      assert.equal(runInNewContext(`maybeCompleteSteer({ type: 'steer_done', id: '${id}', message: 'done ${id}' })`, ctx), true);
+      assert.equal(ctx.toast, `done ${id}`);
+    }
+  });
+
   it('picks the nearest pickable ancestor of a too-small hover but never leaves the live chrome (#1297)', () => {
     const body = SOURCE.match(/function handleMouseMove\(e\) \{[\s\S]*?\n  \}/)?.[0];
     assert.ok(body);
@@ -1044,8 +1067,34 @@ describe('live-browser source contracts', () => {
     );
     assert.match(
       SOURCE,
-      /hasProjectContext = !!msg\.hasProjectContext;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(!hasProjectContext && !liveBarHiddenByHelper\) showToast\(/,
+      /hasProjectContext = !!msg\.hasProjectContext;[\s\S]{0,700}?if \(liveFirstRun && !liveBarHiddenByHelper\) \{[\s\S]{0,300}?\} else if \(!hasProjectContext && !liveBarHiddenByHelper && takeContextNotice\(\)\) showToast\(/,
       'the lane\'s quiet chrome also skips the "No PRODUCT.md" notice, which would send the user to init',
+    );
+    assert.match(
+      SOURCE,
+      /function takeContextNotice\(\) \{\s*if \(contextNoticeShown\) return false;\s*contextNoticeShown = true;\s*try \{\s*if \(localStorage\.getItem\(CONTEXT_NOTICE_KEY\)\) return false;\s*localStorage\.setItem\(CONTEXT_NOTICE_KEY, '1'\);/,
+      'the "No PRODUCT.md" notice shows once per browser, and once per page when storage is blocked',
+    );
+    assert.match(
+      SOURCE,
+      /function enterPickingIfArmed\(\) \{\s*if \(state === 'IDLE' && \(pickActive \|\| insertActive\) && !liveBarHiddenByHelper\) setLiveState\('PICKING'\);/,
+      'a Pick remembered from a visible session never captures clicks behind a hidden bar, where nothing can turn it off',
+    );
+    assert.ok(!/\(pickActive \|\| insertActive\)\) setLiveState\('PICKING'\)/.test(SOURCE), 'every resume into Pick goes through the hidden-bar guard');
+    assert.match(
+      SOURCE,
+      /if \(liveBarHiddenByHelper && !wasHidden && state === 'PICKING'\) \{\s*clearInsertPicking\(\);\s*hideHighlight\(\);\s*setLiveState\('IDLE'\);/,
+      'a bar hidden mid-Pick drops out of Pick at once',
+    );
+    assert.match(
+      SOURCE,
+      /return \{ pickActive: false, insertActive: false, firstRun: true \};/,
+      'a browser with no stored prefs does not start Pick before it knows the bar is visible',
+    );
+    assert.match(
+      SOURCE,
+      /if \(liveFirstRun && !liveBarHiddenByHelper\) \{\s*liveFirstRun = false;\s*if \(!insertActive\) pickActive = true;\s*saveInteractionPrefs\(\);\s*updateGlobalBarState\(\);\s*showToast\('Click anything on the page to restyle it\.'/,
+      'a visible first session turns Pick on and shows the hint once: the prefs are saved before it shows',
     );
     assert.match(
       SOURCE,
@@ -1874,5 +1923,15 @@ describe('Pending dock after Rollback', () => {
     const click = runInNewContext(`${SOURCE.match(/async function onPendingRollbackClick\(\) \{[\s\S]*?\n  \}/)[0]}\nonPendingRollbackClick`, context);
     await click();
     assertNormalDock(context);
+  });
+});
+
+describe('Global bar labels', () => {
+  // Catches hover widening the centred bar again (clicks meant for Pick landed on
+  // Insert), and active labels left collapsed after a Steer request finishes.
+  it('never widens on hover and restores active labels when Steer unlocks', () => {
+    assert.doesNotMatch(SOURCE, /globalBarEl\?*\.\??matches\(':hover'\)|syncGlobalBarExpandedLabels\(true|applyGlobalBarLabelState\(true/);
+    const unlock = SOURCE.match(/function unlockSteerChat\(opts\) \{[\s\S]*?\n  \}/)?.[0] || '';
+    assert.match(unlock, /syncGlobalBarExpandedLabels\(\)/);
   });
 });

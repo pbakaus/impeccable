@@ -169,6 +169,25 @@ impl Browser {
         user_args: &[String],
         dangerous_no_sandbox: bool,
     ) -> CdpResult<Browser> {
+        Self::launch_inner(executable, user_args, dangerous_no_sandbox, None)
+    }
+
+    /// Launch and cap all subsequent CDP operations at one job deadline.
+    pub fn launch_until(
+        executable: &std::path::Path,
+        user_args: &[String],
+        dangerous_no_sandbox: bool,
+        deadline: Instant,
+    ) -> CdpResult<Browser> {
+        Self::launch_inner(executable, user_args, dangerous_no_sandbox, Some(deadline))
+    }
+
+    fn launch_inner(
+        executable: &std::path::Path,
+        user_args: &[String],
+        dangerous_no_sandbox: bool,
+        deadline: Option<Instant>,
+    ) -> CdpResult<Browser> {
         let mut args = default_chrome_args(user_args, dangerous_no_sandbox);
         args.push("--remote-debugging-port=0".to_string());
         let stamp = std::time::SystemTime::now()
@@ -178,14 +197,21 @@ impl Browser {
         let user_data_dir = reserve_profile(&std::env::temp_dir(), stamp)?;
         args.push(format!("--user-data-dir={}", user_data_dir.display()));
 
-        let mut child = match Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             .args(&args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
-            Ok(c) => c,
+            .stderr(Stdio::piped());
+        // Chrome leads its own process group, so the signal reaper can end
+        // its helpers with it (crate::reaper).
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        let mut child = match command.spawn() {
+            Ok(c) => {
+                crate::reaper::register(c.id(), user_data_dir.clone());
+                c
+            }
             Err(e) => {
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
@@ -214,10 +240,12 @@ impl Browser {
         let started = Instant::now();
         let mut collected = String::new();
         let ws_url = loop {
-            let remaining = LAUNCH_TIMEOUT.saturating_sub(started.elapsed());
+            let remaining = LAUNCH_TIMEOUT.saturating_sub(started.elapsed())
+                .min(deadline.map_or(LAUNCH_TIMEOUT, |d| d.saturating_duration_since(Instant::now())));
             if remaining.is_zero() {
                 let _ = child.kill();
                 let _ = child.wait();
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
                     "Timed out after {} ms while waiting for the WS endpoint URL to appear in stdout!",
@@ -234,7 +262,9 @@ impl Browser {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if deadline.is_some() { let _ = child.kill(); }
                     let _ = child.wait();
+                    crate::reaper::unregister(child.id());
                     let _ = std::fs::remove_dir_all(&user_data_dir);
                     return Err(CdpError::new(format!(
                         "Failed to launch the browser process!{}",
@@ -252,6 +282,7 @@ impl Browser {
                     collected.push_str(&line);
                     collected.push('\n');
                 }
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(CdpError::new(format!(
                     "Failed to launch the browser process! (exit {status}){}",
@@ -263,15 +294,17 @@ impl Browser {
                 )));
             }
         };
-        let mut conn = match Connection::connect(&ws_url, LAUNCH_TIMEOUT) {
+        let mut conn = match Connection::connect(&ws_url, deadline.map_or(LAUNCH_TIMEOUT, |d| d.saturating_duration_since(Instant::now()))) {
             Ok(c) => c,
             Err(e) => {
                 let _ = child.kill();
                 let _ = child.wait();
+                crate::reaper::unregister(child.id());
                 let _ = std::fs::remove_dir_all(&user_data_dir);
                 return Err(e);
             }
         };
+        conn.deadline = deadline;
         // A fresh profile loads its cookie store on the first request that
         // needs it, and every page request waits for that load. On Windows the
         // load (an encrypted SQLite store) takes 1 to 5 s and has taken over
@@ -458,6 +491,7 @@ impl Drop for Browser {
                 let _ = child.kill();
                 let _ = child.wait();
             }
+            crate::reaper::unregister(child.id());
         }
         if let Some(dir) = self.user_data_dir.as_ref() {
             let _ = std::fs::remove_dir_all(dir);
@@ -480,6 +514,7 @@ struct Connection {
     ws: WebSocket<TcpStream>,
     next_id: u64,
     auth: Option<OriginAuth>,
+    deadline: Option<Instant>,
 }
 
 /// What [`Connection::next`] read: the awaited reply's result, or an event
@@ -491,6 +526,7 @@ enum Reply {
 
 impl Connection {
     fn connect(ws_url: &str, timeout: Duration) -> CdpResult<Connection> {
+        let deadline = Instant::now() + timeout;
         let parsed = url_host_port(ws_url)
             .ok_or_else(|| CdpError::new(format!("Unexpected DevTools endpoint: {ws_url}")))?;
         let stream = connect_tcp(&parsed, timeout).map_err(|e| {
@@ -498,7 +534,10 @@ impl Connection {
         })?;
         // The handshake reads under a deadline too: a port that accepts and
         // never answers (not a DevTools server) fails instead of hanging.
-        let _ = stream.set_read_timeout(Some(timeout));
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() { return Err(CdpError::new("DevTools connection deadline exceeded")); }
+        let _ = stream.set_read_timeout(Some(remaining));
+        let _ = stream.set_write_timeout(Some(remaining));
         let _ = stream.set_nodelay(true);
         let request = ws_url
             .into_client_request()
@@ -514,6 +553,7 @@ impl Connection {
             ws,
             next_id: 0,
             auth: None,
+            deadline: None,
         })
     }
 
@@ -578,6 +618,11 @@ impl Connection {
 
     /// Write a command and return its id without waiting for the reply.
     fn post(&mut self, session_id: Option<&str>, method: &str, params: Value) -> CdpResult<u64> {
+        if let Some(deadline) = self.deadline {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() { return Err(CdpError::new("browser job deadline exceeded")); }
+            let _ = self.ws.get_ref().set_write_timeout(Some(remaining));
+        }
         self.next_id += 1;
         let id = self.next_id;
         let mut msg = Map::new();
@@ -646,6 +691,7 @@ impl Connection {
 
     /// Read one message, or `None` when `deadline` passes first.
     fn read_one(&mut self, deadline: Instant) -> CdpResult<Option<Value>> {
+        let deadline = self.deadline.map_or(deadline, |job| job.min(deadline));
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -804,12 +850,29 @@ impl<'a> Page<'a> {
         let out = loop {
             match self.browser.conn.next(id, method, deadline) {
                 Ok(Reply::Result(value)) => break Ok(value),
-                Ok(Reply::Event(ev)) => self.on_event(&ev),
+                Ok(Reply::Event(ev)) => {
+                    // A crashed renderer answers nothing more, so the call
+                    // fails now instead of waiting out the protocol timeout.
+                    let crashed = ev.get("method").and_then(Value::as_str) == Some("Inspector.targetCrashed")
+                        && ev.get("sessionId").and_then(Value::as_str) == Some(sid.as_str());
+                    self.on_event(&ev);
+                    if crashed {
+                        break Err(CdpError::new(format!("{method}: the page crashed (renderer process ended)")));
+                    }
+                }
                 Err(e) => break Err(e),
             }
         };
         self.pump_events();
         out
+    }
+
+    /// Capture-only animation timeline control and trusted input on a disposable page.
+    pub fn motion_command(&mut self, method: &str, params: Value) -> CdpResult<Value> {
+        match method {
+            "Animation.enable" | "Animation.disable" | "Animation.setPlaybackRate" | "Input.dispatchMouseEvent" | "Input.dispatchKeyEvent" => self.send(method, params),
+            _ => Err(CdpError::new("Unsupported motion protocol command")),
+        }
     }
 
     /// Start a fresh diagnostic journal before navigation. Cache, authentication,
@@ -1274,9 +1337,14 @@ impl<'a> Page<'a> {
 
     /// Explicit screenshot-environment preference; never injected as page CSS.
     pub fn set_reduced_motion(&mut self, reduce: bool) -> CdpResult<()> {
-        self.send("Emulation.setEmulatedMedia", json!({"features": [{
-            "name": "prefers-reduced-motion", "value": if reduce { "reduce" } else { "no-preference" }
-        }]}))?;
+        self.set_emulated_media(&[("prefers-reduced-motion", if reduce { "reduce" } else { "no-preference" })])
+    }
+
+    /// Emulate these media features (`(name, value)`). Each call replaces the
+    /// whole emulated set, so pass every feature the page needs in one call.
+    pub fn set_emulated_media(&mut self, features: &[(&str, &str)]) -> CdpResult<()> {
+        let features: Vec<Value> = features.iter().map(|(name, value)| json!({ "name": name, "value": value })).collect();
+        self.send("Emulation.setEmulatedMedia", json!({ "features": features }))?;
         Ok(())
     }
 
@@ -1714,6 +1782,33 @@ impl<'a> Page<'a> {
         width: f64,
         height: f64,
     ) -> CdpResult<String> {
+        let beyond = !self.attached;
+        self.screenshot_clip_with(x, y, width, height, beyond)
+    }
+
+    /// [`Page::screenshot_clip`] for a clip inside the viewport, read off the
+    /// surface as it is. A beyond-viewport capture lays the page out again at
+    /// the clip's size, and that relayout skips a running view transition
+    /// (`document.activeViewTransition` ends while its animations are
+    /// paused), so a motion capture must never take one.
+    pub fn screenshot_clip_in_viewport(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    ) -> CdpResult<String> {
+        self.screenshot_clip_with(x, y, width, height, false)
+    }
+
+    fn screenshot_clip_with(
+        &mut self,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        beyond: bool,
+    ) -> CdpResult<String> {
         // Page.screenshot: roundRectangle(normalizeRectangle(clip)).
         let (x, width) = if width < 0.0 {
             (x + width, -width)
@@ -1737,7 +1832,7 @@ impl<'a> Page<'a> {
                 // A beyond-viewport capture lays the page out at the size of
                 // the clip for the shot, which an attached app's window would
                 // show: it reads what is on screen instead.
-                "captureBeyondViewport": !self.attached,
+                "captureBeyondViewport": beyond,
             }),
             timeout,
         )?;
@@ -1800,6 +1895,16 @@ impl<'a> Page<'a> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string())
+    }
+
+    /// The visible viewport as base64 WebP, encoded by Chromium.
+    pub fn screenshot_viewport_webp(&mut self, quality: u32) -> CdpResult<String> {
+        let res = self.send("Page.captureScreenshot", json!({
+            "format": "webp", "quality": quality.min(100),
+            "fromSurface": true, "captureBeyondViewport": false,
+        }))?;
+        res["data"].as_str().map(str::to_owned)
+            .ok_or_else(|| CdpError::new("viewport screenshot returned no WebP"))
     }
 
     /// The visible viewport as base64 JPEG.

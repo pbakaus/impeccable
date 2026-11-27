@@ -5,6 +5,18 @@ field; paste them as they are. Keep this file in step with the manifest
 (`extension/manifest.json`) and the rule registry (the count comes from
 `extension/detector/antipatterns.json` after `bun run build:extension`).
 
+> Draft: the lines about journeys (permissions, remote code, data usage) are not
+> final. The repository owner reviews store copy before any of it is pasted.
+
+This listing describes the store build (`dist/extension.zip`, staged by
+`bun run build:extension`). The unpacked development build (the `extension/`
+folder as committed) does more, and none of it ships to the store: it signs in
+to an Impeccable account (`identity`, `alarms`, `notifications`), starts
+journeys on the person's own tab from the side panel, checks in with the server
+every 30 seconds while signed in with Impeccable Pro, sends the side panel's
+current page address (query included), task and persona text to the server, offers talk to type through
+Chrome's speech recognition, and takes journeys from staging and this machine.
+
 ## Name
 Impeccable
 
@@ -13,7 +25,7 @@ Detect AI slop and design anti-patterns in any web page. Open DevTools and see w
 
 ## Detailed description
 
-Impeccable detects 61 common UI anti-patterns directly in your browser. Open the Impeccable panel in DevTools on any page and overlays highlight issues, from AI-generated design tells to accessibility and quality problems.
+Impeccable detects 62 common UI anti-patterns directly in your browser. Open the Impeccable panel in DevTools on any page and overlays highlight issues, from AI-generated design tells to accessibility and quality problems.
 
 WHAT IT DETECTS
 
@@ -55,13 +67,17 @@ FEATURES
 - Scans when you open the panel; opt in to scanning the moment DevTools opens
 - Grouped findings: AI tells vs. quality issues
 - Click-to-inspect: jump from a finding to the element
-- Toggle overlays on/off from the panel or the toolbar popup
+- Toggle overlays on/off from the DevTools panel or the side panel
 - Per-rule settings: disable detections you don't care about
 - Re-scans on navigation, including SPA route changes
 - Works on any website, including pages with a strict Content Security Policy
-- Runs 100% locally, no data sent anywhere
+- Scans run 100% locally, no data sent anywhere
 
-The same 61 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
+JOURNEYS
+
+Journeys are started from the Impeccable web app. The person picks a persona and what it should do; the extension opens one new tab in a tab group of its own and lets Impeccable's server drive that tab, step by step, while the person watches. A side panel shows each step, and the person can pause, take over or stop at any time. A journey acts only on the one tab it opened, and only on the site the person chose.
+
+The same 62 rules power the Impeccable CLI and the live design mode, built from one open-source rule engine.
 
 Open source at https://github.com/pbakaus/impeccable
 
@@ -79,7 +95,7 @@ English
 https://impeccable.style/privacy
 
 ## Single purpose description
-Detects and highlights UI anti-patterns (AI-generated design tells and general quality issues) on any web page.
+Check and test your site's design: find design problems on any page, and watch personas try your site.
 
 ## Permission justifications (Privacy practices tab)
 
@@ -88,10 +104,16 @@ Detects and highlights UI anti-patterns (AI-generated design tells and general q
 - **storage**: Saves the user's own settings (disabled rules, overlay visibility, the auto-scan preference) in Chrome sync storage. No page data is stored.
 - **webNavigation**: Re-scans after in-page navigation in single-page apps, where no full page load happens.
 - **offscreen**: Runs the WebAssembly rule engine over the page snapshot in an offscreen document, because page Content Security Policies block WebAssembly in the content-script and page worlds. The document is created for a scan and closed afterward.
-- **Host permission (all sites)**: The user can scan any site they visit; the scan runs only on the active tab when the user asks for it.
+- **Host permission (all sites)**: The user can scan any site they visit; the scan runs only on the active tab when the user asks for it. Journey content scripts run only on the Impeccable web app's journey and sign-in pages.
+- **debugger**: Drives the one tab a journey opens: clicks, typing, screenshots and page reads that the server asks for, and holding that tab to the site the person chose. It attaches only to that tab, only after the person starts a journey from the Impeccable web app, and detaches when the journey ends or the person stops it.
+- **tabs**: Opens the journey's tab, closes tabs its page tries to open, and reads that tab's address so it can be stopped the moment it leaves the chosen site.
+- **tabGroups**: Puts the journey's tab in a named group of its own so the person can tell it apart from their own tabs.
+- **sidePanel**: Shows the journey as it happens, with Pause, Take over and Stop.
+- **downloads**: Cancels and removes any download the journey's tab starts; a journey never saves files.
+- **declarativeNetRequestWithHostAccess**: While a journey runs and has not been allowed to change anything, blocks requests that would change something (form posts and other writes) that the journey's own page cannot be held from: a tab it opens, a frame from another site inside it, and its site's background workers. The rules are removed as soon as writes are allowed, the person takes over, or the journey ends.
 
 ## Remote code
-No. The rule engine (WebAssembly) and all scripts ship inside the package. Nothing is fetched or evaluated from the network.
+The extension's own code, including the rule engine (WebAssembly), ships inside the package. A journey runs only the extension's own page helpers (`walks/page-helpers.js`, generated, readable source): the server names one and gives its data, to read and act on the journey's tab, never typing into or reading a field the page marks as a password, card or one-time code (by its `type` or `autocomplete`), and taking screenshots with those fields blacked out (checked as drawn before each screenshot, which is not taken otherwise). A field that may hold a password (one named for a password, or a text field a "show password" button put in its place) is blacked out and never read too. A card or code field the page does not mark is not known as one. A journey marks each password field it sees on the journey's tab (`data-impeccable-secret-field`), each field that may hold one (`data-impeccable-secret-maybe`), and the forms round them (`data-impeccable-secret-form`, `data-impeccable-secret-form-name`), so one the person shows as text stays covered in screenshots; the marks stay with that page. Cookie banners are declined with DuckDuckGo's autoconsent rules (MPL-2.0), bundled in `walks/consent-rules.js`. Until every server names helpers, an older server may still send short page scripts that run in the journey's tab only, and such a journey pauses while a password field or a field that may hold one is filled (for the latter, until the person presses Continue); nothing from the network runs in the extension itself.
 
 ## Data usage
-The extension collects no user data. Scans run locally; no page content, findings, or identifiers leave the browser. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.
+Scans run locally; no page content, findings, or identifiers leave the browser. During a journey the person started, what the server asks for of the journey's tab (screenshots, page content and its address) is sent to Impeccable's server to run the journey and show its results to that person; nothing from any other tab is read or sent. When a journey pauses itself at a sign-in page, it takes one screenshot of that page with every field drawn blank and sends it with the page's title, if the server asks for it. Nothing else of the journey's tab is taken or sent while it is paused. Outside a journey the extension sends nothing to any server. Certify: not being sold to third parties, not used for purposes unrelated to the single purpose, not used for creditworthiness or lending.

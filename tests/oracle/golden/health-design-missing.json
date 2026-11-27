@@ -1,0 +1,9 @@
+{
+  "stdout": "",
+  "stderr": "Usage: impeccable health design on|off\n",
+  "exit": 1,
+  "signal": null,
+  "files": {
+    ".oracle-home/impeccable/health.json": "{\"design\":true}"
+  }
+}

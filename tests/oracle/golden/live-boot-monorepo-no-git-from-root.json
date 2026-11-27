@@ -1,7 +1,9 @@
 {
-  "stdout": "{\n  \"ok\": false,\n  \"error\": \"context_missing\",\n  \"missing\": [\n    \"PRODUCT.md\",\n    \"DESIGN.md\"\n  ],\n  \"nextCommand\": \"init\",\n  \"targetPath\": null,\n  \"projectRoot\": \"<WS>/website\",\n  \"repoRoot\": \"<WS>/website\",\n  \"productPath\": null,\n  \"designPath\": null\n}\n",
+  "stdout": "{\"ok\":false,\"error\":\"config_missing\",\"path\":\"<WS>/website/.impeccable/live/config.json\",\"targetPath\":null,\"projectRoot\":\"<WS>/website\",\"repoRoot\":\"<WS>/website\"}\n",
   "stderr": "",
   "exit": 0,
   "signal": null,
-  "files": {}
+  "files": {
+    "website/.impeccable/live/roots.json": "{\n  \"version\": 1,\n  \"appRoot\": \"<WS>/website\",\n  \"repoRoot\": \"<WS>/website\",\n  \"contextRoot\": \"<WS>\",\n  \"sessionRoot\": \"<WS>/website/.impeccable/live\",\n  \"productPath\": \"<WS>/PRODUCT.md\",\n  \"designPath\": \"<WS>/DESIGN.md\",\n  \"resolvedFrom\": \"candidate:website\"\n}"
+  }
 }

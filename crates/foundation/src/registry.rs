@@ -36,7 +36,7 @@ pub static ANTIPATTERNS: &[Antipattern] = &[
         scopes: None,
         severity: None,
         name: "Side-tab accent border",
-        description: "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+        description: "A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.",
         skill_section: Some("Visual Details"),
         skill_guideline: Some("colored accent stripe"),
     },

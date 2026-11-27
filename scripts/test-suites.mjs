@@ -87,11 +87,13 @@ export const SUITES = {
           'tests/hermes-plugin.test.mjs',
           'tests/openai-plugin.test.mjs',
           'tests/cursor-plugin.test.mjs',
+          'tests/motion-capture.test.mjs',
           'tests/vscode-extension.test.mjs',
           'tests/process-group.test.mjs',
           'tests/release.test.mjs',
           'tests/bundle-signing.test.mjs',
           'tests/skill-reference.test.mjs',
+          'tests/token-budget.test.mjs',
           'tests/lib/dev-keys.test.mjs',
           'tests/skill-behavior-harness.test.mjs',
           'tests/readme-gitignore.test.mjs',
@@ -118,17 +120,18 @@ export const SUITES = {
       {
         runner: 'node',
         timeoutMs: 900000,
-        files: ['tests/oracle.test.mjs'],
+        files: ['tests/oracle.test.mjs', 'tests/oracle/invocation.test.mjs'],
       },
     ],
   },
   detector: {
-    description: 'Extension packaging and DevTools report checks (the rule logic itself is covered by the crate tests and the oracle).',
+    description: 'Extension packaging, DevTools report and walk checks (the rule logic itself is covered by the crate tests and the oracle).',
     triggers: [
       ...COMMON_INFRA_PATTERNS,
-      /^extension\/(background|content|detector|devtools|offscreen|popup|shared|manifest\.json)/,
+      /^extension\/(account|background|content|detector|devtools|fonts|offscreen|popup|shared|walks|manifest\.json)/,
       /^scripts\/build-extension\.js$/,
-      /^tests\/extension-(build|devtools|report|popup)\.test\.mjs$/,
+      /^scripts\/lib\/extension-manifests\.js$/,
+      /^tests\/extension-(account|build|devtools|report|popup|walks)\.test\.mjs$/,
       /^browser-bundle\//,
       // Everything `cargo xtask bundle` reads: the rules and the registry
       // rows (core, foundation), the wasm module (wasm), the assembly and the
@@ -143,7 +146,7 @@ export const SUITES = {
     commands: [
       {
         runner: 'node',
-        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs', 'tests/extension-report.test.mjs', 'tests/extension-popup.test.mjs'],
+        files: ['tests/extension-build.test.mjs', 'tests/extension-devtools.test.mjs', 'tests/extension-report.test.mjs', 'tests/extension-popup.test.mjs', 'tests/extension-walks.test.mjs', 'tests/extension-account.test.mjs', 'tests/extension-agent.test.mjs'],
       },
     ],
   },
@@ -156,6 +159,7 @@ export const SUITES = {
       /^tests\/lib\/engine-bin\.mjs$/,
       /^tests\/live-agent-target\.test\.mjs$/,
       /^tests\/live-boot-fastpath\.test\.mjs$/,
+      /^tests\/live-exit\.test\.mjs$/,
     ],
     commands: [
       {
@@ -167,6 +171,7 @@ export const SUITES = {
           'tests/live-browser-ignores.test.mjs',
           'tests/live-browser-session.test.mjs',
           'tests/live-browser-source.test.mjs',
+          'tests/live-exit.test.mjs',
           'tests/live-e2e-agent-output.test.mjs',
           'tests/live-e2e-cli-options.test.mjs',
           'tests/live-e2e-llm-agent.test.mjs',
@@ -353,6 +358,8 @@ export const SUITES = {
         wallClockMs: 3_600_000,
         files: ['tests/skill-workflow/full-build.test.mjs'],
       },
+      // REN-1952's seed walk: skips unless SEED_WALK_SEED and SEED_WALK_OUT are set, and caps its own spend.
+      { runner: 'node', timeoutMs: 2_000_000, wallClockMs: 2_400_000, files: ['tests/skill-workflow/seed-walk.test.mjs'] },
     ],
   },
   'live-svelte-adapter-deepseek': {

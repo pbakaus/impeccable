@@ -11,6 +11,7 @@
 //! system types and helpers ([`design_system`]).
 
 pub mod cdp_endpoint;
+pub mod changed;
 pub mod cli;
 pub mod config;
 pub mod design_system;
@@ -24,8 +25,11 @@ pub mod list_rules;
 pub mod profiler;
 pub mod project_tokens;
 pub mod regex_matchers;
+pub mod sarif;
 pub mod skills;
+pub mod unused_ignores;
 pub mod util;
+pub mod wiring;
 
 use impeccable_common::Io;
 
@@ -74,8 +78,14 @@ Commands:
   telemetry off|on|status          Turn the roll API's anonymous usage data off or on, or show it
   login                            Sign in to your Impeccable account
   logout                           Sign out on this machine
+  taste                            Read your taste for the kind of work (--focus web|slides|motion)
+  context                          Read project context and task-focused taste
   whoami                           Show the signed-in account and whether it includes Pro rules
+  status                           Show what Impeccable is connected to for you, and the one next step
+  walkthrough <recording>          Turn a screen recording into a Needs you walkthrough (MP4, poster, chapters)
+  world <id> [--print]             Seed this project's DESIGN.md from a world in the Impeccable catalog
   health on|off|forget|status      Save each full scan's counts to your account, or stop and delete them
+  foundations [path]               Check which product foundations this project has in place
 
 Options:
   --help       Show this help message

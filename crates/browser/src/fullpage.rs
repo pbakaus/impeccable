@@ -22,8 +22,8 @@
 //! recognised from the image: a uniform band taller than two viewports is
 //! recaptured the same way, and the stitched image is kept when it holds
 //! more. The third captures the document's scroll width. The fourth is
-//! recognised by measuring a sample of layout boxes before and after the
-//! capture, and stitched once the page has settled.
+//! recognised by measuring a sample of layout boxes before, during resize events
+//! at the original viewport, and after the capture, then stitched once settled.
 //!
 //! The screenshot is cut at a height cap. A flagged element past the cut, or
 //! past the right edge, is scrolled into view and gets a viewport shot of its
@@ -609,7 +609,7 @@ pub fn capture_full_page(page: &mut Page<'_>, max_height: f64, quality: u32) -> 
     let geometry = Geometry::from_value(&page.evaluate_value(GEOMETRY_JS)?);
     let shot = capture_with(page, &geometry, max_height, quality);
     let _ = page.evaluate(
-        "(() => { try { delete window.__impeccableShotScroller; delete window.__impeccableShotProbe; } catch (e) {} })()",
+        "(() => { try { removeEventListener('resize', window.__impeccableShotResizeProbe); delete window.__impeccableShotResizeProbe; delete window.__impeccableShotResizeMeasures; delete window.__impeccableShotScroller; delete window.__impeccableShotProbe; } catch (e) {} })()",
     );
     shot
 }
@@ -652,12 +652,14 @@ fn capture_with(
     // the page is stitched instead, once it has settled; a stitch that fails
     // keeps the beyond-viewport capture.
     let after = probe_layout(page, false);
-    if layout_moved(&before, &after) {
+    let mut measures = take_resize_layouts(page);
+    measures.push(after);
+    if let Some(moved) = capture_moved_boxes(&before, &measures) {
         // Only a page whose moved boxes come back to where they were
         // measured relaid for the capture. One that keeps moving (a marquee on `margin-left`, an
         // autoplaying accordion) is in motion either way, and a beyond-viewport
         // capture shows it no worse than tiles would.
-        if wait_for_layout(page, &before, &moved_boxes(&before, &after)) {
+        if wait_for_layout(page, &before, &moved) {
             if let Ok(stitched) = stitch(page, geometry, None, width, height) {
                 if let Some(jpeg_base64) = encode_jpeg(&stitched, quality) {
                     return Ok(Screenshot {
@@ -728,7 +730,7 @@ const PROBE_LAYOUT_JS: &str = r#"((pick) => {
     window.__impeccableShotProbe = [...seen];
   }
   const probe = window.__impeccableShotProbe || [];
-  return probe.map(el => {
+  const measure = () => probe.map(el => {
     if (!el.isConnected) return null;
     let x = 0;
     let y = 0;
@@ -738,6 +740,21 @@ const PROBE_LAYOUT_JS: &str = r#"((pick) => {
     }
     return [x, y, el.offsetWidth, el.offsetHeight];
   });
+  if (pick) {
+    removeEventListener('resize', window.__impeccableShotResizeProbe);
+    const width = innerWidth, height = innerHeight;
+    const measures = window.__impeccableShotResizeMeasures = [];
+    window.__impeccableShotResizeProbe = () => {
+      // Ignore the temporary capture viewport itself. Keep layout changes
+      // when the page returns to its measured viewport, even if they settle
+      // before the capture response arrives. Bound work on resize-heavy pages.
+      if (innerWidth === width && innerHeight === height && measures.length < 8) {
+        measures.push(measure());
+      }
+    };
+    addEventListener('resize', window.__impeccableShotResizeProbe);
+  }
+  return measure();
 })"#;
 
 /// [`PROBE_LAYOUT_JS`]: the sample's boxes, `None` for an element gone or a
@@ -746,6 +763,10 @@ fn probe_layout(page: &mut Page<'_>, pick: bool) -> Vec<Option<[f64; 4]>> {
     let Ok(v) = page.evaluate_value(&format!("({PROBE_LAYOUT_JS})({pick})")) else {
         return Vec::new();
     };
+    layout_boxes(&v)
+}
+
+fn layout_boxes(v: &Value) -> Vec<Option<[f64; 4]>> {
     v.as_array()
         .map(|boxes| {
             boxes
@@ -757,6 +778,36 @@ fn probe_layout(page: &mut Page<'_>, pick: bool) -> Vec<Option<[f64; 4]>> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Stop observing before waiting or stitching, so later resizes cannot
+/// contaminate this capture's measurements. The outer cleanup also handles
+/// a failed capture that never reaches here.
+fn take_resize_layouts(page: &mut Page<'_>) -> Vec<Vec<Option<[f64; 4]>>> {
+    let Ok(v) = page.evaluate_value(r#"(() => {
+        removeEventListener('resize', window.__impeccableShotResizeProbe);
+        const measures = window.__impeccableShotResizeMeasures || [];
+        delete window.__impeccableShotResizeProbe;
+        delete window.__impeccableShotResizeMeasures;
+        return measures;
+    })()"#) else { return Vec::new() };
+    v.as_array().map(|a| a.iter().map(layout_boxes).collect()).unwrap_or_default()
+}
+
+/// Each measure must independently show a layout change. Separate moving
+/// widgets must not accumulate into a page relayout across resize events.
+fn capture_moved_boxes(before: &[Option<[f64; 4]>], measures: &[Vec<Option<[f64; 4]>>]) -> Option<Vec<bool>> {
+    let mut moved = vec![false; before.len()];
+    let mut relaid = false;
+    for measure in measures {
+        if layout_moved(before, measure) {
+            relaid = true;
+            for (kept, changed) in moved.iter_mut().zip(moved_boxes(before, measure)) {
+                *kept |= changed;
+            }
+        }
+    }
+    relaid.then_some(moved)
 }
 
 /// Which boxes of one sample ([`probe_layout`]) moved sideways between two
@@ -857,6 +908,62 @@ pub fn longest_uniform_band(img: &RgbImage) -> (u32, u32) {
                 run_start = None;
             }
             _ => {}
+        }
+    }
+    best
+}
+
+/// A row holds no content when its luminance steps by more than
+/// [`EMPTY_ROW_STEP`] at no more than this many places: a few box edges and
+/// rules, never a line of text, an icon or a drawing.
+const EMPTY_ROW_EDGES: usize = 10;
+/// The luminance step that counts as an edge; paper grain and soft shadows
+/// stay under it.
+const EMPTY_ROW_STEP: i32 = 28;
+
+/// The start and length, in rows, of the longest run of rows that hold no
+/// content: unlike [`longest_uniform_band`], a row may cross several flat
+/// boxes (a card on a page, a label in a frame), so an empty stretch inside a
+/// box is found too. Rows inside a `media` span (a drawing, an image's box,
+/// as `[top, bottom)` rows) always hold content, however sparse they paint.
+/// A run that reaches the bottom is the page's blank tail, not a gap between
+/// content, and does not count, unless the capture was `cut` short of the
+/// page's end, when more content follows it.
+pub fn longest_empty_band(img: &RgbImage, media: &[(u32, u32)], cut: bool) -> (u32, u32) {
+    let (w, h) = img.dimensions();
+    let raw = img.as_raw();
+    let row_len = w as usize * 3;
+    let luma = |p: &[u8]| (p[0] as i32 * 299 + p[1] as i32 * 587 + p[2] as i32 * 114) / 1000;
+    let mut best = (0u32, 0u32);
+    let mut run_start: Option<u32> = None;
+    for y in 0..h {
+        let empty = !media.iter().any(|&(top, bottom)| y >= top && y < bottom) && {
+            let row = &raw[y as usize * row_len..(y as usize + 1) * row_len];
+            let mut edges = 0usize;
+            let mut prev = luma(&row[0..3]);
+            for x in 1..w as usize {
+                let l = luma(&row[x * 3..x * 3 + 3]);
+                if (l - prev).abs() > EMPTY_ROW_STEP {
+                    edges += 1;
+                }
+                prev = l;
+            }
+            edges <= EMPTY_ROW_EDGES
+        };
+        match (empty, run_start) {
+            (true, None) => run_start = Some(y),
+            (false, Some(start)) => {
+                if y - start > best.1 {
+                    best = (start, y - start);
+                }
+                run_start = None;
+            }
+            _ => {}
+        }
+    }
+    if let (true, Some(start)) = (cut, run_start) {
+        if h - start > best.1 {
+            best = (start, h - start);
         }
     }
     best
@@ -1183,7 +1290,8 @@ pub fn capture_element_shots(
     out
 }
 
-fn decode_jpeg(jpeg_base64: &str) -> Option<RgbImage> {
+/// A [`crate::Screenshot`]'s JPEG as pixels.
+pub fn decode_jpeg(jpeg_base64: &str) -> Option<RgbImage> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(jpeg_base64).ok()?;
     image::load_from_memory_with_format(&bytes, image::ImageFormat::Jpeg)
         .ok()
@@ -1236,6 +1344,66 @@ mod tests {
                 Rgb([230, 220, 210])
             }
         })
+    }
+
+    #[test]
+    fn capture_resize_keeps_a_relayout_that_settles_before_the_next_probe() {
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        if crate::discovery::find_browser(&env).is_err() {
+            eprintln!("skip: no installed browser found");
+            return;
+        }
+        let mut browser = crate::BrowserEngine::new(env).launch().expect("launch");
+        let mut page = browser.new_page().expect("page");
+        page.set_viewport(crate::cdp::Viewport { width: 1280, height: 800 }).unwrap();
+        page.evaluate(r#"(() => {
+            document.body.innerHTML = '<style>body{margin:0}.column{margin-left:400px}.row{height:200px;background:green}.folded .column{margin-left:0}</style><div class="column"><div class="row"></div><div class="row"></div><div class="row"></div></div>';
+        })()"#).unwrap();
+        let before = probe_layout(&mut page, true);
+        // The capture's resize handler has folded the column. It is back by
+        // the time the CDP response and the next probe reach a slow runner.
+        page.evaluate(r#"(() => {
+            document.body.classList.add('folded');
+            dispatchEvent(new Event('resize'));
+            document.body.classList.remove('folded');
+        })()"#).unwrap();
+        let after = probe_layout(&mut page, false);
+        assert!(!layout_moved(&before, &after), "the transient layout is already gone");
+        let recorded = page.evaluate_value("window.__impeccableShotResizeMeasures || []").unwrap();
+        assert!(recorded.as_array().is_some_and(|a| !a.is_empty()),
+            "the resize layout must survive until the capture response is checked");
+        let measures = take_resize_layouts(&mut page);
+        let moved = capture_moved_boxes(&before, &measures).expect("recorded relayout");
+        assert!(wait_for_layout(&mut page, &before, &moved));
+        page.evaluate("dispatchEvent(new Event('resize'))").unwrap();
+        assert!(page.evaluate_value("window.__impeccableShotResizeMeasures === undefined").unwrap().as_bool().unwrap());
+
+        // A temporary capture viewport can rewrap even a static page. It
+        // must not count as a layout change in the original viewport.
+        let before = probe_layout(&mut page, true);
+        page.set_viewport(crate::cdp::Viewport { width: 640, height: 800 }).unwrap();
+        page.evaluate("dispatchEvent(new Event('resize'))").unwrap();
+        page.set_viewport(crate::cdp::Viewport { width: 1280, height: 800 }).unwrap();
+        let measures = take_resize_layouts(&mut page);
+        assert!(capture_moved_boxes(&before, &measures).is_none());
+
+        probe_layout(&mut page, true);
+        page.evaluate("for (let i = 0; i < 20; i++) dispatchEvent(new Event('resize'))").unwrap();
+        assert_eq!(take_resize_layouts(&mut page).len(), 8, "resize sampling stays bounded");
+        drop(page);
+        browser.close();
+    }
+
+    #[test]
+    fn separate_widgets_do_not_accumulate_into_a_capture_relayout() {
+        let before = vec![Some([400.0, 0.0, 300.0, 40.0]); 4];
+        let mut first = before.clone();
+        first[0].as_mut().unwrap()[0] = 0.0;
+        let mut second = before.clone();
+        second[1].as_mut().unwrap()[0] = 0.0;
+        assert!(capture_moved_boxes(&before, &[first.clone(), second]).is_none());
+        first[1].as_mut().unwrap()[0] = 0.0;
+        assert_eq!(capture_moved_boxes(&before, &[first, before.clone()]), Some(vec![true, true, false, false]));
     }
 
     #[test]
@@ -1325,6 +1493,35 @@ mod tests {
         let mut gone = page(390.0, 96.0);
         gone[0] = None;
         assert!(!settled(&before, &moved, &[after, gone.clone(), gone]));
+    }
+
+    #[test]
+    fn an_empty_stretch_inside_a_box_is_an_empty_band() {
+        // A card on a page with text above and below an empty middle: every
+        // row crosses the card's edges, and only the text rows are busy.
+        let mut img = RgbImage::from_pixel(390, 1200, image::Rgb([240, 230, 210]));
+        for y in 0..1200 {
+            for x in 20..370 {
+                img.put_pixel(x, y, image::Rgb([200, 180, 140]));
+            }
+        }
+        for y in (0..200).chain(1000..1200) {
+            for x in (30..360).step_by(4) {
+                img.put_pixel(x, y, image::Rgb([40, 20, 20]));
+            }
+        }
+        assert_eq!(longest_empty_band(&img, &[], false), (200, 800));
+        // An outlined drawing there paints a few edges a row, and is content.
+        assert_eq!(longest_empty_band(&img, &[(250, 950)], false), (200, 50));
+        // A blank tail is not a gap, unless the capture was cut before the end.
+        let mut tail = img.clone();
+        for y in 1000..1200 {
+            for x in 30..360 {
+                tail.put_pixel(x, y, image::Rgb([200, 180, 140]));
+            }
+        }
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], false), (0, 0));
+        assert_eq!(longest_empty_band(&tail, &[(200, 1000)], true), (1000, 200));
     }
 
     #[test]

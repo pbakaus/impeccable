@@ -7,11 +7,20 @@
  * the detect-config workspace, and the flag surface (help, scope, quiet,
  * no-advisory, errors).
  */
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { REPO_ROOT } from '../lib.mjs';
 
 const FIXTURES = path.join(REPO_ROOT, 'tests', 'fixtures', 'antipatterns');
+const WIRING = path.join(REPO_ROOT, 'tests', 'fixtures', 'wiring', 'before.html');
+const WIRING_AFTER = path.join(REPO_ROOT, 'tests', 'fixtures', 'wiring', 'after.html');
+
+/** A one-page project for detect --before / --kept (package.json marks its root). */
+function stageWiringPage(ws) {
+  fs.writeFileSync(path.join(ws, 'package.json'), '{"name":"wiring"}\n');
+  fs.copyFileSync(WIRING, path.join(ws, 'page.html'));
+}
 
 /**
  * A project whose DESIGN.md declares `primary` and whose pages wear purple:
@@ -40,6 +49,35 @@ function stageBrandProject(ws, primary) {
       + '    <h1 className="text-purple-700 text-5xl">Featured services</h1>\n'
       + '  </section>\n);\n',
   );
+}
+
+// A git repo with one commit, then a change of every kind on top of it, for
+// `detect --changed`. Git runs isolated from the user's config.
+const GIT_ENV = {
+  GIT_AUTHOR_NAME: 'Oracle', GIT_AUTHOR_EMAIL: 'oracle@example.com', GIT_AUTHOR_DATE: '2026-01-02T03:04:05Z',
+  GIT_COMMITTER_NAME: 'Oracle', GIT_COMMITTER_EMAIL: 'oracle@example.com', GIT_COMMITTER_DATE: '2026-01-02T03:04:05Z',
+  GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+};
+const git = (ws, ...args) => execFileSync('git', ['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'init.defaultBranch=main', ...args], { cwd: ws, env: { ...process.env, ...GIT_ENV }, stdio: 'ignore' });
+const FLAGGED_CSS = '.a { font-family: Inter, sans-serif; }\n';
+function stageChangedRepo(ws, { dirty = true } = {}) {
+  const put = (rel, text) => {
+    fs.mkdirSync(path.dirname(path.join(ws, rel)), { recursive: true });
+    fs.writeFileSync(path.join(ws, rel), text);
+  };
+  put('.gitignore', '.oracle-home/\nignored/\n');
+  put('src/clean.css', FLAGGED_CSS);
+  put('src/modified.css', '.m { color: red; }\n');
+  put('src/deleted.css', FLAGGED_CSS);
+  git(ws, 'init', '-q');
+  git(ws, 'add', '.');
+  git(ws, 'commit', '-qm', 'init');
+  if (!dirty) return;
+  put('src/modified.css', FLAGGED_CSS);
+  fs.rmSync(path.join(ws, 'src/deleted.css'));
+  put('src/New.jsx', 'export const New = () => <p style={{ fontFamily: "Inter" }}>new</p>;\n');
+  put('src/notes.md', 'font-family: Inter\n');
+  put('ignored/skip.css', FLAGGED_CSS);
 }
 
 export default function cases() {
@@ -159,6 +197,53 @@ function Thumb({ url }: { url?: string }) {
       id: 'detect-github-clean', verb: 'detect',
       setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
       args: ['--no-config', '--github', 'ok.css'],
+    },
+    {
+      // One live file-level waiver, one stale file-level waiver, a partial
+      // multi-rule line waiver, a stale next-line, a live next-line, and a
+      // file-level `*` on a clean component. See
+      // crates/detect/tests/fixtures/unused-ignores/.
+      id: 'detect-unused-ignores', verb: 'detect',
+      args: [
+        '--no-design-system', '--json', '--report-unused-ignores',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/page.html',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/brand.css',
+        '<REPO>/crates/detect/tests/fixtures/unused-ignores/Quiet.tsx',
+      ],
+      isolateHome: false,
+    },
+    // --changed: the UI files git reports as changed.
+    { id: 'detect-changed-json', verb: 'detect', setup: (ws) => stageChangedRepo(ws), args: ['--no-config', '--json', '--changed'] },
+    { id: 'detect-changed-text', verb: 'detect', setup: (ws) => stageChangedRepo(ws), args: ['--no-config', '--changed'] },
+    { id: 'detect-changed-clean', verb: 'detect', setup: (ws) => stageChangedRepo(ws, { dirty: false }), args: ['--no-config', '--changed'] },
+    { id: 'detect-changed-clean-json', verb: 'detect', setup: (ws) => stageChangedRepo(ws, { dirty: false }), args: ['--no-config', '--json', '--changed'] },
+    { id: 'detect-changed-not-a-repo', verb: 'detect', args: ['--json', '--changed'] },
+    { id: 'detect-changed-with-target', verb: 'detect', setup: (ws) => stageChangedRepo(ws), args: ['--changed', 'src'] },
+    { id: 'detect-sarif-json', verb: 'detect', args: ['--sarif', '--json'] },
+    {
+      id: 'detect-sarif', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(
+        path.join(ws, 'card.html'),
+        '<div style="border-left: 4px solid #ff0000; border-radius: 10px">x</div>\n',
+      ),
+      args: ['--no-config', '--sarif', 'card.html'],
+      // driver.version is the crate version. The lookahead keeps the SARIF
+      // log version (2.1.0, which is followed by "runs") pinned.
+      normalize: [[
+        '"version": "\\d+\\.\\d+\\.\\d+"(?=,\\s+"informationUri")',
+        '',
+        '"version": "<ENGINE>"',
+      ]],
+    },
+    {
+      id: 'detect-sarif-clean', verb: 'detect',
+      setup: (ws) => fs.writeFileSync(path.join(ws, 'ok.css'), 'body { margin: 0; }\n'),
+      args: ['--no-config', '--sarif', 'ok.css'],
+      normalize: [[
+        '"version": "\\d+\\.\\d+\\.\\d+"(?=,\\s+"informationUri")',
+        '',
+        '"version": "<ENGINE>"',
+      ]],
     },
     { id: 'detect-list-rules', verb: 'detect', args: ['--list-rules'] },
     { id: 'detect-list-rules-json', verb: 'detect', args: ['--list-rules', '--json'] },
@@ -322,6 +407,36 @@ function Thumb({ url }: { url?: string }) {
       setup: (ws) => stageBrandProject(ws, hue === 'purple' ? '#5c2d91' : '#1a4d8f'),
       args: mode === 'json' ? ['--json', 'src'] : ['src'],
     }))),
+
+    // detect --before / --kept (#1291): the wiring of a static HTML page,
+    // saved under .impeccable/wiring/ and compared after a rewrite.
+    {
+      id: 'detect-wiring-before-kept-rewrite', verb: 'detect',
+      setup: stageWiringPage,
+      files: ['.impeccable/wiring/**'],
+      steps: [
+        { args: ['--before', 'page.html'] },
+        {
+          setup: (ws) => fs.copyFileSync(WIRING_AFTER, path.join(ws, 'page.html')),
+          args: ['--kept', 'page.html'],
+        },
+        { args: ['--kept', '--json', 'page.html'] },
+      ],
+    },
+    {
+      id: 'detect-wiring-before-kept-unchanged', verb: 'detect',
+      setup: stageWiringPage,
+      steps: [
+        { args: ['--before', '--json', 'page.html'] },
+        { args: ['--kept', './page.html'] },
+        { args: ['--kept', '--json', 'page.html'] },
+      ],
+    },
+    {
+      id: 'detect-wiring-kept-no-inventory', verb: 'detect',
+      setup: stageWiringPage,
+      args: ['--kept', 'page.html'],
+    },
   );
 
   return out;

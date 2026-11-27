@@ -80,6 +80,23 @@ export default [
   { id: 'hook-edit-tsx-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.tsx'), files: CACHE_FILES },
   { id: 'hook-edit-css-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Card.module.css'), files: CACHE_FILES },
   { id: 'hook-edit-html-fresh', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/page.html'), files: CACHE_FILES },
+  // The edit hook never decodes an image (#560): white copy on an uncached
+  // light photo gets no sampled verdict from the hook, `detect` samples the
+  // photo and writes the sample cache under the isolated home, and the
+  // next hook run takes the verdict from that cache without opening the
+  // image.
+  {
+    id: 'hook-edit-html-image-cache', workspace: 'hook-project', files: CACHE_FILES,
+    setup(ws) {
+      fs.copyFileSync(new URL('../../fixtures/antipatterns/sampled-images/light.png', import.meta.url), `${ws}/src/hero.png`);
+      fs.writeFileSync(`${ws}/src/hero.html`, '<!doctype html><html><head><style>.hero{background:url(hero.png);padding:24px} p{color:#fdfdfd}</style></head><body><div class="hero"><p>White copy on a light photo</p></div></body></html>\n');
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/hero.html') },
+      { verb: 'detect', args: ['src/hero.html'] },
+      { verb: 'hook', stdin: claudeEdit('src/hero.html') },
+    ],
+  },
   { id: 'hook-edit-clean-tsx', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/components/Clean.tsx'), files: CACHE_FILES },
   { id: 'hook-edit-non-ui-ts', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/util.ts'), files: CACHE_FILES },
   { id: 'hook-edit-missing-file', verb: 'hook', workspace: 'hook-project', stdin: claudeEdit('src/nope.tsx'), files: CACHE_FILES },
@@ -129,6 +146,32 @@ export default [
     id: 'hook-native-platform-skip', verb: 'hook', workspace: 'hook-project',
     setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n'),
     stdin: claudeEdit('src/components/Card.module.css'), files: CACHE_FILES,
+  },
+  // #1644: a native project's web files are still scanned, per edit and at Stop.
+  {
+    id: 'hook-native-platform-web-file', workspace: 'hook-project', files: CACHE_FILES,
+    setup: (ws) => {
+      fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n');
+      // A build state skips only the build-completion reminder, not the scan.
+      fs.mkdirSync(`${ws}/.impeccable/build`, { recursive: true });
+      fs.writeFileSync(`${ws}/.impeccable/build/state.json`, '{}\n');
+    },
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/page.html') },
+      { verb: 'hook', stdin: stop() },
+    ],
+  },
+  {
+    id: 'hook-native-platform-ui-package', workspace: 'hook-project', files: CACHE_FILES,
+    setup: (ws) => {
+      fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nios\n');
+      fs.writeFileSync(`${ws}/package.json`, JSON.stringify({ name: 'site', private: true, dependencies: { next: '15.0.0' } }) + '\n');
+    },
+    // The Stop pass keeps the stylesheet the edit pulled in.
+    steps: [
+      { verb: 'hook', stdin: claudeEdit('src/components/Card.tsx') },
+      { verb: 'hook', stdin: stop() },
+    ],
   },
   {
     id: 'hook-config-disabled', verb: 'hook', workspace: 'hook-project',
@@ -274,6 +317,12 @@ export default [
     id: 'hbe-native-platform', verb: 'hook-before-edit', workspace: 'hook-project',
     setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nandroid\n'),
     stdin: { hook_event_name: 'preToolUse', conversation_id: 'cv1', workspace_roots: [WS], tool_name: 'Write', tool_input: { path: 'src/new.css', content: '.t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }\n' } }, files: CACHE_FILES,
+  },
+
+  {
+    id: 'hbe-native-platform-web-file', verb: 'hook-before-edit', workspace: 'hook-project',
+    setup: (ws) => fs.writeFileSync(`${ws}/PRODUCT.md`, '# P\n\n## Platform\nandroid\n'),
+    stdin: { hook_event_name: 'preToolUse', conversation_id: 'cv1', workspace_roots: [WS], tool_name: 'Write', tool_input: { path: 'src/new.html', content: '<!doctype html><style>.t { background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent; }</style><h1 class="t">Hi</h1>\n' } }, files: CACHE_FILES,
   },
 
   // --- hook-admin.mjs ---

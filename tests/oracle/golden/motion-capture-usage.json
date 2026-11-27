@@ -1,0 +1,7 @@
+{
+  "stdout": "",
+  "stderr": "Motion capture: Usage: impeccable motion-capture <url> --click <selector> | --steps <json-file> --out-dir <dir> [--setup <json-file>] [--region <selector|[x,y,width,height]>] [--frames 7] [--reduced-motion]\nSteps: [{\"click\":\"#toggle\"},{\"hover\":\"#card\"},{\"press\":\"Enter\"},{\"wait\":100}]\nSetup takes the same steps and lets them settle before capture starts, e.g. opening a panel to capture its exit.\n\n",
+  "exit": 1,
+  "signal": null,
+  "files": {}
+}

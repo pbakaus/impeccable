@@ -1,7 +1,7 @@
 {
   "steps": [
     {
-      "stdout": "<WS>/.impeccable/critique/<STAMP>__src-app-tsx.md\n",
+      "stdout": "<WS>/.impeccable/critique/<STAMP>__src-app-tsx.md\nNot saved to Impeccable: DO_NOT_TRACK is set. Unset DO_NOT_TRACK to enable saving.\n",
       "stderr": "",
       "exit": 0,
       "signal": null

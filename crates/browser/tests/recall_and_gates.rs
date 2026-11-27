@@ -293,3 +293,24 @@ fn a_press_and_hold_sheet_over_the_page_is_a_challenge() {
     let faded = format!("http://127.0.0.1:{port}/validity/press-and-hold-faded.html");
     engine.detect_url(&faded, &options).expect("a sheet inside a faded wrapper leaves the page");
 }
+
+/// An eyebrow over a page's h1 is a kicker in a small-caps face, with a
+/// middle dot, inside the article that holds the hero; a byline, a dated or
+/// path line, a Chinese "SC" face and untracked small caps are not.
+#[test]
+fn an_eyebrow_over_the_page_h1_is_a_kicker() {
+    let Some(engine) = engine() else { return };
+    let port = serve();
+    let f = scan(&engine, port, "kicker-over-hero.html");
+    let mut headings: Vec<&str> = of(&f, "kicker-above-heading")
+        .iter()
+        .filter_map(|k| k.snippet.split(" above h1 \"").nth(1))
+        .map(|h| h.trim_end_matches('"'))
+        .collect();
+    headings.sort_unstable();
+    assert_eq!(
+        headings,
+        ["Field notes for the season", "Grow the whole year", "Plant once, save forever", "Seeds that come back"],
+        "{f:#?}"
+    );
+}

@@ -1,6 +1,6 @@
 {
   "stdout": "",
-  "stderr": "\n<REPO>/tests/fixtures/antipatterns/side-tab-stylesheet-forms.html\n  [side-tab] .band::after — absolute 3px pseudo-element stripe (bottom: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [side-tab] .card::before — absolute 5px pseudo-element stripe (left: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n  [side-tab] .photo-rule-tinted::after — absolute 10px pseudo-element stripe (bottom: 0)\n    → Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.\n\n3 anti-patterns found.\n",
+  "stderr": "\n<REPO>/tests/fixtures/antipatterns/side-tab-stylesheet-forms.html\n  [side-tab] .band::after — absolute 3px pseudo-element stripe (bottom: 0)\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n  [side-tab] .photo-rule-tinted::after — absolute 10px pseudo-element stripe (bottom: 0)\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n  [side-tab] .card::before — absolute 5px pseudo-element stripe (left: 0)\n    → A bar down one side of a rounded box. Use a full border, a background tint, or a leading icon or label instead.\n\n3 anti-patterns found.\n",
   "exit": 2,
   "signal": null,
   "files": {}

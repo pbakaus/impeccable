@@ -6,7 +6,7 @@
 //!
 //! An upload never changes what `detect` printed or its exit code: it runs
 //! after the output, has one 5-second deadline (token refresh included), and
-//! any failure is silent. It is skipped, before anything is read from the
+//! failures are reported without changing its exit code. It is skipped, before anything is read from the
 //! network or git, when `CI` is set, when telemetry is off (`DO_NOT_TRACK`,
 //! `IMPECCABLE_NO_TELEMETRY`, `"telemetry": false`), when sync is off
 //! (`impeccable health off`), or when nobody is signed in.
@@ -22,6 +22,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[path = "design.rs"]
+mod design;
+pub use design::DESIGN_SYNC_DEFAULT_ON;
+
 /// Sync is on for a signed-in person unless they turn it off (decision 1 on
 /// REN-1559 is the decider's; this is the recommended default).
 pub const SYNC_BY_DEFAULT: bool = true;
@@ -33,11 +37,35 @@ pub const FINGERPRINT_VERSION: u32 = 1;
 const MAX_BYTES: usize = 256 * 1024;
 /// Each git question (top level, remote, branch).
 const GIT_DEADLINE: Duration = Duration::from_secs(2);
+
+/// [`GIT_DEADLINE`], unless a test raises it (see [`test_git_deadline`]).
+fn git_deadline() -> Duration {
+    test_git_deadline().unwrap_or(GIT_DEADLINE)
+}
+
+/// `IMPECCABLE_TEST_GIT_DEADLINE_MS`, set only by tests: a loaded CI runner has
+/// taken over 2 s to answer a git question (REN-2117). It lifts git's deadline
+/// and the DESIGN.md upload budget that contains those questions.
+fn test_git_deadline() -> Option<Duration> {
+    std::env::var("IMPECCABLE_TEST_GIT_DEADLINE_MS")
+        .ok()
+        .and_then(|ms| ms.parse().ok())
+        .map(Duration::from_millis)
+}
+
+/// A critique's repo questions share its two-second upload budget, so each gets
+/// 150 ms, unless a test raises it: a loaded runner misses that and the
+/// critique uploads without its repo key.
+fn critique_git_deadline() -> Duration {
+    test_git_deadline().unwrap_or(Duration::from_millis(150))
+}
+
 /// How long a change to `health.json` waits for one in another process.
 const LOCK_WAIT: Duration = Duration::from_secs(5);
 const MAX_RULES: usize = 300;
 const MAX_FINGERPRINTS: usize = 5000;
 const MAX_LABEL: usize = 100;
+const MAX_PLACE: usize = 60;
 const SCANS: &str = "/cli/v1/health/scans";
 const FORGET: &str = "/cli/v1/health/forget";
 
@@ -52,6 +80,8 @@ pub struct Hit {
 
 /// A full scan, from `impeccable_detect::cli::FullScan`.
 pub struct Scan {
+    /// Catalog evidence only. Missing checks are never inferred as passing.
+    pub foundations: std::collections::BTreeMap<String, String>,
     pub root: String,
     pub files_scanned: usize,
     pub hits: Vec<Hit>,
@@ -67,6 +97,16 @@ pub struct Scan {
 /// keychain, git or the network). `CI`, a telemetry opt-out in the working
 /// directory, sync off (or an unreadable `health.json`) or no sign-in: no.
 pub fn wanted(io: &Io) -> bool {
+    if !wanted_at_sign_in(io) {
+        return false;
+    }
+    let cwd = io.cwd.to_string_lossy();
+    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+}
+
+/// [`wanted`] without the telemetry opt-out, which a sign-in's one scan of
+/// its repository doesn't need: signing in is the consent for it.
+pub fn wanted_at_sign_in(io: &Io) -> bool {
     if !io.env.get("CI").is_none_or(|v| v.is_empty()) {
         return false;
     }
@@ -82,28 +122,99 @@ pub fn wanted(io: &Io) -> bool {
     {
         return false;
     }
-    let cwd = io.cwd.to_string_lossy();
-    impeccable_context::telemetry::opt_out_reason(&io.env, &cwd).is_none()
+    true
+}
+
+/// Whether the signed-in grant includes foundations consent, from the saved
+/// sign-in state alone (no keychain, git or network), so a scan that won't
+/// upload foundations doesn't compute them.
+pub fn foundations_wanted(io: &Io) -> bool {
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    crate::store::Store::new(&account)
+        .state()
+        .is_some_and(|s| s.signed_in && s.foundations)
+}
+
+/// Whether the saved grant lets a scan add a repository to the account:
+/// `health:write` or foundations consent. From the saved sign-in state
+/// alone, so a sign-in the service gave neither scope never scans.
+pub fn can_record(io: &Io) -> bool {
+    let Ok(account) = Account::from_env(&io.env) else {
+        return false;
+    };
+    crate::store::Store::new(&account).state().is_some_and(|s| {
+        s.signed_in && (s.foundations || s.scopes.iter().any(|x| x == crate::oauth::HEALTH_SCOPE))
+    })
+}
+
+/// What [`after_scan`] got the service to record.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Synced {
+    /// The foundations states landed, which also founds a Pro or Team
+    /// city and records the repository.
+    pub foundations: bool,
+    /// The health counts landed, which records the repository too.
+    pub health: bool,
+    /// The repository's name went with them; it has one only from a remote.
+    pub named: bool,
+}
+
+impl Synced {
+    /// Whether the repository is now in the person's account.
+    pub fn recorded(&self) -> bool {
+        self.foundations || self.health
+    }
 }
 
 /// Upload `scan` if everything allows it. `quiet` keeps the one-time notice
 /// and hint off stderr. The caller has checked [`wanted`].
-pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
     // The scanned root's own config may opt out too (an off anywhere wins).
     if impeccable_context::telemetry::opt_out_reason(&io.env, &scan.root).is_some() {
-        return;
+        if !quiet {
+            if let Some(line) = crate::critiques::opt_out_nudge(io, Path::new(&scan.root)) { io.err(&line); }
+        }
+        return Synced::default();
     }
+    design::after_scan(io, scan, quiet);
+    upload(io, scan, quiet)
+}
+
+/// The uploads for the one scan a sign-in makes of its repository. Signing
+/// in is the consent for this scan, so a telemetry opt-out doesn't stop it;
+/// DESIGN.md contents are never part of it (the next `detect` syncs them).
+/// The caller has checked [`wanted_at_sign_in`] and [`can_record`].
+pub fn after_sign_in_scan(io: &mut Io, scan: &Scan) -> Synced {
+    let (synced, urls) = crate::receipt::capture(|| upload(io, scan, true));
+    for url in urls { crate::receipt::saved(io, Some(url), false); }
+    synced
+}
+
+fn upload(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
+    let synced = upload_inner(io, scan, quiet);
+    if synced.recorded() {
+        mark_first_scan(&io.env, &scan.root);
+    }
+    synced
+}
+
+fn upload_inner(io: &mut Io, scan: &Scan, quiet: bool) -> Synced {
+    let mut synced = Synced::default();
     let Ok(account) = Account::from_env(&io.env) else {
-        return;
+        return synced;
     };
     let Ok(mut session) = Session::load(&account) else {
-        return;
+        if !quiet { io.err("Not saved to Impeccable: your sign-in could not be read. Run npx impeccable login.\n"); }
+        return synced;
     };
     let Some(repo) = Repo::of(&scan.root, &io.env) else {
-        return;
+        return synced;
     };
+    synced.named = repo.label.is_some();
     let Some(body) = payload(scan, &repo, &scan_id(), FINGERPRINT_VERSION) else {
-        return;
+        return synced;
     };
     // A token refresh, when one is due, goes through the ordinary sign-in
     // path and client, exactly as `whoami` does: a short timeout there could
@@ -111,48 +222,206 @@ pub fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     // A busy sign-in (another command mid-refresh) skips this upload rather
     // than holding detect on the lock.
     let Ok(token) = session.access_token_within(std::time::Duration::ZERO) else {
-        return;
+        if !quiet { io.err("Not saved to Impeccable: your sign-in could not be renewed. Run npx impeccable login.\n"); }
+        return synced;
     };
     // The one-time notice and hint belong to this sign-in on this service.
     let marker = format!("{} {}", account.issuer, session.state.login);
     // `off` or `forget` may have run while the scan did.
     if !Local::read(&io.env).is_some_and(|l| l.sync()) {
-        return;
+        return synced;
+    }
+    if !session.state.taste && !impeccable_context::taste::disabled(&io.env) {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::TASTE_READ_SCOPE),
+            Duration::from_secs(2),
+            quiet,
+        );
+    }
+    // Its own request and consent: a switched-off route (404) or any other
+    // failure is reported and never prevents the health upload.
+    if session.state.foundations {
+        let mut foundation_body = json!({
+            "version": 1,
+            "scanId": body["scanId"],
+            "repoKey": repo.key,
+            "scannedAt": body["scannedAt"],
+            "productType": null,
+            "items": scan.foundations,
+        });
+        name_body(&mut foundation_body, repo.label.as_deref(), repo.place.as_deref());
+        let foundation_result = Client::with_deadline(&account, Duration::from_secs(2))
+            .post_json(
+                &format!("{}/cli/v1/foundations", account.issuer),
+                &token,
+                foundation_body,
+            );
+        synced.foundations = foundation_result.is_ok();
+        match foundation_result {
+            Ok(answer) => crate::receipt::saved_first(
+                io,
+                crate::receipt::landed(&answer, crate::receipt::page(&account, "foundations", repo.label.as_deref())),
+                quiet,
+            ),
+            Err(error) => crate::receipt::failed_upload(io, "Foundations", &error, quiet),
+        }
+    } else {
+        crate::stale_grant::emit(
+            io,
+            &account,
+            session.state.login,
+            Some(crate::oauth::FOUNDATIONS_SCOPE),
+            // The same bound as the foundations request a granted sign-in
+            // makes here instead, so a stale one never waits longer.
+            Duration::from_secs(2),
+            quiet,
+        );
+    }
+    // The foundations request may have been in flight when another
+    // terminal saved `off` or `forget`. Do not start a second upload then.
+    if !Local::read(&io.env).is_some_and(|l| l.sync()) {
+        return synced;
     }
     // One request, one deadline, no retry: a 401 waits for the next scan.
     // `--quiet` hides the notice, so it stays owed to the next scan that shows it.
     let url = format!("{}{SCANS}", account.issuer);
     match Client::with_deadline(&account, DEADLINE).post_json(&url, &token, body) {
-        Ok(_) => {
+        Ok(answer) => {
+            synced.health = true;
+            crate::receipt::saved(io, crate::receipt::landed(&answer, crate::receipt::page(&account, "design-health", None)), quiet);
             let fresh = Local::read(&io.env).unwrap_or_default();
             if !quiet && fresh.noticed.as_deref() != Some(marker.as_str()) {
-                io.err(&format!(
-                    "Design health: this scan's counts were saved to your account on {}, so you can follow the trend for this repo. Never your code or file names. Turn it off with `impeccable health off`.\n",
-                    account.display_host()
-                ));
+                // In the person's words, not a feature's name: what was kept, where, and how to stop.
+                // A sign-in other than production's names its account (as the Loop question does); Home only where one is hosted.
+                let whose = if account.issuer == crate::config::DEFAULT_ACCOUNT_URL { "your account".to_string() } else { format!("your {} account", account.display_name()) };
+                let trend = if account.home_url().is_some() { "so Home shows this repository's trend" } else { "so you can follow this repository's trend" };
+                io.err(&format!("Saved this scan's counts to {whose}, {trend}. Never your code or file names.\nTo stop: impeccable health off\n"));
                 let _ = Local::update(&io.env, |l| l.noticed = Some(marker));
             }
         }
         Err(ApiError::Status { status: 403, .. }) => {
-            let fresh = Local::read(&io.env).unwrap_or_default();
-            if !quiet && fresh.hinted.as_deref() != Some(marker.as_str()) {
-                io.err("Design health: this sign-in can't save scan results. Run `impeccable login` again to allow it, or `impeccable health off` to stop asking.\n");
-                let _ = Local::update(&io.env, |l| l.hinted = Some(marker));
-            }
+            crate::stale_grant::note_health_denied(&account, session.state.login);
+            if !quiet { io.err("Not saved to Impeccable: this sign-in can't save scans. Run npx impeccable login.\n"); }
         }
-        Err(_) => {}
+        Err(error) => crate::receipt::failed_upload(io, "This scan", &error, quiet),
     }
+    synced
+}
+
+/// The key a first sign-in scan is remembered under: the service and the
+/// repository's opaque key, never its path or remote.
+fn first_scan_key(env: &std::collections::HashMap<String, String>, root: &str) -> Option<String> {
+    let account = Account::from_env(env).ok()?;
+    let repo = Repo::of(root, env)?;
+    Some(hex(&hash(&[&account.issuer, &repo.key])))
+}
+
+/// Whether the repository at `root` (its top level) already had the scan a
+/// sign-in runs, on this service, from this machine. Unknown counts as done,
+/// so a git that can't answer never scans on every sign-in.
+pub fn first_scan_done(env: &std::collections::HashMap<String, String>, root: &str) -> bool {
+    let Some(key) = first_scan_key(env, root) else {
+        return true;
+    };
+    Local::read(env).is_none_or(|l| l.first_scans.contains(&key))
+}
+
+/// The top level of the git work tree `dir` is in, or `None` outside one
+/// (or when git can't answer in time).
+pub fn repo_top(dir: &str) -> Option<String> {
+    git(dir, &["rev-parse", "--show-toplevel"])
+}
+
+/// [`repo_top`], telling a git that didn't answer in time (`Err`) from a folder
+/// outside any repository (`Ok(None)`).
+pub fn repo_top_in_time(dir: &str) -> Result<Option<String>, ()> {
+    git_run(dir, &["rev-parse", "--show-toplevel"], git_deadline())
+}
+
+/// Remember that the repository at `root` had its sign-in scan.
+pub fn mark_first_scan(env: &std::collections::HashMap<String, String>, root: &str) {
+    if let Some(key) = first_scan_key(env, root) {
+        // Under the file's lock: `forget` (which turns sync off and clears
+        // the marks) may have run while the upload did, and a mark written
+        // back after it would skip the next sign-in's scan.
+        let _ = Local::update(env, |l| {
+            if l.sync() && !l.first_scans.contains(&key) {
+                l.first_scans.push(key);
+            }
+        });
+    }
+}
+
+/// A successful critique/audit upload can refresh the full repository silently.
+/// Detect uploads scans, never critiques, so this worker cannot recurse.
+/// `top` is the repository top the upload already read, so this adds no git lookup.
+pub(crate) fn refresh_after_report(io: &Io, top: &str) {
+    if !wanted(io) {
+        return;
+    }
+    let root = top;
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return;
+    };
+    if claim_report_refresh(&io.env, &root, now.as_secs()) {
+        impeccable_common::proc::spawn_refresh_args(io, Path::new(root), "detect", &[".", "--quiet"]);
+    }
+}
+
+fn claim_report_refresh(env: &std::collections::HashMap<String, String>, root: &str, now: u64) -> bool {
+    // Local repository tops, not remotes: separate clones each need their own scan.
+    // Persist only an opaque key, just as firstScans does.
+    let key = hex(&Sha256::digest(root.as_bytes()));
+    let due = |l: &Local| l.sync() && l.critique_refreshes.get(&key).is_none_or(|last| now.saturating_sub(*last) >= 86_400);
+    // Most saves find today's refresh already claimed: read only, never rewrite the file.
+    if !Local::read(env).is_some_and(|l| due(&l)) {
+        return false;
+    }
+    let mut claimed = false;
+    let saved = Local::update_with_wait(env, Duration::ZERO, |l| {
+        if due(l) {
+            l.critique_refreshes.insert(key.clone(), now);
+            claimed = true;
+        }
+    });
+    // Failure (including a busy lock) never spawns an unthrottled worker.
+    saved.is_ok() && claimed
 }
 
 /// `impeccable health [status|on|off|forget]`.
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    if args.first().map(String::as_str) == Some("design") {
+        return design::run(&args[1..], io);
+    }
     let env = io.env.clone();
     // An unreadable health.json reads as off.
     let local = Local::read(&env).unwrap_or(Local {
         sync: Some(false),
         ..Local::default()
     });
-    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| l.sync = Some(on)) {
+    let _admission = if args.len() == 1 && matches!(args[0].as_str(), "on" | "off" | "forget") {
+        let result = impeccable_home(&env)
+            .ok_or_else(|| "no home directory; set IMPECCABLE_HOME".to_string())
+            .and_then(|home| crate::store::Store::design_lock_for(&home, Duration::from_secs(3)));
+        match result {
+            Ok(lock) => Some(lock),
+            Err(e) => {
+                io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
+                return 1;
+            }
+        }
+    } else {
+        None
+    };
+    let set = |io: &mut Io, on: bool| match Local::update(&env, |l| {
+        l.sync = Some(on);
+        if !on {
+            l.design_generation = l.design_generation.wrapping_add(1);
+        }
+    }) {
         Ok(()) => true,
         Err(e) => {
             io.err(&format!("Design health: couldn't save the setting: {e}.\n"));
@@ -173,11 +442,14 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
             {
                 Some(format!("off because {reason}"))
             } else if !signed_in {
-                Some("off until you sign in with `impeccable login`".to_string())
+                Some("off until you sign in with `npx impeccable login`".to_string())
             } else {
                 None
             };
             match why_not {
+                None if crate::stale_grant::status(io, crate::oauth::HEALTH_SCOPE) => {
+                    io.out("Design health: on, but this sign-in can't save yet. Run npx impeccable login.\n")
+                }
                 None => io.out(&format!(
                     "Design health: on. Each full `impeccable detect` of a git repo saves its counts to {}: findings by rule and opaque fingerprints, never code or file names.\n",
                     account.as_ref().map(|a| a.display_host().to_string()).unwrap_or_default()
@@ -217,6 +489,9 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                 .and_then(|mut s| s.call(|c, token| c.post_json(&url, token, json!({}))));
             match result {
                 Ok(_) => {
+                    design::forget(io);
+                    // Deleted at the service, so a later sign-in may add them again.
+                    let _ = Local::update(&env, |l| l.first_scans.clear());
                     io.out(&format!(
                         "Design health: deleted everything saved on {}, and turned sync off.\n",
                         account.display_host()
@@ -231,7 +506,7 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
                     1
                 }
                 Err(SessionError::NotSignedIn | SessionError::Expired) => {
-                    io.err("Sync is off. To delete what was saved, run `impeccable login` and then `impeccable health forget`.\n");
+                    io.err("Sync is off. To delete what was saved, run `npx impeccable login` and then `impeccable health forget`.\n");
                     1
                 }
                 Err(e) => {
@@ -254,9 +529,15 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
 #[derive(Default, Clone)]
 struct Local {
     sync: Option<bool>,
+    design: Option<bool>,
+    design_generation: u64,
     /// `<issuer> <login>` of the sign-in the notice was shown for.
     noticed: Option<String>,
     hinted: Option<String>,
+    /// Opaque keys of the repositories a sign-in already scanned.
+    first_scans: Vec<String>,
+    /// Last critique-triggered refresh attempt, by hashed repository top.
+    critique_refreshes: std::collections::BTreeMap<String, u64>,
 }
 
 impl Local {
@@ -276,8 +557,23 @@ impl Local {
         let v = v.as_object()?;
         Some(Local {
             sync: v.get("sync").and_then(Value::as_bool),
+            design: v.get("design").and_then(Value::as_bool),
+            design_generation: v
+                .get("designGeneration")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
             noticed: v.get("noticed").and_then(Value::as_str).map(str::to_string),
             hinted: v.get("hinted").and_then(Value::as_str).map(str::to_string),
+            first_scans: v
+                .get("firstScans")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(|k| k.as_str().map(str::to_string)).collect())
+                .unwrap_or_default(),
+            critique_refreshes: v
+                .get("critiqueRefreshes")
+                .and_then(Value::as_object)
+                .map(|m| m.iter().filter_map(|(k, v)| v.as_u64().map(|t| (k.clone(), t))).collect())
+                .unwrap_or_default(),
         })
     }
     fn sync(&self) -> bool {
@@ -292,6 +588,13 @@ impl Local {
         env: &std::collections::HashMap<String, String>,
         change: impl FnOnce(&mut Local),
     ) -> Result<(), String> {
+        Self::update_with_wait(env, LOCK_WAIT, change)
+    }
+    fn update_with_wait(
+        env: &std::collections::HashMap<String, String>,
+        wait: Duration,
+        change: impl FnOnce(&mut Local),
+    ) -> Result<(), String> {
         let path = Local::path(env).ok_or("no home directory; set IMPECCABLE_HOME")?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -303,7 +606,7 @@ impl Local {
             .truncate(false)
             .open(path.with_extension("json.lock"))
             .map_err(|e| format!("could not open the design health lock: {e}"))?;
-        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        let deadline = std::time::Instant::now() + wait;
         loop {
             match lock.try_lock() {
                 Ok(()) => break,
@@ -327,11 +630,23 @@ impl Local {
         if let Some(s) = local.sync {
             m.insert("sync".into(), s.into());
         }
+        if local.design_generation != 0 {
+            m.insert("designGeneration".into(), local.design_generation.into());
+        }
+        if let Some(d) = local.design {
+            m.insert("design".into(), d.into());
+        }
         if let Some(n) = local.noticed {
             m.insert("noticed".into(), n.into());
         }
         if let Some(h) = local.hinted {
             m.insert("hinted".into(), h.into());
+        }
+        if !local.first_scans.is_empty() {
+            m.insert("firstScans".into(), local.first_scans.into());
+        }
+        if !local.critique_refreshes.is_empty() {
+            m.insert("critiqueRefreshes".into(), json!(local.critique_refreshes));
         }
         let saved = crate::store::write_private(&path, Value::Object(m).to_string().as_bytes());
         drop(lock);
@@ -344,6 +659,7 @@ struct Repo {
     key: String,
     stream: String,
     label: Option<String>,
+    place: Option<String>,
 }
 
 impl Repo {
@@ -357,8 +673,8 @@ impl Repo {
         if !same(&top, root) {
             return None;
         }
-        let remote = git(root, &["config", "--get", "remote.origin.url"])
-            .and_then(|r| normalize_remote(&r));
+        let configured = git(root, &["config", "--get", "remote.origin.url"]);
+        let remote = configured.as_deref().and_then(resolve_remote);
         let key = match &remote {
             Some(remote) => hex(&Sha256::digest(remote.as_bytes())),
             None => hex(&Sha256::digest(local_repo_id(&top, env)?.as_bytes())),
@@ -369,25 +685,160 @@ impl Repo {
         let branch = git(root, &["symbolic-ref", "--short", "-q", "HEAD"])
             .or_else(|| git(root, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
         let stream = hex(&hash(&[&key, &branch]));
-        // The repo's name from its remote, never the folder's: a folder name
-        // can say more than the person meant to share (Paul, REN-1553).
-        let label = remote.as_deref().and_then(repo_label);
-        Some(Repo { key, stream, label })
+        let label = repo_name(&top, configured.is_some(), remote.as_deref());
+        let place = configured.is_none().then(|| place(&top, env)).flatten();
+        Some(Repo { key, stream, label, place })
     }
 }
 
-/// One short git question, given at most [`GIT_DEADLINE`] and never
+/// One short git question, given at most [`git_deadline`] and never
 /// fsmonitor, which can hang. `None` on any failure.
 fn git(dir: &str, args: &[&str]) -> Option<String> {
-    let mut child = Command::new("git")
-        .args(["-c", "core.fsmonitor=false", "-C", dir])
-        .args(args)
+    git_with_timeout(dir, args, git_deadline())
+}
+
+/// The repository at `root` as the service keys it (SHA-256 of its normalized origin, as every upload sends) and
+/// its label: what an agent's presence record names its repository by (REN-2124).
+pub fn repo_key(root: &str, env: &std::collections::HashMap<String, String>) -> Option<(String, Option<String>)> {
+    critique_repo(root, env)
+}
+
+/// Critiques use the same repo identity, including for native projects and subdirectories.
+pub(crate) fn critique_repo(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>)> {
+    critique_repo_at(root, env).map(|r| (r.key, r.label))
+}
+
+/// Where a critique ran, as its upload names it.
+pub(crate) struct CritiqueRepo {
+    pub top: String,
+    pub key: String,
+    pub label: Option<String>,
+    pub place: Option<String>,
+    /// `HEAD`'s commit, once the repository has one.
+    pub head_sha: Option<String>,
+    /// The checked-out branch's short name; `None` when HEAD is detached.
+    pub branch: Option<String>,
+}
+
+/// [`critique_repo`] plus the repository top it read, so a caller needs no second git lookup.
+pub(crate) fn critique_repo_at(
+    root: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<CritiqueRepo> {
+    let short = critique_git_deadline();
+    // One question answers the top, HEAD's commit and the branch. It fails
+    // only before the first commit, which then asks for the top alone; a git
+    // that ran out of time ends the lookup, as it always has.
+    let (top, head_sha, branch) = match git_run(root, &["rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD"], short).ok()? {
+        Some(out) => {
+            let mut lines = out.lines().map(str::trim);
+            let top = lines.next().filter(|t| !t.is_empty())?.to_string();
+            let sha = lines.next().filter(|s| matches!(s.len(), 40 | 64) && s.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)));
+            let branch = lines.next().filter(|b| *b != "HEAD" && !b.is_empty() && b.chars().count() <= 255 && !b.chars().any(char::is_control));
+            (top, sha.map(str::to_owned), branch.map(str::to_owned))
+        }
+        None => (git_with_timeout(root, &["rev-parse", "--show-toplevel"], short)?, None, None),
+    };
+    let remote = git_run(root, &["config", "--get", "remote.origin.url"], short);
+    repo_identity(&top, remote, env).map(|(key, label, place)| CritiqueRepo { top, key, label, place, head_sha, branch })
+}
+
+/// GitHub owner/name using the same bounded origin read and resolver as uploads.
+pub fn github_repository(root: &str) -> Option<String> {
+    let raw = git_with_timeout(root, &["config", "--get", "remote.origin.url"], critique_git_deadline())?;
+    let remote = resolve_remote(&raw)?;
+    let name = remote.strip_prefix("https://github.com/")?;
+    crate::taste::valid_repository(name).then(|| name.to_string())
+}
+
+/// The repo's name as the service shows it: from its remote; with none, its folder's
+/// name, so two local repositories aren't both "Local repository" (Paul, REN-2028, 15 Nov 2026).
+/// Only a repository with no remote at all: one whose remote can't be read as a
+/// host's URL (a local path) sends no name rather than its folder's.
+fn repo_name(top: &str, configured: bool, remote: Option<&str>) -> Option<String> {
+    match (remote, configured) {
+        (Some(remote), _) => repo_label(remote),
+        (None, true) => None,
+        (None, false) => Path::new(top).file_name().and_then(|n| n.to_str()).and_then(label),
+    }
+}
+
+/// The key and label from the remote read's outcome. A read that timed out is
+/// not a repo without a remote: falling back to the local id then would name a
+/// different project, so it sends no key.
+fn repo_identity(
+    top: &str,
+    remote: Result<Option<String>, ()>,
+    env: &std::collections::HashMap<String, String>,
+) -> Option<(String, Option<String>, Option<String>)> {
+    let configured = remote.ok()?;
+    let remote = configured.as_deref().and_then(resolve_remote);
+    let label = repo_name(top, configured.is_some(), remote.as_deref());
+    let place = configured.is_none().then(|| place(top, env)).flatten();
+    let identity = remote.or_else(|| local_repo_id(top, env))?;
+    Some((hex(&Sha256::digest(identity.as_bytes())), label, place))
+}
+
+/// Where a repository with no remote lives: its parent folder's name only, so
+/// two clones with one name can be told apart (REN-2313). Never a path, and nothing
+/// when the parent is the home folder, whose name is usually the person's login.
+fn place(top: &str, env: &std::collections::HashMap<String, String>) -> Option<String> {
+    let parent = Path::new(top).parent()?;
+    let same = |home: &String| match (Path::new(home).canonicalize(), parent.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => Path::new(home) == parent,
+    };
+    if ["HOME", "USERPROFILE"].iter().filter_map(|k| env.get(*k)).any(same) {
+        return None;
+    }
+    label(parent.file_name()?.to_str()?).filter(|p| p.chars().count() <= MAX_PLACE)
+}
+
+/// A repository's name and place on an upload body, each only when known.
+pub(crate) fn name_body(body: &mut Value, label: Option<&str>, place: Option<&str>) {
+    if let Some(label) = label {
+        body["label"] = label.into();
+    }
+    if let Some(place) = place {
+        body["place"] = place.into();
+    }
+}
+
+fn git_with_timeout(dir: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    git_run(dir, args, timeout).ok().flatten()
+}
+
+/// `Err` when git didn't answer in time (or couldn't start), `Ok(None)` when it
+/// answered with a failure or nothing.
+fn git_run(dir: &str, args: &[&str], timeout: Duration) -> Result<Option<String>, ()> {
+    let mut git = Command::new("git");
+    git.args(["-c", "core.fsmonitor=false", "-C", dir]).args(args);
+    output_within(git, timeout, false)
+}
+
+/// A command's trimmed stdout, given at most `timeout`: `Err` when it didn't
+/// answer in time (or couldn't start), `Ok(None)` on a failure or no output.
+/// With `drain`, stdout is read while it runs, for output that can pass the
+/// pipe's buffer (`ssh -G` on a large config); git's answers here never do.
+fn output_within(mut command: Command, timeout: Duration, drain: bool) -> Result<Option<String>, ()> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .ok()?;
-    let until = std::time::Instant::now() + GIT_DEADLINE;
+        .map_err(|_| ())?;
+    let read = |mut stdout: std::process::ChildStdout| {
+        let mut out = String::new();
+        std::io::Read::read_to_string(&mut stdout, &mut out).ok().map(|_| out)
+    };
+    let reader = match drain {
+        true => child.stdout.take().map(|o| std::thread::spawn(move || read(o))),
+        false => None,
+    };
+    let until = std::time::Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -397,14 +848,17 @@ fn git(dir: &str, args: &[&str]) -> Option<String> {
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return None;
+                return Err(());
             }
         }
     };
-    let mut out = String::new();
-    std::io::Read::read_to_string(&mut child.stdout.take()?, &mut out).ok()?;
+    let out = match reader {
+        Some(reader) => reader.join().ok().flatten(),
+        None => child.stdout.take().and_then(read),
+    };
+    let Some(out) = out else { return Ok(None) };
     let s = out.trim().to_string();
-    (status.success() && !s.is_empty()).then_some(s)
+    Ok((status.success() && !s.is_empty()).then_some(s))
 }
 
 /// A repo with no `origin` gets a random id, kept under `IMPECCABLE_HOME`
@@ -444,10 +898,69 @@ fn publish_id(file: &Path, id: &str) -> Option<String> {
     }
 }
 
+/// The `origin` remote as [`normalize_remote`] spells it, after reading an SSH
+/// host alias as the host it stands for, so a clone of `git@work:org/repo`
+/// (`Host work` with `HostName github.com` in the SSH config) is keyed as its
+/// repository (REN-2058).
+pub fn resolve_remote(raw: &str) -> Option<String> {
+    normalize_remote(&unalias(raw, ssh_hostname))
+}
+
+/// `raw` with its SSH host replaced by what `hostname` says it stands for.
+/// Any other remote, or a host `hostname` can't resolve, is unchanged.
+fn unalias(raw: &str, hostname: impl Fn(&str, &str) -> Option<String>) -> String {
+    let raw = raw.trim();
+    if !raw.contains("://") {
+        // scp-like: [user@]host:path
+        let Some((login, path)) = raw.split_once(':') else { return raw.to_string() };
+        let (user, host) = login.rsplit_once('@').map_or(("", login), |(u, h)| (u, h));
+        return match hostname(user, host) {
+            Some(real) if !login.contains('/') && real != host => {
+                let at = if user.is_empty() { "" } else { "@" };
+                format!("{user}{at}{real}:{path}")
+            }
+            _ => raw.to_string(),
+        };
+    }
+    let Ok(mut url) = url::Url::parse(raw) else { return raw.to_string() };
+    if !matches!(url.scheme(), "ssh" | "git+ssh") {
+        return raw.to_string();
+    }
+    let user = url.username().to_string();
+    match url.host_str().and_then(|h| hostname(&user, h)) {
+        Some(real) if url.set_host(Some(&real)).is_ok() => url.to_string(),
+        _ => raw.to_string(),
+    }
+}
+
+/// The host `ssh` connects to for `alias` as `user` (the remote's login, which a
+/// `Match user` block can depend on), from the SSH config (`ssh -G`, which reads
+/// it and connects nowhere). `None` for anything that isn't a plain name or when
+/// ssh can't say within half a second.
+fn ssh_hostname(user: &str, alias: &str) -> Option<String> {
+    let plain = |v: &str| {
+        !v.starts_with('-') && v.bytes().all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    };
+    if alias.is_empty() || !plain(alias) || !plain(user) {
+        return None;
+    }
+    let mut ssh = Command::new("ssh");
+    ssh.arg("-G");
+    if !user.is_empty() {
+        ssh.args(["-l", user]);
+    }
+    ssh.arg(alias);
+    let out = output_within(ssh, Duration::from_millis(500), true).ok()??;
+    let real = out.lines().find_map(|l| l.strip_prefix("hostname "))?.trim().to_lowercase();
+    (!real.is_empty()).then_some(real)
+}
+
 /// The `origin` remote in one spelling, so every clone of a repo hashes the
 /// same: credentials dropped, `git@host:path` and `ssh://` read as
 /// `https://host/path`, scheme and host lower-cased, a trailing `/` and
-/// `.git` removed.
+/// `.git` removed. GitHub reads owner and name in any case, so a github.com
+/// path is lower-cased too: `Org/Repo` and `org/repo` are one repository, as
+/// the service matches it (REN-2058).
 pub fn normalize_remote(raw: &str) -> Option<String> {
     let raw = raw.trim();
     let (host, path) = if !raw.contains("://") {
@@ -472,6 +985,9 @@ pub fn normalize_remote(raw: &str) -> Option<String> {
     let path = path.trim_end_matches('/');
     if host.is_empty() || path.is_empty() {
         return None;
+    }
+    if host == "github.com" {
+        return Some(format!("https://{host}/{}", path.to_lowercase()));
     }
     Some(format!("https://{host}/{path}"))
 }
@@ -529,9 +1045,7 @@ fn payload(scan: &Scan, repo: &Repo, scan_id: &str, fingerprint_version: u32) ->
         "rules": rules.iter().map(|(id, (f, a))| (id.to_string(), json!({ "findings": f, "advisory": a }))).collect::<Map<_, _>>(),
         "fingerprints": prints,
     });
-    if let Some(label) = &repo.label {
-        body["label"] = label.clone().into();
-    }
+    name_body(&mut body, repo.label.as_deref(), repo.place.as_deref());
     if prints.len() > MAX_FINGERPRINTS || body.to_string().len() > MAX_BYTES {
         body["fingerprints"] = Value::Null;
         body["truncated"] = true.into();
@@ -618,12 +1132,16 @@ fn label(name: &str) -> Option<String> {
     let l = name.trim();
     let format = |c: char| {
         matches!(c, '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}' | '\u{180E}'
-            | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
-            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+            | '\u{890}'..='\u{891}' | '\u{8E2}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{110BD}' | '\u{110CD}' | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}' | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
     };
     let ok = !l.is_empty()
         && l.chars().count() <= MAX_LABEL
-        && !l.chars().any(|c| matches!(c, '@' | ':' | '/') || c.is_control() || format(c));
+        && !name
+            .chars()
+            .any(|c| matches!(c, '@' | ':' | '/' | '\\') || c.is_control() || format(c));
     ok.then(|| l.to_string())
 }
 
@@ -631,8 +1149,40 @@ fn label(name: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn report_refresh_claim_is_per_top_atomic_and_expires_after_24_hours() {
+        let env = std::collections::HashMap::from([(
+            "IMPECCABLE_HOME".into(),
+            crate::test_fake::temp_home("report-refresh-claim").to_string_lossy().into_owned(),
+        )]);
+        let now = 1_794_000_000;
+        let claims: Vec<_> = (0..8).map(|_| {
+            let env = env.clone();
+            std::thread::spawn(move || claim_report_refresh(&env, "/repo", now))
+        }).collect();
+        assert_eq!(claims.into_iter().map(|t| t.join().unwrap() as usize).sum::<usize>(), 1);
+        assert!(!claim_report_refresh(&env, "/repo", now + 86_399));
+        assert!(!claim_report_refresh(&env, "/repo", now - 1));
+        assert!(claim_report_refresh(&env, "/repo", now + 86_400));
+        assert!(claim_report_refresh(&env, "/another-clone", now));
+        let local = Local::read(&env).unwrap();
+        assert_eq!(local.critique_refreshes.len(), 2);
+        // A busy lock skips immediately; unreadable/disabled state cannot claim.
+        let path = Local::path(&env).unwrap();
+        let lock = std::fs::OpenOptions::new().write(true).open(path.with_extension("json.lock")).unwrap();
+        lock.lock().unwrap();
+        assert!(!claim_report_refresh(&env, "/busy", now));
+        drop(lock);
+        std::fs::write(&path, b"unreadable").unwrap();
+        assert!(!claim_report_refresh(&env, "/bad-state", now));
+        Local::update(&env, |l| l.sync = Some(false)).unwrap();
+        assert!(!claim_report_refresh(&env, "/disabled", now));
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
     fn scan(hits: Vec<(&str, &str, &str, bool)>) -> Scan {
         Scan {
+            foundations: Default::default(),
             root: "/w/repo".into(),
             files_scanned: 3,
             hits: hits
@@ -655,6 +1205,7 @@ mod tests {
             key: "a".repeat(64),
             stream: "b".repeat(64),
             label: Some("repo".into()),
+            place: None,
         }
     }
 
@@ -684,8 +1235,54 @@ mod tests {
             normalize_remote("https://git.example.com:8443/a/b").as_deref(),
             Some("https://git.example.com:8443/a/b")
         );
+        // Catches (REN-2058): a mixed-case GitHub clone missing its repository. Other hosts keep the path's case.
+        assert_eq!(normalize_remote("git@github.com:Crit-Co/Web.git").as_deref(), Some("https://github.com/crit-co/web"));
+        assert_eq!(normalize_remote("https://git.example.com/A/b").as_deref(), Some("https://git.example.com/A/b"));
         assert_eq!(normalize_remote("/srv/repos/b.git"), None);
         assert_eq!(normalize_remote("../b"), None);
+    }
+
+    #[test]
+    fn an_ssh_host_alias_reads_as_the_host_it_stands_for() {
+        // Catches (REN-2058): a clone through an SSH host alias never matching its repository.
+        let config = |user: &str, host: &str| match (user, host) {
+            ("git", "work") | (_, "github.com-work") => Some("github.com".to_string()),
+            (_, other) => Some(other.to_lowercase()),
+        };
+        for raw in ["git@work:a/b.git", "github.com-work:a/b", "ssh://git@work/a/b.git", "git+ssh://git@github.com-work:22/a/b"] {
+            assert_eq!(normalize_remote(&unalias(raw, config)).as_deref(), Some("https://github.com/a/b"), "{raw}");
+        }
+        // Not SSH, a local path, or a host ssh can't resolve: unchanged.
+        for raw in ["https://work/a/b", "/srv/work:a/b", "git@unknown:a/b"] {
+            assert_eq!(unalias(raw, |_, _| None), raw);
+        }
+        assert_eq!(unalias("https://work/a/b", config), "https://work/a/b");
+        // The remote's login reaches the lookup, for a `Match user` block.
+        assert_eq!(normalize_remote(&unalias("deploy@work:a/b", config)).as_deref(), Some("https://work/a/b"));
+        // Only plain names reach ssh.
+        assert_eq!(ssh_hostname("git", "-oProxyCommand=x"), None);
+        assert_eq!(ssh_hostname("-oProxyCommand=x", "work"), None);
+        assert_eq!(ssh_hostname("", "a b"), None);
+    }
+
+    #[test]
+    fn a_github_clone_is_keyed_as_the_cloud_keys_its_repository() {
+        // Catches: the repository key drifting from the one the account service computes
+        // to show a person's local critiques on their team's repository (pristine
+        // src/app-rpc/views/local-critiques.ts `cliRepoKey`, pinned to the same hex).
+        // The key a clone gets is the one critique uploads send: `critique_repo` on a real repository.
+        let dir = std::env::temp_dir().join(format!("impeccable-health-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| assert!(Command::new("git").args(["-c", "core.fsmonitor=false", "-C"]).arg(&dir).args(args).output().unwrap().status.success());
+        git(&["init", "-q"]);
+        for raw in ["git@github.com:crit-co/web.git", "https://github.com/crit-co/web", "https://github.com/Crit-Co/Web.git"] {
+            git(&["config", "remote.origin.url", raw]);
+            // `critique_repo` gives git 150 ms a call; a loaded machine gets a few tries.
+            let key = (0..5).find_map(|_| critique_repo(&dir.to_string_lossy(), &std::collections::HashMap::new())).map(|(key, _)| key);
+            assert_eq!(key.as_deref(), Some("589c2f960e539d4adf1f5100f4b185bf4e5f972a8f9ee47b948ad732d788f7e6"), "{raw}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -704,7 +1301,7 @@ mod tests {
                 [
                     "version", "scanId", "repoKey", "streamKey", "scannedAt", "coverage",
                     "rulesetId", "fingerprintVersion", "engineVersion", "filesScanned",
-                    "findings", "advisory", "rules", "fingerprints", "truncated", "label"
+                    "findings", "advisory", "rules", "fingerprints", "truncated", "label", "place"
                 ]
                 .contains(k),
                 "{k}"
@@ -812,9 +1409,14 @@ mod tests {
     fn labels_and_versions_follow_the_services_rules() {
         assert_eq!(label(" impeccable ").as_deref(), Some("impeccable"));
         assert_eq!(label("me@host"), None);
+        assert_eq!(label("repo\\secret"), None);
+        assert_eq!(label("\tname"), None);
+        assert_eq!(label("a\u{E0001}b"), None);
         assert_eq!(label("a\u{200B}b"), None);
+        // The service refuses a backslash anywhere (pristine#4721), so it is never sent.
+        assert_eq!(label("acme\\site"), None);
         assert_eq!(label(&"x".repeat(101)), None);
-        // Paul, REN-1553 (10 Nov): "no folder names, only repo names".
+        // A remote names the repository by its own name, never its host or owner.
         assert_eq!(repo_label("https://github.com/acme/site-repo").as_deref(), Some("site-repo"));
         assert_eq!(repo_label("https://gitlab.com/group/sub/tool").as_deref(), Some("tool"));
         assert_eq!(repo_label("https://github.com"), None);
@@ -834,5 +1436,89 @@ mod tests {
         assert_eq!(publish_id(&file, &"b".repeat(32)).as_deref(), Some(first.as_str()));
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "no staged file left behind");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+/// Internal renewal-only entry point. It never receives file contents.
+pub fn run_design_refresh(args: &[String], io: &mut Io) -> i32 {
+    design::run_refresh(args, io)
+}
+
+#[cfg(test)]
+mod taste_notice_tests {
+    use super::*;
+    use crate::test_fake::{browser, Fake};
+
+    #[test]
+    fn foreground_scan_notices_an_old_taste_grant_once_and_honors_quiet() {
+        let fake = Fake::start();
+        {
+            let mut knobs = fake.knobs.lock().unwrap();
+            knobs.health = true;
+            knobs.foundations = true;
+        }
+        let env = fake.env("taste-foreground-notice");
+        crate::login(&env, &mut |url| browser(url), Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let root = account.home.join("repo");
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(Command::new("git").arg("init").arg(&root).stdout(Stdio::null()).stderr(Stdio::null()).status().unwrap().success());
+        // Only the fake issuer changes its advertised scopes after sign-in.
+        fake.knobs.lock().unwrap().taste = true;
+        let scan = Scan {
+            foundations: Default::default(), root: root.to_string_lossy().into_owned(),
+            files_scanned: 1, hits: vec![], ruleset: vec![], engine_version: "1.2.3".into(),
+            started: SystemTime::now(),
+        };
+        let (mut io, cap) = Io::captured("", root, env);
+        after_scan(&mut io, &scan, true);
+        assert!(cap.stderr.borrow().is_empty());
+        after_scan(&mut io, &scan, false);
+        after_scan(&mut io, &scan, false);
+        let output = String::from_utf8(cap.stderr.borrow().clone()).unwrap();
+        assert_eq!(output.matches("needs a fresh sign-in").count(), 1, "{output}");
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod repo_identity_tests {
+    use super::*;
+
+    #[test]
+    fn a_timed_out_remote_sends_no_key_and_a_missing_one_keeps_the_local_id() {
+        // Catches: a slow `git config` read under load fell back to the local id, so one
+        // repo was reported as another project.
+        let home = std::env::temp_dir().join(format!("impeccable-repo-identity-{}", std::process::id()));
+        let top = home.join("repo");
+        std::fs::create_dir_all(&top).unwrap();
+        let env: std::collections::HashMap<String, String> =
+            [("IMPECCABLE_HOME".to_string(), home.join(".impeccable").display().to_string())].into();
+        let top = top.to_string_lossy().into_owned();
+        assert_eq!(repo_identity(&top, Err(()), &env), None);
+        let local = repo_identity(&top, Ok(None), &env).expect("local id");
+        // No remote: named after its folder (Paul, REN-2028).
+        assert_eq!(local.1.as_deref(), Some("repo"));
+        // A remote that is a local path is still a remote: no name, never the folder's.
+        for path in ["/srv/repos/site.git", "file:///srv/repos/site.git"] {
+            assert_eq!(repo_identity(&top, Ok(Some(path.into())), &env).expect("local id").1, None, "{path}");
+        }
+        assert_eq!(repo_identity(&top, Ok(None), &env), Some(local.clone()), "the local id is kept");
+        let remote = repo_identity(&top, Ok(Some("git@github.com:ada/pristine.git".into())), &env).unwrap();
+        assert_ne!(remote.0, local.0);
+        assert!(remote.1.is_some());
+        // Only a remote-less repo names its place: the parent folder, never the home folder (REN-2313).
+        assert_eq!(local.2, home.file_name().and_then(|n| n.to_str()).map(String::from));
+        assert_eq!(remote.2, None);
+        // A parent name the service would refuse is never sent.
+        for parent in ["me:host", &"p".repeat(61)] {
+            let top = home.join(parent).join("repo");
+            assert_eq!(place(&top.to_string_lossy(), &env), None, "{parent}");
+        }
+        assert_eq!(place(&home.join(&"p".repeat(60)).join("repo").to_string_lossy(), &env).map(|p| p.len()), Some(60));
+        let mut at_home = env.clone();
+        at_home.insert("HOME".into(), home.display().to_string());
+        assert_eq!(repo_identity(&top, Ok(None), &at_home).expect("local id").2, None);
+        std::fs::remove_dir_all(home).unwrap();
     }
 }

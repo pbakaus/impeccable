@@ -10,7 +10,11 @@
   radius that leads with 0, and a 2px stripe on it was read as a stripe on a
   square box, which needs 3px. The far corners are the radius.
 
-  A 3px or wider stripe reported before and keeps its wording.
+  A 3px or wider stripe reported before and keeps its wording. Since every
+  side bar of 2px or more is side-tab on any box, and a 1px bar on a box
+  rounded at any corner, the far corners now decide only the radius the
+  finding names; a 1px rule on a square box, or one whose corners have no
+  vertical radius, is a divider.
 
   A border on one side of a circle is an arc of a ring (an orbit around an
   icon, a spinner: observations-1010 row 6), on either axis. A 64px content
@@ -30,10 +34,10 @@
   .flag-right-far-rounded { border-right: 2px solid #0d9488; border-radius: 12px 0 0 12px; }
   .flag-left-uneven-far { border-left: 2px solid #0d9488; border-radius: 0 12px 6px 0; }
   .flag-left-wide-far-rounded { border-left: 4px solid #0d9488; border-radius: 0 12px 12px 0; }
-  .pass-thin-square { border-left: 2px solid #0d9488; border-radius: 0; }
-  .pass-thin-rounded-along-stripe { border-left: 2px solid #0d9488; border-radius: 12px 0 0 12px; }
-  .pass-thin-far-corner-square { border-left: 2px solid #0d9488; border-radius: 0 12px 2px 0; }
-  .pass-thin-far-elliptical-flat { border-left: 2px solid #0d9488; border-radius: 0 12px 12px 0 / 0; }
+  .pass-thin-square { border-left: 1px solid #0d9488; border-radius: 0; }
+  .flag-hairline-rounded-along-stripe { border-left: 1px solid #0d9488; border-radius: 12px 0 0 12px; }
+  .flag-hairline-small-far-corner { border-left: 1px solid #0d9488; border-radius: 0 12px 2px 0; }
+  .pass-thin-far-elliptical-flat { border-left: 1px solid #0d9488; border-radius: 0 12px 12px 0 / 0; }
   .ring { width: 64px; height: 64px; margin: 0 0 24px; border-radius: 9999px; box-sizing: border-box; }
   .pass-ring-arc-right { border-right: 2px solid #0d9488; }
   .pass-ring-arc-top { width: 80px; height: 80px; border-top: 2px solid #0d9488; }
@@ -53,15 +57,15 @@
   <div class="card flag-left-uneven-far"><p>Far corners of 12px and 6px: the smaller one is the radius.</p></div>
   <div class="card flag-left-wide-far-rounded"><p>A 4px rule reported before, as a stripe with no radius, and still does.</p></div>
   <div class="flag-padded-pill"><p>Wide card</p></div>
+  <div class="card flag-hairline-rounded-along-stripe"><p>A 1px rule on a box rounded along it is still a rounded box.</p></div>
+  <div class="card flag-hairline-small-far-corner"><p>A 1px rule on a box with any rounded corner.</p></div>
   <div class="menu"><div class="panel flag-band-open-panel"><p>Services, pricing and support.</p></div></div>
 </div>
 
 <div class="col" id="should-pass">
   <h2>Should pass</h2>
-  <div class="card pass-thin-square"><p>A 2px rule on a square box is the older callout convention.</p></div>
-  <div class="card pass-thin-rounded-along-stripe"><p>Rounded only along the stripe: the far side is square.</p></div>
-  <div class="card pass-thin-far-corner-square"><p>One far corner under 4px reads as square.</p></div>
-  <div class="card pass-thin-far-elliptical-flat"><p>Far corners with no vertical radius are square, whatever their horizontal one.</p></div>
+  <div class="card pass-thin-square"><p>A 1px rule on a square box is a divider.</p></div>
+  <div class="card pass-thin-far-elliptical-flat"><p>Corners with no vertical radius are square, whatever their horizontal one.</p></div>
   <div class="ring pass-ring-arc-right"></div>
   <div class="ring pass-ring-arc-top"></div>
   <div class="ring-pct pass-ring-percent"></div>

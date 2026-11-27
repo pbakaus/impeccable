@@ -4,6 +4,8 @@ use std::path::Path;
 
 fn cramped_padding_ids(html: &str, warn: Option<&dyn Fn(&str)>) -> Vec<String> {
     let options = DetectHtmlOptions {
+        image_samples: Default::default(),
+        sample_cache_dir: None,
         warn,
         ..Default::default()
     };

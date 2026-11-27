@@ -2,7 +2,7 @@ name: Sync Generated Provider Output
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
     paths:
       - ".claude-plugin/**"
       - "cli/engine/**"
@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: sync-generated-output
+  group: sync-generated-output-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -46,6 +46,7 @@ env:
     .trae-cn
     .veto
     .vibe
+    workspace/custom-skills
     plugin
     cursor-plugin
 
@@ -94,27 +95,29 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The branch that was pushed: `next` as work lands, main when a release promotes it.
+          branch="${GITHUB_REF_NAME}"
 
-          # A push can lose the race against a human commit landing on main
+          # A push can lose the race against a human commit landing on the branch
           # during the ~30s build window (issue #388: ~10% of runs). Instead
           # of aborting and waiting for an unrelated push to re-trigger the
-          # sync, re-sync to the latest main, rebuild against the current
+          # sync, re-sync to the latest branch head, rebuild against the current
           # source, and push again, with backoff. Every attempt builds from
-          # a fresh origin/main, so pushed output always matches the source
+          # a fresh origin branch, so pushed output always matches the source
           # state it lands on.
           for attempt in 1 2 3 4 5; do
             git add $GENERATED_PATHS
             if git diff --cached --quiet; then
               # The race that beat us was another sync (or the rebuilt output
-              # matches the new main); nothing left to push.
+              # matches the new head); nothing left to push.
               echo "No generated output drift after rebuild (attempt $attempt); nothing to push."
               echo "pushed=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             git commit -m "Sync generated provider output"
 
-            git fetch origin main
-            if git merge-base --is-ancestor origin/main HEAD && git push origin HEAD:main; then
+            git fetch origin "$branch"
+            if git merge-base --is-ancestor "origin/$branch" HEAD && git push origin "HEAD:$branch"; then
               echo "Pushed generated output on attempt $attempt."
               echo "pushed=true" >> "$GITHUB_OUTPUT"
               exit 0
@@ -125,21 +128,21 @@ jobs:
             # the failure.
             if [ "$attempt" = 5 ]; then break; fi
 
-            echo "Push did not land on attempt $attempt (main advanced, or the push itself failed); re-syncing and rebuilding."
-            git reset --hard origin/main
+            echo "Push did not land on attempt $attempt (the branch advanced, or the push itself failed); re-syncing and rebuilding."
+            git reset --hard "origin/$branch"
             bun install --frozen-lockfile
             bun run build:release
             sleep $((attempt * 5))
           done
 
-          echo "::error::Could not push generated output after 5 attempts (main kept advancing, or pushes kept failing); rerun this workflow on the latest main."
+          echo "::error::Could not push generated output after 5 attempts (the branch kept advancing, or pushes kept failing); rerun this workflow on the latest $branch."
           exit 1
 
       - name: Summarize generated output commit
         if: steps.drift.outputs.changed == 'true'
         run: |
           if [ "${{ steps.commit.outputs.pushed }}" = "true" ]; then
-            echo "Committed generated provider output directly to main." >> "$GITHUB_STEP_SUMMARY"
+            echo "Committed generated provider output directly to ${GITHUB_REF_NAME}." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "Generated output drift resolved itself after a mid-run rebuild; nothing was pushed." >> "$GITHUB_STEP_SUMMARY"
           fi

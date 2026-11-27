@@ -1,4 +1,4 @@
-//! User-scoped integration management for Claude Code and Codex.
+//! User-scoped integration management for Claude Code, Codex, Cursor, Copilot and opencode.
 //!
 //! The JSON protocol is deliberately resource-oriented. Each request acts on
 //! one (owner, harness, account root) installation.
@@ -45,9 +45,18 @@ pub struct Spec {
     pub root: PathBuf,
     #[serde(default)]
     pub hooks: Vec<Hook>,
+    /// A whole-file wake plugin, supported by opencode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wake_plugin: Option<String>,
     #[serde(default)]
     pub mcp_servers: Vec<McpServer>,
-    /// Codex only: `default_tools_approval_mode` on an existing `[mcp_servers.<server>]`.
+    /// Journal-owned servers in the harness's MCP file (Cursor, Copilot, opencode), by name: the
+    /// exact entry to write, or a URL, which is how an older engine journaled an HTTP server (so its
+    /// installations still undo). Apply replaces whatever entry has that name; the caller decides
+    /// first that it may.
+    #[serde(default, rename = "httpMcpServers", skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub mcp_entries: std::collections::BTreeMap<String, Value>,
+    /// Codex: `default_tools_approval_mode`; Cursor: `permissions.allow`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_approvals: Vec<McpApproval>,
     pub instruction: Option<String>,
@@ -80,8 +89,23 @@ pub struct Hook {
 impl Hook {
     /// The entry both Claude Code and Codex read under `hooks.<event>`:
     /// `{"matcher"?, "hooks":[{"type":"command","command",options…}]}`. Unset
-    /// fields are omitted, never written as null.
-    pub(crate) fn entry(&self) -> Value {
+    /// fields are omitted. Cursor and Copilot use flat entries in their own formats.
+    pub(crate) fn entry(&self, harness: &str) -> Value {
+        if harness == "copilot" {
+            let mut entry = json!({"type": "command", "bash": self.command});
+            if let Some(timeout) = self.timeout { entry["timeoutSec"] = json!(timeout); }
+            return entry;
+        }
+        if harness == "cursor" {
+            let mut entry = json!({"command": self.command});
+            if let Some(timeout) = self.timeout {
+                entry["timeout"] = json!(timeout);
+            }
+            if self.event == "stop" {
+                entry["loop_limit"] = Value::Null;
+            }
+            return entry;
+        }
         let mut command = serde_json::Map::new();
         command.insert("type".into(), json!("command"));
         command.insert("command".into(), json!(self.command));
@@ -217,6 +241,8 @@ struct Journal {
     snapshots: Vec<Snapshot>,
     #[serde(default)]
     resources: Vec<ResourceRecord>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    created_dirs: Vec<PathBuf>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ResourceRecord {
@@ -305,6 +331,8 @@ struct PendingTransaction {
     desired_spec: Spec,
     prior_spec: Option<Spec>,
     targets: Vec<PendingTarget>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    created_dirs: Vec<PathBuf>,
 }
 #[derive(Serialize, Deserialize)]
 struct PendingTarget {
@@ -373,6 +401,7 @@ fn recover(home: &Path, id: &str) -> Result<Value, (&'static str, String, i32)> 
     if !mcp_conflicts.is_empty() {
         return Ok(json!({"installation":id,"state":"conflict","conflicts":mcp_conflicts}));
     }
+    for dir in tx.created_dirs.iter().rev() { let _ = fs::remove_dir(dir); }
     if let Some(before) = tx.prior_journal {
         atomic_bytes(&tx.journal_path, &before)?
     } else {
@@ -500,3 +529,69 @@ fn secure_lock_file(path: &Path, file: &fs::File) -> Result<(), (&'static str, S
 }
 #[cfg(test)]
 mod tests;
+
+/// Validate `spec` and run one verb on it (`plan`, `apply`, `status`, `undo`), as
+/// `impeccable agents <verb> --spec` does, for callers in this workspace that build
+/// their spec in code. Errors are `(code, message)`.
+pub fn run_spec(verb: &str, spec: &Spec) -> Result<Value, (String, String)> {
+    cli::validate(spec).map_err(|m| ("invalid_request".to_string(), m))?;
+    cli::operate(verb, spec).map_err(|(code, msg, _)| (code.to_string(), msg))
+}
+
+/// What `owner` has installed, read from the engine's journals rather than today's
+/// environment, so a caller can undo what was installed.
+#[derive(Default)]
+pub struct Installed {
+    /// Committed installations, as the spec each one installed.
+    pub committed: Vec<Spec>,
+    /// Applies that stopped part way, as the spec each one was installing; roll them
+    /// back with [`recover_spec`].
+    pub pending: Vec<Spec>,
+    /// Journal or pending files that can't be read, so their owner is unknown.
+    pub unreadable: Vec<PathBuf>,
+}
+
+/// Every installation `owner` made. Other owners' journals and pending transactions are
+/// left out; a file that can't be read is reported, never skipped silently.
+pub fn installed_specs(owner: &str) -> Result<Installed, (String, String)> {
+    let home = cli::agents_home().map_err(|(c, m, _)| (c.to_string(), m))?;
+    let entries = match fs::read_dir(&home) {
+        Ok(entries) => entries.flatten().map(|e| e.path()).collect::<Vec<_>>(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Installed::default()),
+        Err(e) => return Err(("io_error".into(), e.to_string())),
+    };
+    let mut found = Installed::default();
+    for path in entries {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if name.ends_with(".pending.json") {
+            let tx = fs::read(&path)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<PendingTransaction>(&b).ok());
+            match tx {
+                Some(tx) if tx.desired_spec.owner == owner => found.pending.push(tx.desired_spec),
+                Some(_) => {}
+                None => found.unreadable.push(path),
+            }
+            continue;
+        }
+        if !name.ends_with(".json") {
+            continue;
+        }
+        match read_journal(&path) {
+            Ok(Some(j)) if j.spec.owner == owner => found.committed.push(j.spec),
+            Ok(_) => {}
+            Err(_) => found.unreadable.push(path),
+        }
+    }
+    found.unreadable.sort();
+    Ok(found)
+}
+
+/// Roll back any pending transaction of `spec`'s installation (an apply that stopped
+/// part way), as `impeccable agents recover` does.
+pub fn recover_spec(spec: &Spec) -> Result<Value, (String, String)> {
+    run_spec("recover", spec)
+}

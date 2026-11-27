@@ -11,6 +11,10 @@
 //! transcript file's birth time marks when the session began. With neither,
 //! discovery stays off and Stop scans the cache alone, as before.
 //!
+//! The window starts at the later of the session start and the session's
+//! previous Stop pass (#1670), so a resumed session does not rescan every file
+//! changed since it began.
+//!
 //! The walk is bounded (depth, entries visited, files kept) because it runs on
 //! every Stop. It skips hidden directories, dependency and build output,
 //! non-regular files and files over the size limit, and refuses to walk a
@@ -92,7 +96,14 @@ pub fn owning_project(dir: &str, home: &str) -> Option<String> {
 /// UI files under `root` modified at or after `since_ms`, newest first.
 /// Regular files only (a named pipe would block the read), none over
 /// `max_bytes` when that limit is set.
-pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[ExtensionEntry], max_bytes: f64) -> Vec<String> {
+pub fn changed_since(
+    root: &str,
+    home: &str,
+    env: &std::collections::HashMap<String, String>,
+    since_ms: u64,
+    configured: &[ExtensionEntry],
+    max_bytes: f64,
+) -> Vec<String> {
     // Compare real paths: a cwd that is a symlink to the home dir or a
     // filesystem root must not get walked under another name.
     let real = |p: &str| std::fs::canonicalize(p).ok();
@@ -101,6 +112,7 @@ pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[Extens
         return Vec::new();
     }
     let root_path = Path::new(root);
+    let scripts_in_scope = crate::hook_lib::uses_impeccable(root, env);
     let cutoff = UNIX_EPOCH + std::time::Duration::from_millis(since_ms.saturating_sub(SLACK_MS));
     let mut found: Vec<(SystemTime, String)> = Vec::new();
     let mut visited = 0usize;
@@ -128,7 +140,11 @@ pub fn changed_since(root: &str, home: &str, since_ms: u64, configured: &[Extens
             }
             let path = entry.path().to_string_lossy().into_owned();
             let ext = js::to_lower_case(&jsp::extname(&path));
-            if !ALLOWED_EXTS.contains(&ext.as_str()) && match_configured_extension(&path, configured).is_none() {
+            let claimed = match_configured_extension(&path, configured).is_some();
+            if !ALLOWED_EXTS.contains(&ext.as_str()) && !claimed {
+                continue;
+            }
+            if !claimed && crate::hook_lib::PLAIN_SCRIPT_EXTS.contains(&ext.as_str()) && !scripts_in_scope {
                 continue;
             }
             let Ok(meta) = entry.metadata() else { continue };

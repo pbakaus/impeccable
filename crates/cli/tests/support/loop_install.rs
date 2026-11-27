@@ -1,6 +1,14 @@
 use super::*;
 
 #[test]
+fn connect_answer_requires_input_but_defaults_enter_to_yes() {
+    assert!(!connect_answer(0, ""), "EOF is not an answer");
+    assert!(connect_answer(1, "\n"), "Enter accepts the default");
+    assert!(connect_answer(2, "y\n"));
+    assert!(!connect_answer(2, "n\n"));
+}
+
+#[test]
 fn platform_refuses_non_macos() {
     assert_eq!(
         check_platform("linux").unwrap_err(),
@@ -96,7 +104,22 @@ mod mac {
         let app = root.join(APP);
         fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
         fs::copy("/bin/sleep", app.join("Contents/MacOS/Impeccable Loop")).unwrap();
+        fs::copy("/bin/echo", app.join("Contents/MacOS/loop-hook")).unwrap();
         fs::write(app.join("Contents/Info.plist"), format!(r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Impeccable Loop</string><key>CFBundleShortVersionString</key><string>{version}</string></dict></plist>"#)).unwrap();
+        // The Info.plist invalidates the copied binary's Apple signature, so macOS kills the
+        // launched bundle and shows a "damaged" dialog. Re-sign it ad hoc.
+        assert!(Command::new("/usr/bin/codesign")
+            .args(["--force", "--sign", "-"])
+            .arg(&app)
+            .status()
+            .unwrap()
+            .success());
+        assert!(Command::new("/usr/bin/codesign")
+            .arg("--verify")
+            .arg(&app)
+            .status()
+            .unwrap()
+            .success());
         let zip = root.join("fixture.zip");
         assert!(Command::new("/usr/bin/ditto")
             .args(["-c", "-k", "--keepParent"])
@@ -234,8 +257,17 @@ mod mac {
             "1.0.0"
         );
         assert!(run_inner(&args("install"), &io, &pins, "macos")
-            .unwrap_err()
+            .unwrap()
             .contains("already installed"));
+        // Catches (#1466 review): install opening Loop while an update holds the lock,
+        // restarting the app the update is quitting or replacing.
+        {
+            let _held = install_lock(&apps).unwrap();
+            assert_eq!(
+                run_inner(&args("install"), &io, &pins, "macos").unwrap_err(),
+                "Another Loop install or update is in progress."
+            );
+        }
         assert!(run_inner(&args("update"), &io, &pins, "macos")
             .unwrap()
             .contains("already current"));
@@ -261,6 +293,68 @@ mod mac {
         clean(&apps);
     }
 
+    fn quarantine(path: &Path) {
+        assert!(Command::new("/usr/bin/xattr")
+            .args(["-w", "com.apple.quarantine", "0081;00000000;;"])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success());
+    }
+
+    #[test]
+    fn a_blocked_loop_is_reinstalled_and_one_still_blocked_says_so() {
+        // Catches (REN-1865): update calling a quarantined Loop "already current", which
+        // left macOS's "damaged" dialog in every agent session, and an update that put back
+        // a still-quarantined copy saying "Updated".
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let bytes = fixture("1.0.0", &source.0);
+        let pins = pin("1.0.0", &bytes);
+        let (base, server) = serve(bytes.clone(), "1.0.0");
+        let mut io = io(&home.0, &base);
+        run_inner(&args("install"), &io, &pins, "macos").unwrap();
+        server.join().unwrap();
+        let helper = home
+            .0
+            .join("Applications")
+            .join(APP)
+            .join("Contents/MacOS/loop-hook");
+        quarantine(&helper);
+        let (base, server) = serve(bytes, "1.0.0");
+        io.env.insert("IMPECCABLE_DOWNLOAD_BASE".into(), base);
+        let result = run_inner(&args("update"), &io, &pins, "macos");
+        // Checked before the join: an update that never downloads would leave it waiting.
+        assert!(
+            result
+                .as_deref()
+                .is_ok_and(|r| !r.contains("already current")),
+            "{result:?}"
+        );
+        server.join().unwrap();
+        assert!(!crate::loop_connect::blocked(&helper));
+        // The release itself carries the flag: the update says Loop is still blocked.
+        quarantine(&helper);
+        quarantine(&source.0.join(APP).join("Contents/MacOS/loop-hook"));
+        let zip = source.0.join("quarantined.zip");
+        assert!(Command::new("/usr/bin/ditto")
+            .args(["-c", "-k", "--keepParent"])
+            .arg(source.0.join(APP))
+            .arg(&zip)
+            .status()
+            .unwrap()
+            .success());
+        let bytes = fs::read(&zip).unwrap();
+        let pins = pin("1.0.0", &bytes);
+        let (base, server) = serve(bytes, "1.0.0");
+        io.env.insert("IMPECCABLE_DOWNLOAD_BASE".into(), base);
+        let result = run_inner(&args("update"), &io, &pins, "macos");
+        server.join().unwrap();
+        assert!(result.is_err(), "{result:?}");
+        assert!(crate::loop_connect::blocked(&helper));
+        clean(&home.0.join("Applications"));
+    }
+
     #[test]
     fn wrong_digest_leaves_no_app_or_staging() {
         let home = Stage::new(&std::env::temp_dir()).unwrap();
@@ -279,39 +373,85 @@ mod mac {
         assert!(names.is_empty());
     }
 
+    /// Start the installed bundle's executable (the fixture's is /bin/sleep) and wait until the
+    /// process listing the installer reads shows it.
+    fn run_bundle(apps: &Path) -> std::process::Child {
+        let process = Command::new(apps.join(APP).join("Contents/MacOS/Impeccable Loop"))
+            .arg("60")
+            .spawn()
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while running_pids(&apps.join(APP)).unwrap().is_empty() && std::time::Instant::now() < deadline {
+            thread::yield_now();
+        }
+        process
+    }
+
     #[test]
-    fn running_bundle_refuses_update_and_crash_backup_recovers() {
+    fn update_quits_a_running_loop_then_swaps() {
+        // Catches (Loop journey, 10 Nov): Loop's menu line copies 'impeccable loop update', which always
+        // failed the first time because the person ran it while Loop was open.
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let old = fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut process = run_bundle(&apps);
+        let bytes = fixture("1.1.0", &source.0);
+        let pins = format!("{}{}", pin("1.0.0", &old), pin("1.1.0", &bytes));
+        let (base, server) = serve(bytes, "1.1.0");
+        let result = run_inner(&args("update"), &io(&home.0, &base), &pins, "macos");
+        server.join().unwrap();
+        let status = process.wait().unwrap();
+        assert!(result.as_deref().unwrap_or_default().contains("Updated Loop 1.1.0"), "{result:?}");
+        assert!(!status.success(), "the running Loop was asked to quit");
+        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.1.0");
+        clean(&apps);
+    }
+
+    #[test]
+    fn a_loop_that_does_not_quit_keeps_the_refusal_and_the_old_app() {
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut process = run_bundle(&apps);
+        // Signal 0 delivers nothing: a stand-in for a Loop that doesn't quit when asked.
+        let error = quit_running_with(&apps.join(APP), Duration::from_millis(300), 0).unwrap_err();
+        assert!(process.try_wait().unwrap().is_none(), "the Loop that didn't quit is left running");
+        process.kill().unwrap();
+        process.wait().unwrap();
+        assert_eq!(error, "Impeccable Loop didn't quit. Quit it yourself, then run impeccable loop update again.");
+        assert_eq!(plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(), "1.0.0");
+    }
+
+    #[test]
+    fn quitting_touches_only_this_bundle() {
+        // Another process (not this bundle's executable) is never signalled.
+        let home = Stage::new(&std::env::temp_dir()).unwrap();
+        let source = Stage::new(&std::env::temp_dir()).unwrap();
+        fixture("1.0.0", &source.0);
+        let apps = home.0.join("Applications");
+        fs::create_dir(&apps).unwrap();
+        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
+        let mut other = Command::new("/bin/sleep").arg("60").spawn().unwrap();
+        assert!(quit_running(&apps.join(APP), Duration::from_millis(300)).is_ok());
+        assert!(other.try_wait().unwrap().is_none(), "an unrelated sleep kept running");
+        other.kill().unwrap();
+        other.wait().unwrap();
+    }
+
+    #[test]
+    fn crash_backup_recovers() {
         let source = Stage::new(&std::env::temp_dir()).unwrap();
         let home = Stage::new(&std::env::temp_dir()).unwrap();
         let bytes = fixture("1.0.0", &source.0);
         let apps = home.0.join("Applications");
         fs::create_dir(&apps).unwrap();
-        fs::rename(source.0.join(APP), apps.join(APP)).unwrap();
-        let mut process = Command::new(apps.join(APP).join("Contents/MacOS/Impeccable Loop"))
-            .arg("60")
-            .spawn()
-            .unwrap();
-        // Wait until exec has happened by observing the same process listing the installer uses.
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while refuse_running(&apps.join(APP)).is_ok() && std::time::Instant::now() < deadline {
-            thread::yield_now();
-        }
-        let pins = pin("2.0.0", &bytes);
-        let result = run_inner(
-            &args("update"),
-            &io(&home.0, "http://127.0.0.1:1"),
-            &pins,
-            "macos",
-        );
-        process.kill().unwrap();
-        process.wait().unwrap();
-        let error = result.unwrap_err();
-        assert!(error.contains("Quit Loop first"), "{error}");
-        assert_eq!(
-            plist(&apps.join(APP), "CFBundleShortVersionString").unwrap(),
-            "1.0.0"
-        );
-        fs::rename(apps.join(APP), apps.join(".impeccable-loop-previous.app")).unwrap();
+        fs::rename(source.0.join(APP), apps.join(".impeccable-loop-previous.app")).unwrap();
         let result = run_inner(
             &args("update"),
             &io(&home.0, "http://127.0.0.1:1"),
@@ -322,4 +462,28 @@ mod mac {
         assert!(result.contains("already current"));
         clean(&apps);
     }
+}
+
+#[test]
+fn after_install_never_connects_unasked_when_no_person_is_there() {
+    // Catches: an agent or script running `loop install` having its agents' config
+    // rewritten without being asked. Only --connect or a person's yes connects.
+    let home = std::env::temp_dir().join(format!("impeccable-loop-after-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&home);
+    fs::create_dir_all(&home).unwrap();
+    let env = std::collections::HashMap::from([(
+        "HOME".to_string(),
+        home.to_string_lossy().into_owned(),
+    )]);
+    let (mut io, cap) = Io::captured("", home.clone(), env);
+    assert_eq!(after_install(&mut io, false, crate::loop_connect::Taste::Ask), 0);
+    assert_eq!(
+        String::from_utf8_lossy(&cap.stdout.borrow()),
+        "Next: impeccable loop connect, so your agents bring their questions to Loop.\n"
+    );
+    assert!(!home.join(".claude").exists() && !home.join(".codex").exists());
+    // --connect tries at once, and a failure names how to finish (no Loop app in this home).
+    assert_eq!(after_install(&mut io, true, crate::loop_connect::Taste::Ask), 1);
+    let err = String::from_utf8_lossy(&cap.stderr.borrow()).into_owned();
+    assert!(err.ends_with("Loop is installed. Run impeccable loop connect again once that is sorted.\n"), "{err}");
 }

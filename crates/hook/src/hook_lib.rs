@@ -19,7 +19,7 @@ use impeccable_detect::config::{
 pub use impeccable_detect::config::{
     match_configured_extension, merge_extensions, normalize_extension_entries, ExtensionEntry,
 };
-use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, DesignSystem};
+use impeccable_detect::design_system::{load_design_system_for_cwd, resolve_design_md_path, resolve_design_sidecar_path, DesignSystem};
 use impeccable_detect::detect_text::{detect_text, TextOptions};
 use impeccable_detect::engines::{HtmlEngine, ScanOptions};
 use once_cell::sync::Lazy;
@@ -37,6 +37,48 @@ pub const ALLOWED_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass",
     ".less", ".ts", ".js",
 ];
+
+/// Plain scripts: mostly not UI (a server, a CLI, a config file), so the hook
+/// scans them only in a project that uses Impeccable (#1237). Markup, style
+/// and component files are UI wherever they are.
+pub const PLAIN_SCRIPT_EXTS: &[&str] = &[".ts", ".js"];
+
+/// Whether `root` uses Impeccable: a PRODUCT.md or DESIGN.md where context
+/// resolution looks (the root, `.agents/context`, `docs`), or an `.impeccable`
+/// folder, at `root` or at the project and repo roots context resolution
+/// inherits from (a monorepo app with its own package.json takes the
+/// workspace root's DESIGN.md). A few stats, then one project resolution,
+/// paid only for a plain script.
+pub fn uses_impeccable(root: &str, env: &HashMap<String, String>) -> bool {
+    if marks_impeccable(root) {
+        return true;
+    }
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        env,
+    );
+    let inherited = [project.project_root.as_str(), project.repo_root.as_str()]
+        .into_iter()
+        .any(|dir| dir != root && marks_impeccable(dir));
+    inherited
+}
+
+fn marks_impeccable(root: &str) -> bool {
+    use impeccable_context::context::{DESIGN_NAMES, FALLBACK_DIRS, PRODUCT_NAMES};
+    if exists(&jsp::join(&[root, ".impeccable"])) {
+        return true;
+    }
+    std::iter::once(root.to_string())
+        .chain(FALLBACK_DIRS.iter().map(|d| jsp::join(&[root, d])))
+        .any(|dir| PRODUCT_NAMES.iter().chain(DESIGN_NAMES.iter()).any(|name| exists(&jsp::join(&[&dir, name]))))
+}
+
+/// False for a plain script (not claimed by a configured extension) in a
+/// project that does not use Impeccable.
+pub fn plain_script_out_of_scope(ext: &str, configured: bool, root: &str, env: &HashMap<String, String>) -> bool {
+    !configured && PLAIN_SCRIPT_EXTS.contains(&ext) && !uses_impeccable(root, env)
+}
 
 pub const ACK_EXTS: &[&str] = &[
     ".tsx", ".jsx", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss", ".sass", ".less",
@@ -68,19 +110,13 @@ re!(
     .join("|")
 );
 
-// JS: GENERATED_PATH (case-insensitive).
-re!(
-    GENERATED_PATH_RE,
-    r"(?i)(?:\.generated\.[a-z]+$|\.d\.ts$|\.min\.[a-z]+$|[/\\]node_modules[/\\]|[/\\]generated[/\\]|[/\\](?:dist|build|out|\.next|\.cache|coverage)[/\\]|[/\\]?[^/\\]+\.lock(?:\.json)?$)"
-);
 
 pub fn is_sensitive_path(p: &str) -> bool {
     SENSITIVE_PATH_RE.is_match(p)
 }
 
-pub fn is_generated_path(p: &str) -> bool {
-    GENERATED_PATH_RE.is_match(p)
-}
+/// Lives in `impeccable-detect` so `detect --changed` skips the same paths.
+pub use impeccable_detect::file_system::is_generated_path;
 
 /// JS: truthy(value) — `/^(1|true|yes|on)$/i` on a string (no trim).
 pub fn truthy(value: Option<&str>) -> bool {
@@ -361,15 +397,38 @@ pub fn resolve_stop_cwd(rt: &Runtime, session_cwd: &str, session_id: &str) -> St
     session_cwd.to_string()
 }
 
+/// A project's declared platform, and the repo root a web-file check stops at.
+#[derive(Clone)]
+pub struct ProjectPlatform {
+    pub platform: Option<String>,
+    repo_root: String,
+}
+
+impl ProjectPlatform {
+    pub fn is_native(&self) -> bool {
+        is_native_platform(self.platform.as_deref())
+    }
+
+    /// Whether the hook leaves `file` alone: native source in a native
+    /// project. Web code there is still scanned, as context treats a web
+    /// target (#1644).
+    pub fn skips(&self, file: &str) -> bool {
+        self.is_native() && !impeccable_context::context::is_web_target(file, &self.repo_root)
+    }
+}
+
 /// JS: resolveProjectPlatform(cwd) — `extractPlatform(loadContext(cwd).product)`.
 /// Only the platform is observable, so this reads PRODUCT.md through the same
 /// resolution and skips loadContext's surface-brief and visual-implementation
 /// work.
-pub fn resolve_project_platform(rt: &Runtime, cwd: &str) -> Option<String> {
+pub fn resolve_project_platform(rt: &Runtime, cwd: &str) -> ProjectPlatform {
     let options = impeccable_context::target_args::TargetOptions::default();
     let resolved = impeccable_context::context::resolve_context(cwd, &options, &rt.env);
     let product = resolved.product_path.as_deref().and_then(safe_read);
-    impeccable_context::context::extract_platform(product.as_deref())
+    ProjectPlatform {
+        platform: impeccable_context::context::extract_platform(product.as_deref()),
+        repo_root: resolved.repo_root,
+    }
 }
 
 /// JS: isNativePlatform(platform)
@@ -656,11 +715,11 @@ pub fn persist_cache(rt: &Runtime, cwd: &str, cache: &Cache) -> bool {
     if std::fs::create_dir_all(jsp::dirname(&target)).is_err() {
         return false;
     }
-    std::fs::write(
-        &target,
-        serde_json::to_string(&Value::Object(cache)).unwrap_or_default(),
-    )
-    .is_ok()
+    // Write beside the target and rename, so two hook processes that save at
+    // once leave one whole cache. The shared helper keeps a symlinked cache's
+    // link and the file's permissions.
+    let body = serde_json::to_string(&Value::Object(cache)).unwrap_or_default();
+    impeccable_common::fsx::write_atomic(&target, body.as_bytes()).is_ok()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1017,8 +1076,9 @@ fn finding_identity(f: &Finding) -> String {
 
 /// Cache keys, index-aligned with `findings`: identity plus the occurrence
 /// among identical findings, top to bottom (identical findings on one line
-/// are one occurrence). An edit above a finding leaves its key alone, and one
-/// more identical finding on a new line adds exactly one fresh key.
+/// are one occurrence, and so is a line-less page finding with the first
+/// located copy it repeats). An edit above a finding leaves its key alone, and
+/// one more identical finding on a new line adds exactly one fresh key.
 pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
     let line = |i: usize| if findings[i].line.is_nan() { 0.0 } else { findings[i].line };
     let mut order: Vec<usize> = (0..findings.len()).collect();
@@ -1028,10 +1088,10 @@ pub fn finding_cache_keys(findings: &[Finding]) -> Vec<String> {
     for i in order {
         let identity = finding_identity(&findings[i]);
         let (n, last) = seen.entry(identity.clone()).or_insert((0, None));
-        if *last != Some(line(i)) {
+        if last.is_none_or(|l| l != line(i) && l != 0.0) {
             *n += 1;
-            *last = Some(line(i));
         }
+        *last = Some(line(i));
         keys[i] = format!("{identity}#{n}");
     }
     keys
@@ -1652,6 +1712,7 @@ impl HookScanOptions {
             keep_consent_banners: false,
             keep_overlays: false,
             unreported_rules: Vec::new(),
+            image_samples: impeccable_detect::engines::ImageSamples::CacheOnly,
             ignored_linked_stylesheet: self.ignored_linked_stylesheet.clone(),
         }
     }
@@ -1671,6 +1732,32 @@ pub fn design_system_options(config: &HookConfig, project_cwd: &str) -> HookScan
 /// Resolve design rules for the edited workspace without moving hook state,
 /// and waive the linked stylesheets `detector.ignoreFiles` covers, matched
 /// like the edited file ([`is_ignored_file`]).
+/// The design documents a Stop pass under `root` reads: the DESIGN.md and
+/// sidecar of the project root and of the repo root, resolved the way
+/// [`design_system_options_for_file`] resolves them. The turn-end claim keys
+/// on them, so a turn that only edited an inherited DESIGN.md is a new pass.
+pub fn stop_design_inputs(rt: &Runtime, root: &str) -> Vec<String> {
+    let project = impeccable_context::context::resolve_project(
+        root,
+        &impeccable_context::target_args::TargetOptions::default(),
+        &rt.env,
+    );
+    let mut out = Vec::new();
+    for dir in [&project.project_root, &project.repo_root] {
+        if let Some(doc) = resolve_design_md_path(dir) {
+            if !out.contains(&doc.path) {
+                out.push(doc.path.clone());
+            }
+            if let Some(sidecar) = resolve_design_sidecar_path(dir, &doc.context_dir) {
+                if !out.contains(&sidecar) {
+                    out.push(sidecar);
+                }
+            }
+        }
+    }
+    out
+}
+
 pub fn design_system_options_for_file(
     rt: &Runtime,
     config: &HookConfig,
@@ -1826,16 +1913,22 @@ pub fn payload(text: &str, event_name: &str, harness: &str) -> String {
         out.insert("additional_context".into(), Value::String(text.to_string()));
     } else if harness == "github" {
         out.insert("additionalContext".into(), Value::String(text.to_string()));
-    } else if matches!(harness, "codex" | "gemini" | "hermes") && event_name == "Stop" {
+    } else if matches!(harness, "codex" | "gemini" | "hermes" | "antigravity") && event_name == "Stop" {
         // Codex shares Claude Code's PostToolUse additional-context shape,
         // but its Stop schema rejects unknown fields. Findings that should
         // continue the turn must be a top-level blocking decision (#603).
         // https://developers.openai.com/codex/hooks#stop
         // Hermes' pre_verify plugin hands this same shape to its verify gate.
+        // Antigravity expects {"decision":"continue","reason":"..."} on Stop.
         if js::trim(text).is_empty() {
             return String::new();
         }
-        out.insert("decision".into(), Value::String(if harness == "gemini" { "deny" } else { "block" }.to_string()));
+        let decision = match harness {
+            "gemini" => "deny",
+            "antigravity" => "continue",
+            _ => "block",
+        };
+        out.insert("decision".into(), Value::String(decision.to_string()));
         out.insert("reason".into(), Value::String(text.to_string()));
     } else {
         let mut inner = Map::new();
@@ -1924,11 +2017,15 @@ pub fn resolve_harness(rt: &Runtime, event: Option<&Map<String, Value>>) -> &'st
         Some("codex") => return "codex",
         Some("gemini") => return "gemini",
         Some("hermes") => return "hermes",
+        Some("antigravity") => return "antigravity",
         _ => {}
     }
     if let Some(ev) = event {
         if matches!(str_field(ev, "hook_event_name"), Some("BeforeTool" | "AfterAgent")) {
             return "gemini";
+        }
+        if str_field(ev, "conversationId").is_some() && !ev.contains_key("conversation_id") {
+            return "antigravity";
         }
         // Grok Build sends camelCase `toolName`/`toolInput`/`hookEventName`
         // and no snake_case pair. GitHub Copilot sends camelCase
@@ -1992,7 +2089,17 @@ pub fn is_stop_event(ev: &Map<String, Value>) -> bool {
         Some(v) => Some(v),
         None => ev.get("hookEventName"),
     };
-    matches!(name, Some(Value::String(s)) if matches!(js::to_lower_case(s).as_str(), "stop" | "afteragent"))
+    if let Some(Value::String(s)) = name {
+        return matches!(js::to_lower_case(s).as_str(), "stop" | "afteragent");
+    }
+    // Antigravity's documented Stop input carries no event name: it is the
+    // conversation envelope plus `terminationReason` / `fullyIdle`, with no
+    // `toolCall`. Recognise it by shape so a nameless Stop is not run as an
+    // edit.
+    name.is_none()
+        && matches!(ev.get("conversationId"), Some(Value::String(_)))
+        && !ev.contains_key("toolCall")
+        && (ev.contains_key("terminationReason") || ev.contains_key("fullyIdle"))
 }
 
 /// JS: parseGitHubToolArgs(toolArgs)
@@ -2186,6 +2293,103 @@ fn normalize_grok_event(
     out
 }
 
+/// The workspace folder that contains `edited` (the deepest one when folders
+/// nest), else the first folder. Separators and, on Windows, case are compared
+/// loosely, since Antigravity may report either spelling.
+fn antigravity_workspace_root(roots: &[Value], edited: Option<&str>) -> Option<String> {
+    let roots: Vec<&str> = roots.iter().filter_map(Value::as_str).filter(|r| !r.is_empty()).collect();
+    let norm = |p: &str| {
+        let p = p.replace('\\', "/");
+        let p = p.trim_end_matches('/').to_string();
+        if cfg!(windows) { p.to_lowercase() } else { p }
+    };
+    let holder = edited.map(norm).and_then(|file| {
+        roots
+            .iter()
+            .filter(|r| {
+                let root = norm(r);
+                file == root || file.starts_with(&format!("{root}/"))
+            })
+            .max_by_key(|r| norm(r).len())
+            .copied()
+    });
+    holder.or_else(|| roots.first().copied()).map(str::to_string)
+}
+
+#[cfg(test)]
+mod antigravity_workspace_root_tests {
+    use super::antigravity_workspace_root;
+    use serde_json::json;
+
+    #[test]
+    fn an_edit_belongs_to_the_folder_holding_its_file() {
+        let roots = json!(["/work/repo-a", "/work/repo-b", "/work/repo-b/packages/ui"]);
+        let roots = roots.as_array().unwrap();
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-b/src/page.html")).as_deref(), Some("/work/repo-b"));
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-b/packages/ui/a.tsx")).as_deref(), Some("/work/repo-b/packages/ui"));
+        // A sibling whose name only starts the same way is not a match.
+        assert_eq!(antigravity_workspace_root(roots, Some("/work/repo-ab/x.css")).as_deref(), Some("/work/repo-a"));
+        assert_eq!(antigravity_workspace_root(roots, None).as_deref(), Some("/work/repo-a"));
+        assert_eq!(antigravity_workspace_root(&[], Some("/x")), None);
+    }
+}
+
+/// Antigravity (`agy` CLI, IDE, 2.0) sends camelCase `conversationId`,
+/// `workspacePaths`, `toolCall: { id, name, args }`, and on Stop
+/// `continuationActive` and `terminationReason`.
+fn normalize_antigravity_event(
+    event: &Map<String, Value>,
+    project_cwd: &str,
+) -> Map<String, Value> {
+    let session_id = event
+        .get("conversationId")
+        .filter(|v| truthy_value(Some(v)))
+        .cloned()
+        .unwrap_or_else(|| Value::String("unknown".to_string()));
+    let tool_call = obj_field(event, "toolCall");
+    let tool_name = tool_call
+        .and_then(|tc| tc.get("name"))
+        .filter(|v| truthy_value(Some(v)))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let mut tool_input = tool_call
+        .and_then(|tc| obj_field(tc, "args"))
+        .cloned()
+        .unwrap_or_default();
+    if !tool_input.contains_key("file_path") {
+        let file_path = tool_input
+            .get("Path")
+            .filter(|v| truthy_value(Some(v)))
+            .or_else(|| tool_input.get("TargetFile").filter(|v| truthy_value(Some(v))))
+            .or_else(|| tool_input.get("path").filter(|v| truthy_value(Some(v))))
+            .cloned();
+        if let Some(fp) = file_path {
+            tool_input.insert("file_path".into(), fp);
+        }
+    }
+    let mut out = event.clone();
+    // A multi-root workspace lists every folder; the edit belongs to the one
+    // that holds its file, and `record_session_root` carries that into Stop.
+    let edited = tool_input.get("file_path").and_then(Value::as_str);
+    let cwd = str_field(event, "cwd")
+        .map(str::to_string)
+        .or_else(|| match event.get("workspacePaths") {
+            Some(Value::Array(roots)) => antigravity_workspace_root(roots, edited),
+            _ => None,
+        })
+        .unwrap_or_else(|| project_cwd.to_string());
+    out.insert("cwd".into(), Value::String(cwd));
+    out.insert("session_id".into(), session_id);
+    out.insert("tool_name".into(), tool_name);
+    out.insert("tool_input".into(), Value::Object(tool_input));
+    if event.get("continuationActive") == Some(&Value::Bool(true))
+        && !event.contains_key("stop_hook_active")
+    {
+        out.insert("stop_hook_active".into(), Value::Bool(true));
+    }
+    out
+}
+
 /// JS: normalizeHookEvent(event, projectCwd, harness)
 pub fn normalize_hook_event(
     rt: &Runtime,
@@ -2193,6 +2397,9 @@ pub fn normalize_hook_event(
     project_cwd: &str,
     harness: &str,
 ) -> Map<String, Value> {
+    if harness == "antigravity" {
+        return normalize_antigravity_event(event, project_cwd);
+    }
     if harness == "github" {
         return normalize_github_event(rt, event, project_cwd);
     }

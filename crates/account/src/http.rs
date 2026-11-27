@@ -74,9 +74,13 @@ impl Client {
             // host decides the NO_PROXY match for the whole client.
             impeccable_context::http::agent_builder(&account.issuer)
         };
+        // ureq 2 gives timeout_connect precedence over its overall timeout.
+        // DNS remains synchronous and unbounded in ureq; this cap bounds the
+        // connect operation, not resolution. Never move a report upload to a detached
+        // worker: it could transmit after the caller's timeout or opt-out.
         let agent = builder
-            .timeout_connect(Duration::from_secs(10))
-            .timeout_read(Duration::from_secs(30))
+            .timeout_connect(deadline.min(Duration::from_secs(10)))
+            .timeout_read(deadline.min(Duration::from_secs(30)))
             .timeout(deadline)
             .redirects(0)
             .build();
@@ -97,12 +101,41 @@ impl Client {
     }
 
     pub fn get_json(&self, url: &str, bearer: Option<&str>) -> Result<serde_json::Value, ApiError> {
+        self.get_json_with(url, bearer, &[])
+    }
+
+    /// [`Client::get_json`] with extra request headers.
+    pub fn get_json_with(
+        &self,
+        url: &str,
+        bearer: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Result<serde_json::Value, ApiError> {
         self.checked(url)?;
         let mut req = self.agent.get(url).set("accept", "application/json");
+        for (name, value) in headers {
+            req = req.set(name, value);
+        }
         if let Some(token) = bearer {
             req = req.set("authorization", &bearer_header(token)?);
         }
         json_body(req.call())
+    }
+
+    /// Conditional taste read. A 304 has no JSON body.
+    pub fn get_taste(
+        &self, url: &str, bearer: &str, etag: Option<&str>,
+    ) -> Result<(u16, Option<String>, serde_json::Value), ApiError> {
+        self.checked(url)?;
+        let mut req = self.agent.get(url)
+            .set("accept", "application/json")
+            .set("authorization", &bearer_header(bearer)?);
+        if let Some(etag) = etag { req = req.set("if-none-match", etag); }
+        let resp = req.call().map_err(classify)?;
+        let status = resp.status();
+        let etag = resp.header("etag").map(str::to_string);
+        let body = if status == 304 { serde_json::Value::Null } else { json_body(Ok(resp))? };
+        Ok((status, etag, body))
     }
 
     pub fn post_form(
@@ -140,6 +173,29 @@ impl Client {
         json_body(req.send_json(body))
     }
 
+    /// PUT `body` to a signed address on the account service (its token is in the URL, so no bearer is sent), with
+    /// its exact length and type; the JSON answer. An artifact asset's upload (REN-2123).
+    pub fn put_bytes(&self, url: &str, content_type: &str, body: &[u8]) -> Result<serde_json::Value, ApiError> {
+        self.checked(url)?;
+        let req = self.agent.put(url).set("accept", "application/json").set("content-type", content_type);
+        json_body(req.send_bytes(body))
+    }
+
+    /// The account service's origin every request stays on.
+    pub fn origin(&self) -> &str {
+        &self.origin
+    }
+
+    /// Critique frame upload: authenticated, same-origin, exact byte length.
+    pub fn post_capture(&self, url: &str, bearer: &str, body: &[u8]) -> Result<serde_json::Value, ApiError> {
+        self.checked(url)?;
+        json_body(self.agent.post(url)
+            .set("authorization", &bearer_header(bearer)?)
+            .set("content-type", "image/webp")
+            .set("content-length", &body.len().to_string())
+            .send_bytes(body))
+    }
+
     /// GET returning the raw body (at most `max` bytes) and one named header.
     pub fn get_bytes(
         &self,
@@ -168,6 +224,9 @@ impl Client {
     }
 }
 
+/// What a 2xx answer that is not JSON reads as: the service did answer.
+pub const NOT_JSON: &str = "the service sent an answer that is not JSON";
+
 fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::Value, ApiError> {
     let resp = result.map_err(classify)?;
     let mut buf = Vec::new();
@@ -176,7 +235,7 @@ fn json_body(result: Result<ureq::Response, ureq::Error>) -> Result<serde_json::
         .read_to_end(&mut buf)
         .map_err(read_error)?;
     serde_json::from_slice(&buf)
-        .map_err(|_| ApiError::Network("the service sent an answer that is not JSON".into()))
+        .map_err(|_| ApiError::Network(NOT_JSON.into()))
 }
 
 fn classify(e: ureq::Error) -> ApiError {
@@ -286,6 +345,45 @@ mod tests {
             .is_loopback());
         assert!(resolve_loopback("10.0.0.1:8787").is_err());
         assert!(resolve_loopback("api.impeccable.style:443").is_err());
+    }
+
+    // Catches an artifact asset's upload sent with a bearer (its token is in the URL), without its exact length or
+    // type, or to another origin; and its answer not read.
+    #[test]
+    fn put_bytes_sends_exactly_the_bytes_and_no_credential() {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut head = Vec::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+                head.push(line.trim_end().to_ascii_lowercase());
+            }
+            let len: usize = head.iter().find_map(|h| h.strip_prefix("content-length: ")).unwrap().parse().unwrap();
+            let mut body = vec![0u8; len];
+            std::io::Read::read_exact(&mut reader, &mut body).unwrap();
+            let reply = "{\"key\":\"k\"}";
+            write!(&stream, "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{reply}", reply.len()).unwrap();
+            (head, body)
+        });
+        let account = Account { issuer: format!("http://127.0.0.1:{port}"), home: std::env::temp_dir() };
+        let client = Client::new(&account);
+        let url = format!("http://127.0.0.1:{port}/api/artifacts/asset?token=t");
+        assert_eq!(client.put_bytes(&url, "image/png", b"12345").unwrap()["key"], "k");
+        let (head, body) = server.join().unwrap();
+        assert!(head[0].starts_with("put /api/artifacts/asset?token=t "), "{head:?}");
+        assert!(head.contains(&"content-type: image/png".to_string()) && head.contains(&"content-length: 5".to_string()), "{head:?}");
+        assert!(!head.iter().any(|h| h.starts_with("authorization")), "{head:?}");
+        assert_eq!(body, b"12345");
+        // Off the account's origin it never leaves.
+        assert!(client.put_bytes("https://elsewhere.example/u", "image/png", b"x").is_err());
     }
 
     #[test]

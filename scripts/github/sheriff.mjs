@@ -39,6 +39,9 @@ export const CLOSE_MARKER = '<!-- impeccable-sheriff:auto-close -->';
 const DEFAULT_MAINTAINERS = ['pbakaus'];
 const DEFAULT_REGULAR_CONTRIBUTORS = ['pbakaus', 'abdulwahabone'];
 const DEFAULT_EXEMPT_LABELS = ['do not close', 'security'];
+// Authors whose PRs the sheriff labels but never marks stale, warns or closes, even with
+// --auto-close-regulars. The decider approved their PRs without an issue first.
+const DEFAULT_NEVER_CLOSE_AUTHORS = ['mvanhorn'];
 const DEFAULT_TRUSTED_MARKER_AUTHORS = ['github-actions', 'github-actions[bot]'];
 
 const REVIEW_BLOCKING_STATES = new Set(['CHANGES_REQUESTED']);
@@ -155,6 +158,7 @@ export function evaluatePullRequest(pr, options = {}) {
   );
   const trustedMarkerAuthors = loginSet(options.trustedMarkerAuthors || DEFAULT_TRUSTED_MARKER_AUTHORS);
   const autoCloseRegulars = options.autoCloseRegulars === true;
+  const neverCloseAuthors = loginSet(options.neverCloseAuthors || DEFAULT_NEVER_CLOSE_AUTHORS);
 
   const labels = new Set(pr.labels || []);
   const policyBlockers = [...labels].filter(isBlockingPolicyLabel);
@@ -276,7 +280,8 @@ export function evaluatePullRequest(pr, options = {}) {
     if (blocker.label) desiredLabels.add(blocker.label);
   }
 
-  const staleEligible = contributorActionRequired && waitingDays >= warningDays;
+  const neverCloseAuthor = neverCloseAuthors.has(author);
+  const staleEligible = contributorActionRequired && waitingDays >= warningDays && !neverCloseAuthor;
   if (staleEligible) desiredLabels.add('stale');
 
   const warningPostedAt = latestMarkerAt(pr.comments, WARNING_MARKER, trustedMarkerAuthors);
@@ -292,6 +297,7 @@ export function evaluatePullRequest(pr, options = {}) {
     && warningAlreadyPosted
     && !closeAlreadyPosted
     && !exemptFromClose
+    && !neverCloseAuthor
     && (autoCloseRegulars || !regularContributor);
 
   const labelsToAdd = [...desiredLabels].filter((label) => !labels.has(label)).sort();
@@ -471,6 +477,7 @@ export function parseArgs(argv) {
     regularContributors: DEFAULT_REGULAR_CONTRIBUTORS,
     exemptLabels: DEFAULT_EXEMPT_LABELS,
     autoCloseRegulars: false,
+    neverCloseAuthors: DEFAULT_NEVER_CLOSE_AUTHORS,
     now: new Date(),
   };
 
@@ -485,6 +492,7 @@ export function parseArgs(argv) {
     else if (arg === '--close-days') options.closeDays = Number(requireValue(argv, ++i, arg));
     else if (arg === '--maintainers') options.maintainers = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--regular-contributors') options.regularContributors = splitList(requireValue(argv, ++i, arg));
+    else if (arg === '--never-close-authors') options.neverCloseAuthors = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--exempt-labels') options.exemptLabels = splitList(requireValue(argv, ++i, arg));
     else if (arg === '--now') options.now = new Date(requireValue(argv, ++i, arg));
     else if (arg === '--help' || arg === '-h') {
@@ -868,6 +876,8 @@ Options:
   --maintainers a,b               maintainer logins allowed to use /sheriff wait
   --regular-contributors a,b      contributors exempt from auto-close unless --auto-close-regulars is set
   --auto-close-regulars           also auto-close regular contributor PRs
+  --never-close-authors a,b       authors never warned or auto-closed, even with --auto-close-regulars
+                                  (default: mvanhorn)
   --no-label-ensure               skip creating/updating sheriff labels
 `);
 }

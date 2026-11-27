@@ -106,6 +106,7 @@ describe('release.mjs guards', () => {
       optionalDependencies: { '@impeccable/cli-darwin-arm64': '0.1.0', '@impeccable/cli-linux-x64': '0.1.0' },
     }));
     write('ENGINE_VERSION', '0.1.0\n');
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'ab'.repeat(32) }));
     write('extension/manifest.json', JSON.stringify({ version: '2.0.0' }));
     write('site/pages/changelog.astro', CHANGELOG);
     write('dist/universal.zip', 'zip');
@@ -160,6 +161,37 @@ describe('release.mjs guards', () => {
     const { code, stderr } = runRelease(workDir, 'engine');
     assert.notEqual(code, 0);
     assert.match(stderr, /pins @impeccable\/cli-darwin-arm64@0\.1\.0.*expected 0\.2\.0/);
+  });
+
+  it('engine: refuses with no Pro release key compiled in', () => {
+    // Catches (launch review, 10 Nov): an engine tagged while scripts/cli-pro-release-keys.json
+    // was {}, which ships a CLI where every Pro build fails its signature check.
+    write('scripts/cli-pro-release-keys.json', '{}\n');
+    git(workDir, 'commit', '-am', 'empty keyring');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key/);
+  });
+
+  it('engine: refuses a Pro release key that is not 64 hex characters', () => {
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'not-a-key' }));
+    git(workDir, 'commit', '-am', 'bad key');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key/);
+  });
+
+  it('engine: refuses a keyring with one valid key and one malformed entry', () => {
+    // Catches (#1372 review): one valid key passed the check, but the engine rejects the
+    // whole file when any entry is malformed, so it would ship trusting no key at all.
+    write('scripts/cli-pro-release-keys.json', JSON.stringify({ 'release-1': 'ab'.repeat(32), 'release-2': 'AB'.repeat(32) }));
+    git(workDir, 'commit', '-am', 'one bad key');
+    git(workDir, 'push', 'origin', 'main');
+    const { code, stderr } = runRelease(workDir, 'engine');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /no Pro release key.*invalid: "release-2"/);
   });
 
   it('engine: refuses when the tag already exists on origin', () => {
@@ -409,6 +441,36 @@ describe('release.mjs guards', () => {
     const { code, stderr } = runRelease(workDir, 'extension');
     assert.equal(code, 1);
     assert.match(stderr, /No changelog entry found for "Extension v3\.0\.0"/);
+  });
+
+  // Catches an extension released with walk helpers older than the web app's (its stand-in and secret-typing fixes
+  // shipped nowhere): the release reads pristine main's PAGE_HELPERS_HASH and refuses any other.
+  it('extension: refuses walk helpers that differ from pristine main, and passes ones that match', () => {
+    const pristine = path.join(root, 'pristine');
+    const pristineOrigin = path.join(root, 'pristine-origin.git');
+    execFileSync('git', ['init', '--bare', pristineOrigin]);
+    fs.mkdirSync(path.join(pristine, 'src', 'outings'), { recursive: true });
+    git(pristine, 'init', '-b', 'main');
+    git(pristine, 'config', 'user.email', 'test@example.com');
+    git(pristine, 'config', 'user.name', 'Release Test');
+    fs.writeFileSync(path.join(pristine, 'src', 'outings', 'page-helpers.ts'), "export const PAGE_HELPERS_HASH = 'aaaa1111';\n");
+    git(pristine, 'add', '-A');
+    git(pristine, 'commit', '-m', 'helpers');
+    git(pristine, 'remote', 'add', 'origin', pristineOrigin);
+    git(pristine, 'push', '-u', 'origin', 'main');
+    const release = (hash) => {
+      write('site/pages/changelog.astro', `${CHANGELOG}<article>\n  <div class="changelog-version-header"><span class="cf-version">Extension v2.0.0</span></div>\n  <ul class="cf-items">\n    <li><strong>Walks.</strong> Fresh helpers.</li>\n  </ul>\n</article>\n`);
+      write('extension/walks/page-helpers.js', `export const HASH = '${hash}';\n`);
+      git(workDir, 'add', '-A');
+      git(workDir, 'commit', '-m', `helpers ${hash}`);
+      git(workDir, 'push', 'origin', 'main');
+      return runReleaseWith({ PRISTINE_DIR: pristine }, workDir, 'extension');
+    };
+    const stale = release('bbbb2222');
+    assert.equal(stale.code, 1);
+    assert.match(stale.stderr, /walk helpers bbbb2222, but pristine main has aaaa1111/);
+    const fresh = release('aaaa1111');
+    assert.match(fresh.stdout, /walk helpers aaaa1111 match pristine main/);
   });
 
   it('refuses when a release artifact is missing', () => {

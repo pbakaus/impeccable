@@ -77,7 +77,8 @@ fn build_completion_reminder_skips_native_projects() {
     }).to_string());
     let stop = hook::run_stop_hook(&rt(&t.path()), &stop_event(&t.path(), "owner"));
     assert!(stop.stdout.is_empty(), "{}", stop.stdout);
-    assert_eq!(stop.audit["skipped"], "native-platform");
+    // Only the reminder is skipped; the scan still runs over web code (#1644).
+    assert_eq!(stop.audit["skipped"], "no-touched-files");
 }
 
 #[test]
@@ -119,6 +120,72 @@ fn admin_on_and_reset_manage_gemini_without_losing_user_settings() {
     let (out, _, _) = admin_run(&r, &["on"]);
     assert_eq!(t.read(".gemini/settings.json"), "{ \"model\": ");
     assert!(out.contains(".gemini/settings.json"), "{out}");
+}
+
+#[test]
+fn admin_on_status_and_reset_manage_antigravity_named_hooks() {
+    // Z_g / ZpJ: named hooks must count as installed, read as wired, and be
+    // pruned by `reset` and `off`, keeping the user's own hooks and entries.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write(".agent/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+    t.write(".agents/hooks.json", &json!({
+        "lint": { "PostToolUse": [{ "matcher": "write_to_file", "hooks": [{ "type": "command", "command": "./lint.sh" }] }] }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0);
+    assert!(out.contains(".agent"), "{out}");
+    let manifest: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
+    assert_eq!(manifest["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+    let cmd = manifest["impeccable"]["Stop"][0]["command"].as_str().unwrap();
+    assert_eq!(cmd, impeccable_context::hook_wiring::antigravity_hook_command(cfg!(windows)));
+    let (status, _, _) = admin_run(&r, &["status"]);
+    let line = status.lines().map(str::trim).find(|l| l.starts_with("wiring .agent:")).unwrap_or_else(|| panic!("{status}"));
+    assert!(!line.contains("not wired"), "{line}");
+
+    // A user's `enabled: false` switches the hook off: not wired.
+    let mut off = manifest.clone();
+    off["impeccable"]["enabled"] = json!(false);
+    t.write(".agents/hooks.json", &off.to_string());
+    assert!(!impeccable_context::hook_wiring::manifest_is_wired(
+        &jsp::join(&[&cwd, ".agents/hooks.json"]),
+        &(impeccable_context::hook_wiring::HOOK_MANIFEST_TARGETS.iter().find(|t| t.provider == ".agent").unwrap().manifest)(),
+    ));
+    t.write(".agents/hooks.json", &manifest.to_string());
+
+    let (out, _, _) = admin_run(&r, &["reset"]);
+    assert!(out.contains("Removed hook entries from: .agent."), "{out}");
+    let after: Value = serde_json::from_str(&t.read(".agents/hooks.json")).unwrap();
+    assert!(after.get("impeccable").is_none(), "{after}");
+    assert_eq!(after["lint"]["PostToolUse"][0]["hooks"][0]["command"], "./lint.sh");
+}
+
+#[test]
+fn admin_on_writes_the_global_antigravity_hook_for_a_user_skill() {
+    // ZpM: with only the global skill (`~/.gemini/config/skills/impeccable`),
+    // `hooks on` writes `~/.gemini/config/hooks.json` with the install's
+    // command, and `status` reads that file as wired.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    let launcher = jsp::join(&[&cwd, ".test-home", ".gemini", "config", "skills", "impeccable", "scripts", "impeccable"]);
+    t.write(".test-home/.gemini/config/skills/impeccable/scripts/impeccable", "#!/bin/sh\n");
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(!t.exists(".agents/hooks.json"), "the shared workspace file is not written for a global skill");
+    let global: Value = serde_json::from_str(&t.read(".test-home/.gemini/config/hooks.json")).unwrap();
+    let cmd = global["impeccable"]["Stop"][0]["command"].as_str().unwrap();
+    let expected = if cfg!(windows) {
+        impeccable_context::hook_markers::windows_launcher_hook_command(&launcher, "hook")
+    } else {
+        format!("[ ! -f '{launcher}' ] || '{launcher}' hook")
+    };
+    assert_eq!(cmd, expected);
+    assert_eq!(global["impeccable"]["PostToolUse"][0]["hooks"][0]["command"], Value::String(expected));
+    let (status, _, _) = admin_run(&r, &["status"]);
+    let line = status.lines().map(str::trim).find(|l| l.starts_with("wiring .agent:")).unwrap_or_else(|| panic!("{status}"));
+    assert!(!line.contains("not wired"), "{line}");
 }
 
 #[test]
@@ -634,6 +701,8 @@ fn stop_baseline_import_only_edit_does_not_blame_existing_font() {
     let t = Tmp::new();
     let cwd = t.path();
     t.write("package.json", "{}");
+    // A plain .ts scans only in a project that uses Impeccable (#1237).
+    t.write("PRODUCT.md", "# Product\n");
     // This is the actual working-tree preimage, not HEAD (which might differ).
     let before = "import dead from 'dead';\nconst report = `<style>body { font-family: Fraunces; }</style>`;\n";
     let after = before.replacen("import dead from 'dead';\n", "", 1);
@@ -1053,6 +1122,7 @@ fn sensitive_and_generated_paths() {
         "/x/coverage/report.html",
         "/x/site/public/js/generated/counts.js",
         "/x/src/generated/schema.ts",
+        "/x/.impeccable/mocks/decision/option-a.html",
     ] {
         assert!(is_generated_path(p), "expected generated: {p}");
     }
@@ -1061,6 +1131,7 @@ fn sensitive_and_generated_paths() {
         "/x/src/generated-utils.ts",
         "/x/src/components/CodeGenerator.tsx",
         "/x/src/ui/regenerate-button.jsx",
+        "/x/node_modules-free/.impeccable-live/v1.html",
     ] {
         assert!(!is_generated_path(p), "unexpected generated: {p}");
     }
@@ -1214,6 +1285,12 @@ fn cache_round_trip_and_gc() {
     let keys = finding_cache_keys(&both);
     assert_eq!(dedupe_against_cache(&both, &keys, &mut cache2, "s", "/x/a.tsx").len(), 1);
     assert_eq!(finding_cache_keys(&[f("gradient-text", 5.0, "G", "d", "s")]), finding_cache_keys(&[g.clone()]));
+    // a line-less page copy of a located finding is that finding (#1597)
+    let page_copy = f("gradient-text", 0.0, "G", "d", "s");
+    let keys = finding_cache_keys(&[g.clone(), page_copy.clone()]);
+    assert_eq!(keys[0], keys[1]);
+    let keys = finding_cache_keys(&[page_copy.clone(), g.clone(), f("gradient-text", 9.0, "G", "d", "s")]);
+    assert_eq!((keys[0] == keys[1], keys[1] == keys[2]), (true, false));
     // same-line value-specific findings stay distinct
     let mut a = f("overused-font", 1.0, "O", "d", "font-family: Inter");
     a.extras.insert("ignoreValue".into(), json!("Inter"));
@@ -2453,7 +2530,8 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     assert!(out.ends_with("Installed or repaired hook manifests for: .claude, .agents, .cursor, .github.\n"), "{out}");
 
     let claude: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
-    let cmd = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    let cmd = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    assert_eq!(claude["hooks"]["SessionStart"][0]["hooks"][0]["command"], json!(cmd));
     assert_eq!(claude["hooks"]["PostToolUse"][0]["hooks"][0]["command"], json!(cmd));
     assert_eq!(claude["hooks"]["Stop"][0]["hooks"][0]["command"], json!(cmd));
     assert!(claude["hooks"]["PostToolUse"][0]["hooks"][0].get("commandWindows").is_none());
@@ -2461,14 +2539,14 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 
     let codex: Value = serde_json::from_str(&t.read(".codex/hooks.json")).unwrap();
     let entry = &codex["hooks"]["PostToolUse"][0]["hooks"][0];
-    assert_eq!(entry["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(entry["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(entry["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(
         entry.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
         vec!["type", "command", "commandWindows", "timeout", "statusMessage"]
     );
     let stop = &codex["hooks"]["Stop"][0]["hooks"][0];
-    assert_eq!(stop["command"], json!("\".agents/skills/impeccable/scripts/impeccable\" hook"));
+    assert_eq!(stop["command"], json!("[ ! -f \".agents/skills/impeccable/scripts/impeccable\" ] || \".agents/skills/impeccable/scripts/impeccable\" hook"));
     assert_eq!(stop["commandWindows"], json!(r#"cmd /c if exist ".agents\skills\impeccable\scripts\impeccable.cmd" ".agents\skills\impeccable\scripts\impeccable.cmd" hook"#));
     assert_eq!(stop["timeout"], json!(30));
 
@@ -2476,7 +2554,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     assert_eq!(
         cursor,
         json!({"version": 1, "hooks": {"postToolUse": [{
-            "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+            "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
             "matcher": "^Write$",
             "timeout": 5,
         }]}})
@@ -2484,7 +2562,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
     let github: Value = serde_json::from_str(&t.read(".github/hooks/impeccable.json")).unwrap();
     assert_eq!(
         github["hooks"]["postToolUse"][0]["bash"],
-        json!("\"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
+        json!("[ ! -f \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" ] || \"$(git rev-parse --show-toplevel)/.github/skills/impeccable/scripts/impeccable\" hook")
     );
 
     // A second `on` is a no-op against the manifests it just wrote.
@@ -2495,7 +2573,7 @@ fn admin_on_writes_launcher_manifests_for_every_harness() {
 fn expected_user_claude_hook_command(home: &str) -> String {
     let launcher = jsp::join(&[home, ".claude", "skills", "impeccable", "scripts", "impeccable"]);
     let q = if cfg!(windows) {
-        serde_json::to_string(&launcher).unwrap()
+        serde_json::to_string(&launcher.replace('\\', "/")).unwrap()
     } else {
         format!("'{}'", launcher.replace('\'', "'\\''"))
     };
@@ -2695,7 +2773,7 @@ fn admin_on_moves_the_retired_cursor_gate_to_post_tool_use() {
             "preToolUse": [{"command": "./audit.sh", "matcher": "Shell"}],
             "stop": [{"command": "./notify.sh"}],
             "postToolUse": [{
-                "command": "\".cursor/skills/impeccable/scripts/impeccable\" hook",
+                "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook",
                 "matcher": "^Write$",
                 "timeout": 5,
             }],
@@ -2751,7 +2829,7 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(post[0]["hooks"][0]["command"], json!("echo other"));
     assert_eq!(
         post[1]["hooks"][0]["command"],
-        json!("\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook")
+        json!("[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook")
     );
     // Upstream 611147a3: the repaired Claude group must exist and carry the
     // current Edit|Write matcher (MultiEdit is retired; see 55fb8e8).
@@ -2777,6 +2855,31 @@ fn admin_on_repairs_legacy_mjs_manifests_to_the_launcher_form() {
     assert_eq!(local["hooks"]["PostToolUse"][0]["hooks"][0]["command"], json!("echo other"));
     assert!(local["hooks"].get("Stop").is_none());
     assert_eq!(local["permissions"]["allow"], json!(["Bash(ls)"]));
+}
+
+/// A Grok manifest an earlier `hooks on` wrote carried Claude's description
+/// and no guard; a re-run leaves what a fresh install writes (#1307).
+#[test]
+fn admin_on_repairs_an_old_grok_manifest_to_the_installer_form() {
+    let t = Tmp::new();
+    let r = rt(&t.path());
+    std::fs::create_dir_all(t.0.join(".grok/skills/impeccable")).unwrap();
+    let bare = "\".grok/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".grok/hooks/impeccable.json", &json!({
+        "description": impeccable_context::hook_wiring::CLAUDE_MANIFEST_DESCRIPTION,
+        "hooks": {
+            "PostToolUse": [{ "matcher": "Edit|Write|MultiEdit", "hooks": [{ "type": "command", "command": bare, "timeout": 5, "statusMessage": "Checking UI changes" }] }],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30, "statusMessage": "Design deep pass" }] }]
+        }
+    }).to_string());
+    let (out, _, code) = admin_run(&r, &["on"]);
+    assert_eq!(code, 0, "{out}");
+    let repaired = t.read(".grok/hooks/impeccable.json");
+    assert!(!repaired.contains("\"description\""), "{repaired}");
+    if !cfg!(windows) {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/hook-manifests/grok-hooks.json");
+        assert_eq!(repaired.trim_end(), std::fs::read_to_string(fixture).unwrap().trim_end());
+    }
 }
 
 // ── Grok Build + Codex (#646, #603, upstream 35ae0733/bfe634e2/3c442af7/c9e7cd8a) ──
@@ -2854,6 +2957,175 @@ fn grok_post_tool_use_scans_and_stop_reports_everything() {
     let active = json!({ "hookEventName": "stop", "sessionId": "g1", "cwd": cwd, "stopHookActive": true }).to_string();
     let re = hook::run_stop_hook(&r, &active);
     assert_eq!(audit_str(&re.audit, "skipped"), Some("stop-hook-active"));
+}
+
+#[test]
+fn antigravity_harness_detection_and_lifecycle() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    let css = t.write("src/a.css", MIXED_CSS);
+
+    let post_val = json!({
+        "hookEventName": "PostToolUse",
+        "conversationId": "agy-1",
+        "workspacePaths": [cwd],
+        "cwd": cwd,
+        "toolCall": { "id": "t1", "name": "edit_file", "args": { "Path": css } },
+    });
+    let post_map = post_val.as_object().unwrap();
+    assert_eq!(resolve_harness(&r, Some(post_map)), "antigravity");
+    assert!(!is_stop_event(post_map));
+
+    let one = hook::run_hook(&r, &post_val.to_string());
+    assert_eq!(one.stdout, "{}");
+    assert_eq!(audit_str(&one.audit, "harness"), Some("antigravity"));
+
+    // Stop reports both immediate and deferred findings with decision: "continue".
+    let stop_val = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "workspacePaths": [cwd],
+        "cwd": cwd,
+        "terminationReason": "NO_TOOL_CALL",
+        "continuationActive": false,
+    });
+    assert!(is_stop_event(stop_val.as_object().unwrap()));
+    let deep = hook::run_stop_hook(&r, &stop_val.to_string());
+    let parsed: Value = serde_json::from_str(&deep.stdout).unwrap();
+    assert_eq!(parsed["decision"], "continue");
+    let reason = parsed["reason"].as_str().unwrap();
+    assert!(reason.contains("[gradient-text]") && reason.contains("[side-tab]"), "{reason}");
+
+    // Non-NO_TOOL_CALL terminationReason is skipped.
+    let canceled = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "cwd": cwd,
+        "terminationReason": "USER_CANCELED",
+    }).to_string();
+    let second = hook::run_stop_hook(&r, &canceled);
+    assert_eq!(second.stdout, "");
+    assert_eq!(audit_str(&second.audit, "skipped"), Some("stop-reason"));
+
+    // continuationActive: true guards against re-entry loops.
+    let active = json!({
+        "hookEventName": "Stop",
+        "conversationId": "agy-1",
+        "cwd": cwd,
+        "terminationReason": "NO_TOOL_CALL",
+        "continuationActive": true,
+    }).to_string();
+    let re = hook::run_stop_hook(&r, &active);
+    assert_eq!(audit_str(&re.audit, "skipped"), Some("stop-hook-active"));
+}
+
+fn agy_post(cwd: &str, file: &str, call: Value) -> Value {
+    let mut tool_call = json!({ "name": "write_to_file", "args": { "TargetFile": file } });
+    if !call.is_null() {
+        tool_call["id"] = call;
+    }
+    json!({
+        "conversationId": "agy-fresh",
+        "workspacePaths": [cwd],
+        "stepIdx": 3,
+        "toolCall": tool_call,
+    })
+}
+
+#[test]
+fn antigravity_fresh_project_stop_reports_immediate_only_findings() {
+    // Z_m: Antigravity ignores PostToolUse stdout, so its fresh findings are
+    // never emitted there. In a project with no `.impeccable/` and nothing
+    // deferred the cache used to be dropped, and Stop saw no touched file.
+    for css in [GRADIENT_CSS, SIDE_TAB_CSS] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let r = rt(&cwd);
+        let file = t.write("src/a.css", css);
+        assert!(!std::path::Path::new(&jsp::join(&[&cwd, ".impeccable"])).exists());
+        let post = hook::run_hook(&r, &agy_post(&cwd, &file, json!("c1")).to_string());
+        assert_eq!(post.stdout, "{}");
+        // Documented Stop input: no event name, no toolCall.
+        let stop = json!({
+            "conversationId": "agy-fresh",
+            "workspacePaths": [cwd],
+            "terminationReason": "model_stop",
+            "fullyIdle": true,
+        });
+        assert!(is_stop_event(stop.as_object().unwrap()));
+        let res = hook::run_stop_hook(&r, &stop.to_string());
+        let parsed: Value = serde_json::from_str(&res.stdout).unwrap_or_else(|_| panic!("{css}: {:?}", res.audit));
+        assert_eq!(parsed["decision"], "continue");
+        let reason = parsed["reason"].as_str().unwrap();
+        assert!(reason.contains("[gradient-text]") || reason.contains("[side-tab]"), "{reason}");
+    }
+}
+
+#[test]
+fn antigravity_root_comes_from_workspace_paths_not_the_process_cwd() {
+    // Antigravity runs the command from the manifest's directory: the
+    // workspace's `.agents/`, or `~/.gemini/config/` for the global hook.
+    // Neither is the project, and the payload carries no `cwd`.
+    let t = Tmp::new();
+    let project = t.path();
+    t.write("package.json", "{}");
+    let file = t.write("src/a.css", SIDE_TAB_CSS);
+    t.write(".agents/hooks.json", "{}");
+    t.write("elsewhere/.gemini/config/hooks.json", "{}");
+    for proc_dir in [jsp::join(&[&project, ".agents"]), jsp::join(&[&project, "elsewhere", ".gemini", "config"])] {
+        let r = rt_with(&proc_dir, env(&[("HOME", &jsp::join(&[&project, "elsewhere"]))]));
+        let mut post = agy_post(&project, &file, json!(format!("c-{proc_dir}")));
+        post["conversationId"] = json!(format!("agy-{proc_dir}"));
+        let one = hook::run_hook(&r, &post.to_string());
+        assert_eq!(audit_str(&one.audit, "cwd"), Some(project.as_str()), "{proc_dir}");
+        let stop = json!({
+            "conversationId": format!("agy-{proc_dir}"),
+            "workspacePaths": [project],
+            "terminationReason": "NO_TOOL_CALL",
+        });
+        let res = hook::run_stop_hook(&r, &stop.to_string());
+        assert!(res.stdout.contains("[side-tab]"), "{proc_dir}: {:?}", res.audit);
+        assert!(!std::path::Path::new(&jsp::join(&[&proc_dir, ".impeccable"])).exists(), "{proc_dir}");
+    }
+}
+
+#[test]
+fn antigravity_same_tool_call_scans_once() {
+    // Z_v: the claim key reads Antigravity's nested `toolCall.id` (and the
+    // `stepIdx` when no id is sent), scoped by `conversationId`.
+    for call in [json!("agy-call-1"), Value::Null] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        let file = t.write("src/card.css", SIDE_TAB_CSS);
+        let e = claim_env(&t, &[]);
+        let stdin = agy_post(&cwd, &file, call.clone()).to_string();
+        let first = hook::run_hook(&rt_with(&cwd, e.clone()), &stdin);
+        assert!(scanned(&first), "{call}: {:?}", first.audit);
+        let second = hook::run_hook(&rt_with(&cwd, e.clone()), &stdin);
+        assert_eq!(second.audit.get("skipped"), Some(&json!("duplicate-event")), "{call}: {:?}", second.audit);
+        // A different step of the same conversation is a different event.
+        let mut other = agy_post(&cwd, &file, if call.is_null() { Value::Null } else { json!("agy-call-2") });
+        other["stepIdx"] = json!(4);
+        let third = hook::run_hook(&rt_with(&cwd, e), &other.to_string());
+        assert!(scanned(&third), "{call}: {:?}", third.audit);
+    }
+}
+
+#[test]
+fn antigravity_silent_skip_still_answers_json() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt_with(&cwd, env(&[("IMPECCABLE_HOOK_DISABLED", "1")]));
+    let stdin = agy_post(&cwd, &jsp::join(&[&cwd, "src/a.css"]), json!("c1")).to_string();
+    let (mut io, cap) = Io::captured("", std::path::PathBuf::from(&cwd), HashMap::new());
+    hook::run(&r, &stdin, &mut io);
+    assert_eq!(String::from_utf8(cap.stdout.borrow().clone()).unwrap(), "{}");
+    // A Stop with nothing to report answers the same way.
+    let stop = json!({ "conversationId": "agy-fresh", "workspacePaths": [cwd], "terminationReason": "NO_TOOL_CALL" }).to_string();
+    let (mut io, cap) = Io::captured("", std::path::PathBuf::from(&cwd), HashMap::new());
+    hook::run(&rt(&cwd), &stop, &mut io);
+    assert_eq!(String::from_utf8(cap.stdout.borrow().clone()).unwrap(), "{}");
 }
 
 #[test]
@@ -3422,10 +3694,11 @@ fn stop_from_an_umbrella_cwd_finds_the_project_below_it() {
     assert!(stop.audit.get("roots").is_none(), "{:?}", stop.audit);
     // Nothing lands in the umbrella folder itself (#346).
     assert!(!t.exists("work/.impeccable"));
-    // The second Stop has nothing new to say.
+    // The second Stop has nothing new to say. Nothing changed since the first,
+    // so it is the same pass and the claim skips it (D5).
     let again = hook::run_stop_hook(&rt_with(&work, e.clone()), &stop_event(&work, "p1"));
     assert_eq!(again.stdout, "", "{:?}", again.audit);
-    assert_eq!(audit_str(&again.audit, "skipped"), Some("stop-clean"));
+    assert_eq!(audit_str(&again.audit, "skipped"), Some("duplicate-event"));
     // Another session's Stop does not see this session's roots.
     let other = hook::run_stop_hook(&rt_with(&work, e), &stop_event(&work, "p2"));
     assert_eq!(audit_str(&other.audit, "skipped"), Some("no-touched-files"));
@@ -3763,6 +4036,47 @@ fn status_requires_complete_current_entries_for_each_harness() {
     assert!(out.contains("wiring .claude: not wired"), "{out}");
 }
 
+/// #1307: a manifest from an earlier `hooks on` (PostToolUse and Stop, bare
+/// launcher) reads as not wired, and `hooks on` upgrades it in place to the
+/// installer's three guarded entries, keeping a foreign hook.
+#[test]
+fn hooks_on_upgrades_a_two_entry_claude_manifest() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    std::fs::create_dir_all(t.0.join(".claude/skills/impeccable")).unwrap();
+    let bare = "\"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    t.write(".claude/settings.local.json", &json!({
+        "hooks": {
+            "PostToolUse": [
+                { "matcher": "Edit|Write", "hooks": [{ "type": "command", "command": bare, "timeout": 5 }] },
+                { "matcher": "Bash", "hooks": [{ "type": "command", "command": "echo foreign" }] }
+            ],
+            "Stop": [{ "hooks": [{ "type": "command", "command": bare, "timeout": 30 }] }]
+        }
+    }).to_string());
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: not wired"), "{out}");
+    admin_run(&r, &["on"]);
+    let manifest: Value = serde_json::from_str(&t.read(".claude/settings.local.json")).unwrap();
+    let guarded = "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook";
+    let ours = |event: &str| manifest["hooks"][event].as_array().unwrap().iter()
+        .filter(|e| e["hooks"][0]["command"].as_str().is_some_and(|c| c.contains("skills/impeccable"))).count();
+    for event in ["SessionStart", "PostToolUse", "Stop"] {
+        assert_eq!(ours(event), 1, "{event}: {manifest}");
+    }
+    assert!(manifest.to_string().contains("echo foreign"), "{manifest}");
+    let commands: Vec<&str> = ["SessionStart", "PostToolUse", "Stop"].iter().flat_map(|event|
+        manifest["hooks"][*event].as_array().unwrap().iter().filter_map(|e| e["hooks"][0]["command"].as_str())
+            .filter(|c| c.contains("skills/impeccable"))).collect();
+    assert!(commands.iter().all(|c| *c == guarded), "{commands:?}");
+    let (out, _, _) = admin_run(&r, &["status"]);
+    assert!(out.contains("wiring .claude: wired"), "{out}");
+    let before = t.read(".claude/settings.local.json");
+    admin_run(&r, &["on"]);
+    assert_eq!(t.read(".claude/settings.local.json"), before);
+}
+
 #[test]
 fn context_does_not_replace_malformed_settings_or_reenable_disabled_hooks() {
     let t = Tmp::new();
@@ -3831,7 +4145,7 @@ fn hooks_on_honors_claude_config_dir_for_user_only_installs() {
         assert!(out.contains("Installed or repaired hook manifests for: .claude"), "{out}");
         let manifest: Value = serde_json::from_str(&std::fs::read_to_string(account.join("settings.json")).unwrap()).unwrap();
         let command = manifest["hooks"]["PostToolUse"][0]["hooks"][0]["command"].as_str().unwrap();
-        assert!(command.replace("\\\\", "\\").contains(account.to_str().unwrap()), "{command}");
+        assert!(command.contains(&account.to_str().unwrap().replace('\\', "/")), "{command}");
         assert_eq!(manifest["permissions"]["allow"], json!(["Bash(ls)"]));
         assert!(!home.join(".claude/settings.json").exists());
         let (status, _, _) = admin_run(&r, &["status"]);
@@ -3974,6 +4288,82 @@ fn stop_skips_files_modified_before_the_session_started() {
 }
 
 #[test]
+fn stop_discovery_covers_only_the_turn_since_the_last_stop() {
+    // #1670: a resumed session began days ago. A page changed before its
+    // last Stop is not this turn's, a page written since is.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".test-home/.keep", "");
+    let session = uuid_v7(now_ms() - 3 * 86_400_000);
+    let first = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(audit_str(&first.audit, "skipped"), Some("no-touched-files"));
+    // That Stop ended an earlier turn: a marker this fresh reads as a sibling copy.
+    for dir in std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).unwrap().flatten() {
+        for marker in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            set_mtime(&marker.path().to_string_lossy(), now_ms() - 60_000);
+        }
+    }
+    let old = t.write("old.css", SIDE_TAB_CSS);
+    set_mtime(&old, now_ms() - 3_600_000);
+    let second = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert_eq!(second.stdout, "", "{:?}", second.audit);
+    t.write("new.css", SIDE_TAB_CSS);
+    let third = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(third.stdout.contains("new.css") && !third.stdout.contains("old.css"), "{}", third.stdout);
+}
+
+#[test]
+fn stop_discovery_keeps_its_window_when_the_file_cap_cut_it_short() {
+    // More shell-written files than one pass scans: the next pass reaches the rest.
+    let t = Tmp::new();
+    let cwd = t.path();
+    let r = rt(&cwd);
+    t.write("package.json", "{}");
+    t.write(".test-home/.keep", "");
+    let session = uuid_v7(now_ms() - 60_000);
+    for i in 0..21 {
+        let css = t.write(&format!("p{i:02}.css"), SIDE_TAB_CSS);
+        set_mtime(&css, now_ms() - 20_000 - i * 100);
+    }
+    let first = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    // The second pass ends a later turn, not a sibling copy of the first.
+    for dir in std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).into_iter().flatten().flatten() {
+        for marker in std::fs::read_dir(dir.path()).unwrap().flatten() {
+            set_mtime(&marker.path().to_string_lossy(), now_ms() - 10_000);
+        }
+    }
+    let second = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    let reported = (0..21).filter(|i| {
+        let name = format!("p{i:02}.css");
+        first.stdout.contains(&name) || second.stdout.contains(&name)
+    }).count();
+    assert_eq!(reported, 21, "{}\n{}", first.stdout, second.stdout);
+}
+
+#[test]
+fn stop_marker_is_published_whole_for_a_sibling_copy() {
+    // The rewrite lands by rename: a sibling reads the held start, never an
+    // empty file, and no temp file is left behind.
+    use impeccable_hook::hook_sessions::{last_stop_ms, record_stop};
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write(".test-home/.keep", "");
+    let r = rt(&cwd);
+    let at = |ms: u64| std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms);
+    let earlier = now_ms() - 60_000;
+    record_stop(&r, "s1", at(earlier));
+    let now = now_ms();
+    record_stop(&r, "s1", at(now));
+    assert_eq!(last_stop_ms(&r, "s1", at(now + 1_000)), Some(earlier), "a sibling keeps the earlier window");
+    assert_eq!(last_stop_ms(&r, "s1", at(now + 60_000)), Some(now), "the next turn starts at this pass");
+    let dirs: Vec<_> = std::fs::read_dir(format!("{cwd}/.test-home/.impeccable/hook-sessions")).unwrap().flatten().collect();
+    assert_eq!(dirs.len(), 1);
+    assert_eq!(std::fs::read_dir(dirs[0].path()).unwrap().count(), 1, "only the marker");
+}
+
+#[test]
 fn stop_does_not_guess_a_session_start() {
     // No v7 id and no transcript: today's behavior, cache only.
     let t = Tmp::new();
@@ -4098,4 +4488,221 @@ fn stop_discovery_from_a_dependency_folder_keeps_the_project_skips() {
     let r = rt(&cwd);
     let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &uuid_v7(now_ms() - 60_000)));
     assert_eq!(deep.stdout, "", "{:?}", deep.audit);
+}
+
+// D5: a plugin hook next to a project hook fires the turn-end pass twice too.
+// The copies run at once, both read the cache before either writes it, and
+// both printed the same deep pass. Stop now claims like PostToolUse.
+
+#[test]
+fn concurrent_duplicate_stop_invocations_run_one_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let file = t.write("src/card.css", SIDE_TAB_CSS);
+    // The per-edit pass records the file; side-tab is deferred to Stop.
+    hook::run_hook(&rt_with(&cwd, e.clone()), &edit_event(&cwd, &file, "s-stop"));
+    let stdin = stop_event(&cwd, "s-stop");
+    let results: Vec<hook::RunResult> = std::thread::scope(|s| {
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let (cwd, e, stdin) = (cwd.clone(), e.clone(), stdin.clone());
+                s.spawn(move || hook::run_stop_hook(&rt_with(&cwd, e), &stdin))
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let printed: Vec<&hook::RunResult> = results.iter().filter(|r| r.stdout.contains("[side-tab]")).collect();
+    assert_eq!(printed.len(), 1, "{:?}", results.iter().map(|r| &r.audit).collect::<Vec<_>>());
+    assert!(results.iter().any(|r| r.audit.get("skipped") == Some(&json!("duplicate-event"))), "the other copies skip as duplicates");
+}
+
+#[test]
+fn a_later_turn_with_a_new_edit_still_runs_its_deep_pass() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let e = claim_env(&t, &[]);
+    let r = rt_with(&cwd, e);
+    let first = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &first, "s-turns"));
+    assert!(hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns")).stdout.contains("a.css"));
+    // Same session, identical Stop payload (Claude sends no turn id), new edit.
+    let second = t.write("src/b.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &second, "s-turns"));
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-turns"));
+    assert!(again.stdout.contains("b.css"), "{} {:?}", again.stdout, again.audit);
+}
+
+#[test]
+fn concurrent_cache_saves_leave_one_whole_cache_and_no_staging_files() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let files: Vec<String> = (0..8).map(|i| t.write(&format!("src/c{i}.css"), SIDE_TAB_CSS)).collect();
+    std::thread::scope(|s| {
+        for (i, f) in files.iter().enumerate() {
+            let cwd = cwd.clone();
+            s.spawn(move || hook::run_hook(&rt(&cwd), &edit_event(&cwd, f, &format!("s{i}"))));
+        }
+    });
+    let text = t.read(".impeccable/hook.cache.json");
+    assert!(serde_json::from_str::<Value>(&text).is_ok(), "the cache parses: {text}");
+    let leftovers: Vec<String> = std::fs::read_dir(t.0.join(".impeccable")).unwrap()
+        .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".tmp")).collect();
+    assert!(leftovers.is_empty(), "{leftovers:?}");
+}
+
+#[test]
+fn a_turn_that_only_changed_design_md_runs_a_new_deep_pass() {
+    // The claim key carries the design system: changing DESIGN.md alone is a
+    // new pass, not a copy of the previous Stop.
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt_with(&cwd, claim_env(&t, &[]));
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-design"));
+    hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    t.write("DESIGN.md", "# Design\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&cwd, "s-design"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_cache_save_keeps_the_file_mode_and_a_symlinked_cache() {
+    use std::os::unix::fs::PermissionsExt;
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let css = t.write("src/a.css", SIDE_TAB_CSS);
+    // A cache kept elsewhere, linked in, readable only by its owner.
+    let real = t.write("elsewhere/cache.json", "{}");
+    std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::create_dir_all(t.0.join(".impeccable")).unwrap();
+    std::os::unix::fs::symlink(&real, t.0.join(".impeccable/hook.cache.json")).unwrap();
+    hook::run_hook(&r, &edit_event(&cwd, &css, "s-mode"));
+    assert!(std::fs::symlink_metadata(t.0.join(".impeccable/hook.cache.json")).unwrap().file_type().is_symlink(), "the link stays");
+    assert!(t.read("elsewhere/cache.json").contains("s-mode"), "the save went through the link");
+    assert_eq!(std::fs::metadata(&real).unwrap().permissions().mode() & 0o777, 0o600);
+}
+
+#[test]
+fn a_turn_that_only_changed_an_inherited_design_md_runs_a_new_deep_pass() {
+    // The app has no DESIGN.md of its own, so the deep pass reads the repo
+    // root's; editing that file alone must not read as a copy of the last Stop.
+    let t = Tmp::new();
+    // A monorepo: the app inherits the workspace root's DESIGN.md.
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt_with(&app, claim_env(&t, &[]));
+    let css = t.write("app/src/a.css", SIDE_TAB_CSS);
+    hook::run_hook(&r, &edit_event(&app, &css, "s-inherit"));
+    hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    t.write("DESIGN.md", "# Design\n\nColors changed.\n");
+    let again = hook::run_stop_hook(&r, &stop_event(&app, "s-inherit"));
+    assert_ne!(audit_str(&again.audit, "skipped"), Some("duplicate-event"), "{:?}", again.audit);
+}
+
+// #1237: plain .ts/.js is mostly not UI (a server, a CLI, a config), so the
+// hook scans it only in a project that uses Impeccable.
+const TS_SLOP: &str = "const s = `.t{background: linear-gradient(90deg,#f00,#00f); -webkit-background-clip: text; color: transparent;}`;\n";
+
+#[test]
+fn plain_scripts_skip_in_a_project_without_impeccable_context() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let ts = t.write("src/server.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+    assert_eq!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.is_empty());
+    let js = t.write("bin/cli.js", TS_SLOP);
+    assert_eq!(audit_str(&hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).audit, "skipped"), Some("plain-script"));
+    // Component and style files are UI wherever they are.
+    let tsx = t.write("src/Card.tsx", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &tsx, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn plain_scripts_scan_once_the_project_uses_impeccable() {
+    for marker in ["PRODUCT.md", "DESIGN.md", "docs/PRODUCT.md", ".agents/context/DESIGN.md", ".impeccable/config.json"] {
+        let t = Tmp::new();
+        let cwd = t.path();
+        t.write("package.json", "{}");
+        t.write(marker, if marker.ends_with(".json") { "{}" } else { "# Product\n" });
+        let r = rt(&cwd);
+        let ts = t.write("src/theme.ts", TS_SLOP);
+        let out = hook::run_hook(&r, &edit_event(&cwd, &ts, "s1"));
+        assert!(out.stdout.contains("[gradient-text]"), "{marker}: {:?}", out.audit);
+    }
+}
+
+#[test]
+fn plain_scripts_scan_in_a_monorepo_app_that_inherits_design_context() {
+    // Review: the app has its own package.json and no local context; it
+    // inherits the workspace root's DESIGN.md, so its scripts are in scope.
+    let t = Tmp::new();
+    t.write("pnpm-workspace.yaml", "packages:\n  - app\n");
+    t.write("package.json", "{}");
+    t.write("DESIGN.md", "# Design\n");
+    t.write("app/package.json", "{}");
+    let app = jsp::join(&[&t.path(), "app"]);
+    let r = rt(&app);
+    let ts = t.write("app/src/theme.ts", TS_SLOP);
+    let out = hook::run_hook(&r, &edit_event(&app, &ts, "s-mono"));
+    assert_ne!(audit_str(&out.audit, "skipped"), Some("plain-script"), "{:?}", out.audit);
+    assert!(out.stdout.contains("[gradient-text]"), "{:?}", out.audit);
+}
+
+#[test]
+fn a_configured_extension_is_not_a_plain_script() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    t.write(".impeccable/config.json", r#"{"detector":{"extensions":[{"ext":".js","engine":"text"}]}}"#);
+    let r = rt(&cwd);
+    let js = t.write("src/a.js", TS_SLOP);
+    assert!(hook::run_hook(&r, &edit_event(&cwd, &js, "s1")).stdout.contains("[gradient-text]"));
+}
+
+#[test]
+fn stop_discovery_skips_plain_scripts_so_they_cannot_crowd_out_a_stylesheet() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let session = uuid_v7(now_ms() - 60_000);
+    t.write("src/page.css", SIDE_TAB_CSS);
+    let css = t.0.join("src/page.css");
+    let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
+    std::fs::OpenOptions::new().write(true).open(&css).unwrap().set_modified(earlier).unwrap();
+    // More plain scripts than discovery keeps, all newer than the stylesheet.
+    for i in 0..45 {
+        t.write(&format!("server/route{i}.ts"), TS_SLOP);
+    }
+    let deep = hook::run_stop_hook(&r, &codex_stop(&cwd, &session));
+    assert!(deep.stdout.contains("[side-tab]"), "the stylesheet still scans: {} {:?}", deep.stdout, deep.audit);
+    assert!(!deep.stdout.contains("[gradient-text]"), "no server script scans: {}", deep.stdout);
+}
+
+#[test]
+fn the_before_edit_gate_lets_a_plain_script_through_outside_impeccable_projects() {
+    let t = Tmp::new();
+    let cwd = t.path();
+    t.write("package.json", "{}");
+    let r = rt(&cwd);
+    let write = cursor(&cwd, "Write", json!({"file_path": "src/server.ts", "content": TS_SLOP}));
+    assert_eq!(hbe(&r, &write).0, "{\"permission\":\"allow\"}");
+    t.write("DESIGN.md", "# Design\n");
+    assert!(hbe(&r, &write).0.starts_with("{\"permission\":\"deny\""), "with Impeccable context the gate scans it");
 }

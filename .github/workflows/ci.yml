@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, next]
   pull_request:
-    branches: [main]
+    branches: [main, next]
   workflow_dispatch:
     inputs:
       skill_workflow:
@@ -12,7 +12,8 @@ on:
         type: boolean
         default: false
   # Nightly full live-e2e matrix. The smoke groups already gate every PR; the
-  # full sweep is too slow for that, so it runs once a day against main.
+  # full sweep is too slow for that, so it runs once a day against next, where
+  # unreleased work lands (live-e2e-full checks next out on a schedule).
   schedule:
     - cron: '0 7 * * *'
 
@@ -74,6 +75,14 @@ jobs:
         # The workspace's floor (package.json devEngines); the published shim's is held by cli-shim-floor (#850).
         node-version: [22.18.0, 24]
     steps:
+      # Main is what users install (the plugin marketplace, submodules and copies read it), so it moves only at a
+      # release: work merges into `next`, and main takes `next` (or a `hotfix/` branch) when a release ships.
+      - name: Check the pull request's base
+        if: github.event_name == 'pull_request' && github.base_ref == 'main' && github.head_ref != 'next' && !startsWith(github.head_ref, 'hotfix/')
+        run: |
+          echo "::error title=Target next::Main moves only at a release. Retarget this pull request to next, then close and reopen it so CI runs against next (a base change alone starts no run): gh pr edit ${{ github.event.pull_request.number }} --base next && gh pr close ${{ github.event.pull_request.number }} && gh pr reopen ${{ github.event.pull_request.number }}"
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -120,8 +129,11 @@ jobs:
         if: needs.changes.outputs.detector == 'true'
         run: rustup show && rustup target add wasm32-unknown-unknown
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: needs.changes.outputs.detector == 'true'
+        with:
+          cache: rust
 
       - name: Install wasm-pack
         if: needs.changes.outputs.detector == 'true'
@@ -131,12 +143,9 @@ jobs:
       # releases on first use; cached, a GitHub release outage cannot fail the build.
       - name: Cache wasm-pack tools
         if: needs.changes.outputs.detector == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/.wasm-pack
-          key: ${{ runner.os }}-wasm-pack-tools-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-wasm-pack-tools-
 
       - name: Build extension
         if: needs.changes.outputs.detector == 'true'
@@ -172,9 +181,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: impeccable-build-node-${{ matrix.node-version }}
-          # Ship the packaged zips, not the unpacked Firefox staging tree.
+          # Ship the packaged zips, not the unpacked staging trees.
           path: |
             dist/
+            !dist/extension-chrome/
             !dist/extension-firefox/
           retention-days: 7
 
@@ -193,7 +203,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build
         run: cargo build --workspace --all-targets
@@ -205,7 +218,7 @@ jobs:
   # workspace has to build and pass its own tests there. Tests that need a
   # browser or the oracle skip when those are absent.
   rust-windows:
-    runs-on: windows-latest
+    runs-on: namespace-profile-impeccable-windows
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     steps:
@@ -247,7 +260,7 @@ jobs:
       - run: cargo test --workspace --no-fail-fast
 
   launcher-windows:
-    runs-on: windows-latest
+    runs-on: namespace-profile-impeccable-windows
     needs: changes
     if: needs.changes.outputs.core == 'true'
     steps:
@@ -315,7 +328,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine from source
         run: cargo build --release -p impeccable
@@ -401,7 +417,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -438,20 +457,14 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         run: bun install
@@ -464,7 +477,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -512,6 +528,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The nightly sweep tests unreleased work; a manual run tests the ref it was started on.
+          ref: ${{ github.event_name == 'schedule' && 'next' || '' }}
 
       - name: Setup Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -522,20 +541,14 @@ jobs:
         uses: ./.github/actions/setup-bun
 
       - name: Cache fixture npm downloads
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         run: bun install
@@ -548,7 +561,10 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
+        with:
+          cache: rust
 
       - name: Build the engine
         run: cargo build --release -p impeccable
@@ -599,21 +615,15 @@ jobs:
 
       - name: Cache fixture npm downloads
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -629,8 +639,11 @@ jobs:
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
+        with:
+          cache: rust
 
       - name: Build the engine
         if: ${{ env.ANTHROPIC_API_KEY != '' || env.DEEPSEEK_API_KEY != '' }}
@@ -674,21 +687,15 @@ jobs:
 
       - name: Cache fixture npm downloads
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-fixture-npm-${{ hashFiles('tests/framework-fixtures/**/files/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-fixture-npm-
 
       - name: Cache Playwright Chromium
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('package.json', 'bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-chromium-
 
       - name: Install dependencies
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
@@ -704,8 +711,11 @@ jobs:
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
         run: rustup show
 
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Cache Rust on the Namespace cache volume
+        uses: namespacelabs/nscloud-cache-action@1124a6f3ce44e5cf84cc22111530961f4d2a15f9 # v1.7.0
         if: ${{ env.DEEPSEEK_API_KEY != '' }}
+        with:
+          cache: rust
 
       - name: Build the engine
         if: ${{ env.DEEPSEEK_API_KEY != '' }}

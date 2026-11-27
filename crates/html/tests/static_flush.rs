@@ -23,6 +23,82 @@ fn page(style: &str, body: &str) -> String {
     format!("<!DOCTYPE html><html><head><style>{style}</style></head><body>{body}</body></html>")
 }
 
+const BARE_LIST: &str =
+    ".list { background: #f3f3f3; border: 1px solid #ccc; padding: 0; margin: 0; list-style: none; }";
+const LIST_STYLE: &str = ".list { background: #f3f3f3; border: 1px solid #ccc; padding: 0; margin: 0; list-style: none; }
+     .list > li { padding: 12px 16px; }";
+
+/// A list whose only child is a `<template>` renders nothing, so there is no
+/// text to reach an edge (#1693).
+#[test]
+fn a_template_only_list_is_not_flagged() {
+    let html = page(
+        LIST_STYLE,
+        "<ul class=\"list\"><template><li>Item name here</li></template></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// Template text does not make a rendered, empty `<li>` count as a text child.
+#[test]
+fn template_text_beside_an_empty_item_is_not_flagged() {
+    let html = page(
+        BARE_LIST,
+        "<ul class=\"list\"><template><li>Item name here</li></template><li></li></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A wrapper that holds only a template is not a text-bearing child.
+#[test]
+fn a_template_inside_a_wrapper_is_not_flagged() {
+    let html = page(
+        LIST_STYLE,
+        "<ul class=\"list\"><div><template><li>Item name here</li></template></div></ul>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A wrapper holding a template and one padded block is a single-child
+/// pass-through: the template is not a second child that could reach the edge.
+#[test]
+fn a_template_beside_a_padded_block_in_a_wrapper_is_not_flagged() {
+    let html = page(
+        ".card { background: #f3f3f3; padding: 0; }",
+        "<div class=\"card\"><div><template><p>Template text</p></template>\
+         <p style=\"padding: 16px\">Real text here</p></div></div>",
+    );
+    assert_eq!(scan(&html), Vec::<String>::new());
+}
+
+/// A label centred in a min-height flex row stays inset when a `<template>`
+/// beside it holds a `<br>` or a long label: neither is laid out.
+#[test]
+fn a_template_does_not_undo_a_centred_row() {
+    let style = ".row { display: flex; align-items: center; min-height: 44px; padding: 0 8px; border: 1px solid #ccc; font-size: 16px; }";
+    for extra in ["<br>", "<span>A much longer loop label that runs on and on</span>"] {
+        let html = page(
+            style,
+            &format!("<div class=\"row\"><span>Instagram</span><template>{extra}</template></div>"),
+        );
+        assert_eq!(scan(&html), Vec::<String>::new(), "{extra}");
+    }
+}
+
+/// A template beside a rendered, unpadded item cannot inset it: the item's own
+/// text still sits flush.
+#[test]
+fn a_template_beside_an_unpadded_item_still_flags() {
+    let html = page(
+        BARE_LIST,
+        "<ul class=\"list\"><template><li style=\"padding: 12px 16px\">Item name here</li></template><li>Static flush item</li></ul>",
+    );
+    assert_eq!(
+        scan(&html),
+        vec!["<ul> \"list\": children flush against border+bg on all sides (no inset)".to_string()]
+    );
+}
+
 /// `div.row > h3 > button.py-4`: the shape every component library emits for
 /// an accordion. The direct child carries nothing; the padding that holds the
 /// label off the rules is one step below it.
@@ -276,6 +352,88 @@ fn a_short_label_in_the_shell_keeps_the_warning() {
     );
 }
 
+/// A box that centres a label in a minimum height insets it without padding
+/// (#1596), whether it is the bounded box's child or the bounded box itself.
+/// A height about one line tall, a label too long to stay on one line, a
+/// column stack or no centring at all leaves the text on the rule.
+#[test]
+fn a_label_centred_in_a_min_height_is_inset() {
+    let disc = |button: &str, text: &str| {
+        scan(&page(
+            &format!(
+                ".disc {{ border: 1px solid #d1d5c3; background: #fff; }}
+                 .disc > button {{ display: flex; min-height: 44px; padding: 0 12px; font-size: 14px; border: 0; background: transparent; {button} }}"
+            ),
+            &format!("<div class=\"disc\"><button type=\"button\">{text}</button></div>"),
+        ))
+    };
+    assert_eq!(disc("align-items: center;", "Instagram"), Vec::<String>::new());
+    let flush = vec!["<div> \"disc\": children flush against border on top/bottom (no inset)".to_string()];
+    assert_eq!(disc("", "Instagram"), flush);
+    assert_eq!(disc("align-items: center; min-height: 20px;", "Instagram"), flush);
+    assert_eq!(disc("align-items: center; flex-direction: column;", "Instagram"), flush);
+    assert_eq!(disc("align-items: center;", "Connect your Instagram account to share every post"), flush);
+    assert_eq!(disc("align-items: center; line-height: 22px;", "Account<br>settings"), flush);
+    assert_eq!(disc("align-items: center; transform: translateY(-14px);", "Instagram"), flush);
+    let row = |style: &str| {
+        scan(&page(
+            &format!(
+                ".chip {{ width: 24px; height: 24px; }}
+                 .row {{ display: flex; min-height: 44px; padding: 0 8px; border: 1px solid #d1d5c3; {style} }}"
+            ),
+            "<div class=\"row\"><span class=\"chip\"></span><span>Instagram</span></div>",
+        ))
+    };
+    assert_eq!(row("align-items: center;"), Vec::<String>::new());
+    let flush = vec!["<div> \"row\": children flush against border on top/bottom (no inset)".to_string()];
+    assert_eq!(row(""), flush);
+    assert_eq!(row("align-items: center; min-height: 40px; } .row .chip { height: 36px;"), flush);
+    assert_eq!(row("align-items: center; } .row span + span { font-size: 36px; line-height: 40px;"), flush);
+    assert_eq!(row("align-items: center; } .row .chip { align-self: stretch;"), flush);
+    assert_eq!(row("align-items: center; } .row .chip { height: calc(44px);"), flush);
+}
+
+/// `padding-inline-start` beside `border-inline-start` is the padding on the
+/// bordered side (#1604); without it the cell's spans sit on the rule.
+#[test]
+fn logical_padding_insets_the_side_it_lands_on() {
+    let cells = |pad: &str| {
+        scan(&page(
+            &format!(".g {{ display: grid; }} .g > div + div {{ border-inline-start: 1px solid #999; {pad} }}"),
+            "<div class=\"g\"><div><span>Asalan</span><span>Gayo, Aceh</span></div>\
+             <div><span>Disangrai</span><span>14 November 2026</span></div></div>",
+        ))
+    };
+    assert_eq!(cells("padding-inline-start: 1rem;"), Vec::<String>::new());
+    assert_eq!(cells("padding-inline: 1rem 0;"), Vec::<String>::new());
+    let flush = vec!["<div>: children flush against border-left on left (no inset)".to_string()];
+    assert_eq!(cells(""), flush);
+    assert_eq!(cells("padding-inline: 0 1rem;"), flush);
+}
+
+/// Padding this engine cannot evaluate (`clamp()`, `calc()`, directly or
+/// through a custom property) may be any length, so it is not read as zero
+/// (#1605). A zero padding still flags.
+#[test]
+fn padding_written_as_a_math_function_is_not_zero() {
+    let board = |pad: &str| {
+        scan(&page(
+            &format!(
+                ":root {{ --pad: clamp(1.5rem, 4vw, 3.5rem); }}
+                 .b {{ background: #232a28; color: #e7e9e4; border: 10px solid #4a3b2a; {pad} }}"
+            ),
+            "<div class=\"b\"><div>Hello there</div></div>",
+        ))
+    };
+    assert_eq!(board("padding: clamp(1.5rem, 4vw, 3.5rem) 2rem;"), Vec::<String>::new());
+    assert_eq!(board("padding: var(--pad);"), Vec::<String>::new());
+    assert_eq!(board("padding: calc(1rem + 2px);"), Vec::<String>::new());
+    assert_eq!(
+        board("padding: 0;"),
+        vec!["<div> \"b\": children flush against border+bg on all sides (no inset)".to_string()]
+    );
+}
+
 /// The fixture's two columns are the contract: a file scan must report every
 /// `flag-` case and nothing from the pass column. Layout is what clears the
 /// rest of the pass column, and a file scan has none, so the cases it cannot
@@ -287,8 +445,6 @@ const STATIC_ONLY_LEFTOVERS: &[&str] = &[
     "pass-table-wrap",
     // A spacer element, not a declaration, holds the text off the rule.
     "pass-tall-script",
-    // A full-height child centres its label: only layout shows the air.
-    "pass-segmented",
     // An inline trigger whose border-bottom is the underline itself.
     "pass-tooltip-underline",
     // A marquee track that scrolls its padded cards past the shell's edge.

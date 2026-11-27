@@ -1,0 +1,416 @@
+/* The side panel, in the popup's language: impeccable.style colours, 10px corners, Live Mode type (Albert Sans for
+   controls, Alumni Sans for big words, JetBrains Mono for labels; system stand-ins where they are not installed). */
+@font-face { font-family: "Alumni Sans"; src: url("../../fonts/alumnisans.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Albert Sans"; src: url("../../fonts/albertsans.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+:root {
+  --paper: oklch(97.8% 0 0); --paper-raised: oklch(99.5% 0 0); --paper-deep: oklch(95% 0 0);
+  --gray: oklch(92% 0 0); --gray-2: oklch(88% 0 0);
+  --ink: oklch(13% 0 0); --text: oklch(22% 0 0); --muted: oklch(46% 0 0); --faint: oklch(51% 0 0); --mute-deep: oklch(66% 0 0);
+  --rule: oklch(13% 0 0 / .08);
+  --gold: oklch(84% .19 80.46); --gold-pale: oklch(86% .07 84); --gold-rich: oklch(77% .13 82); --gold-deep: oklch(61% .085 78); --on-gold: oklch(14% .018 95);
+  --gold-wash: oklch(96.5% .025 84);
+  --vermilion: oklch(52% .16 35);
+  --inst-text: oklch(93% 0 0);
+  --lacquer: oklch(20% .01 85); --lacquer-edge: oklch(74% .09 82 / .6);
+  --font: "Albert Sans", "Avenir Next", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --wordmark: "Alumni Sans", "Albert Sans", "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  color-scheme: light;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--paper-raised); color: var(--text); font-family: var(--font); font-size: 16px; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+button, textarea { font: inherit; color: inherit; background: none; border: 0; text-align: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 2px solid var(--gold-deep); outline-offset: 2px; }
+ul, ol { list-style: none; }
+q { quotes: "“" "”"; }
+b { font-weight: 500; }
+.grow { flex: 1; }
+
+#app { min-height: 100%; display: flex; flex-direction: column; padding: 16px 20px 20px; }
+
+/* ---------- faces: one cell of a face sheet, cropped as the web app crops it ---------- */
+.face { --face-cx: .5; --face-cy: .4; --face-zoom: 1.82; position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; overflow: hidden;
+  background-color: var(--paper-deep); border: 1px solid var(--rule);
+  background-image: var(--face, none); background-repeat: no-repeat; background-size: calc(100% * var(--face-zoom));
+  background-position: calc((0.5 - var(--face-cx) * var(--face-zoom)) / (1 - var(--face-zoom)) * 100%) calc((0.5 - var(--face-cy) * var(--face-zoom)) / (1 - var(--face-zoom)) * 100%);
+  transition: background-position .4s var(--ease); }
+.face-letter { font-family: var(--wordmark); font-weight: 300; font-size: 2.6em; color: var(--muted); }
+.cast .face-letter { font-size: 1.5rem; }
+.plan-head .face-letter { font-size: 1.6rem; }
+.hero .face, .walk-head .face, .mid .face, .end .face { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold); }
+.face.is-thinking { animation: ring 1.6s var(--ease) infinite; }
+
+/* ---------- controls ---------- */
+/* What scrolls inside the panel (the task box, the steps, a wide grid): a thin rounded thumb and no track. */
+.scrolls::-webkit-scrollbar { width: 6px; height: 6px; }
+.scrolls::-webkit-scrollbar-track { background: transparent; }
+.scrolls::-webkit-scrollbar-thumb { border-radius: 3px; background: color-mix(in oklch, var(--ink) 20%, transparent); }
+.scrolls::-webkit-scrollbar-thumb:hover { background: color-mix(in oklch, var(--ink) 35%, transparent); }
+.ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mark { width: 18px; height: 18px; flex: none; fill: currentColor; color: var(--ink); }
+.mark.big { width: 36px; height: 36px; }
+.hd { font-family: var(--wordmark); font-weight: 200; font-size: 2.5rem; line-height: 1.02; color: var(--ink); text-wrap: balance; }
+.btn { height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border-radius: 10px; font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--ink); }
+.btn-sec { background: var(--paper-deep); }
+.btn-sec:hover { background: var(--gray); }
+.btn-gold { background: var(--gold); color: var(--on-gold); font-size: 14px; font-weight: 600; box-shadow: inset 0 1px 0 oklch(100% 0 0 / .35); }
+.btn-gold:disabled { background: var(--gray); color: var(--mute-deep); box-shadow: none; }
+.btn-big { width: 100%; height: 88px; flex: none; padding: 0 22px 0 24px; gap: 14px; justify-content: space-between; border-radius: 14px; font-size: 22px; font-weight: 700; white-space: normal; box-shadow: inset 0 1px 0 oklch(100% 0 0 / .35), 0 6px 16px oklch(77% .13 82 / .35); }
+.btn-big .big-t { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; line-height: 1.15; }
+.btn-big b { font-weight: 700; }
+.btn-big small { font-size: 14px; font-weight: 500; }
+.btn-big .ic { width: 22px; height: 22px; stroke-width: 2.2; }
+.pair { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pair .btn { width: 100%; }
+/* Not now, under an agent's site question: a quiet text button, the panel's ink. */
+.btn-ghost { height: 32px; align-self: center; background: none; color: var(--muted); }
+.btn-ghost:hover { color: var(--ink); }
+/* The mic, an icon button: ink, a soft grey circle on hover; listening, the same circle in the panel's gold. */
+.mic { width: 36px; height: 36px; flex: none; display: inline-grid; place-items: center; border-radius: 50%; color: var(--ink); }
+.mic:hover { background: var(--gray); }
+.mic .ic { width: 18px; height: 18px; }
+.mic[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+.mic[aria-pressed="true"]:hover { background: var(--gold-rich); }
+.mic-page #app { max-width: 420px; margin: 0 auto; }
+.err { font-size: 13px; line-height: 18px; color: var(--vermilion); text-wrap: balance; }
+.dots { display: inline-flex; gap: 4px; }
+.dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); animation: pulse 1.4s infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ring { 0%, 100% { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold); } 50% { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.pro { width: 100%; height: 44px; display: grid; grid-template-columns: 18px 1fr 15px; align-items: center; gap: 12px; padding: 0 18px; border-radius: 10px; background: var(--lacquer); border: 1px solid var(--lacquer-edge); color: var(--inst-text); font-size: 14px; font-weight: 500; text-align: center; }
+.pro .mark, .pro .arrow { color: var(--gold); }
+
+/* ---------- screens ---------- */
+.top { position: relative; flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.where { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.where b { color: var(--ink); }
+/* The persona's part of the home and of Make a persona: centred between the top bar and the box, from the top with a scroll when there is no room. */
+.middle { flex: 1 0 auto; display: flex; flex-direction: column; justify-content: center; padding: 24px 0 8px; }
+.hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.hero .face { margin-bottom: 8px; }
+.name { font-family: var(--wordmark); font-weight: 200; font-size: 3.25rem; line-height: .9; color: var(--ink); }
+.about { margin-top: 6px; font-size: 17px; line-height: 1.45; color: var(--ink); text-wrap: pretty; }
+/* Four to a row, and a shorter last row centred under them. */
+.cast { --gap: 8px; container-type: inline-size; flex: none; display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 20px auto 0; }
+.cast-row { display: flex; justify-content: center; gap: var(--gap); }
+/* Five across in whatever width there is (about 64px at 400, 50px at 320). */
+.cast-row > * { width: min(64px, calc((100cqi - 4 * var(--gap)) / 5)); flex: none; }
+/* More than ten: two rows as one block that scrolls sideways, each tile at full size. */
+.cast.roomy { --gap: 14px; gap: 10px; }
+.cast.roomy .cast-row > * { width: 64px; }
+.cast.roomy .add .face { width: 48px; height: 48px; }
+.cast.wide { overflow-x: auto; padding: 5px 5px 8px; }
+.cast.wide .cast-row { justify-content: flex-start; width: max-content; }
+.cast.wide .cast-row > * { width: 64px; }
+.cast button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; border-radius: 10px; }
+.cast .face { padding: 0; }
+.cast button.sel .face { box-shadow: 0 0 0 2px var(--paper-raised), 0 0 0 4px var(--gold); }
+.cast button:hover .face { border-color: var(--gold-rich); }
+.cast-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.cast button.sel .cast-name { color: var(--ink); font-weight: 600; }
+.cast .add { justify-content: flex-start; }
+.cast .add .face { width: 44px; height: 44px; background: none; border: 1.5px dashed var(--mute-deep); color: var(--muted); }
+.cast .add:hover .face { border-color: var(--gold-deep); color: var(--ink); }
+.cast .add .ic { width: 20px; height: 20px; }
+.box { flex: none; margin-top: auto; padding-top: 16px; }
+.box .err { margin: 0 4px 10px; text-align: center; }
+.field { border-radius: 16px; background: var(--paper-deep); padding: 14px 12px 12px 16px; }
+.field:focus-within { background: var(--paper-raised); box-shadow: inset 0 0 0 1.5px var(--gold-rich), 0 0 0 4px var(--gold-wash); }
+.text { display: block; width: 100%; min-height: calc(3 * 1.45em + 12px); resize: none; field-sizing: content; max-height: calc(6 * 1.45em + 12px); overflow-y: auto; font-size: 15px; line-height: 1.45; color: var(--ink); padding-bottom: 12px; outline: none; }
+.text::placeholder { color: var(--faint); }
+/* The row under the words (the mic, the waveform, the button) keeps clear of them. */
+.field .text + .row { margin-top: 10px; }
+/*
+ * Words past the box's edge fade out over 18px there (panel.js \`fade\`); the scrollbar's 6px strip stays unmasked.
+ */
+.text[data-fade~="top"], .text[data-fade~="bottom"], .hist[data-fade~="top"], .hist[data-fade~="bottom"] { mask-size: calc(100% - 6px) 100%, 6px 100%; mask-position: 0 0, 100% 0; mask-repeat: no-repeat; }
+.text[data-fade="bottom"], .hist[data-fade="bottom"] { mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent), linear-gradient(#000, #000); }
+.text[data-fade="top"], .hist[data-fade="top"] { mask-image: linear-gradient(to bottom, transparent, #000 18px), linear-gradient(#000, #000); }
+.text[data-fade="top bottom"], .hist[data-fade="top bottom"] { mask-image: linear-gradient(to bottom, transparent, #000 18px, #000 calc(100% - 18px), transparent), linear-gradient(#000, #000); }
+.row { display: flex; align-items: center; gap: 8px; }
+.row .btn { padding: 0 22px; }
+.widths { flex: none; display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--gray); }
+.widths button { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; color: var(--muted); }
+.widths button:hover { color: var(--ink); }
+.widths button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.widths .ic { width: 16px; height: 16px; }
+/* Screen and Sees: soft tabs on the task box's top edge, in its grey, Screen left and Sees right. */
+/*
+ * Screen and Sees: tabs that grow out of the task box's top edge, in its grey, Screen flush left and Sees flush right.
+ * The outer side runs straight into the box's side; the inner foot curves out into the box's top (a concave fillet,
+ * drawn by a radial gradient beside the tab).
+ */
+.tabs { --tab: var(--paper-deep); --fillet: 12px; display: flex; justify-content: space-between; }
+.tabs .widths { position: relative; gap: 2px; padding: 4px 4px 2px; background: var(--tab); }
+.tabs .widths:not(.sights) { border-radius: 12px 12px 0 0; padding-left: 6px; }
+.tabs .sights { border-radius: 12px 12px 0 0; padding-right: 6px; }
+.tabs .widths::before { content: ""; position: absolute; bottom: 0; width: var(--fillet); height: var(--fillet); pointer-events: none; }
+.tabs .widths:not(.sights)::before { left: 100%; background: radial-gradient(circle at 100% 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
+.tabs .sights::before { right: 100%; background: radial-gradient(circle at 0 0, transparent calc(var(--fillet) - .5px), var(--tab) var(--fillet)); }
+.tabs + .field { border-top-left-radius: 0; border-top-right-radius: 0; }
+/* The tabs' grey, named here: `--tab` is set on .tabs, a sibling, so it does not reach the box. */
+.tabs + .field:focus-within { background: var(--paper-deep); box-shadow: none; }
+.tabs .widths button[aria-pressed="true"] { background: var(--paper-raised); }
+/* The + at the limit: greyed, still focusable, saying why just under it, ending at its right (it is last, so nothing is under it or after it). */
+.cast .add[data-tip] { position: relative; }
+.cast .add[aria-disabled="true"] { cursor: default; }
+.cast .add[aria-disabled="true"] .face { opacity: .45; }
+.cast .add[aria-disabled="true"]:hover .face { border-color: var(--mute-deep); color: var(--muted); }
+/* The tip sits where a persona's name would, centred under the +, so it reads as the +'s own label. */
+.cast .add[data-tip]::after { content: attr(data-tip); align-self: stretch; margin: 0 -8px; text-align: center; text-wrap: balance; font-size: 12px; line-height: 1.4; color: var(--muted);
+  pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.cast .add[data-tip]:hover::after, .cast .add[data-tip]:focus-visible::after { opacity: 1; }
+.tabs button { position: static; }
+/*
+ * What each icon means, in small muted words just above its group, on hover and on keyboard focus: Screen's from the
+ * box's left edge, Sees' to its right edge (the groups sit flush with them), whichever icon it is.
+ */
+.tabs button[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 2; font-size: 12px; line-height: 1.4; color: var(--muted);
+  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+/* Sees' tip: a small card over the hovered icon, its caret pointing at it: the name, then how common it is (`.tip`). */
+.tabs .sights button { position: relative; }
+.tabs .sights .tip { position: absolute; bottom: calc(100% + 14px); right: -6px; z-index: 2; width: max-content; max-width: 60vw; padding: 6px 10px; border-radius: 8px;
+  background: var(--paper-raised); box-shadow: 0 1px 2px oklch(13% 0 0 / .12), 0 0 0 1px var(--paper-deep); font-size: 12px; line-height: 1.4; color: var(--muted);
+  text-align: left; pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .sights .tip-h { display: block; font-size: 14px; color: var(--ink); }
+.tabs .sights button::before { content: ""; position: absolute; bottom: calc(100% + 10px); left: 50%; z-index: 3; width: 9px; height: 9px; background: var(--paper-raised);
+  box-shadow: 1px 1px 0 0 var(--paper-deep); transform: translateX(-50%) rotate(45deg); pointer-events: none; opacity: 0; transition: opacity .12s var(--ease); }
+.tabs .sights button:is(:hover, :focus-visible) .tip, .tabs .sights button:is(:hover, :focus-visible)::before { opacity: 1; }
+.tabs button[data-tip]:is(:hover, :focus-visible)::after { opacity: 1; }
+.field .row + .row { margin-top: 10px; }
+.choice { margin: 8px 2px 0; font-size: 12px; line-height: 1.4; color: var(--muted); text-align: center; }
+.task.at { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.task.at .ic { width: 14px; height: 14px; }
+.mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; text-align: center; }
+.mid .face { margin-bottom: 12px; }
+.act { font-size: 17px; font-weight: 500; line-height: 1.35; color: var(--ink); }
+.task { display: block; font-size: 13px; line-height: 1.5; color: var(--muted); text-wrap: balance; }
+.mid .task, .end .task { max-width: 30ch; }
+.plan-head { flex: none; display: flex; align-items: center; gap: 14px; margin-top: 24px; }
+.plan-head .face { box-shadow: 0 0 0 3px var(--paper-raised), 0 0 0 5px var(--gold); }
+.plan-head + .task { margin-top: 16px; }
+.plan { flex: none; display: flex; flex-direction: column; gap: 4px; margin-top: 20px; }
+.plan li { min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 8px 14px 8px 12px; border-radius: 12px; background: var(--paper-deep); font-size: 15px; font-weight: 500; line-height: 1.35; color: var(--ink); }
+.plan li i, .confirm i { width: 20px; height: 20px; flex: none; display: grid; place-items: center; font-style: normal; }
+.plan li i::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-deep); }
+.plan li.risky i, .confirm i { border-radius: 50%; background: var(--vermilion); color: var(--paper-raised); font-family: var(--mono); font-size: 12px; line-height: 1; }
+.plan li.risky i::before { content: none; }
+.confirm { flex: none; display: flex; align-items: center; gap: 10px; margin: 16px 0 12px; padding-left: 12px; font-size: 15px; font-weight: 500; color: var(--ink); }
+.screen-plan .err { margin: 12px 0 0; }
+.walk-head { flex: none; display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 24px; text-align: center; }
+.walk-head .hd { font-size: 2.25rem; }
+.ask, .held { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding: 14px; border-radius: 12px; background: var(--gold-wash); border: 1px solid var(--gold-rich); }
+/* A secondary button on the yellow card is a shade of that yellow: two hues of near-equal lightness blend (the decider's
+   taste, 18 Nov), so the card's grey would read as part of it. */
+.ask .btn-sec, .held .btn-sec { background: var(--gold-pale); color: var(--on-gold); }
+.ask .btn-sec:hover, .held .btn-sec:hover { background: color-mix(in oklch, var(--gold-pale), var(--gold-rich)); }
+.ask-what, .status { font-size: 14px; line-height: 1.45; color: var(--ink); }
+.sofar { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 24px; }
+/* A walk fills the panel exactly: the header and Stop stay put, and only the steps scroll. */
+#app.screen-walking { height: 100%; min-height: 0; }
+/* Every row has the same side padding and a border (clear but for the current one), so no number moves when the current step moves on. */
+.sofar li { position: relative; isolation: isolate; display: flex; gap: 12px; align-items: baseline; padding: 9px 13px 9px 12px; border: 1px solid transparent; border-top-color: var(--rule); font-size: 13px; line-height: 1.4; color: var(--muted); }
+/* The current step's gold card is every row's ::before, shown on the current one, so it can fade as the walk moves on (panel.js `ease`). */
+.sofar li::before { content: ""; position: absolute; inset: -1px; z-index: -1; border: 1px solid var(--gold-rich); border-radius: 12px; background: var(--gold-wash); opacity: 0; pointer-events: none; }
+.sofar li.now::before { opacity: 1; }
+.sofar li:first-child { border-top-color: transparent; }
+/* The step's number: one fixed column, right-aligned, figures all one width (1 to 99 line up on their last digit). */
+.sofar .n { width: 2ch; flex: none; text-align: right; font-family: var(--mono); font-size: 11px; font-variant-numeric: tabular-nums; color: var(--mute-deep); }
+.sofar .t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sofar li.now { padding-top: 12px; padding-bottom: 12px; color: var(--ink); font-size: 15px; }
+.sofar li.now + li { border-top-color: transparent; }
+.sofar li.now .n { color: var(--gold-deep); }
+.sofar li.now q { font-size: 13px; color: var(--muted); }
+.screen-walking > .task { margin-top: 24px; text-align: center; }
+.bar { position: sticky; bottom: 0; flex: none; height: 44px; margin-top: 16px; display: flex; border-radius: 10px; overflow: hidden; background: var(--lacquer); border: 1px solid var(--lacquer-edge); color: var(--inst-text); }
+.bar button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.end { flex: none; display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 56px; text-align: center; }
+.end .face { margin-bottom: 14px; }
+.end.is-still .face { box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
+.end .hd { font-size: 3rem; }
+.screen-end .btn-big { margin-top: 24px; }
+.command-line { display: block; padding: 10px 12px; border-radius: 10px; background: var(--paper-deep); font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.btn.sm { height: 32px; padding: 0 12px; }
+.btn.full { width: 100%; }
+.stack { width: 100%; max-width: 280px; display: flex; flex-direction: column; gap: 8px; }
+.icon-only { width: 32px; padding: 0; }
+.btn-sec .ic { color: var(--muted); }
+.btn-sec:disabled { color: var(--mute-deep); }
+.scan-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+/* Under Scan on the screens before Pro: the account's part, as the popup's footer had it. */
+.foot { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); text-align: center; }
+.scan { display: flex; flex-direction: column; gap: 20px; }
+.scan[hidden] { display: none; }
+.scan .err { min-height: 18px; text-align: center; }
+.count { height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
+.count-number { font-family: var(--wordmark); font-weight: 200; font-size: 6.5rem; line-height: 1; color: var(--mute-deep); font-variant-numeric: tabular-nums; }
+.count-rule { width: 72px; height: 3px; border-radius: 2px; background: var(--gray-2); }
+.count-label { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.count.has-findings .count-number { color: var(--ink); }
+.count.has-findings .count-rule { background: var(--gold); }
+.count.has-findings .count-label { color: var(--text); }
+
+/* ---------- first run: two screens before the home ---------- */
+.fr-mid { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 14px; text-align: center; }
+.fr-p { font-size: 15px; line-height: 1.55; color: var(--text); text-wrap: pretty; }
+.fr-list, .fr-art { width: 100%; text-align: left; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); overflow: hidden; }
+.fr-list { margin-top: 8px; border-radius: 16px; }
+.fr-list li { display: flex; gap: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.45; color: var(--muted); text-wrap: pretty; }
+.fr-list li + li { border-top: 1px solid var(--rule); }
+.fr-list li b { display: block; color: var(--ink); }
+.fr-list li a { color: var(--ink); text-underline-offset: 2px; }
+.fr-list .ic { margin-top: 1px; color: var(--ink); }
+.fr-list li.warn { background: var(--gold-wash); }
+.fr-list li.warn .ic { color: var(--gold-deep); stroke-width: 2.2; }
+.fr-foot { flex: none; display: flex; flex-direction: column; }
+.fr-dots { display: flex; gap: 6px; justify-content: center; margin-bottom: 16px; }
+.fr-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--gray-2); }
+.fr-dots i.on { width: 18px; background: var(--ink); }
+.btn.tall { height: 44px; }
+.fr-art { margin-bottom: 12px; border-radius: 14px; }
+.tg-strip { display: flex; align-items: flex-end; gap: 4px; padding: 8px 8px 0; background: oklch(90% .004 260); }
+.tg-chip { align-self: center; margin-bottom: 4px; padding: 3px 8px; border-radius: 6px; background: oklch(80% .16 85); color: var(--on-gold); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.tg-tab { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 6px 8px; overflow: hidden; border-radius: 8px 8px 0 0; font-size: 11px; white-space: nowrap; color: oklch(35% 0 0); }
+.tg-tab .ic { width: 11px; height: 11px; }
+.tg-tab.in { background: var(--paper-raised); box-shadow: inset 0 2px 0 oklch(80% .16 85); }
+.tg-tab.out { opacity: .55; }
+.tg-page { position: relative; height: 108px; padding: 18px 16px; display: flex; flex-direction: column; gap: 8px; }
+.tg-line { height: 8px; width: 70%; border-radius: 4px; background: var(--gray); }
+.tg-line.s { width: 45%; }
+.tg-pill { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 999px; background: var(--paper-raised); border: 1px solid oklch(13% 0 0 / .45); font-size: 11px; font-weight: 600; color: var(--ink); }
+.tg-pill .face-letter { font-size: 11px; }
+
+/* ---------- make a persona: laid out as the home, then a modal for an app's personas ---------- */
+.face.blank { background: var(--paper-deep); color: var(--mute-deep); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); }
+.face.blank .who { width: 62%; height: 62%; fill: currentColor; }
+.skel { display: block; border-radius: 8px; background: linear-gradient(90deg, var(--paper-deep) 25%, var(--gray) 50%, var(--paper-deep) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.hero .face.skel { display: inline-grid; place-items: center; border: 0; border-radius: 50%; color: var(--gray-2); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gray-2); margin-bottom: 8px; }
+.skel-name { width: 150px; height: 40px; margin-top: 4px; }
+.skel-line { width: 260px; height: 16px; margin-top: 10px; }
+.skel-line.short { width: 180px; margin-top: 4px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.field:has(.text:disabled) { opacity: .7; }
+.text:disabled { cursor: default; }
+.err.below { margin: 10px 4px 0; text-align: center; }
+.scrim { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 20px; background: oklch(13% 0 0 / .32); }
+.modal { width: 100%; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px; border-radius: 16px; background: var(--paper-raised); box-shadow: 0 8px 32px oklch(13% 0 0 / .18); }
+.modal-head { display: flex; align-items: center; gap: 8px; }
+.modal-head h2 { flex: 1; font-size: 15px; font-weight: 600; color: var(--ink); }
+.modal-mid { display: flex; justify-content: center; padding: 8px 0; text-align: center; }
+.modal .cast { margin: 0 auto; }
+.cast-one { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 3px 0; }
+.drop { display: flex; flex-direction: column; gap: 6px; }
+.pick-app { height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px 0 14px; border-radius: 10px; background: var(--paper-deep); font-size: 14px; color: var(--ink); }
+.pick-app:hover { background: var(--gray); }
+.pick-app .ph { color: var(--muted); }
+.pick-app[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.apps, .acct { display: flex; flex-direction: column; padding: 4px; border-radius: 12px; background: var(--paper-raised); border: 1px solid var(--rule); box-shadow: 0 1px 1px oklch(13% 0 0 / .04), 0 2px 6px oklch(13% 0 0 / .06); }
+.apps button { width: 100%; min-height: 36px; padding: 0 10px; border-radius: 8px; font-size: 14px; color: var(--ink); }
+.apps button:hover { background: var(--paper-deep); }
+.apps button[aria-pressed="true"] { background: var(--gold-wash); font-weight: 600; }
+
+/* ---------- talk to type: the waveform while the mic is on ---------- */
+/* A few thin rounded bars in one colour, eased each frame (voice.js `meter`); quiet, a flat line of short dots. */
+.wave { flex: 1; min-width: 0; height: 36px; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.wave i { --l: 0; width: 2px; flex: none; height: calc(2px + var(--l) * 22px); border-radius: 1px; background: var(--ink); opacity: .55; }
+
+/* ---------- the cog's account popover: the app picker's card, under the cog, its right edge on the cog's ---------- */
+.acct-scrim { position: fixed; inset: 0; z-index: 4; }
+.acct { position: absolute; top: calc(100% + 6px); right: 0; z-index: 5; width: 240px; max-width: 100%; gap: 10px; padding: 12px; }
+.acct-who { display: flex; flex-direction: column; gap: 2px; padding: 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.acct-who b { font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+
+/* ---------- history: the walking list's rows, each a button to its journey's page ---------- */
+/* As a walk does, the screen fills the panel and only the list scrolls, fading at an edge with more past it (panel.js `fade`). */
+#app.screen-history, #app.screen-personas { height: 100%; min-height: 0; }
+.hist-hd { flex: none; margin-top: 20px; font-size: 2.25rem; }
+.hist { flex: 0 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin-top: 16px; }
+.hist-row { width: 100%; display: flex; gap: 12px; align-items: flex-start; padding: 12px 10px 12px 8px; border: 1px solid transparent; border-top-color: var(--rule); border-radius: 0; text-align: left; }
+.hist li:first-child .hist-row, .hist li:hover + li .hist-row, .hist li:focus-within + li .hist-row { border-top-color: transparent; }
+.hist-row:hover, .hist-row:focus-visible { border-color: transparent; border-radius: 12px; background: var(--paper-deep); }
+.hist-row:focus-visible { outline-offset: -2px; }
+.hist .face-letter { font-size: 1.4rem; }
+.hist-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hist-task { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-size: 14px; font-weight: 500; line-height: 1.4; color: var(--ink); }
+/* The bottom line: how it ended on the left, when on the right; in a very narrow panel when drops under it, still on the right. */
+.hist-foot { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; }
+.hist-end { max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; line-height: 1.4; color: var(--text); }
+.hist-end::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; vertical-align: middle; border-radius: 50%; background: var(--mute-deep); }
+[data-outcome="issues"] .hist-end::before { background: var(--gold-deep); }
+[data-outcome="failed"] .hist-end { color: var(--vermilion); }
+[data-outcome="failed"] .hist-end::before { background: var(--vermilion); }
+.hist-when { flex: none; margin-left: auto; font-size: 12px; line-height: 1.4; color: var(--muted); white-space: nowrap; }
+.hist-row > .ic { margin-top: 2px; color: var(--mute-deep); }
+.hist-row:hover > .ic { color: var(--ink); }
+/* Your personas: History's list and words, each row the face, name and role, then Remove (or Default) on the right. Asking, the row keeps its height without the face. */
+.yours-row { display: flex; gap: 12px; align-items: center; min-height: 65px; padding: 12px 8px; border-top: 1px solid var(--rule); }
+.yours-row:first-child { border-top-color: transparent; }
+.yours-row > .hist-t { flex: 1 1 auto; min-width: 0; }
+.yours-row .where { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yours-end { flex: none; width: 72px; display: flex; justify-content: flex-end; }
+.yours-end > .btn.sm { padding-right: 0; }
+.yours-end > .hist-when { margin-left: 0; }
+
+/* ---------- just signed in: a gold check, then the panel goes on ---------- */
+.done-mark { width: 72px; height: 72px; display: inline-grid; place-items: center; border-radius: 50%; background: var(--gold); color: var(--on-gold); box-shadow: 0 0 0 4px var(--paper-raised), 0 0 0 6px var(--gold-pale); margin-bottom: 4px; }
+.done-mark .ic { width: 34px; height: 34px; stroke-width: 2.4; }
+.connected .task b { color: var(--ink); overflow-wrap: anywhere; }
+
+/* ---------- Create a persona's intro, where the face will be: faces cross-fade, lines follow one another ---------- */
+/* At rest (reduced motion, or played through) the last face and line show; each face, line and letter plays in at its
+   own delay. The lines share one cell, so nothing below them moves. */
+.intro-pics { position: relative; flex: none; width: 150px; height: 150px; margin-bottom: 14px; border-radius: 50%; background: var(--paper-deep); }
+/* The gold arc grows round from the top while a line holds, fades just before the next comes in, and starts again;
+   after the last line it fades back in, full. The first line holds for the lead as well. */
+.intro-ring { position: absolute; inset: -10px; width: 170px; height: 170px; transform: rotate(-90deg); fill: none; stroke-width: 4; }
+.intro-ring .track { stroke: var(--gray-2); }
+/* One fill for the first line, three for the next, then full from the fifth: copy.js's five intro lines. */
+.intro-ring .arc { stroke: var(--gold); stroke-dasharray: 100;
+  animation: intro-fill calc(var(--lead) + var(--beat)) linear calc(0ms - var(--since)) both, intro-fill var(--beat) linear calc(var(--lead) + var(--beat) - var(--since)) 3, intro-full .6s ease calc(var(--lead) + 4 * var(--beat) - var(--since)) forwards; }
+@keyframes intro-fill { from { stroke-dashoffset: 100; opacity: 1; } 95% { opacity: 1; } to { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes intro-full { from { opacity: 0; } to { opacity: 1; } }
+.intro-pic { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; opacity: 0; animation: intro-beat calc(var(--beat) * 1.15) var(--ease) both; }
+.intro-pic:first-of-type { animation-duration: calc((var(--beat) + var(--lead)) * 1.15); }
+.intro-pic:last-of-type { opacity: 1; animation-name: intro-in; }
+/* All lines share one cell, as tall as the tallest, so a line that wraps in a narrow panel moves nothing below it. */
+.intro-line { display: grid; place-items: center; width: 100%; font-size: 21px; font-weight: 500; line-height: 29px; color: var(--ink); text-wrap: balance; }
+/* A line holds until the next comes in, then fades as the next one's letters rise a little and settle. */
+.intro-line > span { grid-area: 1 / 1; opacity: 0; animation: intro-out 280ms ease-in both; }
+.intro-line > span:last-child { opacity: 1; animation: none; }
+.intro-line > span > span { white-space: nowrap; }
+.intro-line > span > span > span { display: inline-block; animation: intro-settle 700ms cubic-bezier(.25, 1, .5, 1) both; }
+.intro-line > span:first-child span { animation: none; }
+@keyframes intro-out { from { opacity: 1; } }
+@keyframes intro-settle { from { opacity: 0; transform: translateY(.2em); } }
+@keyframes intro-beat { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes intro-in { 0% { opacity: 0; } 15% { opacity: 1; } }
+/* The box under the intro keeps its place, unseen, and fades in once the last line has settled (its delay is set inline). */
+.box.waits { animation: box-in 280ms var(--ease) both; }
+@keyframes box-in { from { opacity: 0; } }
+
+/* ---------- Make a persona: its device and disability above the box, every choice in sight ---------- */
+.traits-pick { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.pick-h { font-size: 12px; font-weight: 600; color: var(--muted); }
+.pick-h:not(:first-child) { margin-top: 10px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 3px; border-radius: 12px; background: var(--paper-deep); }
+.seg button { height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 9px; font-size: 13px; color: var(--muted); }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--paper-raised); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px oklch(13% 0 0 / .12); }
+.chips { position: relative; display: flex; flex-wrap: wrap; gap: 6px; }
+/* A chip's meaning: its title on hover; under the chips while it has keyboard focus. */
+.need-line { display: none; }
+.chips button:focus-visible .need-line { display: block; position: absolute; left: 0; top: calc(100% + 4px); z-index: 1; padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--paper-raised); font-size: 12px; font-weight: 400; white-space: nowrap; pointer-events: none; }
+.chips button { height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; border-radius: 16px; background: var(--paper-deep); font-size: 13px; color: var(--text); }
+.chips button:hover { background: var(--gray); }
+.traits-pick:has(:disabled) { opacity: .7; }
+.chips button[aria-pressed="true"] { background: var(--gold-wash); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1.5px var(--gold-rich); }
+/* Under the persona made: its device and disability, small. */
+.traits { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.traits span { display: inline-flex; align-items: center; gap: 5px; }
+.traits .ic { width: 15px; height: 15px; color: var(--ink); }

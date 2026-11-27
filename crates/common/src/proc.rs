@@ -5,7 +5,7 @@
 //! Unix uses libc; Windows declares the handful of kernel32 entry points it
 //! needs directly so no windows-sys dependency is pulled into every crate.
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::AtomicBool;
 
 /// `process.kill(pid, 0)`: `Ok(())` when the process exists and can be
@@ -316,4 +316,78 @@ mod tests {
         let mut child = cmd.spawn().expect("detached spawn");
         let _ = child.wait();
     }
+}
+
+/// Start a silent detached copy of this executable; never wait for its work.
+pub fn spawn_refresh_args(
+    io: &crate::Io,
+    cwd: &std::path::Path,
+    verb: &str,
+    args: &[&str],
+) {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut cmd = Command::new(exe);
+    cmd.arg(verb).args(args)
+        .current_dir(cwd)
+        .envs(&io.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    detach(&mut cmd);
+    let _ = spawn_worker(&mut cmd);
+}
+
+#[cfg(not(windows))]
+pub fn spawn_worker(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+    cmd.spawn()
+}
+
+#[cfg(windows)]
+pub fn spawn_worker(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetHandleInformation(handle: *mut c_void, flags: *mut u32) -> i32;
+        fn SetHandleInformation(handle: *mut c_void, mask: u32, flags: u32) -> i32;
+    }
+    const INHERIT: u32 = 1;
+    struct Restore(Vec<(*mut c_void, u32)>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            for &(handle, flags) in &self.0 {
+                // SAFETY: borrowed standard handles remain owned by this process.
+                unsafe {
+                    SetHandleInformation(handle, INHERIT, flags & INHERIT);
+                }
+            }
+        }
+    }
+    // Windows inherits *all* inheritable handles, including the command's
+    // original output pipes even with Stdio::null configured for the child.
+    // Such a pipe would hold the caller's output() open until the upload ends.
+    // Temporarily remove inheritance from those originals; the worker gets
+    // only its new null handles. Restore the flags on every exit path.
+    let mut restore = Restore(Vec::new());
+    for handle in [
+        std::io::stdin().as_raw_handle(),
+        std::io::stdout().as_raw_handle(),
+        std::io::stderr().as_raw_handle(),
+    ] {
+        let mut flags = 0;
+        // SAFETY: these are borrowed OS standard handles, never closed here.
+        if unsafe { GetHandleInformation(handle, &mut flags) } == 0 {
+            continue;
+        }
+        if flags & INHERIT == 0 {
+            continue;
+        }
+        restore.0.push((handle, flags));
+        if unsafe { SetHandleInformation(handle, INHERIT, 0) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    cmd.spawn()
 }

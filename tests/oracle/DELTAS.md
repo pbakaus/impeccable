@@ -165,6 +165,41 @@ CLI 4.0.0 release; it is what the binary prints when run directly.
 
 - Accepted until 2026-10-15 (#1028): `cli-version`.
 
+## Recorded 2026-09-10: sampled contrast on image-backed text (#560)
+
+The static engine now reads the pixels of a local `url()` background behind
+text instead of skipping the contrast check (docs/CLI-CONTRACT.md, "Sampled
+contrast"). The JS never had this path, so the new fixture
+`sampled-image-contrast.html` (with `sampled-images/`) has no JS golden; its
+cases were recorded from the engine, and the directory sweeps below moved
+only by that fixture's `low-contrast` findings, verified entry by entry. The
+fixture grew with the review of #806 (2026-10-05) and now carries twelve.
+Since the merge of #1200 (2026-10-27) its five copies of the white-on-light
+pair report once, with `(and 4 more)`, so the case counts eight findings.
+
+- `detect-fixture-json-sampled-image-contrast-html`, `detect-fixture-text-sampled-image-contrast-html`, `detect-fixture-json-sampled-images`, `detect-fixture-text-sampled-images`: new cases.
+- `detect-dir-json-all-fixtures`, `detect-dir-text-all-fixtures`, `detect-dir-quiet-all-fixtures`, `detect-no-advisory-json`, `detect-no-advisory-text`: the directory sweep picks up the new fixture. Re-recorded after each merge of main (last on 2026-10-18): main's entries plus the fixture's twelve findings and the one below. The text sweeps' regex-only note (`detect-regex-only-note`, #919) counts one more file than main's sweep does (58 to 59 as of main's `border-accent-blank-lines.css`): the fixture's `sampled-images/site.css`. `detect-scope-layout-text` carries the same note and moves with it.
+- `detect-fixture-json-surface-resolution-contrast-html`, `detect-fixture-text-surface-resolution-contrast-html`: 13 to 14. That fixture's `#flag-frosted-tagline` sits on a data-URI backdrop under a 95% fill, which its header called URL-engine only; the static engine now reads it by sampling, `sampled (coarse) 3.1:1 (need 4.5:1) — text #818898 on data:image/png`. A true positive gained, not a new false one: the browser pass flags the same text.
+
+## Recorded 2026-10-18: the edit hook never decodes an image (#560, maintainer review 2)
+
+The sampled-contrast path gained a persistent sample cache and a mode: `detect`
+decodes and writes the cache, every static scan the hook runs reads the cache
+alone and never opens an image file. One new case pins the user-visible
+contract, recorded from the binary and reviewed by hand:
+
+- `hook-edit-html-image-cache` (new): white copy on an uncached light photo.
+  Step 1, `hook`: "No deterministic design-quality issues found", nothing
+  sampled. Step 2, `detect`: the sampled `low-contrast` finding, which writes
+  the cache entry under the case's isolated home. Step 3, `hook`: the
+  `low-contrast` finding, taken from that entry without opening the image.
+
+Sampling the full decode at 36 box-averaged cell centers, in place of a 640px
+thumbnail, moved no golden: the fixture's images are flat or near-flat, and the
+photos' ratios round to the same decimals. Every other golden is unchanged.
+
+Re-recorded after the merge of #1202 (2026-11-02), which keys a cached finding on its rule and snippet plus its occurrence among identical findings: the cache entry reads `low-contrast:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample#1` where it read `low-contrast:0:sampled (coarse) 1.2:1 (need 4.5:1) — text #fdfdfd on hero.png; p90 of 36 sample`. The three steps' stdout, stderr and exit codes are byte-identical.
+
 ## Recorded 2026-09-12: the URL scan reads the page after the reveal sweep
 
 `crates/browser` now runs the reveal sweep before it captures the page, and
@@ -7275,6 +7310,16 @@ Merging main into `detect-status-row-stripes` again (2026-10-23): the same five 
 
 New fixture `low-contrast-resting-states.html`: a stepper's inactive item beside the active one (opacity 0.3 by stylesheet with an opacity transition, the bright item carrying one more class token) reports as advisory in the URL engine (r13-t1), as does a checkout stepper's next step; text a script parked in its `style` attribute at the start of a reveal (Framer's start values, a scrubbed `max(.2, var(...))` opacity, a set of keys parked alike whose component the page shows lit elsewhere) is not at rest there and passes at its declared colour. The should-flag column carries the review's twins: a lone parked badge, parked nav links, an inline design token, a faint modifier, a clickable plan option, identical class lists, disclosure `summary` elements, unchecked `menuitemcheckbox` items, and keys parked alike whose lit peer is `display: none`. New cases `detect-fixture-json-low-contrast-resting-states-html` and `detect-fixture-text-low-contrast-resting-states-html`, recorded from the binary and reviewed by hand: the static engine reads no transition, transform or `will-change`, so it reports eighteen `low-contrast` warnings (the sixteen URL-engine findings, both advisories at full severity, plus the parked card and keys at their faded colour; it does not resolve the scrubbed opacity and scores that copy as declared), exit 2. The URL behaviour is pinned by `crates/browser/tests/transient_opacity.rs`. No existing per-fixture golden moved. The directory sweeps (`detect-dir-json-all-fixtures` and the other sweep cases) also gain these eighteen findings, but they are not re-recorded here: earlier entries list them as accepted deltas, so the oracle no longer compares them. The snapshot capture also reads computed `cursor` now (`STYLE_PROPS`); older recordings read it as empty. Review round, 2026-10-23 (#1148): three rows after the checkout stepper were added as should-flag twins for the control list (`summary`, `menuitemcheckbox`) and for a lit peer that must be shown; both fixture goldens were re-recorded from the binary and reviewed by hand, gaining exactly those three warnings, exit 2. A fourth row, a stepper item whose active sibling is `display: none` (a bright sibling must be shown), adds one more warning in both goldens.
 
+## Recorded 2026-10-19: one media environment for static HTML (#988)
+
+Static scans consider only styles that apply in the default desktop browser.
+The JSON and text fixture goldens record these changes:
+
+- `linked-url-patterns.html` loses the contrast finding on `div.inactive-media-stripes` inside `(max-width: 1px)`. The `@supports` case still reports.
+- `pattern-walk-inactive-at-rules.html` reports the active cyan glow and halo candidates instead of the magenta ones inside `(min-width: 4000px)`.
+- `static-media-environment.html` and `negative-media-dimensions.html` add four low-contrast findings each, with five inactive controls each.
+- `static-media-browser-defaults.html` adds eight contrast findings, one for each of seven desktop media defaults and one for the async stylesheet. The eight inactive controls and both companion CSS files produce no findings.
+
 ## Recorded 2026-10-26: one report per colour pair and per outer panel, counted (corpus/round14-counting)
 
 Taste calls r14-t2 and r14-t5 (`docs/CLI-CONTRACT.md`, "Round 14 counted repeats"). `low-contrast` reports each colour pair once on every path, the full pass included, and `nested-cards` reports an outer panel once; the finding that reports ends ` (and N more)` when it speaks for other elements. The static engine also counts the copies its SAFE_TAGS dedupe used to drop silently, so several pairs gain a count without losing a finding. Each case below was re-recorded from a release build of the binary and reviewed by hand with a script that weighs every finding as one plus its count: per case, no pair or panel lost weight, and the only weight moved is to the copies the dedupe now counts and to the fixture inks that changed.
@@ -7331,6 +7376,18 @@ Revised 2026-10-26 after review (round 14 branch B): `low-contrast-borrowed-grou
 
 Merged origin/main with round 14 branch F (one report per colour pair), 2026-10-26: the four faint ghost words in `low-contrast-borrowed-grounds.html` shared one composited colour pair at opacity 0.06, so main's pair dedupe folded them into one report. Each now has its own ink at opacity 0.2 (still a ghost by opacity), as the fixture's rule of one colour per case asks. `detect-fixture-json-low-contrast-borrowed-grounds-html` and `detect-fixture-text-low-contrast-borrowed-grounds-html` re-recorded from the merged binary and reviewed by hand: the same 16 findings, the four ghost words at their new colours.
 
+## Recorded 2026-10-26: live boot resolves PRODUCT.md and DESIGN.md through the shared context resolver
+
+In `live-boot-monorepo-no-git-from-root`, live's walk ends at `<WS>/website`
+because the fixture has no Git root. The walk finds neither context document,
+so live uses the shared resolver to find `PRODUCT.md` and `DESIGN.md` in `<WS>`.
+Boot now writes both paths to `website/.impeccable/live/roots.json` and reaches
+`config_missing`. The previous golden stopped at `context_missing`. The
+re-recorded golden captures this change. See [#1022](https://github.com/pbakaus/impeccable/issues/1022).
+
+The new `live-boot-context-dir-override` case covers the same fallback with
+`IMPECCABLE_CONTEXT_DIR`.
+
 ## Recorded 2026-10-28: hook cache keys name the finding, not its line (#1202)
 
 The design hook remembered a finding as `rule:line[:value]`, so a line inserted above it made it fresh again. It now keys a finding on its rule and value (or snippet) plus its occurrence among identical findings, top to bottom (`docs/CLI-CONTRACT.md`, `findingCacheKeys`), and the per-edit pass keeps the deferred keys a Stop pass already reported. The 27 `hook-*` cases whose workspace snapshot holds `.impeccable/hook.cache.json` were re-recorded from the binary and reviewed by hand: only the `findings` arrays inside that cache file changed (`side-tab:2` is now `side-tab:border-left: 4px solid #6366f1#1`). Stdout, audit lines and exit codes are byte-identical; the pending ack prints the same labels as before.
@@ -7350,3 +7407,176 @@ A relative file target given to `surface-brief` is now read from cwd and normali
 ## Recorded 2026-11-03: comp-diff regions record the offset they were read at (#1273)
 
 `comp-diff` fitted one whole-page shift and cropped every region from the shifted build, so a header that stayed put while the body moved was read from blank paper and scored `missing`. Each region is now read at the whole-page shift or at its own box, whichever scores higher, and its report entry records that choice as `offset` (`dx`, `dy`) (`docs/CLI-CONTRACT.md`, `comp-diff`). `comp-diff-json` and `comp-diff-no-spec` were re-recorded from the binary and reviewed by hand: no shift fits either fixture, so the only change is `"offset": {"dx": 0, "dy": 0}` after each region's `inkBox`. Scores, verdicts, ink boxes, stderr and exit codes are byte-identical. The goldens enforce these exact results; this is not an open-ended accepted delta.
+
+## Recorded 2026-11-09: detect --before and --kept compare a page's wiring (#1291)
+
+Paul's decision (2026-11-09): build `detect --before` and `--kept` as a static HTML wiring comparison that runs only on demand, so the design hook pays nothing (`docs/CLI-CONTRACT.md`, "Wiring check"). One golden changes, `detect-help`: the usage text gains the `--before` and `--kept` options, three exit-status lines for them, and two examples. Plain `detect` is otherwise untouched: the branch is taken only when one of the two flags is given. Three new cases were recorded from the binary and reviewed by hand over `tests/fixtures/wiring/before.html` and `after.html`. `detect-wiring-before-kept-rewrite` saves the inventory (19 wiring items, 3 content items; the snapshot pins the saved JSON and the self-ignoring `.gitignore`), rewrites the page, and runs `--kept` in text and JSON: 5 items missing (the renamed `email` field, the dropped hidden `csrf` field, the old `onclick` body, one of two links to `/`, the footer's `data-qa` hook), 4 new, the changed `h1` under content changes, exit 1. `detect-wiring-before-kept-unchanged` runs `--before --json` and then `--kept` on the same page through `./page.html` (exit 0, same inventory file). `detect-wiring-kept-no-inventory` runs `--kept` with nothing saved: exit 2 and the "run detect --before page.html first" error. Each case writes a `package.json`, so the staged workspace is the project root the inventories are kept under.
+
+## Recorded 2026-11-09: a `background` shorthand with an image resets the fill (#964)
+
+The static cascade kept an earlier `background-color` when a later `background` shorthand named an image and no colour, so text was scored against a fill the browser never paints under the image. The shorthand now also resets `background-color` to transparent, beside the recorded `expandStaticDeclaration` (whose vectors are unchanged), and the hover pass ignores that implied reset while an image still paints on hover (the hover rule's own, or a resting image that outranks it). `background: url(...) currentColor` sets `currentColor` rather than a reset. `detect-fixture-json-declared-mockups-html` and `detect-fixture-text-declared-mockups-html` were re-recorded from the binary and reviewed by hand: the four `.shot` rows (`.frame { background: #ffffff }` overridden by `.shot { background: url(...) center / cover }`) no longer report `#f2f2f2`, `#f3f3f3`, `#f4f4f4` and `#f5f5f5` on `#ffffff`, so the text summary reads `22 anti-patterns found.` where it read 26; every other finding is byte-identical. `detect-fixture-json-low-contrast-shorthand-reset-html` and its text twin are new: they report the four should-flag rows (`#3a3a3a on #222222`, a shorthand that names its colour keeps it; `#404040 on #2a2a2a`, a later `background-color` wins back; `#404040 on #2b2b2b`, `background: url(...) currentColor` fills with the box's `color`; and a `:hover` `#ffffff on #ffffff` where an explicit `background-color: transparent` clears the fill) and nothing on the stale `#111111` or `#151515` fills or on the two hover image swaps, one of them under a resting `!important` image that still paints. The accepted-delta sweeps (`detect-dir-*-all-fixtures`, `detect-scope-*`, `detect-no-advisory-*`) were not re-recorded, since a re-record would also take in unrelated drift already on main; they lose the four `declared-mockups` findings and gain the new fixture's one at their next re-record.
+
+## Recorded 2026-11-12: detect --report-unused-ignores
+
+`impeccable detect --report-unused-ignores` scans as usual, then reports each inline ignore comment rule that waived no finding as a primary finding (`unused-ignore`, severity warning, name `Unused inline ignore`, `category` null). A multi-rule comment reports only the ids that matched nothing; a `*` waiver is listed only when it waived nothing at all. Advisory findings count as a use. The id is not a catalog rule, so `--list-rules` is unchanged and `ignoreRules` does not drop the finding. `--no-inline-ignores` or `--no-config` with it is `Error: --report-unused-ignores needs inline ignores enabled` and exit 1; `--help` and `--list-rules` still win. URL and `--cdp` scans accept the flag and report none, because they have no source text. `detect-help` gains the flag, the inline-ignores paragraph, and one example. New case `detect-unused-ignores`: `page.html` (a live file-level `side-tab` waiver beside a stale `bounce-easing` one), `brand.css` (a live `overused-font` on the same line as a stale `bounce-easing`, a stale next-line, and a live next-line), and `Quiet.tsx` (a file-level `*` on a clean component) produce four `unused-ignore` warnings and exit 2. Only ids a loaded rule answers to are judged, and `design-system-*` ids only when a design system loaded, so a reason word or a waiver for a rule that cannot run is never reported. The text and `--quiet` summary reads `N unused inline ignores found.` (or `M anti-patterns and N unused inline ignores found.`); without unused findings it is unchanged. Recorded from a release build of the binary and reviewed by hand. No golden other than `detect-help` moved.
+
+## Recorded 2026-11-12: `impeccable context` prints the person's taste from a local copy
+
+A signed-in person with the `taste:read` grant gets a `YOUR_TASTE` block in the boot, read from `<impeccable home>/taste.json`, which a detached `taste-refresh` keeps current (`docs/CLI-CONTRACT.md`, Taste). With no copy the boot is byte-identical, and the shared invocation environment pins `IMPECCABLE_NO_TASTE` for every case (the isolated `context-taste-ready` case explicitly unsets it) so a developer's own copy never reaches a golden. New case: `context-taste-ready`.
+
+## Recorded 2026-11-12: the live boot names the next step when no dev server answers
+
+With `--dev-url` and no server found, the boot used to say "Open the app URL that serves a pageFiles entry" although no such URL existed. It now reports `pageUrls` (ready `file://` URLs) for a static folder, or `devCommand` for a project with a dev script, and `_instructions` say which to do. Output with a found `devUrl`, and without the flag, is unchanged. New cases: `live-boot-no-dev-server-static`, `live-boot-no-dev-server-dev-script`.
+
+
+## Recorded 2026-11-12: live-wrap and live-insert locate a bare element by its tag
+
+A picked element with no id and no class (a fresh page's `<h1>`) could not be wrapped: preflight skipped it as `insufficient_locator` and the command the event printed failed with `Need at least one of: --element-id, --classes, --query`. A tag alone now locates it (`docs/CLI-CONTRACT.md`, live-wrap args). `live-wrap-missing-locator` and `live-insert-missing-locator` change to the new message (the wrap case now passes no locator at all, since `--tag h1` is one), both help goldens gain the "a tag alone is enough" line, and three new cases pin the behavior: `live-wrap-tag-only`, `live-wrap-tag-only-text-picks-second` (a short text that is one element's whole text) and `live-wrap-tag-only-ambiguous` (two elements with the same text give `element_ambiguous`, never the first match).
+
+## Recorded 2026-11-12: live-wrap isolates an element that shares its line; accept refuses shared marker lines
+
+A picked element in the middle of a line (a minified or one-line page) used to answer `element_not_found`, and a hand-written wrapper on such a line lost the rest of the line on accept. `live-wrap` and `live-insert` now split the line around a block-level element (and any element in JSX) before wrapping, and answer `element_inline` where a split could change rendering. `live-accept` answers `markers_share_line` and writes nothing when a marker shares its line with other content. No existing golden changed; 20 cases added (`live-wrap-same-line-*`, `live-insert-same-line-*`, `live-accept-shared-*`).
+
+## Recorded 2026-11-12: a shared marker line on accept exits 0 with mode "error"
+
+`live-accept` answered `markers_share_line` with exit 1, and `live-poll` reads an accept's stdout only on exit 0, so the poll replaced the refusal with a generic `Command failed` and the agent never saw the hint. The refusal now carries `mode: "error"` and exits 0, the same shape as `source_locked`, and the poll instructions name the repair (move each marker onto a line of its own, rerun the command). Source and receipts are still untouched. The 8 `live-accept-shared-*` goldens changed in `exit` (1 to 0) and in `stdout` (the added `mode` field) only; no other golden changed.
+
+## Recorded 2026-11-12: live-wrap never matches inside a comment, script, style or textarea
+
+The line resolver searched comment and raw-text contents like markup, so `live-wrap --query hero-hook` on the `live-html` fixture matched the `.hero-hook` CSS rule and wrapped the page's `<style>` block in `<head>`. The element scans now read tags through one lexer that skips comments, raw-text contents and quoted attribute values, and matches HTML tag names case-insensitively; comment and raw-text contents are blanked before the search, so the query lands on `<p class="hero-hook">` in the body. `live-wrap-html-by-query` changed in `stdout` (startLine 14, endLine 22, originalLineCount 1) and in the written `index.html`; no other golden changed.
+
+## Recorded 2026-11-13: unsafe inline isolation uses the shared-line fallback
+
+- `live-wrap-same-line-text-inline`, `live-insert-same-line-text-inline`,
+  `live-wrap-same-line-inline-spans`, `live-insert-same-line-inline-spans`:
+  unsafe isolation now reports `element_ambiguous` with `reason: "shared_line"`,
+  the candidate line range, and the existing shared-line manual-wrapper hint
+  instead of `element_inline`. This keeps whitespace-sensitive refusals on the
+  fallback the agent already handles. Reviewed all four decoded goldens:
+  only stderr changes; exit 1, empty stdout, and source files stay unchanged.
+
+## Recorded 2026-11-13: a seeded world outranks starter CSS; `world` refuses on any design file the context reader finds
+
+New cases, recorded from the binary and reviewed by hand. `SEEDED_WORLD` used to be dropped whenever the project read as having a visual implementation, which a scaffold's starter `globals.css` with three custom properties already does, so the boot treated boilerplate as the incumbent world. The line now fires whenever DESIGN.md names a seeded world, with a variant for a project that has code: the world outranks the styles in code, starter styles are no incumbent world, and the reference-image step applies until a build has resolved the world. The no-PRODUCT.md boot with code and a seeded world no longer prints `EXISTING_VISUAL_SYSTEM` or `SCOPED_EXISTING_ALLOWED`. `impeccable world <id>` now also refuses when `context` from the same directory would read a DESIGN.md elsewhere (`docs/`, `.agents/context/`, a workspace's repo root, `IMPECCABLE_CONTEXT_DIR`), and the merge line names that file. Existing goldens are unchanged.
+
+- `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: the seeded world with starter CSS, without and with PRODUCT.md.
+- `world-refuses-docs-design`: `docs/DESIGN.md already exists, so nothing was written. ...`, exit 0, nothing written, no request.
+
+## Recorded 2026-11-13: explicit redesign requests override a seeded world
+
+- `context-seeded-world`, `context-seeded-world-starter-css`, `context-seeded-world-starter-css-with-product`: SEEDED_WORLD still keeps ordinary builds inside the chosen world and forbids replacement on the agent's own initiative, but an explicit request from the person for a redesign or a different world overrides that instruction and routes to the redesign flow in reference/new-work.md. Only that directive sentence changes; exit codes, files, and the rest of the boot output stay unchanged.
+- On worlds/settled-world-roll the code-present and no-code `SEEDED_WORLD` variants both name the replacement door, a redesign whose direction roll passes `--replace-world`, after the explicit-request override; the three seeded-world goldens were re-recorded with it.
+
+## Recorded 2026-11-12: detect --sarif writes a SARIF 2.1.0 log
+
+`impeccable detect --sarif` prints one SARIF 2.1.0 log on stdout (`docs/CLI-CONTRACT.md`). `tool.driver` is impeccable at the engine version, `https://impeccable.style`, and one rule per antipattern that produced a result (catalog id, name, short description, help text, category). Each finding is a result: `warning` for a primary finding, `note` for an advisory, `error` when the rule's severity is error. Paths are relative to `GITHUB_WORKSPACE` when set, else cwd, with `uriBaseId` `%SRCROOT%`; `startLine` is omitted when the finding has no line. `partialFingerprints.primaryLocationLineHash` is left unset because `github/codeql-action/upload-sarif` fills it. A clean scan still writes the log with `results: []`, so code scanning can close alerts. `--json` with it is `Error: --sarif cannot be used with --json` and exit 1. `--github` and `--list-rules` are the same kind of conflict. `--help` still wins. Exit codes match a normal scan. `detect-help` gains the flag, an Output streams line, and one example. New cases: `detect-sarif` (a rounded side-tab card; the real finding has no line, so the result has no `region`), `detect-sarif-clean` (a CSS file with no findings, empty `results`), `detect-sarif-json` (the conflict). Recorded from the binary and reviewed by hand; no golden other than `detect-help` moved. `detect-sarif` and `detect-sarif-clean` mask `driver.version` to `<ENGINE>` (the log's own `"version": "2.1.0"` stays pinned) so a crate version bump does not move them. Each log also carries `runs[0].invocations`: one entry with `executionSuccessful` (`true` for both cases here; `false` with an error `toolExecutionNotifications` entry when a target could not be scanned, covered by the crate tests), so a partial log is not read as a clean scan. Re-recorded `detect-sarif` and `detect-sarif-clean` from the binary for that field and checked by hand; nothing else in them moved.
+
+## Recorded 2026-11-14: two cases from main take the `detect --changed` detector line
+
+`context-taste-ready` and `context-seeded-world-starter-css-with-product` arrived from main after this branch changed the `MANUAL_DETECTOR_REQUIRED` line to name `detect --json --changed`. Both were re-recorded from the branch binary and reviewed by hand: only that one stdout line changes in each; exit, stderr and files are unchanged.
+
+## Recorded 2026-11-16: `context` carries a long DESIGN.md as a map and a long PRODUCT.md as whole sections
+
+A PRODUCT.md or DESIGN.md longer than 1,600 bytes is no longer pasted in full or replaced by `DOCUMENT_NOT_INLINED`. DESIGN.md arrives under `# DESIGN.md (map; full file: <path>)` as a map built by fixed code (frontmatter name, colours and font families, the North Star, each named rule's first sentence, each Do and Don't lead, mentioned files that exist, and a `Full:` line); PRODUCT.md arrives under `# PRODUCT.md (sections; full file: <path>)` as whole sections up to the budget (the title and first section, then the anti-references, then the rest in order while they fit), the names of the sections left out, and a `Full:` line (`docs/CLI-CONTRACT.md`, `context`, **Long documents**). Files within the budget are carried as written, so every other `context` golden is unchanged. Re-recorded from the binary and reviewed by hand.
+
+- `context-full-oversized-design`: the padded DESIGN.md (no frontmatter, rules or bullets) now reads `# DESIGN.md (map; full file: DESIGN.md)` and `Full: DESIGN.md (read a section when you need its detail)` in place of the `DOCUMENT_NOT_INLINED` pointer. Every other byte, the exit code and the files are unchanged.
+- `context-full-long-product` (new): a 2.3 KB PRODUCT.md is carried as its title, schema stamp, `## Platform` and `## Anti-references` sections, then `More sections: Users.` and the `Full:` line; the rest of the boot matches `context-full`.
+
+## Recorded 2026-11-16: `side-tab` reads every side bar, square from 2px and rounded at any width
+
+A left or right bar (a one-sided border, an x-only inset box-shadow, a full-height `::before` / `::after`) is `side-tab` on any box from 2px and on a box rounded at any corner at any width, whatever state its selector styles and whatever its colour (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). Re-recorded from the binary and reviewed by hand with a decoded diff of every finding: no rule other than `side-tab` moved in any case, every finding added is a side bar of 2px or more or a 1px bar on a box with a radius above zero, and no hairline on a square box, frame or table grid line was added. Several older fixtures keep square, neutral, state and thin-on-rounded bars in their should-pass columns from the old rounded-card gate; those now report, as the decision asks.
+
+- `detect-fixture-{json,text}-astro-inset-shadow-stripe-astro`: the square, neutral (black, gray, dimgray, shorthand hex), current-colour, selected-state and 2px inset edges report.
+- `detect-fixture-{json,text}-border-baseline-html`, `-modern-color-borders-html`, `-named-color-borders-html`, `-linked-stylesheet-html`: square bars of 3px or more and 1px bars on rounded cards report; snippets keep the `border-left: Npx[ + border-radius: Rpx]` wording.
+- `detect-fixture-{json,text}-external-styles-css`: a neutral 4px left border reports.
+- `detect-fixture-{json,text}-pseudo-stripe-{css,html,vue}`: pseudo-element bars on square hosts, a neutral divider bar, a bar under a rounded stripe side, a timeline rail and a blockquote bar report.
+- `detect-fixture-{json,text}-side-accent-flat-vue`, `-side-accent-markup-square-{svelte,vue}`, `-side-accent-nested-{sass,scss,tsx}`, `-side-accent-producers-{css,html,jsx}`, `-side-accent-square-sheet-css`: square side accents in every producer report (the markup-square and square-sheet cases now exit 2).
+- `detect-fixture-{json,text}-side-tab-far-corners-html`: the thin cases are 1px now; a 1px bar on a box rounded along it or at one small far corner reports, a 1px bar on a square box or on corners with no vertical radius does not.
+- `detect-fixture-{json,text}-side-tab-status-rows-{html,svelte}`: selected, hover (read without its `:hover` in the static engine), neutral-token, data-state-selected and selected-wrapper rows report; the rounded row card reports from the row scan; the BEM row's logical border also reports as `border-left: 2px` from the borders check.
+- `detect-fixture-{json,text}-side-tab-stylesheet-forms-html`: square stylesheet forms report.
+- `detect-fixture-{json,text}-side-tab-every-variant-{html,css,svelte}` (new): every variant flags (a hover-only and a focus-within bar among them) and every control passes (a square hairline, a frame with a hairline of another colour on one side, a transparent edge, a CSS caret, a square band, a focus outline, a `td + td` grid line), including the pressed nav button whose radius sits on its base rule.
+- `legitimate-borders.html` lost the quote, nav, input, timeline and code-diff sections (they are side bars now and live in `side-tab-every-variant.html`); `should-pass.html`'s thin right border is 1px. Neither golden moved.
+
+## Recorded 2026-11-16: a square quote rule or code gutter is typography; the side-tab description names the fix
+
+A quote's rule (a `blockquote`, a box whose class names a quote) and a code line's gutter (inside a `pre`, `code` or `blockquote`, or a class naming a diff, a gutter or line numbers) on a square box are typography, not a side tab; rounded, they still report at any width (`docs/CLI-CONTRACT.md`, **`side-tab` reads every side bar**). The `side-tab` description now reads "A bar down one side of a box. Use a full border, a background tint, or a leading icon or label instead." in place of the old "use a subtler accent" text. The description was replaced in place in every golden that carried it; replayed against the binary, every one of those cases matched except the six below, which were re-recorded from the binary and reviewed by hand (only these `side-tab` findings move):
+
+- `detect-fixture-{json,text}-pseudo-stripe-html`: `blockquote::before` (a 4px rule on a square quote) no longer reports.
+- `detect-fixture-{json,text}-side-tab-every-variant-html`: the square quote moved to the passing controls (with a square diff gutter inside `pre`); the new rounded quote reports `border-left: 3px + border-radius: 8px`.
+- `detect-fixture-{json,text}-side-tab-every-variant-css`: a rounded `.f-quote-rounded` reports; a square `blockquote` rule and `pre .diff-add` gutter pass; the pressed nav item moves down a line.
+- `legitimate-borders.html` has its blockquote and code-diff sections back; its golden did not move (still no findings).
+
+## Recorded 2026-11-17: design drift is what DESIGN.md contradicts, not a commit count (REN-2129)
+
+`design-md-drift` counted commits under the visual source directories since DESIGN.md last changed; a count is a
+suspicion, not a contradiction. Two structural findings replace it: `design-md-dead-path` (a file DESIGN.md names is
+gone) and `design-md-color-drift` (a frontmatter colour none of the token files it names still contains). Dead paths also
+reach `context`'s CONTEXT_STALE through the boot findings (existence checks only); colour drift reads the token
+files, so only `doctor` runs it.
+
+- `doctor-design-drift`: the fixture is now a DESIGN.md naming a missing `src/Card.tsx` and a `gold` colour its
+  `styles/tokens.css` lacks, and the golden carries the two new findings instead of the 26-commit one.
+
+## Recorded 2026-11-17: the DESIGN.md map names `design-lookup` (REN-2129, S4)
+
+`context` follows a mapped DESIGN.md with one `Lookup:` line naming `design-lookup`, which prints one token,
+component or section with its file, so an agent never reads a whole file for one detail.
+
+- `context-compacted-design`: gains that line after the map's body.
+## Recorded 2026-11-17: this repo's DESIGN.md describes what ships here (REN-2129)
+
+DESIGN.md and `.impeccable/design.json` described the departed site's dark lacquer palette; they now describe the
+extension's paper-and-instruments tokens (`extension/shared/kinpaku.css`). Two detect cases scan a fixture from the
+repo root, so they read that palette.
+
+- `detect-unknown-flag`, `detect-config-cross-project`: `blinking-cursor.html`'s pure black, `#111` and its greys are
+  no longer in the palette, so they report as advisories beside `#33d17a`.
+
+## Recorded 2026-11-17: `side-tab` reports only on a rounded box
+
+Paul, 17 Nov: the rule is about a one-sided bar on a box with a border
+radius. A bar on a square box is fine at any width and was never the tell.
+This undoes the square-box half of the 2026-11-16 entry above and the quote
+and gutter carve-out, which only mattered on square boxes. Status stripes on
+table rows and cells (the row scan, #1133) are unchanged. Each golden was
+decoded and compared finding by finding: every finding that leaves is a
+`side-tab` on a square box, and the findings added are the rounded flag cases
+the every-variant fixtures now carry. The registry description now reads
+"A bar down one side of a rounded box. …", which is the only change in the
+other goldens listed.
+
+- `detect-fixture-*` (44 goldens): square-box `side-tab` findings dropped; `side-tab-every-variant.{html,css,svelte}` flag cases rounded and square pass cases added.
+- `detect-framework-next-modules-text`: the square sidebar bar no longer reports.
+- `detect-multifile-*`, `detect-framework-vite-json`, `detect-framework-next-tailwind-json`, `detect-framework-next-cssinjs-json`, `detect-github`, `detect-sarif`, `detect-list-rules*`, `detect-ignore-globstar-directory-boundary-json`, `hook-*`, `hbe-edit-projection`, `hbe-shell-cp`: the description wording only.
+
+## Recorded 2026-11-20: the static flush check reads clamp(), logical padding and centred labels (#1596, #1604, #1605)
+
+The file scan's `cramped-padding` flush shape read a padding it could not evaluate (`clamp()`, `calc()`) as 0px,
+never mapped `padding-inline-*` to a side, and saw no air around a label a flex row centres in its height. Each
+golden was decoded and compared finding by finding, then re-recorded from the binary, so the replay still compares
+them (no case id leads a line here): the only changes are below.
+
+- flush-against-border (`detect-fixture-json-flush-against-border-html`, `detect-fixture-text-flush-against-border-html`): `pass-segmented` no longer reports (its buttons centre their labels in the pill's 40px), 11 to 10.
+- stripe-child and overlay-positioning (`detect-fixture-json-stripe-child-html`, `detect-fixture-text-stripe-child-html`, `detect-fixture-json-overlay-positioning-html`, `detect-fixture-text-overlay-positioning-html`): `card-center` and `flex-center` centre one label in a 100px and a 120px box, so they report right/left instead of all sides.
+
+## Recorded 2026-11-20: `--wait` stops asking for reruns after 30 minutes on one hand (#1566)
+
+A harness that wakes the agent each time `--wait` exits paid a full turn per minute for as long as the decision page stayed open, overnight in the report. The detached server now records `startedAt` in its state file. When no answer has come and the later of the hand's and the state's `startedAt` is more than 30 minutes old, `--wait` prints `PENDING: ...` with the page URL and exits 5 in place of `WAITING` exit 3, telling the agent to tell the user and end its turn, then collect the answer with one `--wait` once the user says they picked. A re-roll (new hand) and a restarted server each restart the clock; a round with neither field (every existing case) is unchanged. New cases, recorded from the binary and reviewed by hand: `question-wait-pending-budget` (hand 31 minutes old, exit 5 `PENDING`), `question-wait-within-budget` (29 minutes, exit 3 `WAITING`), `question-wait-restarted-server-budget` (hand 31 minutes old, server started a minute ago, exit 3), `question-wait-rerolled-hand-budget` (server 31 minutes old, hand re-rolled a minute ago, exit 3).
+
+The `live-poll` timeout `_instructions` gains a generate-lane stop: after the third timeout in a row, tell the user the variants are still live and end the turn, so the printed line agrees with generate.md's cap. `live-daemon-server-status-poll-complete`: that one timeout line is the only change.
+
+## Recorded 2026-11-20: the live-poll timeout instruction pauses after three in a row (Refs #1566)
+
+A harness that wakes the agent on every exit paid a full turn per 10-minute timeout for as long as a live session sat idle. The `timeout` `_instructions` now tell the agent to stop polling after the third timeout in a row, tell the user the page is still live, and end the turn; the next `live-poll` collects whatever they did meanwhile. `live-daemon-server-status-poll-complete`: that one timeout line is the only change.
+
+## Recorded 2026-11-20: static HTML element findings carry their start tag's line (#1597)
+
+Every static-HTML finding reported `line: 0`, so a finding on a long single-file page had to be found by searching for its colour or class. Element-rule findings now carry the 1-based line their element's start tag opens on (`docs/CLI-CONTRACT.md`, **Finding object**); page-level static findings, design-system findings and browser findings are unchanged. The design hook folds a line-less page finding into the located copy it repeats (the page's glow, reported by both the element rule and the page pattern scan), so its occurrence keys and counts stay as they were. Each moved golden was re-recorded from the binary and compared with its old version after masking line numbers (`"line": N`, the text reporter's `line N: ` prefix, `--github`'s `,line=N`, the SARIF `region`, the hook's `- L<n>` prefix): 290 goldens are otherwise byte-identical, no finding with a non-zero line changed, and the reported lines were spot-checked against the fixture sources. The goldens were re-recorded, so the replay still compares them (no case id leads a line here). What moved:
+
+- SARIF (`detect-sarif`): the result gains `region.startLine: 1` (more than a line number).
+- Cursor denial (`hbe-html-engine`, more than a line number): the denial names `L1`, and its denial counter key reads `low-contrast:1` instead of `low-contrast:0`.
+- Every other moved case (`detect-fixture-{json,text}-*-html`, `detect-config-*`, `detect-design-blue-*`, `detect-hard-offset-shadow-*`, `detect-ignore-globstar-directory-boundary-json`, `detect-github`, `hook-edit-html-fresh`, `hook-config-max-findings-1`): line numbers only.
+
+## Recorded 2026-11-27: absolute CSS units resolve at 96px to the inch (#1142)
+
+`resolve_length_px` read `pt`, `pc`, `in`, `cm`, `mm` and `Q` as ems, so a print stylesheet's `15pt` was 15em: `oversized-h1` on a 15pt heading, `tight-leading` on a `line-height: 0.3in`. They now resolve at 1in = 96px = 72pt = 6pc = 2.54cm = 25.4mm = 101.6Q. `oversized-h1.html` gains three should-flag rows (60pt, 1.2in, 3cm; read as ems the inch and centimetre rows fell under the threshold) and four should-pass rows (30pt, 10mm, 40Q, 2.5pc; read as ems the first three flagged). `tight-leading.html` gains two should-flag rows (12pt over 15.5pt at 1.29x, 0.2in over 0.256in at 1.28x) and three should-pass rows (leading of 0.6cm, 0.25in and 16pt; read as ems the first two flagged at 0.60x and 0.25x). Re-recorded from the binary and reviewed by hand, each gaining exactly the new flag findings (three and two) and losing none, the rest moving by line number only: `detect-fixture-json-oversized-h1-html`, `detect-fixture-text-oversized-h1-html`, `detect-fixture-json-tight-leading-html`, `detect-fixture-text-tight-leading-html`. The directory sweeps and the scope and no-advisory cases also gain those five findings; they are accepted deltas the oracle does not compare. The URL engine measures computed px and reports the same two new `tight-leading` rows (`crates/browser/tests/text_geometry.rs`, 12 flag cases, was 10).

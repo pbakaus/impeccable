@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>side-tab, every side bar variant</title>
+<!--
+  A side bar is a border on one inline side, an inset box-shadow offset along
+  x alone, or an absolute ::before / ::after against the left or right edge
+  spanning the height. It is side-tab only on a rounded box, at any width,
+  whatever state its selector styles and whatever its colour. The radius can
+  live in another rule for the same element (.f-split rounds
+  .f-split.is-active).
+
+  Passes: any bar on a square box (a 3px border, an inset bar, a ::before
+  bar, a hairline divider, a quote's rule, a code line's gutter), a border
+  on every side (with a hairline of another colour on one side too), a
+  transparent edge, a CSS caret, a table's grid lines, a focus outline, and
+  a top or bottom band on a square box (the band keeps its older rule).
+-->
+<style>
+  :root { --text: #1a1a1a; --surface-inset: #f2f2f2; --hover: #f7f7f7; }
+  body { font-family: system-ui, sans-serif; font-size: 16px; color: #1a1a1a; background: #ffffff; margin: 24px; }
+  .col { display: inline-block; width: 480px; vertical-align: top; }
+  h2 { font-size: 20px; margin: 0 0 16px; }
+  .card { position: relative; width: 400px; height: 80px; padding: 16px; margin: 0 0 24px; background: #fdfdfd; box-sizing: border-box; }
+
+  .f-border-rounded { border-left: 3px solid #0d9488; border-radius: 8px; }
+  .f-hairline-rounded { border-left: 1px solid #d4d4d4; border-radius: 8px; }
+  .f-inline-start-neutral { border-inline-start: 2px solid #9ca3af; border-radius: 8px; }
+  .f-inset-not:not(.off) { box-shadow: inset 2px 0 0 #6b7280; border-radius: 8px; }
+  .f-inset-hover { border-radius: 8px; }
+  .f-inset-hover:hover { box-shadow: inset 3px 0 0 #2563eb; }
+  .f-inset-focus { border-radius: 8px; }
+  .f-inset-focus:focus-within { box-shadow: inset 2px 0 0 #2563eb; }
+  .f-inset-selected.is-selected { box-shadow: inset -2px 0 0 var(--text); border-radius: 6px; }
+  .f-before, .f-after { border-radius: 8px; }
+  .f-before::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 2px; background: #9ca3af; }
+  .f-after::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 3px; background: #111111; }
+  .f-hover-rounded:hover { border-radius: 8px; border-left: 3px solid #2563eb; }
+  .f-split { border-radius: 6px; }
+  .f-split.is-active { box-shadow: inset 1px 0 0 var(--text); }
+  .f-text-colour { border-left: 2px solid var(--text); border-radius: 8px; }
+  .f-quote-rounded { border-left: 3px solid #d1d5db; border-radius: 8px; padding-left: 16px; }
+  .f-input { width: 400px; height: 40px; border: 1px solid #fca5a5; border-left: 3px solid #b91c1c; border-radius: 6px; }
+
+  .it { display: grid; width: 400px; height: 40px; padding: 7px 12px; border: 0; border-radius: 6px; background: none; }
+  .it:hover { background: var(--hover); }
+  .it[aria-pressed='true'] { background: var(--surface-inset); box-shadow: inset 2px 0 0 var(--text); font-weight: 600; }
+
+  .p-border-square { border-left: 3px solid #0d9488; }
+  .p-inset-square { box-shadow: inset 3px 0 0 #6366f1; }
+  .p-before-square::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 3px; background: #9ca3af; }
+  .p-reset-square {
+    border-radius: 8px;
+    border-left: 3px solid #0d9488;
+  }
+  .p-reset-square { border-radius: 0; }
+  .p-hairline-square { border-left: 1px solid #d4d4d4; }
+  .p-inset-hairline-square { box-shadow: inset 1px 0 0 #d4d4d4; }
+  .p-full-border { border: 2px solid #0d9488; border-radius: 8px; }
+  .p-transparent { border-left: 3px solid transparent; border-radius: 8px; }
+  .p-band-square { border-bottom: 3px solid #2563eb; }
+  .p-focus:focus-visible { outline: 2px solid #2563eb; }
+  .p-quote { border-left: 4px solid #d1d5db; padding-left: 16px; }
+  .p-code { width: 400px; padding: 8px; background: #f6f6f6; }
+  .p-code .diff-add { display: block; border-left: 3px solid #22c55e; padding-left: 8px; }
+  .p-grid { width: 400px; border-collapse: collapse; }
+  .p-grid td { width: 200px; height: 32px; padding: 4px; }
+  .p-grid td + td { border-left: 2px solid #e5e7eb; }
+  .p-caret { width: 0; height: 0; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 6px solid #333333; }
+  .p-framed { border: 1px solid #d4d4d4; border-radius: 6px; }
+  .p-framed.is-on { border-left: 1px solid #2563eb; }
+</style>
+</head>
+<body>
+<div class="col">
+  <h2>Should flag</h2>
+  <div class="card f-border-rounded" id="flag-border-rounded">Rounded card, 3px left border</div>
+  <div class="card f-hairline-rounded" id="flag-hairline-rounded">Rounded card, 1px left border</div>
+  <div class="card f-inline-start-neutral" id="flag-inline-start-neutral">Neutral 2px inline-start border</div>
+  <div class="card f-inset-not" id="flag-inset-not">Inset bar behind a :not() state</div>
+  <div class="card f-inset-hover" id="flag-inset-hover">Inset bar on hover only</div>
+  <div class="card f-inset-focus" id="flag-inset-focus"><input aria-label="Field" value="Focus within"></div>
+  <div class="card f-inset-selected is-selected" id="flag-inset-selected">Selected item, inset bar on the right</div>
+  <div class="card f-before" id="flag-before">A ::before bar on the left</div>
+  <div class="card f-after" id="flag-after">An ::after bar on the right</div>
+  <div class="card f-hover-rounded" id="flag-hover-rounded">Square at rest, rounded with a bar on hover</div>
+  <div class="card f-split is-active" id="flag-split">Hairline bar, radius in another rule</div>
+  <div class="card f-text-colour" id="flag-text-colour">Bar in the text colour</div>
+  <blockquote class="card f-quote-rounded" id="flag-quote-rounded">A rounded quote with a 3px rule</blockquote>
+  <input class="f-input" id="flag-input" value="not-an-email" aria-invalid="true">
+  <nav><button class="it" id="flag-pressed" aria-pressed="true">Pressed nav item</button></nav>
+</div>
+<div class="col">
+  <h2>Should pass</h2>
+  <div class="card p-border-square" id="pass-border-square">Square card, 3px left border</div>
+  <div class="card p-inset-square" id="pass-inset-square">Square card, 3px inset bar</div>
+  <div class="card p-before-square" id="pass-before-square">Square card, 3px ::before bar</div>
+  <div class="card p-reset-square" id="pass-reset-square">Rounded, then squared by a later rule</div>
+  <div class="card p-hairline-square" id="pass-hairline-square">A 1px divider on a square box</div>
+  <div class="card p-inset-hairline-square" id="pass-inset-hairline-square">A 1px inset divider on a square box</div>
+  <div class="card p-full-border" id="pass-full-border">A border on every side</div>
+  <div class="card p-transparent" id="pass-transparent">A transparent left edge</div>
+  <div class="card p-band-square" id="pass-band-square">A bottom band on a square box</div>
+  <button class="card p-focus" id="pass-focus">A focus outline</button>
+  <blockquote class="card p-quote" id="pass-quote">A square quote with a 4px rule</blockquote>
+  <pre class="p-code"><code><span class="diff-add" id="pass-diff-line">+ const value = next();</span></code></pre>
+  <span class="p-caret" id="pass-caret"></span>
+  <div class="card p-framed is-on" id="pass-framed">A framed card with a hairline of another colour on one side</div>
+  <table class="p-grid" id="pass-grid"><tr><td>Name</td><td>Value</td></tr></table>
+</div>
+</body>
+</html>

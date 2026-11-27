@@ -56,12 +56,23 @@ fn find_skill_dir_from(start: &str) -> Option<String> {
 }
 
 fn provider_from_skill_dir(skill_dir: &str) -> Option<&'static str> {
+    // Muse keeps custom skills at <home>/workspace/custom-skills/impeccable:
+    // the folder is named `custom-skills`, not `skills`, and its parent is the
+    // Muse workspace folder.
+    let parent = jsp::dirname(skill_dir);
+    if jsp::basename(&parent) == "custom-skills" && jsp::basename(&jsp::dirname(&parent)) == "workspace" {
+        return Some("muse");
+    }
     // <root>/<harness>/skills/impeccable
     let skills = jsp::dirname(skill_dir);
     if jsp::basename(&skills) != "skills" {
         return None;
     }
-    let harness = jsp::basename(&jsp::dirname(&skills));
+    let harness_dir = jsp::dirname(&skills);
+    let harness = jsp::basename(&harness_dir);
+    if harness == "config" && jsp::basename(&jsp::dirname(&harness_dir)) == ".gemini" {
+        return Some("antigravity");
+    }
     Some(match harness.as_str() {
         ".claude" => "claude-code",
         ".cursor" => "cursor",
@@ -129,6 +140,16 @@ impl Provider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn muse_skill_dir_resolves_to_muse() {
+        let base = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let dir = jsp::join(&[base, "workspace", "custom-skills", "impeccable"]);
+        assert_eq!(provider_from_skill_dir(&dir), Some("muse"));
+        // A `custom-skills` folder outside a Muse workspace is not Muse.
+        let other = jsp::join(&[base, "custom-skills", "impeccable"]);
+        assert_eq!(provider_from_skill_dir(&other), None);
+    }
 
     fn with_self(value: &str) -> Provider {
         let env: Env = [("IMPECCABLE_SELF".to_string(), value.to_string())].into_iter().collect();

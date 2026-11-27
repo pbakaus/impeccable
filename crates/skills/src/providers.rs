@@ -9,7 +9,7 @@ pub const API_BASE: &str = "https://impeccable.style";
 
 pub const PROVIDER_DIRS: &[&str] = &[
     ".claude", ".cursor", ".devin", ".dsh", ".gemini", ".agents", ".agent", ".github", ".grok", ".hermes", ".kiro",
-    ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe",
+    ".opencode", ".pi", ".omp", ".qoder", ".trae", ".trae-cn", ".rovodev", ".vibe", "workspace",
 ];
 
 const PROVIDER_ALIASES: &[(&str, &str)] = &[
@@ -32,6 +32,7 @@ const PROVIDER_ALIASES: &[(&str, &str)] = &[
     ("hermes", ".hermes"),
     ("xai", ".grok"),
     ("kiro", ".kiro"),
+    ("muse", "workspace"),
     ("opencode", ".opencode"),
     ("pi", ".pi"),
     ("omp", ".omp"),
@@ -66,6 +67,7 @@ const PROVIDER_DISPLAY: &[(&str, &str, &str)] = &[
     (".trae", "Trae", "trae"),
     (".trae-cn", "Trae CN", "trae-cn"),
     (".vibe", "Mistral Vibe", "vibe"),
+    ("workspace", "Muse", "muse"),
 ];
 
 /// Harnesses that read another provider's dir: (input name, label, provider
@@ -75,7 +77,7 @@ const SHARED_DIR_HARNESSES: &[(&str, &str, &str)] = &[("replit", "Replit Agent",
 
 pub const PROVIDER_INPUT_ORDER: &[&str] = &[
     "antigravity", "claude", "codex", "replit", "cursor", "devin", "dsh", "gemini", "github", "grok", "hermes", "kiro",
-    "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe",
+    "opencode", "pi", "omp", "qoder", "trae", "trae-cn", "rovo-dev", "vibe", "muse",
 ];
 
 pub const DEFAULT_TARGETS: &[&str] = &[".claude", ".agents"];
@@ -137,12 +139,33 @@ fn home_skills_dir_override(env: &Env, cwd: &str, provider: &str, home: &str) ->
         ".pi" => Some(jsp::join(&[home, ".pi", "agent", "skills"])),
         ".omp" => Some(jsp::join(&[home, ".omp", "agent", "skills"])),
         ".opencode" => Some(jsp::join(&[&opencode_global_config_dir(env, home), "skills"])),
+        // Muse (Meta's personal agent) keeps user custom skills in
+        // ~/workspace/custom-skills/<name>/SKILL.md, not in a dot-dir.
+        "workspace" => Some(jsp::join(&[home, "workspace", "custom-skills"])),
         _ => None,
     }
 }
 
+/// The folder under a provider's config dir that holds its skills, on both
+/// the bundle side (`<bundle>/<provider>/<name>`) and the generated-output
+/// side. Every provider uses `skills` except Muse, whose layout is
+/// `workspace/custom-skills`.
+pub fn skills_dir_name(provider: &str) -> &'static str {
+    match provider {
+        "workspace" => "custom-skills",
+        _ => "skills",
+    }
+}
+
+/// Providers with no project-level skills folder at all. Muse reads user
+/// custom skills from ~/workspace/custom-skills only, so a project-scope
+/// install target for it can never be read back by Muse.
+pub fn is_user_only_provider(provider: &str) -> bool {
+    provider == "workspace"
+}
+
 fn has_home_override(provider: &str) -> bool {
-    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode")
+    matches!(provider, ".agent" | ".devin" | ".dsh" | ".hermes" | ".pi" | ".omp" | ".opencode" | "workspace")
 }
 
 /// Everything the scans need from the process: env, cwd, and the resolved
@@ -168,23 +191,43 @@ impl Sys {
 
     /// JS: isHomeDir(root)
     pub fn is_home_dir(&self, root: &str) -> bool {
-        if root == self.home {
-            return true;
-        }
-        match (util::realpath(root), util::realpath(&self.home)) {
-            (Some(a), Some(b)) => a == b,
-            _ => false,
-        }
+        impeccable_context::util::is_home_dir(root, &self.home)
     }
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
     pub fn provider_skills_dir_candidates(&self, root: &str, provider: &str, scope: Option<Scope>) -> Vec<String> {
-        if scope == Some(Scope::User) {
-            return vec![self.user_provider_skills_dir(root, provider)];
+        if is_user_only_provider(provider) {
+            // Muse has no project layout: its candidates exist only at user
+            // scope. Returning the global custom-skills dir at project scope
+            // made a global install hide a missing project install, and let
+            // `update --project` rewrite the global copy. An inferred scope
+            // (None) sees the global dir only when the root is the home dir
+            // itself, mirroring the home-override handling below.
+            if scope == Some(Scope::Project) || (scope.is_none() && !self.is_home_dir(root)) {
+                return Vec::new();
+            }
+            let home = self.home.clone();
+            return vec![self.user_provider_skills_dir(&home, provider)];
         }
-        let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
-        if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
-            dirs.insert(0, self.user_provider_skills_dir(root, provider));
+        let mut dirs = if scope == Some(Scope::User) {
+            vec![self.user_provider_skills_dir(root, provider)]
+        } else {
+            let mut dirs = vec![jsp::join(&[root, provider, "skills"])];
+            if scope != Some(Scope::Project) && has_home_override(provider) && self.is_home_dir(root) {
+                dirs.insert(0, self.user_provider_skills_dir(root, provider));
+            }
+            dirs
+        };
+        // Claude Code reads user skills from $CLAUDE_CONFIG_DIR/skills when that is set
+        // (REN-2029): a copy there is found, named and updated like the home one. Fresh
+        // installs still go to ~/.claude/skills, where their hooks point.
+        if provider == ".claude" && scope != Some(Scope::Project) && self.is_home_dir(root) {
+            if let Some(dir) = self.env.get("CLAUDE_CONFIG_DIR").filter(|v| !v.is_empty()) {
+                let skills = jsp::join(&[&jsp::resolve(&self.cwd, &[dir]), "skills"]);
+                if !dirs.contains(&skills) {
+                    dirs.insert(0, skills);
+                }
+            }
         }
         dirs
     }
@@ -197,10 +240,10 @@ impl Sys {
             .collect()
     }
 
-    /// JS: findProjectRoot()
+    /// JS: findProjectRoot(), stopping at home: a `.git` there is not a project (#1692).
     pub fn find_project_root(&self) -> String {
         let mut dir = self.cwd.clone();
-        while dir != jsp::dirname(&dir) {
+        while dir != jsp::dirname(&dir) && !self.is_home_dir(&dir) {
             if util::exists(&jsp::join(&[&dir, ".git"])) {
                 return dir;
             }
@@ -380,6 +423,13 @@ impl Sys {
         // hint for the same dir is the specific one and stands in for it.
         let mut detections = Vec::new();
         for provider in PROVIDER_DIRS {
+            // Muse is user-scope only: a `workspace/` folder in a project
+            // root is a common monorepo layout, not a Muse mark, so the
+            // generic project-dir signal must not fire for it. Muse is
+            // detected through its home hint (~/workspace/custom-skills).
+            if *provider == "workspace" {
+                continue;
+            }
             if hinted.iter().any(|d| d.scope == Scope::Project && d.provider == *provider) {
                 continue;
             }
@@ -522,6 +572,11 @@ const HARNESS_HINTS: &[Hint] = &[
     Hint::Home(".qoder", "qoder"),
     Hint::Home(".rovodev", "rovo-dev"),
     Hint::Home(".vibe", "vibe"),
+    // Muse detection signal: the custom-skills folder inside the user's
+    // Muse workspace. This is an assumption documented in the PR: Muse has
+    // no dot-dir config folder, and ~/workspace/custom-skills is where its
+    // user skills live, so its presence is the most specific on-disk mark.
+    Hint::Home("workspace/custom-skills", "muse"),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -917,6 +972,48 @@ mod tests {
     }
 
     #[test]
+    fn a_claude_copy_in_claude_config_dir_is_found_beside_the_home_one() {
+        // Catches (REN-2029): an older Impeccable in $CLAUDE_CONFIG_DIR/skills wins over a project
+        // install while install's warning and `update --user` only look in ~/.claude/skills.
+        let tmp = std::env::temp_dir().join(format!("impeccable-ccd-{}", std::process::id()));
+        let (home, config) = (tmp.join("home"), tmp.join("claude-b"));
+        let skill = config.join("skills").join("impeccable");
+        std::fs::create_dir_all(&skill).unwrap();
+        std::fs::write(skill.join("SKILL.md"), "---\nname: impeccable\nversion: 4.8.2\n---\n").unwrap();
+        let (home, config) = (home.to_string_lossy().to_string(), config.to_string_lossy().to_string());
+        let mut env = Env::new();
+        env.insert("CLAUDE_CONFIG_DIR".into(), config.clone());
+        let sys = Sys { env, cwd: home.clone(), home: home.clone() };
+
+        assert_eq!(sys.get_skills_version(&home, Some(Scope::User)).as_deref(), Some("4.8.2"));
+        assert_eq!(sys.is_already_installed(&home, Some(Scope::User)), Some(".claude"));
+        // Installs still land where the hooks point.
+        assert_eq!(sys.user_provider_skills_dir(&home, ".claude"), jsp::join(&[&home, ".claude", "skills"]));
+        // A project is never read through it, and without the variable nothing changes.
+        assert_eq!(sys.provider_skills_dir_candidates("/project", ".claude", None), vec![jsp::join(&["/project", ".claude", "skills"])]);
+        let plain = Sys { env: Env::new(), cwd: home.clone(), home: home.clone() };
+        assert_eq!(plain.provider_skills_dir_candidates(&home, ".claude", Some(Scope::User)), vec![jsp::join(&[&home, ".claude", "skills"])]);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn a_git_repo_in_home_is_not_the_project_root() {
+        let tmp = std::env::temp_dir().join(format!("impeccable-root-{}", std::process::id()));
+        let home = tmp.join("home");
+        for d in [".git", "proj/sub", "repo/.git", "repo/src"] {
+            std::fs::create_dir_all(home.join(d)).unwrap();
+        }
+        let at = |cwd: std::path::PathBuf| {
+            let (cwd, home) = (cwd.to_string_lossy().to_string(), home.to_string_lossy().to_string());
+            Sys { env: Env::new(), cwd, home }.find_project_root()
+        };
+        assert_eq!(at(home.join("proj/sub")), home.join("proj/sub").to_string_lossy());
+        assert_eq!(at(home.join("repo/src")), home.join("repo").to_string_lossy());
+        assert_eq!(at(home.clone()), home.to_string_lossy());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
     fn replit_aliases_agents_without_displacing_codex() {
         assert_eq!(normalize_provider_name("replit"), Some(".agents"));
         assert_eq!(provider_display_name(".agents"), "Codex CLI");
@@ -997,6 +1094,42 @@ mod tests {
             let env = Env::from([("DSH_HOME".into(), value.into())]);
             assert_eq!(dsh_global_home(&env, home, home), expected);
         }
+    }
+
+    #[test]
+    fn muse_provider_resolves_paths() {
+        assert_eq!(normalize_provider_name("muse"), Some("workspace"));
+        assert_eq!(normalize_provider_name("workspace"), Some("workspace"));
+        assert_eq!(provider_display_name("workspace"), "Muse");
+        assert_eq!(provider_input_name("workspace"), "muse");
+        assert_eq!(harness_display_name("muse"), Some(("workspace", "Muse")));
+
+        let home = if cfg!(windows) { r"C:\Users\u" } else { "/home/u" };
+        let sys = Sys { env: Env::new(), cwd: home.into(), home: home.into() };
+
+        // User scope: Muse custom skills live in ~/workspace/custom-skills.
+        assert_eq!(sys.user_provider_skills_dir(&home, "workspace"), jsp::join(&[home, "workspace", "custom-skills"]));
+        assert_eq!(
+            sys.provider_skills_dir_candidates(&home, "workspace", Some(Scope::User)),
+            vec![jsp::join(&[home, "workspace", "custom-skills"])]
+        );
+
+        // Muse is user-only with a nonstandard skills folder name.
+        assert_eq!(skills_dir_name("workspace"), "custom-skills");
+        assert_eq!(skills_dir_name(".claude"), "skills");
+        assert!(is_user_only_provider("workspace"));
+        assert!(!is_user_only_provider(".claude"));
+
+        // Project scope has no Muse candidates at all: returning the
+        // global dir there made a global install hide a missing project
+        // install. An inferred scope from a project root is empty too,
+        // while one rooted at the home dir still sees the global dir.
+        assert!(sys.provider_skills_dir_candidates("/some/project", "workspace", Some(Scope::Project)).is_empty());
+        assert!(sys.provider_skills_dir_candidates("/some/project", "workspace", None).is_empty());
+        assert_eq!(
+            sys.provider_skills_dir_candidates(&home, "workspace", None),
+            vec![jsp::join(&[home, "workspace", "custom-skills"])]
+        );
     }
 
     #[test]

@@ -34,10 +34,12 @@
 //! passes over a recorded capture with no browser, so a rule change can be
 //! measured against saved pages.
 
+pub mod motion;
 pub mod attach;
 pub mod cdp;
 pub mod consent;
 pub mod overlays;
+mod reaper;
 pub mod response_capture;
 pub mod html_snapshot;
 pub mod discovery;
@@ -1159,7 +1161,8 @@ fn scan_page_inner(
     overlays: &mut OverlayReport,
 ) -> Result<Vec<RawResult>, EngineError> {
     step(profile, "load", "set-viewport", url, || {
-        page.set_viewport(viewport)
+        // Render the light scheme whatever the host prefers (#1620).
+        page.set_viewport(viewport).and_then(|()| page.set_emulated_media(&[("prefers-color-scheme", "light")]))
     })
     .map_err(cdp_err)?;
     // JS `await applyOriginScopedAuth(page, url, credentials)` (issue #657).

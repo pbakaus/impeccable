@@ -19,6 +19,7 @@ import {
   buildGitHubHooksManifest,
   buildGrokHooksManifest,
   buildGeminiHooksManifest,
+  buildAntigravityHooksManifest,
   hooksJsonFor,
 } from '../scripts/lib/transformers/hooks.js';
 import { createTransformer, PROVIDERS } from '../scripts/lib/transformers/index.js';
@@ -105,6 +106,21 @@ describe('hook manifest builders', () => {
     assert.equal(stop.timeout, 30);
     assert.equal(stop.statusMessage, 'Design deep pass');
     expectCommand(stop.command, '.claude/skills/impeccable/scripts');
+  });
+
+  // `impeccable hooks on` (crates/context/src/hook_wiring.rs) asserts the same
+  // fixtures, so the installer and the repair write one manifest (#1307).
+  it('matches the shared manifest fixtures the engine also pins', () => {
+    for (const [manifest, file] of [
+      [buildClaudeSettingsManifest(), 'claude-settings.json'],
+      [buildCodexHooksManifest('.agents'), 'codex-hooks.json'],
+      [buildCursorHooksManifest(), 'cursor-hooks.json'],
+      [buildGitHubHooksManifest(), 'github-hooks.json'],
+      [buildGrokHooksManifest(), 'grok-hooks.json'],
+      [buildGeminiHooksManifest(), 'gemini-settings.json'],
+    ]) {
+      assert.deepEqual(manifest, readJson(`tests/fixtures/hook-manifests/${file}`), file);
+    }
   });
 
   it('builds Codex project-local hooks for the real detector hook', () => {
@@ -284,10 +300,36 @@ describe('hook manifest builders', () => {
     assert.ok(hooksJsonFor('github'));
     assert.ok(hooksJsonFor('grok'));
     assert.ok(hooksJsonFor('gemini'));
+    assert.ok(hooksJsonFor('antigravity'));
     assert.equal(hooksJsonFor('omp'), null);
     assert.equal(hooksJsonFor('devin'), null);
     assert.equal(hooksJsonFor('hermes'), null);
     assert.equal(hooksJsonFor('unrecognized'), null);
+  });
+
+  // Antigravity reads workspace hooks from `.agents/hooks.json`, a named-hook
+  // manifest (no top-level `hooks` key), and runs each command from that
+  // file's directory, so the launcher path is relative to `.agents/`.
+  it('builds Antigravity named hooks and emits them to .agents/hooks.json', () => {
+    const manifest = buildAntigravityHooksManifest();
+    assert.deepEqual(Object.keys(manifest), ['impeccable']);
+    assert.equal(manifest.hooks, undefined);
+    const [post] = manifest.impeccable.PostToolUse;
+    assert.match(post.matcher, /write_to_file/);
+    assert.match(post.matcher, /replace_file_content/);
+    expectCommand(post.hooks[0].command, '../.agent/skills/impeccable/scripts');
+    const [stop] = manifest.impeccable.Stop;
+    expectCommand(stop.command, '../.agent/skills/impeccable/scripts');
+    assert.equal(PROVIDERS.antigravity.hooksManifestDir, '.agents');
+    const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'impeccable-agy-dist-'));
+    try {
+      createTransformer(PROVIDERS.antigravity)(readSourceFiles(REPO_ROOT).skills, distDir);
+      const emitted = path.join(distDir, 'antigravity/.agents/hooks.json');
+      assert.deepEqual(JSON.parse(fs.readFileSync(emitted, 'utf8')), manifest);
+      assert.ok(!fs.existsSync(path.join(distDir, 'antigravity/.agent/hooks.json')), 'Antigravity never reads .agent/hooks.json');
+    } finally {
+      fs.rmSync(distDir, { recursive: true, force: true });
+    }
   });
 
   // Hermes has no hook manifest; the design hook ships as a plugin payload.

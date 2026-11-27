@@ -91,11 +91,13 @@ impl ServerInfo {
     pub fn from_value(v: &Value) -> ServerInfo {
         ServerInfo {
             pid: v.get("pid").and_then(|p| p.as_i64()),
+            // Only a TCP port: callers dial loopback with this, never with
+            // `raw`, so `"port": "1@evil.example/x?"` stays off the wire (#1584).
             port: v.get("port").and_then(|p| p.as_i64()).or_else(|| {
                 v.get("port")
                     .and_then(|p| p.as_str())
                     .and_then(|s| s.parse::<i64>().ok())
-            }),
+            }).filter(|p| (1..=65535).contains(p)),
             token: v.get("token").and_then(|t| t.as_str()).map(String::from),
             raw: v.clone(),
         }

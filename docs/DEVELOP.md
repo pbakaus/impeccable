@@ -68,11 +68,39 @@ bun run rebuild
 ### What Gets Generated
 
 ```
-source/                          -> dist/
-  skills/{name}/SKILL.md           {provider}/{configDir}/skills/{name}/SKILL.md
+skill/                           -> dist/
+  SKILL.src.md                     {provider}/{configDir}/skills/impeccable/SKILL.md
 ```
 
 Each provider gets its own output directory.
+
+### Try the local build of the Chrome extension
+
+Run `bun run build:extension` once first: it writes the detector into `extension/detector/`. Then:
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top right).
+3. Click **Load unpacked**.
+4. Choose the `extension` folder of this repository.
+
+#### Journeys in the unpacked build
+
+The folder you load is the permissive development build (`extension/shared/build.js`): it can sign in to an account, and it takes journeys from Impeccable's staging hosts and from this machine as well as from production. `bun run build:extension` stages the store build into `dist/extension-chrome/`, which signs in to nothing and takes journeys from Impeccable's production pages only.
+
+- **A journey needs Impeccable's server**, which is private: sign-in, personas and the journey itself all come from it. Without it the detector works as usual, but no journey can start.
+- **A journey runs only the extension's own page helpers** (`extension/walks/page-helpers.js`), which the server names (an older server may still send its own page scripts), and answers cookie banners with DuckDuckGo's autoconsent rules (MPL-2.0, `extension/walks/consent-rules.js`). Both are generated outside this repository and pinned by the `HASH` at the end of `page-helpers.js` (the hello test in `tests/extension-walks.test.mjs` computes it): don't edit them by hand, open an issue for a helper change.
+- **Every side panel state draws offline.** Open `chrome-extension://<extension id>/walks/panel/panel.html?stub=<name>`, with `<name>` a key of `STUBS` or `PRE` in `extension/walks/panel/stub.js` (`idle`, `paused`, `asking`, `done`, `home`, `plan`, `history`, ...). The store build ignores `?stub`.
+- **The server switch** is the Account server field on the extension's options page (right-click the toolbar icon, then Options). It shows in the unpacked build only and takes production, staging or `http://api.localhost:<port>`.
+- **A journey from this machine** is taken only from the local stack of the account server chosen there: `localhost` and `app.localhost` on that server's port. With production or staging chosen, no `localhost` page can hand a journey over.
+
+#### Known limits
+
+- The outing page on Impeccable's site is the trust root of a journey: the extension asks the person nothing before it starts the journey that page hands over. A script injected into that page could start a journey on the origins it names (up to eight). Revisit this before the Chrome Web Store launch.
+- After the person presses Continue at a sign-in, an empty password field at that same address no longer pauses the journey.
+- Code the server put in a page before a sign-in pause stays in that page.
+- Password fields in a frame on another origin or in a closed shadow root are not seen, so a screenshot can include them (typing into them is still refused).
+- A filled card field blocks typing only: screenshots and page scripts go on.
+- A one-time-code box without `autocomplete="one-time-code"` is not seen as one.
 
 ## Build System Details
 
@@ -143,7 +171,7 @@ bun run test:live-e2e         # Opt-in — full-cycle live-mode E2E across frame
 bun run test:skill-behavior   # Opt-in — LLM-backed checks that the SKILL.md Setup flow actually drives the agent (~5 min, costs cents, needs `~/.config/impeccable/dev.env`)
 ```
 
-The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, gemini-3.1-flash-lite — the cheapest tier of each, every run) with the source `skill/SKILL.src.md` inlined as the system prompt and a workspace-scoped `bash`/`read`/`write`/`list` tool set. It then asserts on the tool-call trace, not on free-form output. Use it whenever you edit `skill/SKILL.src.md`'s Setup section, `skill/scripts/context.mjs`, or any Setup-touching reference (`teach.md`, `document.md`, `brand.md`, `product.md`, sub-command refs). Per-scenario assertions and the current baseline (21-22/24) live in `tests/skill-behavior/README.md`. Provider keys live in repo-root `.env` (gitignored); missing keys skip cleanly.
+The skill-behavior suite runs the models in `DEFAULT_MODELS` (`tests/skill-behavior/providers.mjs`) with the source `skill/SKILL.src.md` inlined as the system prompt and a workspace-scoped `bash`/`read`/`write`/`list` tool set. It then asserts on the tool-call trace, not on free-form output. Use it whenever you edit `skill/SKILL.src.md`'s Setup section or any Setup-touching reference (`init.md`, `document.md`, `new-work.md`, sub-command refs). Per-scenario assertions and the current baseline live in `tests/skill-behavior/README.md`. Missing provider keys skip cleanly.
 
 ## Best Practices
 
@@ -154,7 +182,7 @@ The skill-behavior suite runs three providers (claude-haiku-4-5, gpt-5.4-mini, g
 3. **Clear instructions**: LLM should understand exactly what to do
 4. **Include examples**: Where they clarify intent
 5. **State constraints**: What NOT to do as clearly as what to do
-6. **Test across providers**: Verify it works in multiple contexts. For Setup-related edits to `skill/`, `bun run test:skill-behavior` automates this across three providers.
+6. **Test across providers**: Verify it works in multiple contexts. For Setup-related edits to `skill/`, `bun run test:skill-behavior` automates this across providers.
 
 ## Reference Documentation
 
@@ -181,12 +209,10 @@ impeccable/
   skill/                           # Edit these! Source of truth
     SKILL.src.md                   # Frontmatter, shared design laws, command router
     reference/                     # One <command>.md per command + domain references
-    scripts/                       # Skill runtime scripts (hooks, context.mjs, etc.)
+    scripts/                       # Launcher, pinned engine VERSION, command metadata, page JS
     agents/                        # Nested subagent definitions
   cli/                             # Standalone `impeccable` CLI (npm package)
-  site/                            # impeccable.style (Astro)
   extension/                       # Chrome extension
-  functions/                       # Cloudflare Pages Functions
   plugin/                          # Committed Claude Code plugin build output
   dist/                            # Generated provider output (gitignored)
   scripts/

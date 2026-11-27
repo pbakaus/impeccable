@@ -90,11 +90,102 @@ enum AcceptOutcome {
 }
 
 pub fn run(args: &[String], io: &mut Io) -> i32 {
+    run_with_accepted(args, io, &mut |_, _| None)
+}
+
+/// Hands a variant accept that succeeded (or replayed its receipt) to the CLI
+/// after the result is printed. Never a discard or a failure.
+pub fn run_with_accepted(args: &[String], io: &mut Io, accepted: &mut crate::OnAccepted<'_>) -> i32 {
     let mut argv: Vec<String> = args.to_vec();
     if let Err(code) = enter_live_root(&mut argv, io) {
         return code;
     }
-    accept_cli(&argv, io)
+    let ok = std::cell::Cell::new(false);
+    let code = accept_cli(&argv, io, &ok);
+    if ok.get() {
+        let id = arg_val(&argv, "--id").unwrap_or_default();
+        let page_url = nonempty(arg_val(&argv, "--page-url"));
+        if let Some(session) = accepted_session(io, &id, page_url.as_deref()) {
+            let _ = accepted(io, session);
+        }
+    }
+    code
+}
+
+/// What the CLI records of an accepted session, from its journal and its
+/// accept receipt: the page path, how many variants it generated, and when
+/// it was first accepted (a replay keeps the original time).
+fn accepted_session(io: &Io, id: &str, page_url: Option<&str>) -> Option<crate::Accepted> {
+    let cwd = io.cwd.to_string_lossy().into_owned();
+    // Only read a journal that exists, here or in the legacy folder the store
+    // also reads: opening the store would create its folder.
+    let journal = format!("{id}.jsonl");
+    let dirs = [crate::paths::live_sessions_dir(&cwd, &io.env), crate::paths::legacy_live_sessions_dir(&cwd, &io.env)];
+    if !dirs.iter().any(|d| std::path::Path::new(d).join(&journal).is_file()) {
+        return None;
+    }
+    let snapshot = crate::session::create_live_session_store(&cwd, &io.env, Some(id))
+        .read_state(id, true)
+        .ok()?
+        .snapshot;
+    let count = |k: &str| snapshot.get(k).and_then(Value::as_f64).filter(|n| *n >= 1.0);
+    let variants = count("arrivedVariants").or_else(|| count("expectedVariants"))? as u64;
+    let url = snapshot.get("pageUrl").and_then(Value::as_str).or(page_url)?;
+    let accepted_at = read_accept_receipt(&cwd, &io.env, id)
+        .and_then(|r| r.get("completedAt").and_then(Value::as_str).map(String::from))?;
+    let accepted_ms = crate::util::date_parse_ms(&accepted_at)?;
+    Some(crate::Accepted {
+        session_id: id.to_string(),
+        root: io.cwd.clone(),
+        target: local_page_name(io, url).or_else(|| page_path(url))?,
+        variants,
+        accepted_at,
+        accepted_ms,
+    })
+}
+
+/// What a page URL names, without the person's machine: an http(s) page's
+/// path (no origin, query or fragment), a `file:` page's file name only, and
+/// nothing for any other scheme.
+/// A bare path the browser sent for a page opened from disk (`file:` pages send
+/// `location.pathname`, the whole local path): one that is a file here, or lies in
+/// the person's home or the project. Only its file name leaves the machine
+/// (Greptile on #1542); a served path like `/pricing` is none of these.
+fn local_page_name(io: &Io, url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next()?;
+    if !path.starts_with('/') || path.starts_with("//") {
+        return None;
+    }
+    // A Windows page from disk reads `/C:/Users/…`: a drive letter is never a served path.
+    let b = path.as_bytes();
+    if b.len() > 3 && b[1].is_ascii_alphabetic() && b[2] == b':' && b[3] == b'/' {
+        return Some(path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("page").to_string());
+    }
+    let under = |dir: &str| !dir.is_empty() && dir != "/" && path.starts_with(dir.trim_end_matches('/'));
+    let local = std::path::Path::new(path).is_file()
+        || io.env.get("HOME").is_some_and(|h| under(h))
+        || under(&io.cwd.to_string_lossy());
+    if !local {
+        return None;
+    }
+    Some(path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("page").to_string())
+}
+
+fn page_path(url: &str) -> Option<String> {
+    // The browser sends `location.pathname` (`/pricing`): already only a path. A `//host` one names a host, so not that.
+    if url.starts_with('/') && !url.starts_with("//") {
+        return url.split(['?', '#']).next().map(String::from);
+    }
+    let (scheme, rest) = url.split_once(':')?;
+    let rest = rest.split(['?', '#']).next().unwrap_or_default();
+    match scheme.to_ascii_lowercase().as_str() {
+        "file" => rest.rsplit(['/', '\\']).next().filter(|n| !n.is_empty()).map(String::from),
+        "http" | "https" => {
+            let after_host = rest.strip_prefix("//")?;
+            Some(after_host.find('/').map_or("/", |i| &after_host[i..]).to_string())
+        }
+        _ => None,
+    }
 }
 
 fn nonempty(v: Option<String>) -> Option<String> {
@@ -181,7 +272,7 @@ fn write_accept_receipt(
     }
 }
 
-fn accept_cli(args: &[String], io: &mut Io) -> i32 {
+fn accept_cli(args: &[String], io: &mut Io, accepted: &std::cell::Cell<bool>) -> i32 {
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println(io, HELP);
         return 0;
@@ -235,6 +326,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
             };
             m.insert("handled".into(), Value::Bool(true));
             m.insert("alreadyApplied".into(), Value::Bool(true));
+            accepted.set(!is_discard);
             Value::Object(m)
         } else {
             json!({
@@ -252,6 +344,7 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
     let emit_result = |io: &mut Io, raw: Value| {
         let result = mark_preview_failure(raw);
         if result.get("handled") != Some(&Value::Bool(false)) {
+            accepted.set(!is_discard);
             write_accept_receipt(
                 &cwd,
                 &env,
@@ -359,6 +452,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
 
     let (target_file, content, lines) = found.unwrap();
     let rel_file = jsp::relative("/", &cwd, &target_file);
+    if check_marker_lines(&id, &lines).is_err() {
+        println(io, &json_compact(&marker_failure(&rel_file)));
+        return 0;
+    }
     let preview_block = find_marker_block(&id, &lines);
     let source_shadow = preview_block.is_some() && read_source_shadow_preview_meta(&content, &id);
     if source_shadow {
@@ -417,6 +514,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 match result {
                     Ok(()) => {}
                     Err(err) => {
+                        if err == MARKERS_SHARE_LINE {
+                            println(io, &json_compact(&marker_failure(m["file"].as_str().unwrap_or_default())));
+                            return 0;
+                        }
                         m.insert("handled".into(), Value::Bool(false));
                         m.insert("error".into(), Value::String(err));
                     }
@@ -466,6 +567,10 @@ fn accept_cli(args: &[String], io: &mut Io) -> i32 {
                 );
             }
             Ok(Err(err)) => {
+                if err == MARKERS_SHARE_LINE {
+                    println(io, &json_compact(&marker_failure(&rel_file)));
+                    return 0;
+                }
                 // JS: `{ handled: true, file, ...result }` with result.handled false.
                 let mut m = Map::new();
                 m.insert("handled".into(), Value::Bool(false));
@@ -614,6 +719,34 @@ fn scrub_manual_edits_against_original_block(
 // Discard / Accept
 // ---------------------------------------------------------------------------
 
+const MARKERS_SHARE_LINE: &str = "markers_share_line";
+
+fn check_marker_lines(id: &str, lines: &[String]) -> Result<(), String> {
+    for line in lines {
+        for kind in ["variants-start", "variants-end", "carbonize-start", "carbonize-end"] {
+            let marker = format!("impeccable-{} {}", kind, id);
+            if line.contains(&marker) {
+                let line = line.trim();
+                let clean = [("<!--", "-->"), ("{/*", "*/}")].iter().any(|(open, close)| {
+                    line.strip_prefix(*open).and_then(|body| body.strip_suffix(*close))
+                        .map_or(false, |body| body.trim() == marker)
+                });
+                if !clean {
+                    return Err(MARKERS_SHARE_LINE.to_string());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A structured refusal on stdout with exit 0, like `source_locked`: live-poll
+/// reads stdout only on exit 0, so a non-zero exit would hide the hint.
+fn marker_failure(file: &str) -> Value {
+    json!({ "handled": false, "mode": "error", "error": MARKERS_SHARE_LINE, "file": file,
+        "hint": "Put each marker comment on its own line, then accept again." })
+}
+
 struct MarkerBlock {
     start: usize,
     end: usize,
@@ -655,6 +788,7 @@ fn comment_syntax_for(path: &str) -> (&'static str, &'static str) {
 
 /// JS: handleDiscardUnlocked → Ok(()) or Err(error)
 fn handle_discard_unlocked(id: &str, lines: &[String], target_file: &str) -> Result<(), String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -800,6 +934,7 @@ fn handle_accept_unlocked(
     param_values: Option<&Map<String, Value>>,
     bake: Option<&BakeRequest>,
 ) -> Result<AcceptOutcome, String> {
+    check_marker_lines(id, lines)?;
     let Some(block) = find_marker_block(id, lines) else {
         return Err("Markers not found".to_string());
     };
@@ -1342,25 +1477,134 @@ fn deindent_content(content: &[String], base_indent: &str) -> Vec<String> {
         .collect()
 }
 
+/// Script files that can hold a session's markers beside the template extensions.
+const SESSION_SCRIPT_EXTENSIONS: [&str; 6] = [".js", ".mjs", ".cjs", ".ts", ".mts", ".cts"];
+
 /// JS: findSessionFile(id, cwd) → (file, content, lines)
 fn find_session_file(id: &str, cwd: &str) -> Option<(String, String, Vec<String>)> {
     let skip: [&str; 5] = ["node_modules", ".git", ".impeccable", "dist", "build"];
-    let extensions = resolve_live_template_extensions(cwd);
+    // A session's marker comment is unique, so script files are searched too: markup
+    // in a template literal (a stock Vite app's src/main.js) is wrapped with --file.
+    let mut extensions = resolve_live_template_extensions(cwd);
+    for ext in SESSION_SCRIPT_EXTENSIONS {
+        if !extensions.iter().any(|e| e == ext) {
+            extensions.push(ext.to_string());
+        }
+    }
     let file = find_source_file(
         &format!("impeccable-variants-start {}", id),
         cwd,
         &extensions,
         &skip,
         &|_| true,
-    )?;
+    ).or_else(|| find_source_file(
+        &format!("impeccable-carbonize-start {}", id), cwd, &extensions, &skip, &|_| true,
+    ))?;
     let content = safe_read(&file)?;
     let lines: Vec<String> = content.split('\n').map(String::from).collect();
     Some((file, content, lines))
 }
 
 #[cfg(test)]
+mod page_path_tests {
+    use super::{local_page_name, page_path};
+
+    // A `file:` page's browser path is the whole local path: only its name may leave (Greptile on #1542).
+    #[test]
+    fn a_page_opened_from_disk_sends_only_its_name() {
+        let dir = std::env::temp_dir().join(format!("impeccable-local-page-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("page.html");
+        std::fs::write(&file, "<p>x</p>").unwrap();
+        let env = std::collections::HashMap::from([("HOME".to_string(), "/home/alice".to_string())]);
+        let (io, _) = impeccable_common::Io::captured_reader(Box::new(std::io::empty()), dir.clone(), env);
+        // As the browser sends it: forward slashes, and a leading one before a Windows drive.
+        let on_disk = file.to_string_lossy().replace('\\', "/");
+        let on_disk = if on_disk.starts_with('/') { on_disk } else { format!("/{on_disk}") };
+        for (url, want) in [
+            (on_disk.as_str(), Some("page.html")),
+            ("/C:/Users/alice/site/page.html", Some("page.html")),
+            ("/home/alice/site/gone.html?x", Some("gone.html")),
+            ("/pricing", None),
+            ("//evil.test/pricing", None),
+        ] {
+            assert_eq!(local_page_name(&io, url).as_deref(), want, "{url}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_a_page_path_or_a_file_name_leaves_the_machine() {
+        for (url, want) in [
+            ("http://localhost:5173/pricing?plan=pro#top", Some("/pricing")),
+            ("HTTPS://shop.test", Some("/")),
+            ("file:///home/alice/site/page.html", Some("page.html")),
+            ("file:/home/alice/page.html", Some("page.html")),
+            ("FILE:///C:/Users/alice/page.html?x#y", Some("page.html")),
+            ("file:C:\\Users\\alice\\page.html", Some("page.html")),
+            ("file:///home/alice/", None),
+            ("about:blank", None),
+            // The browser's own payload, `location.pathname` (Greptile on #1542).
+            ("/pricing", Some("/pricing")),
+            ("/pricing?plan=pro#top", Some("/pricing")),
+            ("//evil.test/pricing", None),
+            ("http:/pricing", None),
+        ] {
+            assert_eq!(page_path(url).as_deref(), want, "{url}");
+        }
+    }
+}
+
+#[cfg(test)]
 mod discard_tests {
     use super::*;
+
+    #[test]
+    fn shared_marker_lines_refuse_accept_and_discard_without_writes() {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        for jsx in [false, true] {
+            for kind in ["variants", "carbonize"] {
+                for boundary in ["start", "end"] {
+                    for discard in [false, true] {
+                        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let dir = std::env::temp_dir().join(format!("impeccable-shared-marker-{}-{n}", std::process::id()));
+                        std::fs::create_dir_all(&dir).unwrap();
+                        std::fs::write(dir.join("package.json"), "{}").unwrap();
+                        let file = dir.join(if jsx { "App.jsx" } else { "index.html" });
+                        let (co, cc) = if jsx { ("{/*", "*/}") } else { ("<!--", "-->") };
+                        let source = format!("{co} impeccable-{kind}-start ab12cd34 {cc}{}\n<div data-impeccable-variant=\"original\"><h1>Old</h1></div>\n<div data-impeccable-variant=\"1\"><h1>New</h1></div>\n{}{co} impeccable-{kind}-end ab12cd34 {cc}\n",
+                            if boundary == "start" { "<p>Keep</p>" } else { "" },
+                            if boundary == "end" { "<p>Keep</p>" } else { "" });
+                        std::fs::write(&file, &source).unwrap();
+                        let lines: Vec<String> = source.split('\n').map(String::from).collect();
+                        assert_eq!(handle_discard_unlocked("ab12cd34", &lines, file.to_str().unwrap()).unwrap_err(), MARKERS_SHARE_LINE);
+                        assert!(matches!(handle_accept_unlocked("ab12cd34", "1", &lines, file.to_str().unwrap(), None, None), Err(e) if e == MARKERS_SHARE_LINE));
+                        let (mut io, captured) = Io::captured("", dir.clone(), Default::default());
+                        let args: Vec<String> = if discard { vec!["--id", "ab12cd34", "--discard"] }
+                            else { vec!["--id", "ab12cd34", "--variant", "1"] }.into_iter().map(String::from).collect();
+                        assert_eq!(run(&args, &mut io), 0);
+                        drop(io);
+                        let result: Value = serde_json::from_slice(&captured.stdout.borrow()).unwrap();
+                        assert_eq!(result["error"], MARKERS_SHARE_LINE);
+                        assert_eq!(result["mode"], "error");
+                        assert_eq!(result["handled"], false);
+                        assert_eq!(result["hint"], "Put each marker comment on its own line, then accept again.");
+                        assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
+                        std::fs::remove_dir_all(dir).unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn standalone_marker_comments_allow_whitespace() {
+        for (co, cc) in [("<!--", "-->"), ("{/*", "*/}")] {
+            let lines = [format!("  {co} impeccable-variants-start ab12cd34 {cc}  "),
+                format!("\t{co}   impeccable-variants-end ab12cd34\t {cc}\r")];
+            assert!(check_marker_lines("ab12cd34", &lines).is_ok());
+        }
+    }
 
     #[test]
     fn discard_restores_the_original_without_blank_lines_around_it() {

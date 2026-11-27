@@ -36,7 +36,9 @@ const COMPONENTS = {
     engineGated: true,
     buildCmd: 'bun run build:release',
     artifacts: ['dist/universal.zip'],
-    postReleaseHint: null,
+    // The ChatGPT listing is uploaded by hand and lags every release it misses (#1023).
+    postReleaseHint:
+      'Run `bun run release:cli` and `npm publish` at this version, then upload `dist/openai-plugin.zip` to the OpenAI plugin submission (docs/openai-plugin-submission.md) to update the ChatGPT listing.',
     tweetHeader: (v) => `Impeccable v${v} is out.`,
     tweetCta: 'Install / update: npx impeccable install',
   },
@@ -132,6 +134,7 @@ if (cfg.sibling) {
   }
   ok(`${cfg.sibling} agrees`);
 }
+
 
 // Engine source guard (#813). The binary every machine downloads is built from
 // the engine-v<ENGINE_VERSION> tag, so pinning it from a tree whose engine
@@ -265,6 +268,9 @@ const headerIdx = changelogHtml.indexOf(expectedHeader);
 if (headerIdx === -1) {
   fail(`No changelog entry found for "${cfg.changelogLabel}${version}" in site/pages/changelog.astro. Add one before releasing.`);
 }
+
+// After the local checks: it reads another repository's main.
+if (component === 'extension') checkWalkHelpers();
 // Notes are the entry's bullet list. Scoping to <ul class="cf-items">
 // skips the optional lead paragraph, before/after figure, and stat row
 // that the headline release (v3.5.0) carries, so release notes stay clean.
@@ -471,6 +477,24 @@ async function releaseEngine() {
   if (wrong.length) fail(`package.json pins ${wrong.map(([n, r]) => `${n}@${r}`).join(', ')}; expected ${version}. Bump them with ENGINE_VERSION.`);
   ok(`${pins.length} platform package pins agree`);
 
+  // The engine compiles in scripts/cli-pro-release-keys.json (crates/account
+  // pro/verify.rs). With no key there, every Pro build fails its signature
+  // check and every user falls back to the open rules, and only another engine
+  // release fixes it, so refuse to tag one.
+  step('Checking a Pro release key is compiled in');
+  let releaseKeys = {};
+  try {
+    releaseKeys = JSON.parse(readFileSync(path.join(repoRoot, 'scripts/cli-pro-release-keys.json'), 'utf8'));
+  } catch {}
+  // The engine rejects the whole file if any entry is malformed, so every entry
+  // must be valid, not just one.
+  const entries = releaseKeys && typeof releaseKeys === 'object' && !Array.isArray(releaseKeys) ? Object.entries(releaseKeys) : [];
+  const bad = entries.filter(([id, hex]) => !id || typeof hex !== 'string' || !/^[0-9a-f]{64}$/.test(hex));
+  if (!entries.length || bad.length) {
+    fail(`scripts/cli-pro-release-keys.json holds no Pro release key the engine can use (each id must map to 64 lowercase hex${bad.length ? `; invalid: ${bad.map(([id]) => JSON.stringify(id)).join(', ')}` : ''}). The engine refuses the whole file when any entry is malformed, so this engine would ship with Pro dispatch off for everyone.`);
+  }
+  ok(`${entries.length} Pro release key(s)`);
+
   const tag = `${cfg.tagPrefix}${version}`;
 
   step('Checking working tree is clean');
@@ -511,4 +535,32 @@ async function releaseEngine() {
   console.log(`\n→ Next step: watch the release-engine workflow (${REPO_URL}/actions/workflows/release-engine.yml).`);
   console.log(`  It publishes the five binaries + .sha256 as ${REPO_URL}/releases/tag/${tag}.`);
   console.log('  Then publish the five @impeccable/cli-<os>-<arch> npm platform packages with `bun run release:platform-packages`, then release the CLI/skill.');
+}
+
+// The walk helpers the extension carries (extension/walks/page-helpers.js) are generated from the web app's own
+// helpers (pristine's scripts/gen-page-helpers.ts) and say their hash in every hello. Releasing helpers older than the
+// app's ships none of its fixes to the browsers that walk. Refuse unless they carry pristine main's PAGE_HELPERS_HASH,
+// read from a pristine checkout next to this one, or at PRISTINE_DIR.
+function checkWalkHelpers() {
+  step('Checking the walk helpers against pristine main');
+  const pristine = process.env.PRISTINE_DIR ?? path.resolve(repoRoot, '..', 'pristine');
+  if (!existsSync(path.join(pristine, '.git'))) fail(`No pristine checkout at ${pristine}. Set PRISTINE_DIR to one: the walk helpers are checked against its main.`);
+  try {
+    execSync('git fetch -q origin main', { cwd: pristine, stdio: 'ignore' });
+  } catch {
+    fail(`Could not fetch pristine's main in ${pristine}.`);
+  }
+  const registry = execSync('git show origin/main:src/outings/page-helpers.ts', { cwd: pristine, encoding: 'utf8' });
+  const want = /PAGE_HELPERS_HASH = '([0-9a-f]+)'/.exec(registry)?.[1];
+  if (!want) fail("pristine main's src/outings/page-helpers.ts names no PAGE_HELPERS_HASH.");
+  const file = path.join(repoRoot, 'extension', 'walks', 'page-helpers.js');
+  const have = existsSync(file) ? /export const HASH = '([0-9a-f]+)'/.exec(readFileSync(file, 'utf8'))?.[1] : undefined;
+  if (have !== want) {
+    fail(
+      `extension/walks carries walk helpers ${have ?? '(none)'}, but pristine main has ${want}. Regenerate them from a pristine ` +
+        `worktree at origin/main: bun --no-env-file --preload ./test/cloudflare-modules.preload.mjs scripts/gen-page-helpers.ts ` +
+        `${path.join(repoRoot, 'extension', 'walks')} , then commit them here.`,
+    );
+  }
+  ok(`walk helpers ${have} match pristine main`);
 }

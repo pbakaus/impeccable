@@ -89,6 +89,8 @@ src/lib/impeccable/__runtime.js
 
 # Extension build artifacts
 extension/detector/
+# A browser test's walk address for the unpacked build (extension/walks/link.js)
+extension/outing.json
 
 # Engine binaries: fetched per platform (scripts/fetch-engine.mjs), never tracked.
 # The launcher next to them (skill/scripts/impeccable) is the tracked file.

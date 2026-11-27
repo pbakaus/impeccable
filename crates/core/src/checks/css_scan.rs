@@ -1252,6 +1252,8 @@ struct RadiusRule {
     /// Source position of the block, the order its declarations apply in.
     order: usize,
     decls: Vec<RadiusDecl>,
+    /// The block draws a border across the top or bottom.
+    draws_frame: Option<bool>,
 }
 
 impl RadiusRule {
@@ -1512,13 +1514,36 @@ impl<'a> CssHostIndex<'a> {
                 ))
             })
             .collect();
-        if decls.is_empty() {
+        // Whether the block draws a border across the top or bottom (the
+        // frame a one-sided hairline beside it belongs to), takes one away
+        // (`border: 0`), or says nothing of it: its last such declaration.
+        let draws_frame = frame
+            .direct
+            .split(';')
+            .filter_map(|part| {
+                let (prop, value) = part.split_once(':')?;
+                let prop = js::to_lower_case(js::trim(prop));
+                let value = js::to_lower_case(js::trim(value));
+                matches!(
+                    prop.as_str(),
+                    "border" | "border-width" | "border-top" | "border-bottom" | "border-block" | "border-top-width" | "border-bottom-width" | "border-style"
+                )
+                .then(|| {
+                    !value.is_empty()
+                        && !value.starts_with("none")
+                        && !value.starts_with("hidden")
+                        && !value.split_whitespace().next().is_some_and(|t| matches!(t, "0" | "0px"))
+                })
+            })
+            .last();
+        if decls.is_empty() && draws_frame.is_none() {
             return;
         }
         let id = self.rules.len();
         // A block the static cascade never applies: nested in a style rule,
         // or under an at-rule it skips.
-        if frame.styles_elements
+        if !decls.is_empty()
+            && frame.styles_elements
             && (frame.is_rule || frame.in_rule)
             && !(frame.is_rule && frame.static_reachable)
         {
@@ -1539,6 +1564,7 @@ impl<'a> CssHostIndex<'a> {
         self.rules.push(RadiusRule {
             order: frame.order,
             decls,
+            draws_frame,
         });
     }
 
@@ -1880,6 +1906,104 @@ impl<'a> CssHostIndex<'a> {
             .collect()
     }
 
+    /// Whether the rule whose selector starts at `pos` (a byte offset into
+    /// the comment-blanked text) styles a box its tied rules round at all,
+    /// any radius above zero: what a side bar under 2px needs
+    /// ([`crate::checks::side_bar`]). The rules tied to `.it` round
+    /// `.it[aria-pressed]`, `.it:hover` and `.it.is-active`. A host the index
+    /// cannot name is not known to be rounded.
+    pub fn is_rule_rounded(&self, pos: usize, selector: &str) -> bool {
+        self.hosts_at(pos, selector)
+            .is_some_and(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a declaration at `pos`,
+    /// a byte offset into the text the index was built on.
+    pub fn is_declaration_rounded(&self, pos: usize) -> bool {
+        self.declaration_rounding(pos).unwrap_or(false)
+    }
+
+    /// Whether the rules tied to the box the declaration at `pos` styles
+    /// round it once they all apply (a later `border-radius: 0` squares it),
+    /// or `None` when the index cannot name that box.
+    pub fn declaration_rounding(&self, pos: usize) -> Option<bool> {
+        self.declaration_hosts(pos).map(|hosts| self.corners_for_hosts(&hosts).rounds_any())
+    }
+
+    /// Whether a rule tied to the box the declaration at `pos` styles draws a
+    /// border across its top or bottom: a hairline on one side of it is part
+    /// of a frame, not a bar (`.btn { border: 1px solid }` frames
+    /// `.g .btn + .btn { border-left: 1px solid }`).
+    pub fn is_declaration_framed(&self, pos: usize) -> bool {
+        self.declaration_hosts(pos)
+            .is_some_and(|hosts| {
+                // The last tied rule that says anything of the frame wins.
+                self.tied_rules(&hosts).iter().filter_map(|id| self.rules[*id].draws_frame).last().unwrap_or(false)
+            })
+    }
+
+    /// The corners the rules whose subject could match a markup element (its
+    /// tag, its literal classes) give it, with `inline` (the tag's own radius
+    /// declarations, `None` for a statement that may bring one in unseen,
+    /// such as a spread) over them: what a hairline in a `style` attribute reads
+    /// from the file's style blocks. Declarations apply the way the cascade
+    /// orders them: `!important` last, then inline, then by the specificity
+    /// of the subject's classes and type, then in source order. An ancestor
+    /// or state the reader cannot check against the element adds nothing.
+    pub fn element_corners(
+        &self,
+        tag: Option<&str>,
+        classes: &[String],
+        inline: &[Option<(String, String)>],
+    ) -> DeclaredCorners {
+        // (important, inline, [classes, types], source order, statement), each
+        // with the statement it applies.
+        type Rank = (bool, bool, [u32; 2], usize, usize);
+        let mut layered: Vec<(Rank, Option<(&str, &str)>)> = Vec::new();
+        for (selector, ids) in &self.exact {
+            if !selector_could_apply(selector, tag, false, classes) {
+                continue;
+            }
+            let specificity = subject_specificity(selector);
+            for &id in ids {
+                let rule = &self.rules[id];
+                for (k, decl) in rule.decls.iter().enumerate() {
+                    layered.push(match decl {
+                        RadiusDecl::Set(prop, value) => (
+                            (is_important(value), false, specificity, rule.order, k),
+                            Some((prop.as_str(), value.as_str())),
+                        ),
+                        RadiusDecl::Unseen => ((false, false, specificity, rule.order, k), None),
+                    });
+                }
+            }
+        }
+        for (k, decl) in inline.iter().enumerate() {
+            layered.push(match decl {
+                Some((prop, value)) => ((is_important(value), true, [0, 0], 0, k), Some((prop.as_str(), value.as_str()))),
+                None => ((false, true, [0, 0], 0, k), None),
+            });
+        }
+        layered.sort_by_key(|(rank, _)| *rank);
+        let mut corners = DeclaredCorners::default();
+        for (_, decl) in layered {
+            match decl {
+                Some((prop, value)) => {
+                    corners.apply(prop, value, NOMINAL_CARD_WIDTH_PX);
+                }
+                None => corners.set_unknown(),
+            }
+        }
+        corners
+    }
+
+    /// [`is_rule_rounded`](Self::is_rule_rounded) for a side bar finding
+    /// from the text this index was built on.
+    pub fn side_bar_on_rounded_host(&self, finding: &PatternFinding) -> bool {
+        let pos = self.content_offset(finding.index.unwrap_or(0));
+        self.is_rule_rounded(pos, finding.selector.as_deref().unwrap_or(""))
+    }
+
     /// Whether a CSS-text finding from the text this index was built on
     /// survives the rounded-card gate. Anything but a
     /// `side-tab` stripe passes untouched.
@@ -1891,6 +2015,26 @@ impl<'a> CssHostIndex<'a> {
         let selector = finding.selector.as_deref().unwrap_or("");
         self.is_rule_rounded_away_from_side(pos, selector, side)
     }
+}
+
+/// Whether a declared value ends `!important`.
+fn is_important(value: &str) -> bool {
+    let v: String = value.chars().filter(|c| !c.is_whitespace()).collect();
+    v.to_ascii_lowercase().ends_with("!important")
+}
+
+/// The part of a selector's specificity [`selector_could_apply`] checks
+/// against an element: its subject's classes and type.
+fn subject_specificity(selector: &str) -> [u32; 2] {
+    let mut out = [0, 0];
+    for token in compound_tokens(last_compound(selector)) {
+        if token.starts_with('.') {
+            out[0] += 1;
+        } else if token.starts_with(|c: char| c.is_ascii_alphabetic()) {
+            out[1] += 1;
+        }
+    }
+    out
 }
 
 /// Whether a class name can be written as a plain `.name` selector.
