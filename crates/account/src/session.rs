@@ -308,9 +308,10 @@ impl Session {
     }
 
     /// [`Session::get`] that is over by `by`: waiting for another command's
-    /// sign-in step, a token refresh and the read all come out of that time.
-    /// The read runs on the caller's client, which the caller bounds, or after
-    /// a refresh on one bounded by what is left.
+    /// sign-in step and the read come out of that time, and no token refresh
+    /// starts after it (one that started runs to its end). The read runs on
+    /// the caller's client, which the caller bounds, or after a refresh on one
+    /// bounded by what is left.
     pub fn get_by(
         &mut self,
         path: &str,
@@ -338,24 +339,25 @@ impl Session {
         }
     }
 
-    /// A refresh that waits for the lock no later than `by`. The rotation
-    /// itself gets at least [`RENEWAL`]: one cut short after the service has
-    /// rotated spends the refresh token.
+    /// A refresh that waits for the lock no later than `by` and starts only
+    /// before it. Once started it runs on the ordinary client and saves what
+    /// comes back: one cut short after the service has rotated spends the
+    /// refresh token.
     fn renew_by(&mut self, by: std::time::Instant) -> Result<(), SessionError> {
         let lock = self
             .store
             .lock_for(left(by))
             .map_err(SessionError::Local)?;
-        let bounded = Client::with_deadline(self.account(), left(by).max(RENEWAL));
-        let kept = std::mem::replace(&mut self.client, bounded);
+        if left(by).is_zero() {
+            return Err(SessionError::Local("out of time to renew the sign-in".into()));
+        }
+        let ordinary = Client::new(self.account());
+        let kept = std::mem::replace(&mut self.client, ordinary);
         let renewed = self.refresh_holding(&lock);
         self.client = kept;
         renewed
     }
 }
-
-/// The least time a token rotation is given.
-const RENEWAL: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn left(by: std::time::Instant) -> std::time::Duration {
     by.saturating_duration_since(std::time::Instant::now())
@@ -639,6 +641,35 @@ mod review_regressions {
         assert!(matches!(session.refresh_holding(&lock), Err(SessionError::NotSignedIn)));
         drop(lock);
         assert!(crate::taste::load_session(&account).is_none());
+        std::fs::remove_dir_all(account.home).unwrap();
+    }
+
+    #[test]
+    fn a_started_refresh_outlives_the_reads_time_and_keeps_the_new_token() {
+        // Catches: a read's deadline cutting short a refresh the service has already rotated, so the spent token is kept and the next refresh signs the person out.
+        let fake = crate::test_fake::Fake::start();
+        let env = fake.env("renew-outlives-deadline");
+        crate::login(&env, &mut |url| crate::test_fake::browser(url), std::time::Duration::from_secs(10)).unwrap();
+        let account = Account::from_env(&env).unwrap();
+        let mut session = Session::load(&account).unwrap();
+        session.secret.access_expires_at = 0;
+        let asked = fake.hits("/oauth/token");
+        let gate = fake.hold("/oauth/token");
+        let ms = std::time::Duration::from_millis;
+        let by = std::time::Instant::now() + ms(250);
+        let reading = std::thread::spawn(move || {
+            let _ = session.get_by("/cli/v1/entitlement", by);
+        });
+        fake.wait_for_hits("/oauth/token", asked + 1);
+        // The service has rotated; it answers well after the read's time.
+        while std::time::Instant::now() < by + ms(100) {
+            std::thread::yield_now();
+        }
+        gate.open();
+        reading.join().unwrap();
+        let store = Store::new(&account);
+        let saved = store.secret(&store.state().unwrap()).unwrap();
+        assert!(fake.record.lock().unwrap().refresh_is_live(&saved.refresh_token));
         std::fs::remove_dir_all(account.home).unwrap();
     }
 

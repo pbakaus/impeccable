@@ -573,8 +573,8 @@ impl Door {
         self.session.get(path).map_err(stop_of)
     }
 
-    /// A read over by `by`, a token refresh included. Out of time waiting for
-    /// another command's sign-in step, it is a read that didn't answer.
+    /// A read over by `by`, though a token refresh it started runs to its end.
+    /// Out of time for the sign-in step, it is a read that didn't answer.
     fn get_by(&mut self, path: &str, by: Instant) -> Result<Value, Stop> {
         self.session.get_by(path, by).map_err(|e| match e {
             SessionError::Local(_) if Instant::now() >= by => Stop::Unreachable,
