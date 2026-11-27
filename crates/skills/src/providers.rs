@@ -191,13 +191,7 @@ impl Sys {
 
     /// JS: isHomeDir(root)
     pub fn is_home_dir(&self, root: &str) -> bool {
-        if root == self.home {
-            return true;
-        }
-        match (util::realpath(root), util::realpath(&self.home)) {
-            (Some(a), Some(b)) => a == b,
-            _ => false,
-        }
+        impeccable_context::util::is_home_dir(root, &self.home)
     }
 
     /// JS: providerSkillsDirCandidates(root, provider, scope)
