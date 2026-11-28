@@ -20,7 +20,7 @@
     "reference/craft-floor.md": 7750,
     "reference/craft.md": 750,
     "reference/critique-rubric.md": 21000,
-    "reference/critique.md": 30500,
+    "reference/critique.md": 32000,
     "reference/delight.md": 4000,
     "reference/distill.md": 6000,
     "reference/doctor.md": 6000,
@@ -67,7 +67,7 @@
         "SKILL.src.md",
         "reference/critique.md"
       ],
-      "max": 43250
+      "max": 44750
     },
     "build": {
       "loads": [

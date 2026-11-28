@@ -26,7 +26,7 @@ Resolve one stable target, run two independent assessments, synthesize a design 
    {{scripts_path}}/impeccable critique-storage slug "<resolved-path-or-url>"
    ```
    Every later command also accepts the resolved target directly and derives the same slug internally; never hand-write a slug. If this exits non-zero, skip persistence and trend for this run, but continue the critique.
-3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently; it is the only prior-run input critique consumes.
+3. **Read `.impeccable/critique/ignore.md`** if it exists. Drop matching findings silently; it is the only prior-run input the review and its scores consume.
 
 ### Assessment Orchestration
 
@@ -72,7 +72,9 @@ Evaluate:
 
 Read critique-rubric.md as part of Assessment A. When a sub-agent runs A, give it the file's path so it reads the rubric itself, and the parent does not load it. When A runs in this context (native critiques, or the single-context fallback), read the rubric here before scoring.
 
-Return: design-specificity verdict, heuristic scores, cognitive load, emotional journey, 2-3 strengths, 3-5 priority issues, persona red flags, minor observations, and provocative questions.
+Report every defect as its own finding (`F1`, `F2`, ...) with P0-P3 severity, heuristic, location, what is wrong, and the fix. Do **not** cap or bundle them: the next run checks each one. For each heuristic below 4, name the findings whose fixes earn its next point (`F3, F7 -> 3`), its P0 and P1 findings first.
+
+Return: design-specificity verdict, heuristic scores with their next point, cognitive load, emotional journey, 2-3 strengths, every finding, persona red flags, and provocative questions.
 
 ### Assessment B: Detector + Browser Evidence
 
@@ -144,7 +146,7 @@ Present the Nielsen's 10 heuristics scores as a table:
 
 | # | Heuristic | Score | Key Issue |
 |---|-----------|-------|-----------|
-| 1 | Visibility of System Status | ? | [specific finding or "n/a" if solid] |
+| 1 | Visibility of System Status | ? | [specific finding and its next point, or "n/a" if solid] |
 | 2 | Match System / Real World | ? | |
 | 3 | User Control and Freedom | ? | |
 | 4 | Consistency and Standards | ? | |
@@ -182,7 +184,7 @@ Highlight 2-3 things done well. Be specific about why they work.
 The 3-5 most impactful design problems, ordered by importance.
 
 For each issue, tag with **P0-P3 severity** (see [Issue Severity below](#issue-severity-p0p3) for definitions):
-- **[P?] What**: Name the problem clearly
+- **[F? · P?] What**: Name the problem clearly
 - **Why it matters**: How this hurts users or undermines goals
 - **Fix**: What to do about it (be concrete)
 - **Suggested command**: Which command could address this (from: {{available_commands}})
@@ -209,6 +211,9 @@ Provocative questions that might unlock better solutions:
 - "Does this need to feel this complex?"
 - "What would a confident version of this look like?"
 
+#### All Findings
+In chat, give its count in one line, or the whole table when this run saves no snapshot. Every finding that survived synthesis, one row each: `| ID | P | H | Where | What | Fix |`.
+
 <codex>
 #### Run Notes
 Keep this compact. Include status for target slug, ignore list, assessment independence, CLI detector, browser visibility, overlay injection, live server cleanup, and temp-file cleanup. For failed or skipped steps, give the concrete observed reason and the fallback signal used. In the final chat response, also include snapshot write and trend read status after persistence has run.
@@ -232,13 +237,17 @@ Do this first because the alternative is the most common way this command fails:
 
 Persistence is not the end of the run. After it, the response continues with the trend line and the close.
 
+### Since Last Run
+
+Only when an earlier run left a snapshot: the newest `.impeccable/critique/*__<slug>.md` whose `target_identity` is this target (two paths can share a slug), unless its frontmatter says `closed: true`. Open it only now, with the report delivered; this list **never** changes the report's scores or findings. Check each row of its `All Findings` table (its Priority Issues when it predates the table) where it points in the current code; for what only the rendered page shows, look at the page if it is still up, else at what this run's assessments saw. List each earlier ID and what it said as `fixed`, `partly fixed`, `still open`, or `unchecked` when nothing showed that state; judge by that check, not by whether this run found it again.
+
 ### Persist the Snapshot
 
 Once the report above is finalized, write it to `.impeccable/critique/` so the user can refer back, and so `{{command_prefix}}impeccable polish` can pick up the priority issues without a copy-paste.
 
 Skip this step if the Setup slug was null (vague or root-level target), and say why in one line of the close: "Not saved: critique one page, component or file to keep its history."
 
-1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions), but stop before the "Ask the User" / "Recommended Actions" sections that come later.
+1. **Write the body to a temp file** so you can pipe it to the helper. Use the full critique report (heuristic table, design-specificity verdict, priority issues, persona red flags, minor observations, and questions) with the Since Last Run list and the All Findings table in full, but stop before the "Ask the User" / "Recommended Actions" sections that come later.
 
    Copy the delivered report for later commands to read. If you are composing it for the first time in this heredoc, you skipped Deliver the Report; go back and send it.
 
@@ -251,7 +260,7 @@ Skip this step if the Setup slug was null (vague or root-level target), and say 
    IMPECCABLE_CRITIQUE_META='{"target":"<user phrasing>","title":"<page title, or empty>","url":"<http(s) URL you viewed, or empty>","pr":"<PR number checked out, or empty>","heuristics":[{"n":<1-10>,"score":<0-4>}],"total_score":<n>,"max_score":<n>,"na_heuristics":"<comma-separated numbers, or empty>","p0_count":<n>,"p1_count":<n>,"p2_count":<n>,"p3_count":<n>}' \
      {{scripts_path}}/impeccable critique-storage write "<resolved target>" <body-file>
    ```
-   Use the observed `<title>` or first h1 for `title`; omit N/A heuristics. `max_score` is the table’s applicable maximum (40 if all apply), distinguishing renormalized totals. For local files the helper records an exact content fingerprint, so polish detects later edits without Git or timestamps. The helper prints the absolute saved path, sometimes followed by a line (`Saved to Impeccable: <link>`, `Not saved to Impeccable: <reason>` or `Keep this critique's history: impeccable login`); put that line in the close word for word, also from detect (JSON `savedTo`: `Saved to Impeccable: <url>`). Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
+   Use the observed `<title>` or first h1 for `title`; omit N/A heuristics. `max_score` is the table’s applicable maximum (40 if all apply), distinguishing renormalized totals. The four `p*_count` fields count the All Findings rows. For local files the helper records an exact content fingerprint, so polish detects later edits without Git or timestamps. The helper prints the absolute saved path, sometimes followed by a line (`Saved to Impeccable: <link>`, `Not saved to Impeccable: <reason>` or `Keep this critique's history: impeccable login`); put that line in the close word for word, also from detect (JSON `savedTo`: `Saved to Impeccable: <url>`). Leave that file on disk. Polish closes it; this run does not. `REPORTS OFF:` instead means the project opted out of saved reports: skip the trend read and carry on.
 
 3. **Delete the temp body file** after the write attempt completes, whether the write succeeded or failed. If deletion fails, mention `temp-file cleanup failed: <reason>` briefly in the final output, but do not block the critique.
 
