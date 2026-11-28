@@ -5,6 +5,7 @@
 //! evidence either way is left out, never sent as a pass.
 
 mod local;
+pub(crate) mod registry;
 pub(crate) mod site;
 
 #[cfg(test)]
@@ -158,7 +159,19 @@ pub(crate) fn from_scan(
     for (id, s) in outside(std::path::Path::new(root), env) {
         items.insert(id.to_string(), s.to_string());
     }
+    for (id, s) in packages(std::path::Path::new(root), env).items {
+        items.insert(id.to_string(), s.to_string());
+    }
     items
+}
+
+/// The registry's two items, only for a git work tree's top: a subfolder's
+/// package.json isn't the one its repository installs first.
+fn packages(root: &std::path::Path, env: &std::collections::HashMap<String, String>) -> registry::Report {
+    if !root.join(".git").exists() {
+        return registry::Report::default();
+    }
+    registry::check(root, env)
 }
 
 /// The deployed site's items, only for a git work tree's top: a subfolder
@@ -301,6 +314,14 @@ pub(crate) fn run(
             items.insert(id.to_string(), s.to_string());
         }
     }
+    let registry = if local.empty {
+        registry::Report::default()
+    } else {
+        packages(&root, &io.env)
+    };
+    for (id, s) in &registry.items {
+        items.insert(id.to_string(), s.to_string());
+    }
     let next = ITEMS
         .iter()
         .find(|(id, ..)| items.get(*id).map(String::as_str) == Some("failing"))
@@ -312,7 +333,7 @@ pub(crate) fn run(
             serde_json::to_string_pretty(&body).unwrap_or_default()
         ));
     } else {
-        print_roadmap(io, &items, next, &local);
+        print_roadmap(io, &items, next, &local, &registry);
     }
     // Upload exactly as a full `detect` does: only a real full scan, and
     // only of a git work tree's top (health checks both).
@@ -334,6 +355,7 @@ fn print_roadmap(
     items: &BTreeMap<String, String>,
     next: Option<&str>,
     local: &local::Report,
+    registry: &registry::Report,
 ) {
     if local.empty {
         io.out("Nothing to check yet: this folder has no files. Run it again once the project has some.\n");
@@ -351,6 +373,16 @@ fn print_roadmap(
         if id == "secrets-out-of-repo" {
             for s in local.secrets.iter().take(5) {
                 io.out(&format!("  {}:{} ({})\n", s.file, s.line, s.kind));
+            }
+        }
+        if id == "real-packages" {
+            for name in registry.missing.iter().take(5) {
+                io.out(&format!("  {name} (not on npm)\n"));
+            }
+        }
+        if id == "current-dependencies" {
+            for (name, declared, latest) in registry.behind.iter().take(5) {
+                io.out(&format!("  {name} {declared} (latest {latest})\n"));
             }
         }
         if id == "no-giant-files" {
