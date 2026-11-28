@@ -35,6 +35,11 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     else {
         return 0;
     };
+    // Screenshots have their own switch (REN-2530): off, no browser opens and nothing is captured.
+    let screenshots = |io: &Io| impeccable_account::uploads::allowed(io, impeccable_account::uploads::Kind::Screenshots, None);
+    if !screenshots(io) {
+        return 0;
+    }
     // The sign-in the critique uploaded under, or nothing is captured at all.
     if frame_session(io, login, deadline.saturating_duration_since(Instant::now())).is_none() {
         return 0;
@@ -105,7 +110,8 @@ pub fn run(args: &[String], io: &mut Io) -> i32 {
     }
     // Drop kills the owned browser immediately; graceful close can wait five seconds.
     drop(browser);
-    if frames.is_empty() || Instant::now() >= deadline {
+    // Switched off while the pages were captured: nothing leaves.
+    if frames.is_empty() || Instant::now() >= deadline || !screenshots(io) {
         return 0;
     }
     let id = id.clone();

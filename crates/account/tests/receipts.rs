@@ -28,6 +28,7 @@ fn reports_keep_the_server_link_and_fail_without_promising_retry() {
     fake.knobs.lock().unwrap().critiques = true;
     let env = fake.env("receipt-report");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let root = Path::new(&env["IMPECCABLE_HOME"]);
     let mut snapshot = SavedReport {
         path: root.join(".impeccable/critique/report.md").to_string_lossy().into(),
@@ -55,6 +56,7 @@ fn foundations_failure_is_one_honest_line_and_opt_out_is_once() {
     { let mut k = fake.knobs.lock().unwrap(); k.health = true; k.foundations = true; }
     let mut env = fake.env("receipt-foundations");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let root = Path::new(&env["IMPECCABLE_HOME"]).join("repo");
     std::fs::create_dir_all(&root).unwrap();
     assert!(std::process::Command::new("git").args(["init", "-q"]).arg(&root).status().unwrap().success());
@@ -86,6 +88,7 @@ fn a_scan_names_the_pages_the_service_says_it_landed_on() {
     { let mut k = fake.knobs.lock().unwrap(); k.health = true; k.foundations = true; }
     let env = fake.env("receipt-landed");
     login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    support::consent(&env);
     let root = Path::new(&env["IMPECCABLE_HOME"]).join("repo");
     std::fs::create_dir_all(&root).unwrap();
     assert!(std::process::Command::new("git").args(["init", "-q"]).arg(&root).status().unwrap().success());

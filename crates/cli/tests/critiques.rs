@@ -25,8 +25,16 @@ fn login(env: &HashMap<String, String>) {
     login_with(env, &[]);
 }
 
+/// Every upload kind switched on, as `impeccable uploads on all` at the person's terminal saves it.
+fn consent(env: &HashMap<String, String>) {
+    let account = impeccable_account::config::Account::from_env(env).unwrap();
+    impeccable_account::uploads::seed(&account, &impeccable_account::uploads::Kind::ALL);
+}
+
 /// `extra`: `--force` for a second sign-in to an account already signed in.
 fn login_with(env: &HashMap<String, String>, extra: &[&str]) {
+    // The person's yes to every upload kind (REN-2530), saved before the sign-in so its scan may go too.
+    consent(env);
     let args: Vec<&str> = ["login", "--no-browser"].iter().chain(extra).copied().collect();
     let mut child = impeccable(
         env,

@@ -44,10 +44,10 @@ export IMPECCABLE_CREDENTIAL_STORE=file
 unset CI IMPECCABLE_BIN IMPECCABLE_PRO DO_NOT_TRACK IMPECCABLE_NO_TELEMETRY
 
 failed=0
-# The Home and MCP URLs the CLI names for staging's issuer; another issuer skips those checks.
+# The Home URL the CLI names for staging's issuer; another issuer skips that check.
 case "$ISSUER" in
-  https://api.staging.impeccable.style) HOME_URL=https://app.staging.impeccable.style/app; MCP_URL=https://api.staging.impeccable.style/mcp ;;
-  *) HOME_URL=""; MCP_URL="" ;;
+  https://api.staging.impeccable.style) HOME_URL=https://app.staging.impeccable.style/app ;;
+  *) HOME_URL="" ;;
 esac
 pass() { echo "PASS $1"; }
 fail() { echo "FAIL $1${2:+: $2}"; failed=1; }
@@ -84,6 +84,12 @@ check "install: the skill installs into the project" '[ $rc = 0 ] && [ -f "$R2/.
 acct() { (cd "$R2" && IMPECCABLE_NO_UPDATE_CHECK=1 exec "$BIN" context) < /dev/null 2>/dev/null | grep '^ACCOUNT:'; }
 check "context: says a fresh install is not signed in" '[ "$(acct)" = "ACCOUNT: not signed in" ]'
 [ $rc = 0 ] || info "install said: $(tail -2 "$H/install.out" | tr '\n' ' ' | cut -c1-200)"
+# Every upload kind starts off until a person turns it on at their terminal (REN-2530). The
+# seeded test person's yes, saved as `impeccable uploads on all` saves it, so the sign-in's scan
+# and the uploads below may go.
+acct_dir="$IMPECCABLE_HOME/account/$(printf '%s' "$ISSUER" | { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; } | cut -c1-16)"
+mkdir -p "$acct_dir" && chmod 700 "$IMPECCABLE_HOME" "$IMPECCABLE_HOME/account" "$acct_dir"
+(umask 077; printf '{"on":["scan","health","design","critiques","screenshots","prototypes","setup"]}' > "$acct_dir/uploads.json")
 (cd "$R2" && exec "$BIN" login --no-browser) > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
 url=""
@@ -280,8 +286,8 @@ expire "$B"; as_home "$B" whoami > "$H/sb3.out" 2>&1; rc=$?
 check "sibling: after sign-out, B's refresh is refused" '[ $rc != 0 ] && grep -q "^Your sign-in expired" "$H/sb3.out"'
 info "sibling B after sign-out said: $(head -1 "$H/sb3.out" | cut -c1-160)"
 
-# 7. CLI-first setup (REN-1918): `loop connect --mcp-only` gives an agent staging's MCP
-#    server without the Loop app. It needs no sign-in.
+# 7. CLI-first setup (REN-1918, REN-2507): `loop connect --mcp-only` gives an agent the local
+#    server, pinned to staging, without the Loop app. It needs no sign-in of the agent's own.
 # A stand-in `claude` in a home of its own: it records its arguments and writes the entry
 # as Claude Code does. Nothing reaches this machine's real agents.
 AH="$H/agent-home"; mkdir -p "$AH/.claude" "$H/bin"
@@ -294,11 +300,9 @@ chmod +x "$H/bin/claude"
 env -u CLAUDE_CONFIG_DIR HOME="$AH" PATH="$H/bin:$PATH" IMPECCABLE_CLAUDE_BIN="$H/bin/claude" IMPECCABLE_CODEX_BIN="$H/bin/no-codex" \
   "$BIN" loop connect --mcp-only --agent claude --json > "$H/mcp.out" 2> "$H/mcp.err"; rc=$?
 check "setup: --mcp-only connects Claude Code without Loop" '[ $rc = 0 ] && [ "$(jq -r ".agents[0].result" "$H/mcp.out" 2>/dev/null)" = connected ]'
-if [ -n "$MCP_URL" ]; then
-  check "setup: the server is staging's" 'grep -qF "$MCP_URL" "$AH/.claude.json" 2>/dev/null'
-else
-  info "setup: the MCP URL check runs against staging's issuer only"
-fi
+check "setup: the server is the local one, on this issuer" '[ "$(jq -r ".mcpServers.impeccable.args[0]" "$AH/.claude.json" 2>/dev/null)" = mcp ] && [ "$(jq -r ".mcpServers.impeccable.env.IMPECCABLE_ACCOUNT_URL" "$AH/.claude.json" 2>/dev/null)" = "$ISSUER" ]'
+launcher=$(jq -r '.mcpServers.impeccable.command' "$AH/.claude.json" 2>/dev/null)
+check "setup: its launcher runs this engine" '[ -x "$launcher" ] && "$launcher" --version 2>/dev/null | grep -q .'
 [ $rc = 0 ] || info "setup: --mcp-only said: $(cat "$H/mcp.out" "$H/mcp.err" | tr '\n' ' ' | cut -c1-300)"
 
 finish

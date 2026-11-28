@@ -259,6 +259,29 @@ impl Store {
             }
         }
     }
+    /// The lock around reading and rewriting the upload switches (`uploads.json`), so two changes at once never
+    /// undo each other.
+    pub(crate) fn uploads_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
+        fs::create_dir_all(home).map_err(|e| e.to_string())?;
+        let mut options = fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false).no_follow();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options.open(home.join("uploads.lock")).map_err(|e| e.to_string())?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Lock(file)),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                _ => return Err("another impeccable command is using it; try again".into()),
+            }
+        }
+    }
     pub(crate) fn critique_lock_for(home: &Path, wait: Duration) -> Result<Lock, String> {
         fs::create_dir_all(home).map_err(|e| e.to_string())?;
         let mut options = fs::OpenOptions::new();

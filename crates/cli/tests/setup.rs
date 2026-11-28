@@ -29,6 +29,9 @@ fn signed_in(name: &str) -> (Fake, HashMap<String, String>) {
     f.knobs.lock().unwrap().setup = true;
     let env = f.env(name);
     impeccable_account::login(&env, &mut |u| browser(u), Duration::from_secs(10)).unwrap();
+    // The person's yes to every upload kind (REN-2530), as `impeccable uploads on all` saves it.
+    let account = impeccable_account::config::Account::from_env(&env).unwrap();
+    impeccable_account::uploads::seed(&account, &impeccable_account::uploads::Kind::ALL);
     (f, env)
 }
 #[test]

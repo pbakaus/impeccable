@@ -276,8 +276,11 @@ pub(crate) fn run(
         if impeccable_account::health::wanted(io) {
             let scan = crate::router::health_scan(full, items, started);
             impeccable_account::health::after_scan(io, &scan, json || quiet);
-        } else if !json && !quiet && impeccable_account::health::wanted_at_sign_in(io) {
-            if let Some(line) = impeccable_account::critiques::opt_out_nudge(io, &io.cwd) { io.err(&line); }
+        } else if !json && !quiet && impeccable_account::health::ready(io) {
+            match impeccable_account::critiques::opt_out_nudge(io, &io.cwd) {
+                Some(line) => io.err(&line),
+                None => impeccable_account::uploads::skipped(io, impeccable_account::uploads::Kind::Health, false),
+            }
         }
     }
     0

@@ -63,6 +63,11 @@ fn upload(io: &mut Io, session_id: &str, root: &Path, target: &str, variants: u6
         }
         Err(stop) => return stopped(stop),
     };
+    // Its own switch, off until the person turns it on (REN-2530).
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Prototypes, Some(root)) {
+        crate::uploads::skipped(io, crate::uploads::Kind::Prototypes, quiet);
+        return None;
+    }
     let mut body = body(session_id, root, target, variants, accepted_at)?;
     if let Some((key, _)) = crate::health::critique_repo(&root.to_string_lossy(), &io.env) {
         body["repoKey"] = key.into();

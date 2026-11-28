@@ -39,6 +39,9 @@ pub(super) fn run(args: &[String], io: &mut Io) -> i32 {
             } else {
                 "DESIGN.md sync: off.\n"
             });
+            if on {
+                if let Some(line) = crate::uploads::still_off(io, crate::uploads::Kind::Design) { io.out(&line); }
+            }
             0
         }
         Err(e) => {
@@ -66,6 +69,10 @@ fn remaining(started: std::time::Instant) -> Option<Duration> {
 }
 
 pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
+    // Its own switch (REN-2530), checked here as well as by the caller.
+    if !crate::uploads::allowed(io, crate::uploads::Kind::Design, Some(std::path::Path::new(&scan.root))) {
+        return;
+    }
     let started = std::time::Instant::now();
     let env = io.env.clone();
     let Some(local) =
@@ -90,6 +97,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let original = session.state.clone();
     let login = original.login;
     let root = scan.root.clone();
+    let about = std::path::PathBuf::from(&scan.root);
     let env = io.env.clone();
     let Some(wait) = remaining(started) else {
         return;
@@ -180,6 +188,7 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
     let home = account.home.clone();
     let env = io.env.clone();
     let expected = digest.clone();
+    let here = io.cwd.clone();
     let Some(wait) = remaining(started) else {
         return;
     };
@@ -197,7 +206,8 @@ pub(super) fn after_scan(io: &mut Io, scan: &Scan, quiet: bool) {
             cache_lock.try_lock().ok()?;
             let cached = std::fs::read_to_string(&path).ok().as_deref() == Some(&expected);
             let admission = crate::store::Store::design_lock_for(&home, Duration::ZERO).ok()?;
-            if !enabled_generation(&env, generation) {
+            // Under the lock `uploads off design` also takes, so a switch turned off meanwhile stops this upload.
+            if !enabled_generation(&env, generation) || !crate::uploads::allowed_in(&env, &here, crate::uploads::Kind::Design, Some(&about)) {
                 return None;
             }
             Some((path, cache_lock, admission, cached))
@@ -514,6 +524,7 @@ mod notice_regressions {
         let lock = store.lock().unwrap();
         store.save(&lock, &state, &secret).unwrap();
         drop(lock);
+        crate::uploads::seed(&account, &[crate::uploads::Kind::Design]);
         let (repo, text, sidecar) = prepare(&root.to_string_lossy(), &env, Repo::of).unwrap();
         let marker = hex(&hash(&[&account.issuer, "1", &repo.key, "0"]));
         let path = home.join("health/repos").join(format!("{marker}.design"));

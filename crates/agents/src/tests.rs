@@ -36,7 +36,7 @@ fn spec(harness: &str, root: PathBuf) -> Spec {
         hooks: vec![],
         wake_plugin: None,
         mcp_servers: vec![],
-        http_mcp_servers: Default::default(),
+        mcp_entries: Default::default(),
         mcp_approvals: vec![],
         instruction: Some("managed text".into()),
     }
@@ -1142,7 +1142,7 @@ fn list_reports_every_installation_without_paths_and_marks_edited_entries() {
         let home = temp();
         let mut s = spec(harness, temp());
         s.instruction = None;
-        s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+        s.mcp_entries.insert("impeccable".into(), "https://example/mcp".into());
         let path = home.join("http.json");
         let j = apply(&s, None, &home, &path, None).unwrap();
         write_journal(&path, &j).unwrap();
@@ -1556,7 +1556,7 @@ fn cursor_json_resources_restore_exactly_and_preserve_later_edits() {
     fs::write(&config, original_config).unwrap();
     let mut s = spec("cursor", root.clone());
     s.instruction = None;
-    s.http_mcp_servers
+    s.mcp_entries
         .insert("impeccable".into(), "https://example/mcp".into());
     s.mcp_approvals.push(McpApproval {
         server: "impeccable".into(),
@@ -1609,7 +1609,7 @@ fn copilot_hooks_and_mcp_are_journaled_including_the_created_directory() {
         let root = temp();
         let mut s = spec("copilot", root.clone());
         s.instruction = None;
-        s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+        s.mcp_entries.insert("impeccable".into(), "https://example/mcp".into());
         s.hooks = vec![hook("agentStop", "loop-hook copilot lifecycle")];
         s.hooks[0].timeout = Some(3600);
         validate(&s).unwrap();
@@ -1651,7 +1651,7 @@ fn opencode_plugin_is_owned_as_a_file_and_its_directory_recovers() {
     let mut s = spec("opencode", root.clone());
     s.instruction = None;
     s.wake_plugin = Some("export const ImpeccableLoop = async () => ({});\n".into());
-    s.http_mcp_servers.insert("impeccable".into(), "https://example/mcp".into());
+    s.mcp_entries.insert("impeccable".into(), "https://example/mcp".into());
     validate(&s).unwrap();
     let config = root.join("opencode.json");
     let before = br#"{"$schema":"schema","mcp":{"other":{"url":"other"}}}"#;
@@ -1689,7 +1689,7 @@ fn partial_http_server_cleanup_reports_the_edited_entry() {
         let root = temp();
         let mut s = spec(harness, root.clone());
         s.instruction = None;
-        s.http_mcp_servers = [("unchanged".into(), "https://original/one".into()), ("edited".into(), "https://original/two".into())].into();
+        s.mcp_entries = [("unchanged".into(), "https://original/one".into()), ("edited".into(), "https://original/two".into())].into();
         let j = apply(&s, None, &home, &home.join("journal.json"), None).unwrap();
         let path = root.join(file);
         let mut config: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();

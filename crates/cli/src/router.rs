@@ -157,12 +157,16 @@ fn run_inner(args: &[String], io: &mut Io, pack: InstalledPack) -> i32 {
                 scan_after_login(io, &engines, pack.rule_pack);
                 crate::loop_install::after_login(io);
                 sign_in_summary(io);
+                // Every upload kind starts off (REN-2530): the person learns where to choose.
+                let line = impeccable_account::uploads::after_login(io);
+                io.err(&line);
             }
             code
         }
         "setup" => impeccable_account::setup::run(rest, io),
         "setup-report" => crate::setup_report::run(io),
         "logout" => impeccable_account::run_logout(rest, io),
+        "uploads" => impeccable_account::uploads::run(rest, io),
         "whoami" => impeccable_account::run_whoami(rest, io),
         "status" => {
             // What the Impeccable block holds in each agent's rule file (REN-2056), read here.
@@ -372,8 +376,12 @@ fn detect(
     // Most runs can't upload (not signed in, CI, opted out): those don't
     // pay for a report.
     if !impeccable_account::health::wanted(io) {
-        if !args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github")) && impeccable_account::health::wanted_at_sign_in(io) {
-            if let Some(line) = impeccable_account::critiques::opt_out_nudge(io, &io.cwd) { io.err(&line); }
+        let quiet = args.iter().any(|a| matches!(a.as_str(), "--quiet" | "--json" | "-json" | "--github"));
+        if !quiet && impeccable_account::health::ready(io) {
+            match impeccable_account::critiques::opt_out_nudge(io, &io.cwd) {
+                Some(line) => io.err(&line),
+                None => impeccable_account::uploads::skipped(io, impeccable_account::uploads::Kind::Health, quiet),
+            }
         }
         return impeccable_detect::cli::run_detect_with_pack(args, io, engines, rule_pack);
     }
@@ -410,8 +418,8 @@ pub(crate) fn scan_after_login(
 ) -> &'static str {
     use impeccable_account::health;
     use std::io::Write;
-    // CI, sync turned off, or a grant that can't record a repository: say
-    // nothing. A telemetry opt-out doesn't stop it: signing in is the consent.
+    // CI, sync turned off, the `scan` switch off (every switch starts off), a
+    // telemetry opt-out, or a grant that can't record a repository: say nothing.
     if !health::wanted_at_sign_in(io) || !health::can_record(io) {
         return "skipped";
     }
@@ -618,6 +626,7 @@ const KNOWN_VERBS: &[&str] = &[
     "ignore",
     "login",
     "logout",
+    "uploads",
     "whoami",
     "status",
     "world",
@@ -838,6 +847,8 @@ mod receipt_tests {
         fake.knobs.lock().unwrap().critiques = true;
         let mut env = fake.env("receipt-json");
         impeccable_account::login(&env, &mut |u| super::receipt_fake::browser(u), std::time::Duration::from_secs(10)).unwrap();
+        let account = impeccable_account::config::Account::from_env(&env).unwrap();
+        impeccable_account::uploads::seed(&account, &impeccable_account::uploads::Kind::ALL);
         let root = std::path::PathBuf::from(&env["IMPECCABLE_HOME"]);
         std::fs::write(root.join("body.md"), "Report").unwrap();
         env.insert("IMPECCABLE_CRITIQUE_META".into(), r#"{"target":"Home","total_score":24,"max_score":40,"p0_count":0,"p1_count":0}"#.into());

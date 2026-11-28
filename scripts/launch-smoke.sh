@@ -90,6 +90,13 @@ for s in rules:read health:write setup:write foundations:write design:write crit
 done
 offers() { case "$scopes" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
+# Every upload kind starts off until a person turns it on at their terminal (REN-2530). This run
+# is that person's yes, saved as `impeccable uploads on all` saves it, so its scans and uploads go.
+imp_home="${IMPECCABLE_HOME:-$HOME/.impeccable}"
+acct_dir="$imp_home/account/$(printf '%s' "$ISSUER" | { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; } | cut -c1-16)"
+mkdir -p "$acct_dir" && chmod 700 "$imp_home" "$imp_home/account" "$acct_dir"
+(umask 077; printf '{"on":["scan","health","design","critiques","screenshots","prototypes","setup"]}' > "$acct_dir/uploads.json")
+
 # 1. Sign in. Production: a person opens the printed link and approves. Staging: the seeded person.
 imp login --no-browser > "$H/login.out" 2> "$H/login.err" &
 login_pid=$!
@@ -174,7 +181,7 @@ if [ "$LOOP" = 1 ]; then
     PATH="$H/bin:/usr/bin:/bin" imp loop connect > "$H/connect.out" 2>&1; rc=$?
     check "loop connect: exits 0" '[ $rc = 0 ]'
     check "loop connect: Claude Code connected" 'grep -q "^Claude Code: connected" "$H/connect.out"'
-    mcp=$(jq -r '.mcpServers.impeccable.url // empty' "$HOME/.claude.json" 2>/dev/null)
+    mcp=$(jq -r '.mcpServers.impeccable.command // empty' "$HOME/.claude.json" 2>/dev/null)
     check "loop connect: MCP server registered" '[ -n "$mcp" ]'
     info "loop connect: MCP server $mcp"
     PATH="$H/bin:/usr/bin:/bin" imp loop disconnect > "$H/disconnect.out" 2>&1; rc=$?
